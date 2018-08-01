@@ -77,9 +77,10 @@ struct thread_sched_data {
 /*
  * Thread states.
  */
-#define THREAD_RUNNING  0
-#define THREAD_SLEEPING 1
-#define THREAD_DEAD     2
+#define THREAD_RUNNING   0
+#define THREAD_SLEEPING  1
+#define THREAD_DEAD      2
+#define THREAD_SUSPENDED 3
 
 /*
  * Scheduling policies.
@@ -746,6 +747,16 @@ unsigned int thread_state(const struct thread *thread);
  * This call isn't synchronized, and the caller may obtain an outdated value.
  */
 bool thread_is_running(const struct thread *thread);
+
+/*
+ * Suspend a thread.
+ */
+int thread_suspend(struct thread *thread);
+
+/*
+ * Resume a previously suspended thread.
+ */
+int thread_resume(struct thread *thread);
 
 /*
  * This init operation provides :
