@@ -2500,7 +2500,8 @@ thread_wakeup_common(struct thread *thread, int error)
     } else {
         runq = thread_lock_runq(thread, &flags);
 
-        if (thread->state == THREAD_RUNNING) {
+        if (thread->state == THREAD_RUNNING
+            || thread->state == THREAD_SUSPENDED) {
             thread_unlock_runq(runq, flags);
             return EINVAL;
         }
@@ -2753,6 +2754,8 @@ thread_state_to_chr(unsigned int state)
         return 'S';
     case THREAD_DEAD:
         return 'Z';
+    case THREAD_SUSPENDED:
+        return 'T';
     default:
         panic("thread: unknown state");
     }
@@ -2977,4 +2980,55 @@ thread_is_running(const struct thread *thread)
 
     return (runq != NULL)
            && (atomic_load(&runq->current, ATOMIC_RELAXED) == thread);
+}
+
+int
+thread_suspend(struct thread *thread)
+{
+    struct thread_runq *runq;
+    unsigned long flags;
+
+    if (thread == NULL) {
+        return EINVAL;
+    }
+
+    runq = thread_lock_runq(thread, &flags);
+    thread_set_flag(thread, THREAD_YIELD);
+    thread_clear_wchan(thread);
+    atomic_store(&thread->state, THREAD_SUSPENDED, ATOMIC_RELAXED);
+
+    if (runq != thread_runq_local()) {
+        cpu_send_thread_schedule(thread_runq_cpu(runq));
+    }
+
+    thread_unlock_runq(runq, flags);
+    return 0;
+}
+
+int
+thread_resume(struct thread *thread)
+{
+    struct thread_runq *runq;
+    unsigned long flags;
+
+    if (thread == NULL) {
+        return EINVAL;
+    }
+
+    runq = thread_lock_runq(thread, &flags);
+    if (thread->state != THREAD_SUSPENDED) {
+        thread_unlock_runq(runq, flags);
+        return EINVAL;
+    }
+
+    thread->wakeup_error = 0;
+    atomic_store(&thread->state, THREAD_RUNNING, ATOMIC_RELAXED);
+
+    if (runq != thread_runq_local()) {
+        cpu_send_thread_schedule(thread_runq_cpu(runq));
+    }
+
+    thread_unlock_runq(runq, flags);
+
+    return 0;
 }
