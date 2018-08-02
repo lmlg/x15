@@ -42,8 +42,9 @@ struct thread_fs_runq;
 /*
  * Thread flags.
  */
-#define THREAD_YIELD    0x1UL /* Must yield the processor ASAP */
-#define THREAD_DETACHED 0x2UL /* Resources automatically released on exit */
+#define THREAD_YIELD       0x1UL /* Must yield the processor ASAP */
+#define THREAD_DETACHED    0x2UL /* Resources automatically released on exit */
+#define THREAD_SUSPEND_REQ 0x4UL /* Request to suspend */
 
 /*
  * Scheduling data for a real-time thread.

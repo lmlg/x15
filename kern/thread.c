@@ -625,6 +625,16 @@ thread_runq_schedule_unload(struct thread *thread)
 #endif
 }
 
+static unsigned int
+thread_update_state(struct thread *thread)
+{
+    if (thread_test_flag(thread, THREAD_SUSPEND_REQ)) {
+        thread->state = THREAD_SUSPENDED;
+    }
+
+    return thread->state;
+}
+
 static struct thread_runq *
 thread_runq_schedule(struct thread_runq *runq)
 {
@@ -638,16 +648,17 @@ thread_runq_schedule(struct thread_runq *runq)
     assert(!cpu_intr_enabled());
     assert(spinlock_locked(&runq->lock));
 
-    thread_clear_flag(prev, THREAD_YIELD);
     thread_runq_put_prev(runq, prev);
 
-    if (prev->state != THREAD_RUNNING) {
+    if (thread_update_state(prev) != THREAD_RUNNING) {
         thread_runq_remove(runq, prev);
 
         if ((runq->nr_threads == 0) && (prev != runq->balancer)) {
             thread_runq_wakeup_balancer(runq);
         }
     }
+
+    thread_clear_flag(prev, THREAD_YIELD | THREAD_SUSPEND_REQ);
 
     next = thread_runq_get_next(runq);
     assert((next != runq->idler) || (runq->nr_threads == 0));
@@ -2467,7 +2478,7 @@ thread_join(struct thread *thread)
 }
 
 static int
-thread_wakeup_common(struct thread *thread, int error)
+thread_wakeup_common(struct thread *thread, int error, bool resume)
 {
     struct thread_runq *runq;
     unsigned long flags;
@@ -2487,8 +2498,8 @@ thread_wakeup_common(struct thread *thread, int error)
     } else {
         runq = thread_lock_runq(thread, &flags);
 
-        if (thread->state == THREAD_RUNNING
-            || thread->state == THREAD_SUSPENDED) {
+        if ((thread->state == THREAD_RUNNING)
+            || (thread->state == THREAD_SUSPENDED && !resume)) {
             thread_unlock_runq(runq, flags);
             return EINVAL;
         }
@@ -2522,7 +2533,7 @@ thread_wakeup_common(struct thread *thread, int error)
 int
 thread_wakeup(struct thread *thread)
 {
-    return thread_wakeup_common(thread, 0);
+    return thread_wakeup_common(thread, 0, false);
 }
 
 struct thread_timeout_waiter {
@@ -2536,7 +2547,7 @@ thread_timeout(struct timer *timer)
     struct thread_timeout_waiter *waiter;
 
     waiter = structof(timer, struct thread_timeout_waiter, timer);
-    thread_wakeup_common(waiter->thread, ETIMEDOUT);
+    thread_wakeup_common(waiter->thread, ETIMEDOUT, false);
 }
 
 static int
@@ -2978,9 +2989,13 @@ thread_suspend(struct thread *thread)
     }
 
     runq = thread_lock_runq(thread, &flags);
-    thread_set_flag(thread, THREAD_YIELD);
-    thread_clear_wchan(thread);
-    atomic_store(&thread->state, THREAD_SUSPENDED, ATOMIC_RELAXED);
+
+    if (thread->state == THREAD_SUSPENDED) {
+        thread_unlock_runq(runq, flags);
+        return EAGAIN;
+    }
+
+    thread_set_flag(thread, THREAD_YIELD | THREAD_SUSPEND_REQ);
 
     if (runq != thread_runq_local()) {
         cpu_send_thread_schedule(thread_runq_cpu(runq));
@@ -2993,27 +3008,6 @@ thread_suspend(struct thread *thread)
 int
 thread_resume(struct thread *thread)
 {
-    struct thread_runq *runq;
-    unsigned long flags;
-
-    if (thread == NULL) {
-        return EINVAL;
-    }
-
-    runq = thread_lock_runq(thread, &flags);
-    if (thread->state != THREAD_SUSPENDED) {
-        thread_unlock_runq(runq, flags);
-        return EINVAL;
-    }
-
-    thread->wakeup_error = 0;
-    atomic_store(&thread->state, THREAD_RUNNING, ATOMIC_RELAXED);
-
-    if (runq != thread_runq_local()) {
-        cpu_send_thread_schedule(thread_runq_cpu(runq));
-    }
-
-    thread_unlock_runq(runq, flags);
-
+    thread_wakeup_common(thread, 0, true);
     return 0;
 }
