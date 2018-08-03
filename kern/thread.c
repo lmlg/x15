@@ -625,16 +625,6 @@ thread_runq_schedule_unload(struct thread *thread)
 #endif
 }
 
-static unsigned int
-thread_update_state(struct thread *thread)
-{
-    if (thread_test_flag(thread, THREAD_SUSPEND_REQ)) {
-        thread->state = THREAD_SUSPENDED;
-    }
-
-    return thread->state;
-}
-
 static struct thread_runq *
 thread_runq_schedule(struct thread_runq *runq)
 {
@@ -648,17 +638,21 @@ thread_runq_schedule(struct thread_runq *runq)
     assert(!cpu_intr_enabled());
     assert(spinlock_locked(&runq->lock));
 
+    thread_clear_flag(prev, THREAD_YIELD);
     thread_runq_put_prev(runq, prev);
 
-    if (thread_update_state(prev) != THREAD_RUNNING) {
+    if (prev->suspend_req) {
+        prev->state = THREAD_SUSPENDED;
+        prev->suspend_req = false;
+    }
+
+    if (prev->state != THREAD_RUNNING) {
         thread_runq_remove(runq, prev);
 
         if ((runq->nr_threads == 0) && (prev != runq->balancer)) {
             thread_runq_wakeup_balancer(runq);
         }
     }
-
-    thread_clear_flag(prev, THREAD_YIELD | THREAD_SUSPEND_REQ);
 
     next = thread_runq_get_next(runq);
     assert((next != runq->idler) || (runq->nr_threads == 0));
@@ -1854,6 +1848,7 @@ thread_init(struct thread *thread, void *stack,
 
     turnstile_td_init(&thread->turnstile_td);
     thread->propagate_priority = false;
+    thread->suspend_req = false;
     thread->preempt_level = THREAD_SUSPEND_PREEMPT_LEVEL;
     thread->pin_level = 0;
     thread->intr_level = 0;
@@ -2983,6 +2978,7 @@ thread_suspend(struct thread *thread)
 {
     struct thread_runq *runq;
     unsigned long flags;
+    int error;
 
     if (thread == NULL) {
         return EINVAL;
@@ -2990,19 +2986,23 @@ thread_suspend(struct thread *thread)
 
     runq = thread_lock_runq(thread, &flags);
 
-    if (thread->state == THREAD_SUSPENDED) {
-        thread_unlock_runq(runq, flags);
-        return EAGAIN;
+    if ((thread->state == THREAD_SUSPENDED) || (thread->suspend_req)) {
+        error = EAGAIN;
+        goto done;
     }
 
-    thread_set_flag(thread, THREAD_YIELD | THREAD_SUSPEND_REQ);
+    thread->suspend_req = true;
+    thread_set_flag(thread, THREAD_YIELD);
 
     if (runq != thread_runq_local()) {
         cpu_send_thread_schedule(thread_runq_cpu(runq));
     }
 
+    error = 0;
+
+done:
     thread_unlock_runq(runq, flags);
-    return 0;
+    return error;
 }
 
 int

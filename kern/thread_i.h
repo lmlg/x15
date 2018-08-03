@@ -42,9 +42,8 @@ struct thread_fs_runq;
 /*
  * Thread flags.
  */
-#define THREAD_YIELD       0x1UL /* Must yield the processor ASAP */
-#define THREAD_DETACHED    0x2UL /* Resources automatically released on exit */
-#define THREAD_SUSPEND_REQ 0x4UL /* Request to suspend */
+#define THREAD_YIELD    0x1UL /* Must yield the processor ASAP */
+#define THREAD_DETACHED 0x2UL /* Resources automatically released on exit */
 
 /*
  * Scheduling data for a real-time thread.
@@ -117,6 +116,9 @@ struct thread {
 
     /* True if priority must be propagated when preemption is reenabled */
     bool propagate_priority;    /* (-) */
+
+    /* True if the thread was requested to suspend. */
+    bool suspend_req;   /* (r) */
 
     /* Preemption level, preemption is enabled if 0 */
     unsigned short preempt_level;   /* (-) */
