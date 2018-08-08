@@ -2984,10 +2984,14 @@ thread_suspend(struct thread *thread)
         return EINVAL;
     }
 
+    error = 0;
     runq = thread_lock_runq(thread, &flags);
 
     if ((thread->state == THREAD_SUSPENDED) || (thread->suspend_req)) {
         error = EAGAIN;
+        goto done;
+    } else if (thread->state == THREAD_SLEEPING) {
+        thread->state = THREAD_SUSPENDED;
         goto done;
     }
 
@@ -2998,7 +3002,6 @@ thread_suspend(struct thread *thread)
         cpu_send_thread_schedule(thread_runq_cpu(runq));
     }
 
-    error = 0;
 
 done:
     thread_unlock_runq(runq, flags);
