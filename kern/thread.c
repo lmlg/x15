@@ -3002,7 +3002,6 @@ thread_suspend(struct thread *thread)
         cpu_send_thread_schedule(thread_runq_cpu(runq));
     }
 
-
 done:
     thread_unlock_runq(runq, flags);
     return error;

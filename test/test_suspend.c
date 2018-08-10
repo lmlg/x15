@@ -15,6 +15,10 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
+ *
+ * This test aims to verify that threads transition state correctly when
+ * suspended / resumed. It tests the effects of calling 'thread_suspend' and
+ * 'thread_resume' on a running thread and on a sleeping thread.
  */
 
 #include <assert.h>
@@ -22,7 +26,6 @@
 #include <stddef.h>
 #include <stdio.h>
 
-#include <kern/cpumap.h>
 #include <kern/error.h>
 #include <kern/init.h>
 #include <kern/log.h>
@@ -33,7 +36,7 @@
 #include <test/test.h>
 
 static void
-test_f1(void *arg)
+test_suspend_running(void *arg)
 {
     struct spinlock *lock;
 
@@ -43,7 +46,7 @@ test_f1(void *arg)
 }
 
 static void
-test_f2(void *arg)
+test_suspend_sleeping(void *arg)
 {
     struct rtmutex *rtmutex;
 
@@ -73,9 +76,10 @@ test_run(void *arg)
 
     spinlock_init(&lock_1);
     spinlock_lock(&lock_1);
-    error = thread_create(&thread, &attr, test_f1, &lock_1);
+    error = thread_create(&thread, &attr, test_suspend_running, &lock_1);
     error_check(error, "thread_create");
 
+    wait_for_state(thread, THREAD_RUNNING);
     thread_suspend(thread);
     wait_for_state(thread, THREAD_SUSPENDED);
 
@@ -85,7 +89,7 @@ test_run(void *arg)
 
     rtmutex_init(&lock_2);
     rtmutex_lock(&lock_2);
-    error = thread_create(&thread, &attr, test_f2, &lock_2);
+    error = thread_create(&thread, &attr, test_suspend_sleeping, &lock_2);
     error_check(error, "thread_create");
 
     wait_for_state(thread, THREAD_SLEEPING);
