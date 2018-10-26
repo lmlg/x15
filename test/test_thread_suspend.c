@@ -17,8 +17,15 @@
  *
  *
  * This test aims to verify that threads transition state correctly when
- * suspended / resumed. It tests the effects of calling 'thread_suspend' and
- * 'thread_resume' on a running thread and on a sleeping thread.
+ * suspended / resume. It does so by making a newly created thread to
+ * acquire a locked spinlock, and forcing it into the 'running' state, and
+ * by having it wait on a zero-valued semaphore, thus sending it to the
+ * 'sleeping' state. As such, we test for the following transitions:
+ *
+ * CREATED -> RUNNING (*) -> SUSPENDED -> RUNNING
+ * CREATED -> RUNNING -> SLEEPING (*) -> SUSPENDED -> RUNNING.
+ *
+ * Suspend requests are made at the states marked with an asterisk.
  */
 
 #include <assert.h>
@@ -30,7 +37,7 @@
 #include <kern/init.h>
 #include <kern/log.h>
 #include <kern/panic.h>
-#include <kern/rtmutex.h>
+#include <kern/semaphore.h>
 #include <kern/spinlock.h>
 #include <kern/thread.h>
 #include <test/test.h>
@@ -48,15 +55,14 @@ test_suspend_running(void *arg)
 static void
 test_suspend_sleeping(void *arg)
 {
-    struct rtmutex *rtmutex;
+    struct semaphore *sem;
 
-    rtmutex = (struct rtmutex *)arg;
-    rtmutex_lock(rtmutex);
-    rtmutex_unlock(rtmutex);
+    sem = (struct semaphore *)arg;
+    semaphore_wait(sem);
 }
 
 static void
-wait_for_state(const struct thread *thread, unsigned int state) {
+test_wait_for_state(const struct thread *thread, unsigned int state) {
     while (thread_state(thread) != state) {
         cpu_pause();
     }
@@ -67,38 +73,37 @@ test_run(void *arg)
 {
     struct thread *thread;
     struct thread_attr attr;
-    struct spinlock lock_1;
-    struct rtmutex lock_2;
+    struct spinlock lock;
+    struct semaphore sem;
     int error;
 
     (void)arg;
-    thread_attr_init(&attr, "test_worker");
+    thread_attr_init(&attr, "test_run");
 
-    spinlock_init(&lock_1);
-    spinlock_lock(&lock_1);
-    error = thread_create(&thread, &attr, test_suspend_running, &lock_1);
+    spinlock_init(&lock);
+    spinlock_lock(&lock);
+    error = thread_create(&thread, &attr, test_suspend_running, &lock);
     error_check(error, "thread_create");
 
-    wait_for_state(thread, THREAD_RUNNING);
+    test_wait_for_state(thread, THREAD_RUNNING);
     thread_suspend(thread);
-    wait_for_state(thread, THREAD_SUSPENDED);
+    test_wait_for_state(thread, THREAD_SUSPENDED);
 
-    spinlock_unlock(&lock_1);
+    spinlock_unlock(&lock);
     thread_resume(thread);
     thread_join(thread);
 
-    rtmutex_init(&lock_2);
-    rtmutex_lock(&lock_2);
-    error = thread_create(&thread, &attr, test_suspend_sleeping, &lock_2);
+    semaphore_init(&sem, 0);
+    error = thread_create(&thread, &attr, test_suspend_sleeping, &sem);
     error_check(error, "thread_create");
 
-    wait_for_state(thread, THREAD_SLEEPING);
+    test_wait_for_state(thread, THREAD_SLEEPING);
     thread_suspend(thread);
-    wait_for_state(thread, THREAD_SUSPENDED);
+    test_wait_for_state(thread, THREAD_SUSPENDED);
     thread_wakeup(thread);
     assert(thread_state(thread) == THREAD_SUSPENDED);
 
-    rtmutex_unlock(&lock_2);
+    semaphore_post(&sem);
     thread_resume(thread);
     thread_join(thread);
 

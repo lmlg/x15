@@ -758,6 +758,12 @@ bool thread_is_running(const struct thread *thread);
 
 /*
  * Suspend a thread.
+ *
+ * This call is asynchronous, which means the caller shouldn't expect the
+ * target thread to be suspended upon returning.
+ *
+ * Suspend the calling thread is allowed, but suspending the idle and balancer
+ * threads will be silently ignored.
  */
 int thread_suspend(struct thread *thread);
 

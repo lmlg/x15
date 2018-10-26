@@ -2507,7 +2507,7 @@ thread_wakeup_common(struct thread *thread, int error, bool resume)
         runq = thread_lock_runq(thread, &flags);
 
         if ((thread->state == THREAD_RUNNING)
-            || (thread->state == THREAD_SUSPENDED && !resume)) {
+            || ((thread->state == THREAD_SUSPENDED) && !resume)) {
             thread_unlock_runq(runq, flags);
             return EINVAL;
         }
@@ -3002,7 +3002,10 @@ thread_suspend(struct thread *thread)
     error = 0;
     runq = thread_lock_runq(thread, &flags);
 
-    if ((thread->state == THREAD_SUSPENDED) || (thread->suspend_req)) {
+    if ((thread == runq->idler) || (thread == runq->balancer)) {
+        error = EINVAL;
+        goto done;
+    } else if ((thread->state == THREAD_SUSPENDED) || (thread->suspend_req)) {
         error = EAGAIN;
         goto done;
     } else if (thread->state == THREAD_SLEEPING) {
@@ -3013,7 +3016,10 @@ thread_suspend(struct thread *thread)
     thread->suspend_req = true;
     thread_set_flag(thread, THREAD_YIELD);
 
-    if (runq != thread_runq_local()) {
+    /* At this point, we know the thread is running. Send an interrupt
+     * only if the thread is also the 'current' in its run queue. */
+
+    if ((runq != thread_runq_local()) && (thread == runq->current)) {
         cpu_send_thread_schedule(thread_runq_cpu(runq));
     }
 
