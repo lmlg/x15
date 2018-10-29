@@ -2999,6 +2999,7 @@ thread_suspend(struct thread *thread)
         return EINVAL;
     }
 
+    thread_preempt_disable();
     error = 0;
     runq = thread_lock_runq(thread, &flags);
 
@@ -3018,11 +3019,16 @@ thread_suspend(struct thread *thread)
         thread_runq_remove(runq, thread);
     } else {
         thread->suspend_req = true;
-        thread_set_flag(thread, THREAD_YIELD);
-        cpu_send_thread_schedule(thread_runq_cpu(runq));
+        if (thread != thread_self ()) {
+            thread_set_flag(thread, THREAD_YIELD);
+            cpu_send_thread_schedule(thread_runq_cpu(runq));
+        } else {
+            thread_runq_schedule(runq);
+        }
     }
 
 done:
+    thread_preempt_enable_no_resched();
     thread_unlock_runq(runq, flags);
     return error;
 }
