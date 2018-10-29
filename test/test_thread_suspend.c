@@ -17,15 +17,19 @@
  *
  *
  * This test aims to verify that threads transition state correctly when
- * suspended / resume. It does so by making a newly created thread to
- * acquire a locked spinlock, and forcing it into the 'running' state, and
- * by having it wait on a zero-valued semaphore, thus sending it to the
- * 'sleeping' state. As such, we test for the following transitions:
+ * suspended / resumed. It does so by making a newly created thread acquire a
+ * locked spinlock, and forcing it into the 'running' state, and by having it
+ * wait on a zero-valued semaphore, thus sending it to the 'sleeping' state.
+ * As such, we test for the following transitions:
  *
  * CREATED -> RUNNING (*) -> SUSPENDED -> RUNNING
  * CREATED -> RUNNING -> SLEEPING (*) -> SUSPENDED -> RUNNING.
  *
  * Suspend requests are made at the states marked with an asterisk.
+ *
+ * In addition, this test verifies that a thread can suspend itself by creating
+ * a new thread, calling 'thread_suspend' on itself, and then having its child
+ * resume it after waiting for the parent to transition to the suspended state.
  */
 
 #include <assert.h>
@@ -131,7 +135,7 @@ test_setup(void)
     struct thread *thread;
     int error;
 
-    thread_attr_init(&attr, THREAD_KERNEL_PREFIX "test_run");
+    thread_attr_init(&attr, THREAD_KERNEL_PREFIX "test_control");
     thread_attr_set_detached(&attr);
     error = thread_create(&thread, &attr, test_run, NULL);
     error_check(error, "thread_create");
