@@ -3019,7 +3019,7 @@ thread_suspend(struct thread *thread)
         thread_runq_remove(runq, thread);
     } else {
         thread->suspend_req = true;
-        if (thread != thread_self ()) {
+        if (thread != thread_self()) {
             thread_set_flag(thread, THREAD_YIELD);
             cpu_send_thread_schedule(thread_runq_cpu(runq));
         } else {
