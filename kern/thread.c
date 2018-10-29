@@ -3013,19 +3013,13 @@ thread_suspend(struct thread *thread)
         goto done;
     }
 
-    /* At this point, we know the thread is running. Send an interrupt
-     * only if the thread is also the 'current' in its run queue. */
-
-    if ((runq != thread_runq_local()) && (thread == runq->current)) {
+    if (thread != runq->current) {
+        thread->state = THREAD_SUSPENDED;
+        thread_runq_remove(runq, thread);
+    } else {
         thread->suspend_req = true;
         thread_set_flag(thread, THREAD_YIELD);
         cpu_send_thread_schedule(thread_runq_cpu(runq));
-    } else {
-        thread->state = THREAD_SUSPENDED;
-        thread_runq_remove(runq, thread);
-        if (runq->nr_threads == 0) {
-            thread_runq_wakeup_balancer(runq);
-        }
     }
 
 done:

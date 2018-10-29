@@ -43,6 +43,13 @@
 #include <test/test.h>
 
 static void
+test_wait_for_state(const struct thread *thread, unsigned int state) {
+    while (thread_state(thread) != state) {
+        cpu_pause();
+    }
+}
+
+static void
 test_suspend_running(void *arg)
 {
     struct spinlock *lock;
@@ -62,10 +69,13 @@ test_suspend_sleeping(void *arg)
 }
 
 static void
-test_wait_for_state(const struct thread *thread, unsigned int state) {
-    while (thread_state(thread) != state) {
-        cpu_pause();
-    }
+test_resume_parent(void *arg)
+{
+    struct thread *thread;
+
+    thread = (struct thread *)arg;
+    test_wait_for_state(thread, THREAD_SUSPENDED);
+    thread_resume(thread);
 }
 
 static void
@@ -105,6 +115,10 @@ test_run(void *arg)
 
     semaphore_post(&sem);
     thread_resume(thread);
+    thread_join(thread);
+
+    error = thread_create(&thread, &attr, test_resume_parent, thread_self());
+    thread_suspend(thread_self());
     thread_join(thread);
 
     log_info("done\n");
