@@ -3036,6 +3036,5 @@ done:
 int
 thread_resume(struct thread *thread)
 {
-    thread_wakeup_common(thread, 0, true);
-    return 0;
+    return thread_wakeup_common(thread, 0, true);
 }
