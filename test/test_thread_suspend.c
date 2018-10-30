@@ -43,6 +43,7 @@
 #include <kern/semaphore.h>
 #include <kern/spinlock.h>
 #include <kern/thread.h>
+#include <machine/cpu.h>
 #include <test/test.h>
 
 static void
@@ -57,7 +58,7 @@ test_suspend_running(void *arg)
 {
     struct spinlock *lock;
 
-    lock = (struct spinlock *)arg;
+    lock = arg;
     spinlock_lock(lock);
     spinlock_unlock(lock);
 }
@@ -67,7 +68,7 @@ test_suspend_sleeping(void *arg)
 {
     struct semaphore *sem;
 
-    sem = (struct semaphore *)arg;
+    sem = arg;
     semaphore_wait(sem);
 }
 
@@ -76,7 +77,7 @@ test_resume_parent(void *arg)
 {
     struct thread *thread;
 
-    thread = (struct thread *)arg;
+    thread = arg;
     test_wait_for_state(thread, THREAD_SUSPENDED);
     thread_resume(thread);
 }
@@ -114,6 +115,7 @@ test_run(void *arg)
     thread_suspend(thread);
     test_wait_for_state(thread, THREAD_SUSPENDED);
     thread_wakeup(thread);
+
     if (thread_state(thread) != THREAD_SUSPENDED) {
         panic("expected thread state to be suspended");
     }
@@ -126,7 +128,7 @@ test_run(void *arg)
     thread_suspend(thread_self());
     thread_join(thread);
 
-    log_info("done\n");
+    log_info("done");
 }
 
 void __init
