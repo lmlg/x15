@@ -2999,8 +2999,8 @@ thread_suspend(struct thread *thread)
         return EINVAL;
     }
 
-    thread_preempt_disable();
     error = 0;
+    thread_preempt_disable();
     runq = thread_lock_runq(thread, &flags);
 
     if ((thread == runq->idler) || (thread == runq->balancer)) {
@@ -3019,7 +3019,7 @@ thread_suspend(struct thread *thread)
         thread_runq_remove(runq, thread);
     } else {
         thread->suspend_req = true;
-        if (thread != thread_self()) {
+        if (thread->runq != runq) {
             thread_set_flag(thread, THREAD_YIELD);
             cpu_send_thread_schedule(thread_runq_cpu(runq));
         } else {
@@ -3028,8 +3028,8 @@ thread_suspend(struct thread *thread)
     }
 
 done:
-    thread_preempt_enable_no_resched();
     thread_unlock_runq(runq, flags);
+    thread_preempt_enable();
     return error;
 }
 

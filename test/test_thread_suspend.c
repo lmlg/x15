@@ -28,11 +28,10 @@
  * Suspend requests are made at the states marked with an asterisk.
  *
  * In addition, this test verifies that a thread can suspend itself by creating
- * a new thread, calling 'thread_suspend' on itself, and then having its child
- * resume it after waiting for the parent to transition to the suspended state.
+ * a new thread, transitioning its state to suspended and then having its child
+ * resume it after ensuring its parent has already transitioned.
  */
 
-#include <assert.h>
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdio.h>
@@ -115,7 +114,9 @@ test_run(void *arg)
     thread_suspend(thread);
     test_wait_for_state(thread, THREAD_SUSPENDED);
     thread_wakeup(thread);
-    assert(thread_state(thread) == THREAD_SUSPENDED);
+    if (thread_state(thread) != THREAD_SUSPENDED) {
+        panic("expected thread state to be suspended");
+    }
 
     semaphore_post(&sem);
     thread_resume(thread);
