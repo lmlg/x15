@@ -42,7 +42,6 @@
 #include <kern/log.h>
 #include <kern/panic.h>
 #include <kern/semaphore.h>
-#include <kern/spinlock.h>
 #include <kern/thread.h>
 #include <machine/cpu.h>
 #include <test/test.h>
