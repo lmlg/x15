@@ -36,6 +36,7 @@
 #include <stddef.h>
 #include <stdio.h>
 
+#include <kern/atomic.h>
 #include <kern/error.h>
 #include <kern/init.h>
 #include <kern/log.h>
@@ -56,11 +57,12 @@ test_wait_for_state(const struct thread *thread, unsigned int state) {
 static void
 test_suspend_running(void *arg)
 {
-    struct spinlock *lock;
+    unsigned long *lock;
 
     lock = arg;
-    spinlock_lock(lock);
-    spinlock_unlock(lock);
+    while (atomic_cas(lock, 0ul, 1ul, ATOMIC_ACQ_REL) != 0) {
+        cpu_pause();
+    }
 }
 
 static void
@@ -87,15 +89,14 @@ test_run(void *arg)
 {
     struct thread *thread;
     struct thread_attr attr;
-    struct spinlock lock;
+    unsigned long lock;
     struct semaphore sem;
     int error;
 
     (void)arg;
     thread_attr_init(&attr, "test_run");
 
-    spinlock_init(&lock);
-    spinlock_lock(&lock);
+    lock = 1ul;
     error = thread_create(&thread, &attr, test_suspend_running, &lock);
     error_check(error, "thread_create");
 
@@ -103,7 +104,7 @@ test_run(void *arg)
     thread_suspend(thread);
     test_wait_for_state(thread, THREAD_SUSPENDED);
 
-    spinlock_unlock(&lock);
+    atomic_store(&lock, 0ul, ATOMIC_RELEASE);
     thread_resume(thread);
     thread_join(thread);
 

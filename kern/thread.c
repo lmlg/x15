@@ -2991,7 +2991,7 @@ thread_is_running(const struct thread *thread)
 int
 thread_suspend(struct thread *thread)
 {
-    struct thread_runq *runq;
+    struct thread_runq *runq, *local_runq;
     unsigned long flags;
     int error;
 
@@ -3002,6 +3002,7 @@ thread_suspend(struct thread *thread)
     error = 0;
     thread_preempt_disable();
     runq = thread_lock_runq(thread, &flags);
+    local_runq = thread_runq_local();
 
     if ((thread == runq->idler) || (thread == runq->balancer)) {
         error = EINVAL;
@@ -3019,11 +3020,11 @@ thread_suspend(struct thread *thread)
         thread_runq_remove(runq, thread);
     } else {
         thread->suspend_req = true;
-        if (thread->runq != runq) {
+        if (local_runq != runq) {
             thread_set_flag(thread, THREAD_YIELD);
             cpu_send_thread_schedule(thread_runq_cpu(runq));
         } else {
-            thread_runq_schedule(runq);
+            runq = thread_runq_schedule(runq);
         }
     }
 
