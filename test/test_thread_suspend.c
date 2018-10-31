@@ -94,7 +94,7 @@ test_run(void *arg)
     int error;
 
     (void)arg;
-    thread_attr_init(&attr, "test_run");
+    thread_attr_init(&attr, "test_control");
 
     lock = 1ul;
     error = thread_create(&thread, &attr, test_suspend_running, &lock);
@@ -139,7 +139,7 @@ test_setup(void)
     struct thread *thread;
     int error;
 
-    thread_attr_init(&attr, THREAD_KERNEL_PREFIX "test_control");
+    thread_attr_init(&attr, THREAD_KERNEL_PREFIX "test_run");
     thread_attr_set_detached(&attr);
     error = thread_create(&thread, &attr, test_run, NULL);
     error_check(error, "thread_create");
