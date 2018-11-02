@@ -1,5 +1,4 @@
 /*
- * Copyright (c) 2018 Richard Braun.
  * Copyright (c) 2018 Agustina Arzille.
  *
  * This program is free software: you can redistribute it and/or modify
@@ -16,20 +15,25 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  *
- * This test aims to verify that threads transition state correctly when
- * suspended / resumed. It does so by making a newly created thread acquire a
- * locked spinlock, and forcing it into the 'running' state, and by having it
- * wait on a zero-valued semaphore, thus sending it to the 'sleeping' state.
- * As such, we test for the following transitions:
+ * This test checks that thread state transitions are correctly performed
+ * when a thread is suspended and resumed. It does so by creating three
+ * threads :
  *
- * CREATED -> RUNNING (*) -> SUSPENDED -> RUNNING
- * CREATED -> RUNNING -> SLEEPING (*) -> SUSPENDED -> RUNNING.
+ *  - The first thread spins on an atomic integer used as a lock, which
+ *    puts it in the running state. The lock is released while the thread
+ *    is suspended, and the thread is then resumed.
  *
- * Suspend requests are made at the states marked with an asterisk.
+ *  - The second thread waits on a zero-valued semaphore, which puts it
+ *    in the sleeping state. The semaphore is signalled while the thread
+ *    is suspended, and the thread is then resumed.
  *
- * In addition, this test verifies that a thread can suspend itself by creating
- * a new thread, transitioning its state to suspended and then having its child
- * resume it after ensuring its parent has already transitioned.
+ *  - The third suspends itself and is then resumed.
+ *
+ * As a result, the following transitions are tested :
+ *  o CREATED -> RUNNING (*) -> SUSPENDED -> RUNNING
+ *  o CREATED -> RUNNING -> SLEEPING (*) -> SUSPENDED -> RUNNING.
+ *
+ * (*) Step where a suspend request is made
  */
 
 #include <stdbool.h>
@@ -47,25 +51,27 @@
 #include <test/test.h>
 
 static void
-test_wait_for_state(const struct thread *thread, unsigned int state) {
+test_wait_for_state(const struct thread *thread, unsigned int state)
+{
     while (thread_state(thread) != state) {
         cpu_pause();
     }
 }
 
 static void
-test_suspend_running(void *arg)
+test_spin(void *arg)
 {
     unsigned long *lock;
 
     lock = arg;
-    while (atomic_cas(lock, 0ul, 1ul, ATOMIC_ACQ_REL) != 0) {
+
+    while (atomic_cas(lock, 0UL, 1UL, ATOMIC_ACQ_REL) != 0) {
         cpu_pause();
     }
 }
 
 static void
-test_suspend_sleeping(void *arg)
+test_sleep(void *arg)
 {
     struct semaphore *sem;
 
@@ -74,13 +80,10 @@ test_suspend_sleeping(void *arg)
 }
 
 static void
-test_resume_parent(void *arg)
+test_suspend_self(void *arg)
 {
-    struct thread *thread;
-
-    thread = arg;
-    test_wait_for_state(thread, THREAD_SUSPENDED);
-    thread_resume(thread);
+    (void)arg;
+    thread_suspend(thread_self());
 }
 
 static void
@@ -93,22 +96,23 @@ test_run(void *arg)
     int error;
 
     (void)arg;
-    thread_attr_init(&attr, "test_control");
 
-    lock = 1ul;
-    error = thread_create(&thread, &attr, test_suspend_running, &lock);
+    lock = 1;
+    thread_attr_init(&attr, "test_spin");
+    error = thread_create(&thread, &attr, test_spin, &lock);
     error_check(error, "thread_create");
 
     test_wait_for_state(thread, THREAD_RUNNING);
     thread_suspend(thread);
     test_wait_for_state(thread, THREAD_SUSPENDED);
 
-    atomic_store(&lock, 0ul, ATOMIC_RELEASE);
+    atomic_store(&lock, 0, ATOMIC_RELEASE);
     thread_resume(thread);
     thread_join(thread);
 
     semaphore_init(&sem, 0);
-    error = thread_create(&thread, &attr, test_suspend_sleeping, &sem);
+    thread_attr_init(&attr, "test_sleep");
+    error = thread_create(&thread, &attr, test_sleep, &sem);
     error_check(error, "thread_create");
 
     test_wait_for_state(thread, THREAD_SLEEPING);
@@ -117,15 +121,17 @@ test_run(void *arg)
     thread_wakeup(thread);
 
     if (thread_state(thread) != THREAD_SUSPENDED) {
-        panic("expected thread state to be suspended");
+        panic("test: unexpected thread state");
     }
 
     semaphore_post(&sem);
     thread_resume(thread);
     thread_join(thread);
 
-    error = thread_create(&thread, &attr, test_resume_parent, thread_self());
-    thread_suspend(thread_self());
+    thread_attr_init(&attr, "test_suspend_self");
+    error = thread_create(&thread, &attr, test_suspend_self, NULL);
+    test_wait_for_state(thread, THREAD_SUSPENDED);
+    thread_resume(thread);
     thread_join(thread);
 
     log_info("done");
@@ -135,11 +141,10 @@ void __init
 test_setup(void)
 {
     struct thread_attr attr;
-    struct thread *thread;
     int error;
 
     thread_attr_init(&attr, THREAD_KERNEL_PREFIX "test_run");
     thread_attr_set_detached(&attr);
-    error = thread_create(&thread, &attr, test_run, NULL);
+    error = thread_create(NULL, &attr, test_run, NULL);
     error_check(error, "thread_create");
 }

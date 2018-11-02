@@ -112,9 +112,6 @@ struct thread {
     /* True if priority must be propagated when preemption is reenabled */
     bool propagate_priority;    /* (-) */
 
-    /* True if the thread was requested to suspend. */
-    bool suspend_req;   /* (r) */
-
     /* Preemption level, preemption is enabled if 0 */
     unsigned short preempt_level;   /* (-) */
 
@@ -141,6 +138,9 @@ struct thread {
      * priority being boosted.
      */
     bool boosted;   /* (r,t) */
+
+    /* True if the thread is marked to suspend */
+    bool suspend;   /* (r) */
 
     union {
         struct thread_rt_data rt_data;  /* (r) */

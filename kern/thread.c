@@ -646,9 +646,9 @@ thread_runq_schedule(struct thread_runq *runq)
     thread_clear_flag(prev, THREAD_YIELD);
     thread_runq_put_prev(runq, prev);
 
-    if (prev->suspend_req) {
+    if (prev->suspend) {
         prev->state = THREAD_SUSPENDED;
-        prev->suspend_req = false;
+        prev->suspend = false;
     }
 
     if (prev->state != THREAD_RUNNING) {
@@ -1859,7 +1859,7 @@ thread_init(struct thread *thread, void *stack,
 
     turnstile_td_init(&thread->turnstile_td);
     thread->propagate_priority = false;
-    thread->suspend_req = false;
+    thread->suspend = false;
     thread->preempt_level = THREAD_SUSPEND_PREEMPT_LEVEL;
     thread->pin_level = 0;
     thread->intr_level = 0;
@@ -2620,6 +2620,59 @@ thread_timedsleep(struct spinlock *interlock, const void *wchan_addr,
     return thread_sleep_common(interlock, wchan_addr, wchan_desc, true, ticks);
 }
 
+int
+thread_suspend(struct thread *thread)
+{
+    struct thread_runq *runq;
+    unsigned long flags;
+    int error;
+
+    if (thread == NULL) {
+        return EINVAL;
+    }
+
+    thread_preempt_disable();
+    runq = thread_lock_runq(thread, &flags);
+
+    if ((thread == runq->idler) || (thread == runq->balancer)) {
+        error = EINVAL;
+        goto done;
+    } else if ((thread->state == THREAD_SUSPENDED) || (thread->suspend)) {
+        error = EAGAIN;
+        goto done;
+    }
+
+    if (thread->state == THREAD_SLEEPING) {
+        thread->state = THREAD_SUSPENDED;
+    } else if (thread != runq->current) {
+        thread->state = THREAD_SUSPENDED;
+        thread_runq_remove(runq, thread);
+    } else {
+        thread->suspend = true;
+
+        if (runq == thread_runq_local()) {
+            runq = thread_runq_schedule(runq);
+        } else {
+            thread_set_flag(thread, THREAD_YIELD);
+            cpu_send_thread_schedule(thread_runq_cpu(runq));
+        }
+    }
+
+    error = 0;
+
+done:
+    thread_unlock_runq(runq, flags);
+    thread_preempt_enable();
+
+    return error;
+}
+
+int
+thread_resume(struct thread *thread)
+{
+    return thread_wakeup_common(thread, 0, true);
+}
+
 void
 thread_delay(uint64_t ticks, bool absolute)
 {
@@ -2986,56 +3039,4 @@ thread_is_running(const struct thread *thread)
 
     return (runq != NULL)
            && (atomic_load(&runq->current, ATOMIC_RELAXED) == thread);
-}
-
-int
-thread_suspend(struct thread *thread)
-{
-    struct thread_runq *runq, *local_runq;
-    unsigned long flags;
-    int error;
-
-    if (thread == NULL) {
-        return EINVAL;
-    }
-
-    error = 0;
-    thread_preempt_disable();
-    runq = thread_lock_runq(thread, &flags);
-    local_runq = thread_runq_local();
-
-    if ((thread == runq->idler) || (thread == runq->balancer)) {
-        error = EINVAL;
-        goto done;
-    } else if ((thread->state == THREAD_SUSPENDED) || (thread->suspend_req)) {
-        error = EAGAIN;
-        goto done;
-    } else if (thread->state == THREAD_SLEEPING) {
-        thread->state = THREAD_SUSPENDED;
-        goto done;
-    }
-
-    if (thread != runq->current) {
-        thread->state = THREAD_SUSPENDED;
-        thread_runq_remove(runq, thread);
-    } else {
-        thread->suspend_req = true;
-        if (local_runq != runq) {
-            thread_set_flag(thread, THREAD_YIELD);
-            cpu_send_thread_schedule(thread_runq_cpu(runq));
-        } else {
-            runq = thread_runq_schedule(runq);
-        }
-    }
-
-done:
-    thread_unlock_runq(runq, flags);
-    thread_preempt_enable();
-    return error;
-}
-
-int
-thread_resume(struct thread *thread)
-{
-    return thread_wakeup_common(thread, 0, true);
 }
