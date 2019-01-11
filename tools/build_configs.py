@@ -16,6 +16,7 @@ import subprocess
 import sys
 import tempfile
 import pathlib
+import atexit
 
 def quote_if_needed(value):
     if not value.isdigit() and value != 'y' and value != 'n':
@@ -27,11 +28,13 @@ def gen_configs_list(options_dict):
     'Generate a list of all possible combinations of options.'
     names = options_dict.keys()
     product = itertools.product(*options_dict.values())
-    return [dict(zip(names, x)) for x in product]
+    for x in product:
+        yield dict(zip(names, x))
 
 def gen_configs_values_str(options_dict):
     'Generate a list of all possible combinations of options as strings.'
-    return [' '.join(x.values()) for x in gen_configs_list(options_dict)]
+    for x in gen_configs_list(options_dict):
+        yield ' '.join(x.values())
 
 def gen_cc_options_list(options_dict):
     '''
@@ -244,7 +247,7 @@ def check_filters_list_relevant(config_dict, filters_list):
 
     return False
 
-def check_passing_filters(args):
+def check_passing_filters(config_dict, filters_list):
     '''
     If the given filters list is irrelevant, i.e. it applies to none of
     the options in the given configuration, the filters are considered
@@ -252,7 +255,6 @@ def check_passing_filters(args):
 
     @return true if a configuration doesn't pass any given filter.
     '''
-    config_dict, filters_list = args
 
     if not check_filters_list_relevant(config_dict, filters_list):
         return True
@@ -263,9 +265,8 @@ def check_passing_filters(args):
 
     return False
 
-def check_blocking_filters(args):
+def check_blocking_filters(config_dict, filters_list):
     'Return true if a configuration passes all the given filters.'
-    config_dict, filters_list = args
 
     for filter_dict in filters_list:
         if check_filter(config_dict, filter_dict):
@@ -274,19 +275,10 @@ def check_blocking_filters(args):
     return True
 
 def filter_configs_list(configs_list, passing_filters, blocking_filters):
-    configs_and_filters = [(x, passing_filters) for x in configs_list]
-    configs_list = [x[0] for x in filter(check_passing_filters,
-                                         configs_and_filters)]
-    configs_and_filters = [(x, blocking_filters) for x in configs_list]
-    configs_list = [x[0] for x in filter(check_blocking_filters,
-                                         configs_and_filters)]
+    configs_list = [x for x in configs_list
+        if check_passing_filters(x, passing_filters) and
+           check_blocking_filters(x, blocking_filters)]
     return configs_list
-
-def find_options_dict(options_sets, name):
-    if name not in options_sets:
-        return None
-
-    return options_sets[name]
 
 class BuildConfigListSetsAction(argparse.Action):
     def __init__(self, nargs=0, **kwargs):
@@ -313,7 +305,7 @@ def main():
                         help='print the list of options sets')
     args = parser.parse_args()
 
-    options_dict = find_options_dict(all_options_sets, args.set)
+    options_dict = all_options_sets.get(args.set)
 
     if not options_dict:
         print('error: invalid set')
@@ -330,6 +322,7 @@ def main():
     print('cleaning source tree...')
     subprocess.check_call(['make', 'distclean'])
     topbuilddir = os.path.abspath(tempfile.mkdtemp(prefix='build', dir='.'))
+    atexit.register(lambda: os.rmdir(topbuilddir))
     print('top build directory: {}'.format(topbuilddir))
 
     pool = multiprocessing.Pool()
@@ -340,7 +333,6 @@ def main():
     except KeyboardInterrupt:
         pool.terminate()
         pool.join()
-        shutil.rmtree(topbuilddir)
         raise
 
     failures = [x[1] for x in results if x[0] != 0]
@@ -348,11 +340,7 @@ def main():
         print('failed: {0}/.config ({0}/build.log)'.format(buildtree))
     print('passed: {:d}'.format(nr_configs - len(failures)))
     print('failed: {:d}'.format(len(failures)))
-
-    try:
-        os.rmdir(topbuilddir)
-    finally:
-        sys.exit(len(failures) != 0)
+    sys.exit(len(failures) != 0)
 
 if __name__ == '__main__':
     main()
