@@ -86,15 +86,10 @@ int
 futex_requeue(int *src_addr, int *dst_addr,
               unsigned int flags, bool wake_one)
 {
-    struct sync_key src_key, dst_key;
-
     if (((uintptr_t)src_addr | (uintptr_t)dst_addr) & (sizeof(*src_addr) - 1)) {
         return EINVAL;
     }
 
-    sync_key_setptr(&src_key, src_addr);
-    sync_key_setptr(&dst_key, dst_addr);
-
-    return sleepq_move(&src_key, &dst_key,
-                       wake_one, (flags & FUTEX_BROADCAST) != 0);
+    return sleepq_move(src_addr, dst_addr, wake_one,
+                       (flags & FUTEX_BROADCAST) != 0);
 }

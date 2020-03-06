@@ -194,8 +194,20 @@ void sleepq_broadcast(struct sleepq *sleepq);
  * A single thread may be woken before requeueing, and it's possible to move
  * all, or just one thread from the source to the destination.
  */
-int sleepq_move(const struct sync_key *src_key, const struct sync_key *dst_key,
-                bool wake_one, bool move_all);
+int sleepq_move_key(const struct sync_key *src_key,
+                    const struct sync_key *dst_key,
+                    bool wake_one, bool move_all);
+
+static inline int
+sleepq_move(const void *src_addr, const void *dst_addr,
+            bool wake_one, bool move_all)
+{
+    struct sync_key src_key, dst_key;
+
+    sync_key_setptr(&src_key, src_addr);
+    sync_key_setptr(&dst_key, dst_addr);
+    return sleepq_move_key(&src_key, &dst_key, wake_one, move_all);
+}
 
 /*
  * This init operation provides :
