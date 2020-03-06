@@ -29,10 +29,29 @@
 #define FUTEX_BROADCAST   0x04
 #define FUTEX_MODIFY      0x08
 
+/*
+ * Test that the futex address still contains the expected value, and if so,
+ * sleep until another thread calls 'futex_wake' on the same address, or
+ * a timeout elapses (if FUTEX_TIMED is set on the flags).
+ *
+ * If the futex address does not contain the expected value, the call returns
+ * immediately with EAGAIN.
+ */
 int futex_wait(int *addr, int value, unsigned int flags, uint64_t ticks);
 
+/*
+ * Wake one or all waiters that are sleeping on a futex address (depending on
+ * whether the FUTEX_BROADCAST flag is set or not). If FUTEX_MODIFY is in the
+ * flags, set the content of the address to the value before waking up threads.
+ */
 int futex_wake(int *addr, unsigned int flags, int value);
 
+/*
+ * Rearrange the waiting queues so that threads waiting on a futex address
+ * start waiting on a different address. Prior to requeueing, a thread may
+ * be woken up if 'wake_one' is set. If FUTEX_BROADCAST is set, all threads
+ * are moved instead of just one.
+ */
 int futex_requeue(int *src_addr, int *dst_addr,
                   unsigned int flags, bool wake_one);
 
