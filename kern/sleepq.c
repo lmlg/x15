@@ -576,8 +576,9 @@ sleepq_bucket_double_unlock(struct sleepq_bucket *a, struct sleepq_bucket *b)
     }
 }
 
-int sleepq_move(const struct sync_key *src_key, const struct sync_key *dst_key,
-                bool wake_one, bool move_all)
+int
+sleepq_move(const struct sync_key *src_key, const struct sync_key *dst_key,
+            bool wake_one, bool move_all)
 {
     struct sleepq_bucket *src_bk, *dst_bk;
     struct sleepq *src_q, *dst_q;
