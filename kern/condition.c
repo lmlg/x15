@@ -37,7 +37,7 @@ condition_wait_common(struct condition *condition, struct mutex *mutex,
 
     assert(mutex_locked(mutex));
 
-    sleepq = sleepq_lend(condition, true);
+    sleepq = sleepq_lend(condition);
 
     mutex_unlock(mutex);
 
@@ -76,7 +76,7 @@ condition_signal(struct condition *condition)
 {
     struct sleepq *sleepq;
 
-    sleepq = sleepq_acquire(condition, true);
+    sleepq = sleepq_acquire(condition);
 
     if (sleepq == NULL) {
         return;
@@ -92,7 +92,7 @@ condition_broadcast(struct condition *condition)
 {
     struct sleepq *sleepq;
 
-    sleepq = sleepq_acquire(condition, true);
+    sleepq = sleepq_acquire(condition);
 
     if (sleepq == NULL) {
         return;

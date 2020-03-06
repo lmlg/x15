@@ -20,9 +20,11 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+#include <kern/atomic.h>
+#include <kern/futex.h>
 #include <kern/semaphore.h>
 #include <kern/semaphore_i.h>
-#include <kern/sleepq.h>
+#include <machine/cpu.h>
 
 void
 semaphore_init(struct semaphore *semaphore, uint16_t value, uint16_t max_value)
@@ -36,91 +38,97 @@ semaphore_init(struct semaphore *semaphore, uint16_t value, uint16_t max_value)
 int
 semaphore_trywait(struct semaphore *semaphore)
 {
-    struct sleepq *sleepq;
-    unsigned long flags;
-    int error;
+    struct semaphore tmp;
+    int sv;
 
-    sleepq = sleepq_lend_intr_save(semaphore, false, &flags);
+    for (;;) {
+        tmp.both = atomic_load(&semaphore->both, ATOMIC_RELAXED);
+        if (tmp.value == 0) {
+            return EAGAIN;
+        }
 
-    if (semaphore->value == 0) {
-        error = EAGAIN;
-    } else {
-        semaphore->value--;
-        error = 0;
+        sv = tmp.both;
+        tmp.value--;
+
+        if (atomic_cas(&semaphore->both, sv, tmp.both, ATOMIC_ACQUIRE) == sv) {
+            return 0;
+        }
+
+        cpu_pause();
     }
-
-    sleepq_return_intr_restore(sleepq, flags);
-
-    return error;
 }
 
 void
 semaphore_wait(struct semaphore *semaphore)
 {
-    struct sleepq *sleepq;
-    unsigned long flags;
-
-    sleepq = sleepq_lend_intr_save(semaphore, false, &flags);
+    struct semaphore tmp;
+    int sv;
 
     for (;;) {
-        if (semaphore->value != 0) {
-            semaphore->value--;
-            break;
+        tmp.both = atomic_load(&semaphore->both, ATOMIC_RELAXED);
+        if (tmp.value == 0) {
+            futex_wait(&semaphore->both, tmp.both, 0, 0);
+            continue;
         }
 
-        sleepq_wait(sleepq, "sem");
-    }
+        sv = tmp.both;
+        tmp.value--;
 
-    sleepq_return_intr_restore(sleepq, flags);
+        if (atomic_cas(&semaphore->both, sv, tmp.both, ATOMIC_ACQUIRE) == sv) {
+            return;
+        }
+
+        cpu_pause();
+    }
 }
 
 int
 semaphore_timedwait(struct semaphore *semaphore, uint64_t ticks)
 {
-    struct sleepq *sleepq;
-    unsigned long flags;
-    int error;
-
-    sleepq = sleepq_lend_intr_save(semaphore, false, &flags);
+    struct semaphore tmp;
+    int sv;
 
     for (;;) {
-        if (semaphore->value != 0) {
-            semaphore->value--;
-            error = 0;
-            break;
-        }
+        tmp.both = atomic_load(&semaphore->both, ATOMIC_RELAXED);
 
-        error = sleepq_timedwait(sleepq, "sem", ticks);
+        if (tmp.value != 0) {
+            sv = tmp.both;
+            tmp.value--;
 
-        if (error) {
-            break;
+            if (atomic_cas(&semaphore->both, sv, tmp.both,
+                           ATOMIC_ACQUIRE) == sv) {
+                return 0;
+            }
+
+            cpu_pause();
+        } else if (futex_wait(&semaphore->both, tmp.both,
+                              FUTEX_TIMED | FUTEX_ABS, ticks) == ETIMEDOUT) {
+            return ETIMEDOUT;
         }
     }
-
-    sleepq_return_intr_restore(sleepq, flags);
-
-    return error;
 }
 
 int
 semaphore_post(struct semaphore *semaphore)
 {
-    struct sleepq *sleepq;
-    unsigned long flags;
-    int error;
+    struct semaphore tmp;
+    int sv;
 
-    sleepq = sleepq_lend_intr_save(semaphore, false, &flags);
+    for (;;) {
+        tmp.both = atomic_load(&semaphore->both, ATOMIC_RELAXED);
 
-    if (semaphore->value == semaphore->max_value) {
-        error = EOVERFLOW;
-    } else {
-        assert(semaphore->value < semaphore->max_value);
-        semaphore->value++;
-        sleepq_signal(sleepq);
-        error = 0;
+        if (tmp.value == tmp.max_value) {
+            return EOVERFLOW;
+        }
+
+        sv = tmp.both;
+        tmp.value++;
+
+        if (atomic_cas(&semaphore->both, sv, tmp.both, ATOMIC_RELEASE) == sv) {
+            futex_wake(&semaphore->both, 0, 0);
+            return 0;
+        }
+
+        cpu_pause();
     }
-
-    sleepq_return_intr_restore(sleepq, flags);
-
-    return error;
 }

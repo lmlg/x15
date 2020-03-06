@@ -19,13 +19,6 @@
  *
  * Sleep queues are used to build sleeping synchronization primitives
  * such as mutexes and condition variables.
- *
- * Although the sleep queues are mostly generic, this implementation
- * relies on knowing whether a synchronization object is a condition
- * variable or not, because waiting on a condition variable unlocks
- * the associated mutex, at which point two sleep queues are locked.
- * Handling condition variable sleep queues slightly differently
- * allows preventing deadlocks while keeping overall complexity low.
  */
 
 #ifndef KERN_SLEEPQ_H
@@ -35,6 +28,7 @@
 #include <stdint.h>
 
 #include <kern/init.h>
+#include <kern/sync.h>
 
 struct sleepq;
 
@@ -49,28 +43,57 @@ void sleepq_destroy(struct sleepq *sleepq);
  *
  * Acquiring a sleep queue serializes all access and disables preemption.
  *
- * The condition argument must be true if the synchronization object
- * is a condition variable.
- *
  * If no sleep queue has been lent for the synchronization object, NULL
  * is returned. Note that, in the case of the non-blocking variant,
  * the call may also return NULL if internal state shared by unrelated
  * synchronization objects is locked.
  */
-struct sleepq * sleepq_acquire(const void *sync_obj, bool condition);
-struct sleepq * sleepq_tryacquire(const void *sync_obj, bool condition);
+struct sleepq * sleepq_acquire_key(const struct sync_key *key);
+struct sleepq * sleepq_tryacquire_key(const struct sync_key *key);
+
+static inline struct sleepq *
+sleepq_acquire(const void *sync_obj)
+{
+    struct sync_key key;
+    sync_key_setptr(&key, sync_obj);
+    return sleepq_acquire_key(&key);
+}
+
+static inline struct sleepq *
+sleepq_tryacquire(const void *sync_obj)
+{
+    struct sync_key key;
+    sync_key_setptr(&key, sync_obj);
+    return sleepq_tryacquire_key(&key);
+}
+
 void sleepq_release(struct sleepq *sleepq);
 
 /*
  * Versions of the sleep queue acquisition functions that also disable
  * interrupts.
  */
-struct sleepq * sleepq_acquire_intr_save(const void *sync_obj,
-                                         bool condition,
-                                         unsigned long *flags);
-struct sleepq * sleepq_tryacquire_intr_save(const void *sync_obj,
-                                            bool condition,
-                                            unsigned long *flags);
+struct sleepq * sleepq_acquire_key_intr_save(const struct sync_key *key,
+                                             unsigned long *flags);
+struct sleepq * sleepq_tryacquire_key_intr_save(const struct sync_key *key,
+                                                unsigned long *flags);
+
+static inline struct sleepq *
+sleepq_acquire_intr_save(const void *sync_obj, unsigned long *flags)
+{
+    struct sync_key key;
+    sync_key_setptr(&key, sync_obj);
+    return sleepq_acquire_key_intr_save(&key, flags);
+}
+
+static inline struct sleepq *
+sleepq_tryacquire_intr_save(const void *sync_obj, unsigned long *flags)
+{
+    struct sync_key key;
+    sync_key_setptr(&key, sync_obj);
+    return sleepq_tryacquire_key_intr_save(&key, flags);
+}
+
 void sleepq_release_intr_restore(struct sleepq *sleepq,
                                  unsigned long flags);
 
@@ -92,15 +115,33 @@ void sleepq_release_intr_restore(struct sleepq *sleepq,
  * The condition argument must be true if the synchronization object
  * is a condition variable.
  */
-struct sleepq * sleepq_lend(const void *sync_obj, bool condition);
+struct sleepq * sleepq_lend_key(const struct sync_key *key);
+
+static inline struct sleepq *
+sleepq_lend(const void *sync_obj)
+{
+    struct sync_key key;
+    sync_key_setptr(&key, sync_obj);
+    return sleepq_lend_key(&key);
+}
+
 void sleepq_return(struct sleepq *sleepq);
 
 /*
  * Versions of the sleep queue lending functions that also disable
  * interrupts.
  */
-struct sleepq * sleepq_lend_intr_save(const void *sync_obj, bool condition,
-                                      unsigned long *flags);
+struct sleepq * sleepq_lend_key_intr_save(const struct sync_key *key,
+                                          unsigned long *flags);
+
+static inline struct sleepq *
+sleepq_lend_intr_save(const void *sync_obj, unsigned long *flags)
+{
+    struct sync_key key;
+    sync_key_setptr(&key, sync_obj);
+    return sleepq_lend_key_intr_save(&key, flags);
+}
+
 void sleepq_return_intr_restore(struct sleepq *sleepq, unsigned long flags);
 
 /*
@@ -146,6 +187,15 @@ int sleepq_timedwait(struct sleepq *sleepq, const char *wchan, uint64_t ticks);
  */
 void sleepq_signal(struct sleepq *sleepq);
 void sleepq_broadcast(struct sleepq *sleepq);
+
+/*
+ * Rearrange threads waiting on a key so that they start waiting on a new one.
+ *
+ * A single thread may be woken before requeueing, and it's possible to move
+ * all, or just one thread from the source to the destination.
+ */
+int sleepq_move(const struct sync_key *src_key, const struct sync_key *dst_key,
+                bool wake_one, bool move_all);
 
 /*
  * This init operation provides :

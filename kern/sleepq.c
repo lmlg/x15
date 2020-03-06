@@ -47,40 +47,27 @@ struct sleepq_waiter {
 
 /*
  * Waiters are queued in FIFO order and inserted at the head of the
- * list of waiters. The pointer to the "oldest" waiter is used as
- * a marker between threads waiting for a signal/broadcast (from the
- * beginning up to and including the oldest waiter) and threads pending
- * for wake-up (all the following threads up to the end of the list).
+ * list of waiters.
  */
 struct sleepq {
     alignas(CPU_L1_SIZE) struct sleepq_bucket *bucket;
     struct hlist_node node;
-    const void *sync_obj;
+    struct sync_key key;
     struct list waiters;
-    struct sleepq_waiter *oldest_waiter;
     struct sleepq *next_free;
 };
 
 #define SLEEPQ_HTABLE_SIZE      128
-#define SLEEPQ_COND_HTABLE_SIZE 64
 
-#if !ISP2(SLEEPQ_HTABLE_SIZE) || !ISP2(SLEEPQ_COND_HTABLE_SIZE)
+#if !ISP2(SLEEPQ_HTABLE_SIZE)
 #error "hash table size must be a power of two"
 #endif /* !ISP2(SLEEPQ_HTABLE_SIZE) */
 
 #define SLEEPQ_HTABLE_MASK      (SLEEPQ_HTABLE_SIZE - 1)
-#define SLEEPQ_COND_HTABLE_MASK (SLEEPQ_COND_HTABLE_SIZE - 1)
 
 static struct sleepq_bucket sleepq_htable[SLEEPQ_HTABLE_SIZE];
-static struct sleepq_bucket sleepq_cond_htable[SLEEPQ_COND_HTABLE_SIZE];
 
 static struct kmem_cache sleepq_cache;
-
-static uintptr_t
-sleepq_hash(const void *addr)
-{
-    return ((uintptr_t)addr >> 8) ^ (uintptr_t)addr;
-}
 
 static void
 sleepq_waiter_init(struct sleepq_waiter *waiter, struct thread *thread)
@@ -115,36 +102,35 @@ static bool
 sleepq_init_state_valid(const struct sleepq *sleepq)
 {
     return (sleepq->bucket == NULL)
-           && (sleepq->sync_obj == NULL)
+           && (sync_key_empty(&sleepq->key))
            && (list_empty(&sleepq->waiters))
-           && (sleepq->oldest_waiter == NULL)
            && (sleepq->next_free == NULL);
 }
 
 static void
-sleepq_use(struct sleepq *sleepq, const void *sync_obj)
+sleepq_use(struct sleepq *sleepq, const struct sync_key *key)
 {
-    assert(sleepq->sync_obj == NULL);
-    sleepq->sync_obj = sync_obj;
+    assert(sync_key_empty(&sleepq->key));
+    sleepq->key = *key;
 }
 
 static void
 sleepq_unuse(struct sleepq *sleepq)
 {
-    assert(sleepq->sync_obj != NULL);
-    sleepq->sync_obj = NULL;
+    assert(!sync_key_empty(&sleepq->key));
+    sync_key_init(&sleepq->key);
 }
 
 static bool
 sleepq_in_use(const struct sleepq *sleepq)
 {
-    return sleepq->sync_obj != NULL;
+    return !sync_key_empty(&sleepq->key);
 }
 
 static bool
-sleepq_in_use_by(const struct sleepq *sleepq, const void *sync_obj)
+sleepq_in_use_by(const struct sleepq *sleepq, const struct sync_key *key)
 {
-    return sleepq->sync_obj == sync_obj;
+    return sync_key_eq(&sleepq->key, key);
 }
 
 static void
@@ -155,25 +141,11 @@ sleepq_bucket_init(struct sleepq_bucket *bucket)
 }
 
 static struct sleepq_bucket *
-sleepq_bucket_get_cond(const void *sync_obj)
+sleepq_bucket_get(const struct sync_key *key)
 {
     uintptr_t index;
 
-    index = sleepq_hash(sync_obj) & SLEEPQ_COND_HTABLE_MASK;
-    assert(index < ARRAY_SIZE(sleepq_cond_htable));
-    return &sleepq_cond_htable[index];
-}
-
-static struct sleepq_bucket *
-sleepq_bucket_get(const void *sync_obj, bool condition)
-{
-    uintptr_t index;
-
-    if (condition) {
-        return sleepq_bucket_get_cond(sync_obj);
-    }
-
-    index = sleepq_hash(sync_obj) & SLEEPQ_HTABLE_MASK;
+    index = sync_key_hash(key) & SLEEPQ_HTABLE_MASK;
     assert(index < ARRAY_SIZE(sleepq_htable));
     return &sleepq_htable[index];
 }
@@ -195,12 +167,13 @@ sleepq_bucket_remove(struct sleepq_bucket *bucket, struct sleepq *sleepq)
 }
 
 static struct sleepq *
-sleepq_bucket_lookup(const struct sleepq_bucket *bucket, const void *sync_obj)
+sleepq_bucket_lookup(const struct sleepq_bucket *bucket,
+                     const struct sync_key *key)
 {
     struct sleepq *sleepq;
 
     hlist_for_each_entry(&bucket->sleepqs, sleepq, node) {
-        if (sleepq_in_use_by(sleepq, sync_obj)) {
+        if (sleepq_in_use_by(sleepq, key)) {
             assert(sleepq->bucket == bucket);
             return sleepq;
         }
@@ -216,9 +189,8 @@ sleepq_ctor(void *ptr)
 
     sleepq = ptr;
     sleepq->bucket = NULL;
-    sleepq->sync_obj = NULL;
+    sync_key_init(&sleepq->key);
     list_init(&sleepq->waiters);
-    sleepq->oldest_waiter = NULL;
     sleepq->next_free = NULL;
 }
 
@@ -229,10 +201,6 @@ sleepq_setup(void)
 
     for (i = 0; i < ARRAY_SIZE(sleepq_htable); i++) {
         sleepq_bucket_init(&sleepq_htable[i]);
-    }
-
-    for (i = 0; i < ARRAY_SIZE(sleepq_cond_htable); i++) {
-        sleepq_bucket_init(&sleepq_cond_htable[i]);
     }
 
     kmem_cache_init(&sleepq_cache, "sleepq", sizeof(struct sleepq),
@@ -266,14 +234,14 @@ sleepq_destroy(struct sleepq *sleepq)
 }
 
 static struct sleepq *
-sleepq_acquire_common(const void *sync_obj, bool condition, unsigned long *flags)
+sleepq_acquire_common(const struct sync_key *key, unsigned long *flags)
 {
     struct sleepq_bucket *bucket;
     struct sleepq *sleepq;
 
-    assert(sync_obj != NULL);
+    assert(key != NULL && !sync_key_empty(key));
 
-    bucket = sleepq_bucket_get(sync_obj, condition);
+    bucket = sleepq_bucket_get(key);
 
     if (flags) {
         spinlock_lock_intr_save(&bucket->lock, flags);
@@ -281,7 +249,7 @@ sleepq_acquire_common(const void *sync_obj, bool condition, unsigned long *flags
         spinlock_lock(&bucket->lock);
     }
 
-    sleepq = sleepq_bucket_lookup(bucket, sync_obj);
+    sleepq = sleepq_bucket_lookup(bucket, key);
 
     if (sleepq == NULL) {
         if (flags) {
@@ -297,16 +265,15 @@ sleepq_acquire_common(const void *sync_obj, bool condition, unsigned long *flags
 }
 
 static struct sleepq *
-sleepq_tryacquire_common(const void *sync_obj, bool condition,
-                         unsigned long *flags)
+sleepq_tryacquire_common(const struct sync_key *key, unsigned long *flags)
 {
     struct sleepq_bucket *bucket;
     struct sleepq *sleepq;
     int error;
 
-    assert(sync_obj != NULL);
+    assert(key != NULL && !sync_key_empty(key));
 
-    bucket = sleepq_bucket_get(sync_obj, condition);
+    bucket = sleepq_bucket_get(key);
 
     if (flags) {
         error = spinlock_trylock_intr_save(&bucket->lock, flags);
@@ -318,7 +285,7 @@ sleepq_tryacquire_common(const void *sync_obj, bool condition,
         return NULL;
     }
 
-    sleepq = sleepq_bucket_lookup(bucket, sync_obj);
+    sleepq = sleepq_bucket_lookup(bucket, key);
 
     if (sleepq == NULL) {
         if (flags) {
@@ -334,15 +301,15 @@ sleepq_tryacquire_common(const void *sync_obj, bool condition,
 }
 
 struct sleepq *
-sleepq_acquire(const void *sync_obj, bool condition)
+sleepq_acquire_key(const struct sync_key *key)
 {
-    return sleepq_acquire_common(sync_obj, condition, NULL);
+    return sleepq_acquire_common(key, NULL);
 }
 
 struct sleepq *
-sleepq_tryacquire(const void *sync_obj, bool condition)
+sleepq_tryacquire_key(const struct sync_key *key)
 {
-    return sleepq_tryacquire_common(sync_obj, condition, NULL);
+    return sleepq_tryacquire_common(key, NULL);
 }
 
 void
@@ -352,17 +319,16 @@ sleepq_release(struct sleepq *sleepq)
 }
 
 struct sleepq *
-sleepq_acquire_intr_save(const void *sync_obj, bool condition,
-                         unsigned long *flags)
+sleepq_acquire_key_intr_save(const struct sync_key *key, unsigned long *flags)
 {
-    return sleepq_acquire_common(sync_obj, condition, flags);
+    return sleepq_acquire_common(key, flags);
 }
 
 struct sleepq *
-sleepq_tryacquire_intr_save(const void *sync_obj, bool condition,
-                            unsigned long *flags)
+sleepq_tryacquire_key_intr_save(const struct sync_key *key,
+                                unsigned long *flags)
 {
-    return sleepq_tryacquire_common(sync_obj, condition, flags);
+    return sleepq_tryacquire_common(key, flags);
 }
 
 void
@@ -396,17 +362,17 @@ sleepq_pop_free(struct sleepq *sleepq)
 }
 
 static struct sleepq *
-sleepq_lend_common(const void *sync_obj, bool condition, unsigned long *flags)
+sleepq_lend_common(const struct sync_key *key, unsigned long *flags)
 {
     struct sleepq_bucket *bucket;
     struct sleepq *sleepq, *prev;
 
-    assert(sync_obj != NULL);
+    assert(key != NULL && !sync_key_empty(key));
 
     sleepq = thread_sleepq_lend();
     assert(sleepq_init_state_valid(sleepq));
 
-    bucket = sleepq_bucket_get(sync_obj, condition);
+    bucket = sleepq_bucket_get(key);
 
     if (flags) {
         spinlock_lock_intr_save(&bucket->lock, flags);
@@ -414,10 +380,10 @@ sleepq_lend_common(const void *sync_obj, bool condition, unsigned long *flags)
         spinlock_lock(&bucket->lock);
     }
 
-    prev = sleepq_bucket_lookup(bucket, sync_obj);
+    prev = sleepq_bucket_lookup(bucket, key);
 
     if (prev == NULL) {
-        sleepq_use(sleepq, sync_obj);
+        sleepq_use(sleepq, key);
         sleepq_bucket_add(bucket, sleepq);
     } else {
         sleepq_push_free(prev, sleepq);
@@ -455,9 +421,9 @@ sleepq_return_common(struct sleepq *sleepq, unsigned long *flags)
 }
 
 struct sleepq *
-sleepq_lend(const void *sync_obj, bool condition)
+sleepq_lend_key(const struct sync_key *key)
 {
-    return sleepq_lend_common(sync_obj, condition, NULL);
+    return sleepq_lend_common(key, NULL);
 }
 
 void
@@ -467,10 +433,9 @@ sleepq_return(struct sleepq *sleepq)
 }
 
 struct sleepq *
-sleepq_lend_intr_save(const void *sync_obj, bool condition,
-                      unsigned long *flags)
+sleepq_lend_key_intr_save(const struct sync_key *key, unsigned long *flags)
 {
-    return sleepq_lend_common(sync_obj, condition, flags);
+    return sleepq_lend_common(key, flags);
 }
 
 void
@@ -480,38 +445,14 @@ sleepq_return_intr_restore(struct sleepq *sleepq, unsigned long flags)
 }
 
 static void
-sleepq_shift_oldest_waiter(struct sleepq *sleepq)
-{
-    struct list *node;
-
-    assert(sleepq->oldest_waiter != NULL);
-
-    node = list_prev(&sleepq->oldest_waiter->node);
-
-    if (list_end(&sleepq->waiters, node)) {
-        sleepq->oldest_waiter = NULL;
-    } else {
-        sleepq->oldest_waiter = list_entry(node, struct sleepq_waiter, node);
-    }
-}
-
-static void
 sleepq_add_waiter(struct sleepq *sleepq, struct sleepq_waiter *waiter)
 {
     list_insert_head(&sleepq->waiters, &waiter->node);
-
-    if (sleepq->oldest_waiter == NULL) {
-        sleepq->oldest_waiter = waiter;
-    }
 }
 
 static void
-sleepq_remove_waiter(struct sleepq *sleepq, struct sleepq_waiter *waiter)
+sleepq_remove_waiter(struct sleepq_waiter *waiter)
 {
-    if (sleepq->oldest_waiter == waiter) {
-        sleepq_shift_oldest_waiter(sleepq);
-    }
-
     list_remove(&waiter->node);
 }
 
@@ -535,7 +476,7 @@ static int
 sleepq_wait_common(struct sleepq *sleepq, const char *wchan,
                    bool timed, uint64_t ticks)
 {
-    struct sleepq_waiter waiter, *next;
+    struct sleepq_waiter waiter;
     struct thread *thread;
     int error;
 
@@ -545,10 +486,10 @@ sleepq_wait_common(struct sleepq *sleepq, const char *wchan,
 
     do {
         if (!timed) {
-            thread_sleep(&sleepq->bucket->lock, sleepq->sync_obj, wchan);
+            thread_sleep(&sleepq->bucket->lock, &sleepq->key, wchan);
             error = 0;
         } else {
-            error = thread_timedsleep(&sleepq->bucket->lock, sleepq->sync_obj,
+            error = thread_timedsleep(&sleepq->bucket->lock, &sleepq->key,
                                       wchan, ticks);
 
             if (error) {
@@ -561,23 +502,7 @@ sleepq_wait_common(struct sleepq *sleepq, const char *wchan,
         }
     } while (!sleepq_waiter_pending_wakeup(&waiter));
 
-    sleepq_remove_waiter(sleepq, &waiter);
-
-    /*
-     * Chain wake-ups here to prevent broadacasting from walking a list
-     * with preemption disabled. Note that this doesn't guard against
-     * the thundering herd effect for condition variables.
-     */
-    next = sleepq_get_last_waiter(sleepq);
-
-    /*
-     * Checking against the oldest waiter is enough as waiters are awoken
-     * in strict FIFO order.
-     */
-    if (next && (next != sleepq->oldest_waiter)) {
-        sleepq_waiter_set_pending_wakeup(next);
-        sleepq_waiter_wakeup(next);
-    }
+    sleepq_remove_waiter(&waiter);
 
     return error;
 }
@@ -602,13 +527,12 @@ sleepq_signal(struct sleepq *sleepq)
 {
     struct sleepq_waiter *waiter;
 
-    waiter = sleepq->oldest_waiter;
+    waiter = sleepq_get_last_waiter(sleepq);
 
     if (!waiter) {
         return;
     }
 
-    sleepq_shift_oldest_waiter(sleepq);
     sleepq_waiter_set_pending_wakeup(waiter);
     sleepq_waiter_wakeup(waiter);
 }
@@ -618,13 +542,118 @@ sleepq_broadcast(struct sleepq *sleepq)
 {
     struct sleepq_waiter *waiter;
 
-    waiter = sleepq->oldest_waiter;
+    list_for_each_entry_reverse(&sleepq->waiters, waiter, node) {
+        sleepq_waiter_set_pending_wakeup(waiter);
+        sleepq_waiter_wakeup(waiter);
+    }
+}
 
-    if (!waiter) {
-        return;
+static void
+sleepq_bucket_double_lock(struct sleepq_bucket *a, struct sleepq_bucket *b)
+{
+    if (a == b) {
+        spinlock_lock(&a->lock);
+    } else if ((uintptr_t)a < (uintptr_t)b) {
+        spinlock_lock(&a->lock);
+        spinlock_lock(&b->lock);
+    } else {
+        spinlock_lock(&b->lock);
+        spinlock_lock(&a->lock);
+    }
+}
+
+static void
+sleepq_bucket_double_unlock(struct sleepq_bucket *a, struct sleepq_bucket *b)
+{
+    if (a == b) {
+        spinlock_unlock(&a->lock);
+    } else if ((uintptr_t)a < (uintptr_t)b) {
+        spinlock_unlock(&a->lock);
+        spinlock_unlock(&b->lock);
+    } else {
+        spinlock_unlock(&b->lock);
+        spinlock_unlock(&a->lock);
+    }
+}
+
+int sleepq_move(const struct sync_key *src_key, const struct sync_key *dst_key,
+                bool wake_one, bool move_all)
+{
+    struct sleepq_bucket *src_bk, *dst_bk;
+    struct sleepq *src_q, *dst_q;
+    struct sleepq_waiter *waiter;
+    unsigned long flags;
+    int error;
+
+    error = 0;
+    waiter = NULL;
+    assert(src_key != NULL && !sync_key_empty(src_key));
+    assert(dst_key != NULL && !sync_key_empty(dst_key));
+
+    thread_preempt_disable_intr_save(&flags);
+
+    src_bk = sleepq_bucket_get(src_key);
+    dst_bk = sleepq_bucket_get(dst_key);
+    sleepq_bucket_double_lock(src_bk, dst_bk);
+
+    src_q = sleepq_bucket_lookup(src_bk, src_key);
+    if (!src_q || sleepq_empty(src_q)) {
+        error = ESRCH;
+        goto unlock;
     }
 
-    sleepq->oldest_waiter = NULL;
-    sleepq_waiter_set_pending_wakeup(waiter);
-    sleepq_waiter_wakeup(waiter);
+    dst_q = sleepq_bucket_lookup(dst_bk, dst_key);
+
+    if (wake_one) {
+        waiter = list_last_entry(&src_q->waiters, struct sleepq_waiter, node);
+        list_remove(list_last(&src_q->waiters));
+    }
+
+    if (sync_key_eq(src_key, dst_key)) {
+        goto wake;
+    } else if (move_all || sleepq_empty(src_q)
+        || list_singular(&src_q->waiters)) {
+        /* After this operation, the source queue will be empty. */
+        sleepq_bucket_remove(src_bk, src_q);
+        if (dst_q == NULL) {
+            /* Modify the queue so that it uses the new key. */
+            sleepq_bucket_add(dst_bk, src_q);
+            src_q->key = *dst_key;
+        } else {
+            list_concat(list_first(&dst_q->waiters), &src_q->waiters);
+            sleepq_push_free(dst_q, src_q);
+        }
+    } else {
+        if (dst_q == NULL) {
+            /*
+             * Since there is more than one waiter in the source queue,
+             * there must also be at least a spare queue.
+             */
+            dst_q = sleepq_pop_free(src_q);
+            assert(dst_q != NULL);
+            sleepq_bucket_add(dst_bk, dst_q);
+        }
+
+        if (move_all) {
+            list_concat(list_first(&dst_q->waiters), &src_q->waiters);
+        } else {
+            struct list *tmp;
+
+            tmp = list_last(&src_q->waiters);
+            list_remove(tmp);
+            list_insert_head(&dst_q->waiters, tmp);
+        }
+    }
+
+wake:
+    if (waiter) {
+        sleepq_waiter_set_pending_wakeup(waiter);
+        sleepq_waiter_wakeup(waiter);
+    }
+
+unlock:
+    sleepq_bucket_double_unlock(src_bk, dst_bk);
+    thread_preempt_enable_intr_restore(flags);
+
+    return error;
 }

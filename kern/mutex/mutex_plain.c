@@ -80,7 +80,7 @@ mutex_plain_lock_slow_common(struct mutex *mutex, bool timed, uint64_t ticks)
 
     error = 0;
 
-    sleepq = sleepq_lend(mutex, false);
+    sleepq = sleepq_lend(mutex);
 
     for (;;) {
         state = atomic_swap(&mutex->state, MUTEX_PLAIN_CONTENDED,
@@ -146,7 +146,7 @@ mutex_plain_unlock_slow(struct mutex *mutex)
 {
     struct sleepq *sleepq;
 
-    sleepq = sleepq_acquire(mutex, false);
+    sleepq = sleepq_acquire(mutex);
 
     if (sleepq == NULL) {
         return;

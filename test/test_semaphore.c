@@ -64,14 +64,10 @@ test_post(void *arg)
         }
     }
 
-    thread_preempt_disable();
-
     for (size_t i = 0; i < ARRAY_SIZE(test_waiters); i++) {
         error = semaphore_post(&test_semaphore);
         error_check(error, "semaphore_post");
     }
-
-    thread_preempt_enable();
 
     for (size_t i = 0; i < ARRAY_SIZE(test_waiters); i++) {
         thread_join(test_waiters[i]);
@@ -87,6 +83,7 @@ test_setup(void)
     struct thread_attr attr;
     struct cpumap *cpumap;
     int error;
+    struct thread *thr;
 
     semaphore_init(&test_semaphore, 0, TEST_NR_WAITERS);
 
@@ -104,8 +101,8 @@ test_setup(void)
     }
 
     thread_attr_init(&attr, THREAD_KERNEL_PREFIX "test_post");
-    thread_attr_set_detached(&attr);
     thread_attr_set_cpumap(&attr, cpumap);
-    error = thread_create(NULL, &attr, test_post, NULL);
+    error = thread_create(&thr, &attr, test_post, NULL);
     error_check(error, "thread_create");
+    //thread_join(thr);
 }
