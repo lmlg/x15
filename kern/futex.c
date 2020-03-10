@@ -19,6 +19,7 @@
 
 #include <errno.h>
 
+#include <kern/atomic.h>
 #include <kern/clock.h>
 #include <kern/futex.h>
 #include <kern/sleepq.h>
@@ -66,7 +67,7 @@ futex_wake(int *addr, unsigned int flags, int value)
     sleepq = sleepq_acquire(addr);
 
     if (flags & FUTEX_MODIFY) {
-        *addr = value;
+        atomic_store(addr, value, ATOMIC_RELEASE);
     }
 
     if (sleepq != NULL) {
