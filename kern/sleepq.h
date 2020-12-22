@@ -43,10 +43,10 @@ void sleepq_destroy(struct sleepq *sleepq);
  *
  * Acquiring a sleep queue serializes all access and disables preemption.
  *
- * If no sleep queue has been lent for the synchronization object, NULL
+ * If no sleep queue has been lent for the synchronization key, NULL
  * is returned. Note that, in the case of the non-blocking variant,
  * the call may also return NULL if internal state shared by unrelated
- * synchronization objects is locked.
+ * synchronization key is locked.
  */
 struct sleepq * sleepq_acquire_key(const struct sync_key *key);
 struct sleepq * sleepq_tryacquire_key(const struct sync_key *key);
@@ -103,15 +103,14 @@ void sleepq_release_intr_restore(struct sleepq *sleepq,
  * Most often, a thread lends its private sleep queue to the sleepq
  * module in order to prepare its sleep. The sleep queue obtained
  * on lending is either the thread's queue, or an already existing
- * queue for this synchronization object if another thread is waiting.
+ * queue for this synchronization key if another thread is waiting.
  *
  * When multiple threads lend their sleep queue for the same synchronization
- * object, the extra queues lent are kept in an internal free list, used
+ * key, the extra queues lent are kept in an internal free list, used
  * when threads are awoken to return a queue to them. As a result, the
  * sleep queue returned may not be the one lent.
  *
  * The sleep queue obtained when lending is automatically acquired.
- *
  */
 struct sleepq * sleepq_lend_key(const struct sync_key *key);
 
