@@ -112,8 +112,6 @@ void sleepq_release_intr_restore(struct sleepq *sleepq,
  *
  * The sleep queue obtained when lending is automatically acquired.
  *
- * The condition argument must be true if the synchronization object
- * is a condition variable.
  */
 struct sleepq * sleepq_lend_key(const struct sync_key *key);
 
