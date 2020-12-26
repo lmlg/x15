@@ -21,14 +21,7 @@
 #include <stdint.h>
 
 struct semaphore {
-    union {
-        struct {
-            uint16_t value;
-            uint16_t max_value;
-        };
-
-        int both;
-    };
+    uint32_t values;   /* Maximum and current value. */
 };
 
 #endif /* KERN_SEMAPHORE_I_H */

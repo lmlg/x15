@@ -30,27 +30,20 @@ void
 semaphore_init(struct semaphore *semaphore, uint16_t value, uint16_t max_value)
 {
     assert(value <= max_value);
-
-    semaphore->value = value;
-    semaphore->max_value = max_value;
+    semaphore->values = ((uint32_t)max_value << 16) + value;
 }
 
 int
 semaphore_trywait(struct semaphore *semaphore)
 {
-    struct semaphore tmp;
-    int sv;
+    uint32_t values;
 
     for (;;) {
-        tmp.both = atomic_load(&semaphore->both, ATOMIC_RELAXED);
-        if (tmp.value == 0) {
+        values = atomic_load(&semaphore->values, ATOMIC_RELAXED);
+        if ((values & 0xffff) == 0) {
             return EAGAIN;
-        }
-
-        sv = tmp.both;
-        tmp.value--;
-
-        if (atomic_cas(&semaphore->both, sv, tmp.both, ATOMIC_ACQUIRE) == sv) {
+        } else if (atomic_cas(&semaphore->values, values, values - 1,
+                              ATOMIC_ACQUIRE) == values) {
             return 0;
         }
 
@@ -61,20 +54,15 @@ semaphore_trywait(struct semaphore *semaphore)
 void
 semaphore_wait(struct semaphore *semaphore)
 {
-    struct semaphore tmp;
-    int sv;
+    uint32_t values;
 
     for (;;) {
-        tmp.both = atomic_load(&semaphore->both, ATOMIC_RELAXED);
-        if (tmp.value == 0) {
-            futex_wait(&semaphore->both, tmp.both, 0, 0);
+        values = atomic_load(&semaphore->values, ATOMIC_RELAXED);
+        if ((values & 0xffff) == 0) {
+            futex_wait(&semaphore->values, values, 0, 0);
             continue;
-        }
-
-        sv = tmp.both;
-        tmp.value--;
-
-        if (atomic_cas(&semaphore->both, sv, tmp.both, ATOMIC_ACQUIRE) == sv) {
+        } else if (atomic_cas(&semaphore->values, values, values - 1,
+                              ATOMIC_ACQUIRE) == values) {
             return;
         }
 
@@ -85,23 +73,18 @@ semaphore_wait(struct semaphore *semaphore)
 int
 semaphore_timedwait(struct semaphore *semaphore, uint64_t ticks)
 {
-    struct semaphore tmp;
-    int sv;
+    uint32_t values;
 
     for (;;) {
-        tmp.both = atomic_load(&semaphore->both, ATOMIC_RELAXED);
-
-        if (tmp.value != 0) {
-            sv = tmp.both;
-            tmp.value--;
-
-            if (atomic_cas(&semaphore->both, sv, tmp.both,
-                           ATOMIC_ACQUIRE) == sv) {
+        values = atomic_load(&semaphore->values, ATOMIC_RELAXED);
+        if ((values & 0xffff) != 0) {
+            if (atomic_cas(&semaphore->values, values, values - 1,
+                           ATOMIC_ACQUIRE) == values) {
                 return 0;
             }
 
             cpu_pause();
-        } else if (futex_wait(&semaphore->both, tmp.both,
+        } else if (futex_wait(&semaphore->values, values,
                               FUTEX_TIMED | FUTEX_ABS, ticks) == ETIMEDOUT) {
             return ETIMEDOUT;
         }
@@ -111,21 +94,15 @@ semaphore_timedwait(struct semaphore *semaphore, uint64_t ticks)
 int
 semaphore_post(struct semaphore *semaphore)
 {
-    struct semaphore tmp;
-    int sv;
+    uint32_t values;
 
     for (;;) {
-        tmp.both = atomic_load(&semaphore->both, ATOMIC_RELAXED);
-
-        if (tmp.value == tmp.max_value) {
+        values = atomic_load(&semaphore->values, ATOMIC_RELAXED);
+        if ((values & 0xffff) == (values >> 16)) {
             return EOVERFLOW;
-        }
-
-        sv = tmp.both;
-        tmp.value++;
-
-        if (atomic_cas(&semaphore->both, sv, tmp.both, ATOMIC_RELEASE) == sv) {
-            futex_wake(&semaphore->both, 0, 0);
+        } else if (atomic_cas(&semaphore->values, values, values + 1,
+                              ATOMIC_RELEASE) == values) {
+            futex_wake(&semaphore->values, 0, 0);
             return 0;
         }
 

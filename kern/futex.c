@@ -25,18 +25,18 @@
 #include <kern/sleepq.h>
 
 int
-futex_wait(int *addr, int value, unsigned int flags, uint64_t ticks)
+futex_wait(void *addr, int value, unsigned int flags, uint64_t ticks)
 {
     struct sleepq *sleepq;
     int error;
 
-    if (((uintptr_t)addr & (sizeof(*addr) - 1))) {
+    if (((uintptr_t)addr & (sizeof(int) - 1))) {
         return EINVAL;
     }
 
     sleepq = sleepq_lend(addr);
 
-    if (*addr != value) {
+    if (*(int *)addr != value) {
         error = EAGAIN;
     } else if ((flags & FUTEX_TIMED) == 0) {
         sleepq_wait(sleepq, "futex");
@@ -54,20 +54,18 @@ futex_wait(int *addr, int value, unsigned int flags, uint64_t ticks)
 }
 
 int
-futex_wake(int *addr, unsigned int flags, int value)
+futex_wake(void *addr, unsigned int flags, int value)
 {
     struct sleepq *sleepq;
-    int error;
 
-    if (((uintptr_t)addr & (sizeof(*addr) - 1))) {
+    if (((uintptr_t)addr & (sizeof(int) - 1))) {
         return EINVAL;
     }
 
-    error = 0;
     sleepq = sleepq_acquire(addr);
 
     if (flags & FUTEX_MODIFY) {
-        atomic_store(addr, value, ATOMIC_RELEASE);
+        atomic_store((int *)addr, value, ATOMIC_RELEASE);
     }
 
     if (sleepq != NULL) {
@@ -80,14 +78,14 @@ futex_wake(int *addr, unsigned int flags, int value)
         sleepq_release(sleepq);
     }
 
-    return error;
+    return 0;
 }
 
 int
-futex_requeue(int *src_addr, int *dst_addr,
+futex_requeue(void *src_addr, void *dst_addr,
               unsigned int flags, bool wake_one)
 {
-    if (((uintptr_t)src_addr | (uintptr_t)dst_addr) & (sizeof(*src_addr) - 1)) {
+    if (((uintptr_t)src_addr | (uintptr_t)dst_addr) & (sizeof(int) - 1)) {
         return EINVAL;
     }
 

@@ -585,6 +585,7 @@ sleepq_move_key(const struct sync_key *src_key, const struct sync_key *dst_key,
     struct sleepq_waiter *waiter;
     unsigned long flags;
     int error;
+    struct list *wlast;
 
     error = 0;
     waiter = NULL;
@@ -619,7 +620,8 @@ sleepq_move_key(const struct sync_key *src_key, const struct sync_key *dst_key,
         if (dst_q == NULL) {
             /* Modify the queue so that it uses the new key. */
             sleepq_bucket_add(dst_bk, src_q);
-            src_q->key = *dst_key;
+            sleepq_unuse(src_q);
+            sleepq_use(src_q, dst_key);
         } else {
             list_concat(list_first(&dst_q->waiters), &src_q->waiters);
             sleepq_push_free(dst_q, src_q);
@@ -632,17 +634,16 @@ sleepq_move_key(const struct sync_key *src_key, const struct sync_key *dst_key,
              */
             dst_q = sleepq_pop_free(src_q);
             assert(dst_q != NULL);
+            sleepq_use(dst_q, dst_key);
             sleepq_bucket_add(dst_bk, dst_q);
         }
 
         if (move_all) {
             list_concat(list_first(&dst_q->waiters), &src_q->waiters);
         } else {
-            struct list *tmp;
-
-            tmp = list_last(&src_q->waiters);
-            list_remove(tmp);
-            list_insert_head(&dst_q->waiters, tmp);
+            wlast = list_last(&src_q->waiters);
+            list_remove(wlast);
+            list_insert_head(&dst_q->waiters, wlast);
         }
     }
 

@@ -37,14 +37,14 @@
  * If the futex address does not contain the expected value, the call returns
  * immediately with EAGAIN.
  */
-int futex_wait(int *addr, int value, unsigned int flags, uint64_t ticks);
+int futex_wait(void *addr, int value, unsigned int flags, uint64_t ticks);
 
 /*
  * Wake one or all waiters that are sleeping on a futex address (depending on
  * whether the FUTEX_BROADCAST flag is set or not). If FUTEX_MODIFY is in the
  * flags, set the content of the address to the value before waking up threads.
  */
-int futex_wake(int *addr, unsigned int flags, int value);
+int futex_wake(void *addr, unsigned int flags, int value);
 
 /*
  * Rearrange the waiting queues so that threads waiting on a futex address
@@ -52,7 +52,7 @@ int futex_wake(int *addr, unsigned int flags, int value);
  * be woken up if 'wake_one' is set. If FUTEX_BROADCAST is set, all threads
  * are moved instead of just one.
  */
-int futex_requeue(int *src_addr, int *dst_addr,
+int futex_requeue(void *src_addr, void *dst_addr,
                   unsigned int flags, bool wake_one);
 
 #endif
