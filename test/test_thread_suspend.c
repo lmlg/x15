@@ -110,7 +110,7 @@ test_run(void *arg)
     thread_resume(thread);
     thread_join(thread);
 
-    semaphore_init(&sem, 0);
+    semaphore_init(&sem, 0, 0xff);
     thread_attr_init(&attr, "test_sleep");
     error = thread_create(&thread, &attr, test_sleep, &sem);
     error_check(error, "thread_create");

@@ -12,6 +12,7 @@ x15_SOURCES-$(CONFIG_TEST_MODULE_SLEEPQ_BROADCAST)      += test/test_sleepq_broa
 x15_SOURCES-$(CONFIG_TEST_MODULE_SREF_DIRTY_ZEROES)     += test/test_sref_dirty_zeroes.c
 x15_SOURCES-$(CONFIG_TEST_MODULE_SREF_NOREF)            += test/test_sref_noref.c
 x15_SOURCES-$(CONFIG_TEST_MODULE_SREF_WEAKREF)          += test/test_sref_weakref.c
+x15_SOURCES-$(CONFIG_TEST_MODULE_THREAD_AFFINITY)       += test/test_thread_affinity.c
 x15_SOURCES-$(CONFIG_TEST_MODULE_THREAD_SUSPEND)        += test/test_thread_suspend.c
 x15_SOURCES-$(CONFIG_TEST_MODULE_VM_PAGE_FILL)          += test/test_vm_page_fill.c
 x15_SOURCES-$(CONFIG_TEST_MODULE_XCALL)                 += test/test_xcall.c

@@ -184,6 +184,22 @@ bitmap_find_first_zero(const unsigned long *bm, int nr_bits)
     return bitmap_find_next_zero(bm, nr_bits, 0);
 }
 
+static inline bool
+bitmap_intersects(const unsigned long *a, const unsigned long *b, int nr_bits)
+{
+    int i, n;
+
+    n = BITMAP_LONGS(nr_bits);
+
+    for (i = 0; i < n; i++) {
+        if (a[i] & b[i]) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
 #define bitmap_for_each(bm, nr_bits, bit)                       \
 for ((bit) = 0;                                                 \
      ((bit) < nr_bits)                                          \

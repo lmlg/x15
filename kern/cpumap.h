@@ -129,6 +129,12 @@ cpumap_find_first_zero(const struct cpumap *cpumap)
     return bitmap_find_first_zero(cpumap->cpus, CONFIG_MAX_CPUS);
 }
 
+static inline bool
+cpumap_intersects(const struct cpumap *a, const struct cpumap *b)
+{
+    return bitmap_intersects(a->cpus, b->cpus, CONFIG_MAX_CPUS);
+}
+
 #define cpumap_for_each(cpumap, index) \
     bitmap_for_each((cpumap)->cpus, CONFIG_MAX_CPUS, index)
 

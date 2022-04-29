@@ -67,6 +67,9 @@ config TEST_MODULE_SREF_NOREF
 config TEST_MODULE_SREF_WEAKREF
 	bool "sref_weakref"
 
+config TEST_MODULE_THREAD_AFFINITY
+	bool "thread_affinity"
+
 config TEST_MODULE_THREAD_SUSPEND
 	bool "thread_suspend"
 

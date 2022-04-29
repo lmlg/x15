@@ -4,7 +4,7 @@ MAKEFLAGS += -rR
 MAKEFLAGS += --no-print-directory
 
 .PHONY: all
-all: x15 docs
+all: x15
 
 VERSION = 0.1
 export VERSION

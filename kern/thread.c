@@ -3039,3 +3039,69 @@ thread_is_running(const struct thread *thread)
     return (runq != NULL)
            && (atomic_load(&runq->current, ATOMIC_RELAXED) == thread);
 }
+
+int
+thread_get_affinity(const struct thread *thread, struct cpumap *cpumap)
+{
+    unsigned long flags;
+    struct thread_runq *runq;
+
+    if (thread == NULL) {
+        return EINVAL;
+    }
+
+    thread_preempt_disable();
+    runq = thread_lock_runq((struct thread *)thread, &flags);
+    cpumap_copy(cpumap, &thread->cpumap);
+    thread_unlock_runq(runq, flags);
+    thread_preempt_enable();
+
+    return 0;
+}
+
+int
+thread_set_affinity(struct thread *thread, const struct cpumap *cpumap)
+{
+    struct thread_runq *runq;
+    unsigned long flags;
+    int error;
+
+    if (thread == NULL) {
+        return EINVAL;
+    }
+
+    thread_preempt_disable();
+    runq = thread_lock_runq(thread, &flags);
+
+    if ((thread == runq->idler)
+        || (thread == runq->balancer)
+        || (thread->state == THREAD_DEAD)) {
+        error = EINVAL;
+    } else if (cpumap_intersects(&thread->cpumap, cpumap)) {
+        /* The desired CPU map intersects the current one. */
+        error = 0;
+        cpumap_copy(&thread->cpumap, cpumap);
+    } else if (thread->pin_level != 0) {
+        /* The thread is pinned, and cannot be migrated to a different CPU. */
+        error = EAGAIN;
+    } else {
+        /* At this point, we know the thread must be migrated. */
+        cpumap_copy(&thread->cpumap, cpumap);
+
+        if (thread == runq->current) {
+            if (runq == thread_runq_local()) {
+                runq = thread_runq_schedule(runq);
+            } else {
+                thread_set_flag(thread, THREAD_YIELD);
+                cpu_send_thread_schedule(thread_runq_cpu(runq));
+            }
+        }
+
+        error = 0;
+    }
+
+    thread_unlock_runq(runq, flags);
+    thread_preempt_enable();
+
+    return error;
+}

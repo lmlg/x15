@@ -781,6 +781,16 @@ unsigned int thread_state(const struct thread *thread);
 bool thread_is_running(const struct thread *thread);
 
 /*
+ * Get the CPU affinity mask of the specified thread.
+ */
+int thread_get_affinity(const struct thread *thread, struct cpumap *cpumap);
+
+/*
+ * Set the CPU affinity mask for the specified thread.
+ */
+int thread_set_affinity(struct thread *thread, const struct cpumap *cpumap);
+
+/*
  * This init operation provides :
  *  - a dummy thread context for the BSP, allowing the use of thread_self()
  */
