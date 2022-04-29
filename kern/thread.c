@@ -62,7 +62,6 @@
  *
  * TODO Sub-tick accounting.
  *
- * TODO Setting affinity after thread creation.
  *
  * TODO Take into account the underlying CPU topology (and adjust load
  * balancing to access the global highest round less frequently on large
