@@ -23,11 +23,6 @@
 #include <kern/thread.h>
 #include <test/test.h>
 
-struct test_affinity_data {
-    struct cpumap *cpumap;
-    struct semaphore sem;
-};
-
 struct semaphore affinity_sem;
 
 static void
