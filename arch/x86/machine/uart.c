@@ -247,13 +247,20 @@ uart_get_from_console(struct console *console)
 }
 
 static void
-uart_console_putc(struct console *console, char c)
+uart_console_puts(struct console *console, const char *s, size_t size)
 {
-    uart_write_char(uart_get_from_console(console), c);
+    struct uart *uart;
+
+    uart = uart_get_from_console(console);
+
+    while (size) {
+        uart_write_char(uart, *s++);
+        size--;
+    }
 }
 
 static const struct console_ops uart_console_ops = {
-    .putc = uart_console_putc,
+    .puts = uart_console_puts,
 };
 
 static void __init

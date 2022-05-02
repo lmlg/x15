@@ -126,8 +126,16 @@ atcons_putc(struct console *console, char c)
     }
 }
 
+static void
+atcons_puts(struct console *console, const char *s, size_t size)
+{
+    while (size--) {
+        atcons_putc(console, *s++);
+    }
+}
+
 static const struct console_ops atcons_ops = {
-    .putc = atcons_putc,
+    .puts = atcons_puts,
 };
 
 static int __init

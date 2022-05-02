@@ -33,6 +33,11 @@
 #include <machine/boot.h>
 #include <machine/cpu.h>
 
+struct console_waiter {
+    struct list node;
+    struct thread *thread;
+};
+
 /*
  * Registered consoles.
  */
@@ -64,7 +69,7 @@ console_init(struct console *console, const char *name,
     spinlock_init(&console->lock);
     console->ops = ops;
     cbuf_init(&console->recvbuf, console->buffer, sizeof(console->buffer));
-    console->waiter = NULL;
+    list_init(&console->waiters);
     strlcpy(console->name, name, sizeof(console->name));
 }
 
@@ -79,43 +84,33 @@ console_process_ctrl_char(struct console *console, char c)
         return EINVAL;
     }
 
-    console->ops->putc(console, c);
+    console->ops->puts(console, &c, 1);
     return 0;
 }
 
-static void
-console_putc(struct console *console, char c)
+static size_t
+console_read_nolock(struct console *console, char *s, size_t size)
 {
-    unsigned long flags;
-
-    spinlock_lock_intr_save(&console->lock, &flags);
-    console->ops->putc(console, c);
-    spinlock_unlock_intr_restore(&console->lock, flags);
-}
-
-static char
-console_getc(struct console *console)
-{
-    unsigned long flags;
     int error;
-    char c;
+    struct console_waiter waiter;
+    size_t i, nc;
 
-    spinlock_lock_intr_save(&console->lock, &flags);
-
-    if (console->waiter != NULL) {
-        c = EOF;
-        goto out;
-    }
-
-    console->waiter = thread_self();
+    waiter.thread = thread_self();
+    list_insert_tail(&console->waiters, &waiter.node);
 
     for (;;) {
-        error = cbuf_popb(&console->recvbuf, &c);
+        error = cbuf_pop(&console->recvbuf, s, &size);
 
         if (!error) {
-            error = console_process_ctrl_char(console, c);
+            for (i = nc = 0; i < size; ++i) {
+                error = console_process_ctrl_char(console, s[i]);
+                if (!error) {
+                    nc++;
+                }
+            }
 
-            if (error) {
+            size -= nc;
+            if (size) {
                 break;
             }
         }
@@ -123,12 +118,9 @@ console_getc(struct console *console)
         thread_sleep(&console->lock, console, "consgetc");
     }
 
-    console->waiter = NULL;
+    list_remove(&waiter.node);
 
-out:
-    spinlock_unlock_intr_restore(&console->lock, flags);
-
-    return c;
+    return size;
 }
 
 static int __init
@@ -174,6 +166,8 @@ console_register(struct console *console)
 void
 console_intr(struct console *console, const char *s)
 {
+    struct list *node;
+
     assert(thread_check_intr_context());
 
     if (*s == '\0') {
@@ -191,7 +185,10 @@ console_intr(struct console *console, const char *s)
         s++;
     }
 
-    thread_wakeup(console->waiter);
+    node = list_first(&console->waiters);
+    if (node) {
+        thread_wakeup(list_entry(node, struct console_waiter, node)->thread);
+    }
 
 out:
     spinlock_unlock(&console->lock);
@@ -200,11 +197,7 @@ out:
 void
 console_putchar(char c)
 {
-    if (console_dev == NULL) {
-        return;
-    }
-
-    console_putc(console_dev, c);
+    console_puts(&c, 1);
 }
 
 char
@@ -212,13 +205,65 @@ console_getchar(void)
 {
     char c;
 
-    if (console_dev == NULL) {
+    if (!console_gets(&c, 1)) {
         c = EOF;
-        goto out;
     }
 
-    c = console_getc(console_dev);
-
-out:
     return c;
+}
+
+void
+console_puts_nolock(const char *s, size_t size)
+{
+    if (console_dev) {
+        console_dev->ops->puts(console_dev, s, size);
+    }
+}
+
+void
+console_puts(const char *s, size_t size)
+{
+    unsigned long flags;
+
+    console_lock(&flags);
+    console_puts_nolock(s, size);
+    console_unlock(flags);
+}
+
+size_t
+console_gets_nolock(char *s, size_t size)
+{
+    if (!console_dev) {
+        return 0;
+    }
+
+    return console_read_nolock(console_dev, s, size);
+}
+
+size_t
+console_gets(char *s, size_t size)
+{
+    unsigned long flags;
+
+    console_lock(&flags);
+    size = console_gets_nolock(s, size);
+    console_unlock(flags);
+
+    return size;
+}
+
+void
+console_lock(unsigned long *flags)
+{
+    if (console_dev) {
+        spinlock_lock_intr_save(&console_dev->lock, flags);
+    }
+}
+
+void
+console_unlock(unsigned long flags)
+{
+    if (console_dev) {
+        spinlock_unlock_intr_restore(&console_dev->lock, flags);
+    }
 }

@@ -68,31 +68,29 @@ int log_vmsg(unsigned int level, const char *format, va_list ap)
  * Convenience wrappers.
  */
 
-int log_emerg(const char *format, ...) __attribute__((format(printf, 1, 2)));
-int log_alert(const char *format, ...) __attribute__((format(printf, 1, 2)));
-int log_crit(const char *format, ...) __attribute__((format(printf, 1, 2)));
-int log_err(const char *format, ...) __attribute__((format(printf, 1, 2)));
-int log_warning(const char *format, ...) __attribute__((format(printf, 1, 2)));
-int log_notice(const char *format, ...) __attribute__((format(printf, 1, 2)));
-int log_info(const char *format, ...) __attribute__((format(printf, 1, 2)));
-int log_debug(const char *format, ...) __attribute__((format(printf, 1, 2)));
+#define log_emerg(format, ...)   \
+    log_msg(LOG_EMERG, (format), ##__VA_ARGS__)
 
-int log_vemerg(const char *format, va_list ap)
-    __attribute__((format(printf, 1, 0)));
-int log_valert(const char *format, va_list ap)
-    __attribute__((format(printf, 1, 0)));
-int log_vcrit(const char *format, va_list ap)
-    __attribute__((format(printf, 1, 0)));
-int log_verr(const char *format, va_list ap)
-    __attribute__((format(printf, 1, 0)));
-int log_vwarning(const char *format, va_list ap)
-    __attribute__((format(printf, 1, 0)));
-int log_vnotice(const char *format, va_list ap)
-    __attribute__((format(printf, 1, 0)));
-int log_vinfo(const char *format, va_list ap)
-    __attribute__((format(printf, 1, 0)));
-int log_vdebug(const char *format, va_list ap)
-    __attribute__((format(printf, 1, 0)));
+#define log_alert(format, ...)   \
+    log_msg(LOG_ALERT, (format), ##__VA_ARGS__)
+
+#define log_crit(format, ...)   \
+    log_msg(LOG_CRIT, (format), ##__VA_ARGS__)
+
+#define log_err(format, ...)   \
+    log_msg(LOG_ERR, (format), ##__VA_ARGS__)
+
+#define log_warning(format, ...)   \
+    log_msg(LOG_WARNING, (format), ##__VA_ARGS__)
+
+#define log_notice(format, ...)   \
+    log_msg(LOG_NOTICE, (format), ##__VA_ARGS__)
+
+#define log_info(format, ...)   \
+    log_msg(LOG_INFO, (format), ##__VA_ARGS__)
+
+#define log_debug(format, ...)   \
+    log_msg(LOG_DEBUG, (format), ##__VA_ARGS__)
 
 /*
  * The bulletin returned by this function is used to notify the initial log

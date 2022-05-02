@@ -33,7 +33,7 @@
 struct console;
 
 struct console_ops {
-    void (*putc)(struct console *console, char c);
+    void (*puts)(struct console *console, const char *s, size_t size);
 };
 
 #define CONSOLE_BUF_SIZE    64
@@ -51,7 +51,7 @@ struct console {
     const struct console_ops *ops;
     char buffer[CONSOLE_BUF_SIZE];
     struct cbuf recvbuf;
-    struct thread *waiter;
+    struct list waiters;
     struct list node;
     char name[CONSOLE_NAME_SIZE];
 };
@@ -90,6 +90,27 @@ void console_intr(struct console *console, const char *s);
  */
 void console_putchar(char c);
 char console_getchar(void);
+
+/*
+ * Write/read a block of characters. These functions come in 2 versions: Those
+ * that acquire the lock before and release it after, and those that don't.
+ */
+
+void console_puts(const char *s, size_t size);
+size_t console_gets(char *s, size_t size);
+
+void console_puts_nolock(const char *s, size_t size);
+size_t console_gets_nolock(char *s, size_t size);
+
+/*
+ * Acquire an exclusive lock on the console device.
+ */
+void console_lock(unsigned long *flags);
+
+/*
+ * Release the lock on the console.
+ */
+void console_unlock(unsigned long flags);
 
 /*
  * This init operation provides :

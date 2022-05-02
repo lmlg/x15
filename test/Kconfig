@@ -27,6 +27,9 @@ endif
 config TEST_MODULE_BULLETIN
 	bool "bulletin"
 
+config TEST_MODULE_FMT
+	bool "fmt"
+
 config TEST_MODULE_MUTEX
 	bool "mutex"
 	select MUTEX_DEBUG
