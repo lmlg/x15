@@ -93,7 +93,7 @@ enum {
  * very difficult for implementations to provide and is best avoided.
  */
 
-struct fmt_xprintf_state {
+struct fmt_ostate {
     const char *format;
     va_list ap;
     unsigned int flags;
@@ -102,11 +102,11 @@ struct fmt_xprintf_state {
     unsigned int modifier;
     unsigned int specifier;
     unsigned int base;
-    struct fmt_write_op write_op;
+    struct stream *stream;
     int nr_chars;
 };
 
-struct fmt_xscanf_state {
+struct fmt_istate {
     const char *format;
     va_list ap;
     unsigned int flags;
@@ -115,7 +115,7 @@ struct fmt_xscanf_state {
     unsigned int specifier;
     unsigned int base;
     int nr_convs;
-    struct fmt_read_op read_op;
+    struct stream *stream;
     int nr_chars;
     int cur_ch;
 };
@@ -147,44 +147,53 @@ fmt_isxdigit(char c)
 }
 
 static void
-fmt_xprintf_state_init(struct fmt_xprintf_state *state,
-                       struct fmt_write_op *op,
-                       const char *format, va_list ap)
+fmt_ostate_init(struct fmt_ostate *state, struct stream *stream,
+                const char *format, va_list ap)
 {
     state->format = format;
     va_copy(state->ap, ap);
-    state->write_op = *op;
+    state->stream = stream;
     state->nr_chars = 0;
+    stream_lock (state->stream);
 }
 
 static void
-fmt_xprintf_state_produce_raw_char(struct fmt_xprintf_state *state, char c)
+fmt_ostate_produce_raw_char(struct fmt_ostate *state, char c)
 {
-    state->write_op.putc(state->write_op.data, c);
+    stream_write_unlocked(state->stream, &c, 1);
     ++state->nr_chars;
 }
 
+static void
+fmt_ostate_produce_raw_str(struct fmt_ostate *state,
+                           const char *s, int n)
+{
+  stream_write_unlocked(state->stream, s, n);
+  state->nr_chars += n;
+}
+
 static int
-fmt_xprintf_state_finalize(struct fmt_xprintf_state *state)
+fmt_ostate_finalize(struct fmt_ostate *state)
 {
     va_end(state->ap);
+    stream_unlock (state->stream);
     return state->nr_chars;
 }
 
 static char
-fmt_xprintf_state_consume_format(struct fmt_xprintf_state *state)
+fmt_ostate_consume_format(struct fmt_ostate *state)
 {
     return *state->format++;
 }
 
 static void
-fmt_xprintf_state_restore_format(struct fmt_xprintf_state *state)
+fmt_ostate_restore_format(struct fmt_ostate *state)
 {
     --state->format;
 }
 
 static void
-fmt_xprintf_state_consume_flags(struct fmt_xprintf_state *state)
+fmt_ostate_consume_flags(struct fmt_ostate *state)
 {
     bool found;
     char c;
@@ -193,7 +202,7 @@ fmt_xprintf_state_consume_flags(struct fmt_xprintf_state *state)
     state->flags = 0;
 
     do {
-        c = fmt_xprintf_state_consume_format(state);
+        c = fmt_ostate_consume_format(state);
 
         switch (c) {
         case '#':
@@ -217,25 +226,25 @@ fmt_xprintf_state_consume_flags(struct fmt_xprintf_state *state)
         }
     } while (found);
 
-    fmt_xprintf_state_restore_format(state);
+    fmt_ostate_restore_format(state);
 }
 
 static void
-fmt_xprintf_state_consume_width(struct fmt_xprintf_state *state)
+fmt_ostate_consume_width(struct fmt_ostate *state)
 {
     char c;
 
-    c = fmt_xprintf_state_consume_format(state);
+    c = fmt_ostate_consume_format(state);
 
     if (fmt_isdigit(c)) {
         state->width = 0;
 
         do {
             state->width = state->width * 10 + (c - '0');
-            c = fmt_xprintf_state_consume_format(state);
+            c = fmt_ostate_consume_format(state);
         } while (fmt_isdigit(c));
 
-        fmt_xprintf_state_restore_format(state);
+        fmt_ostate_restore_format(state);
     } else if (c == '*') {
         state->width = va_arg(state->ap, int);
 
@@ -245,29 +254,29 @@ fmt_xprintf_state_consume_width(struct fmt_xprintf_state *state)
         }
     } else {
         state->width = 0;
-        fmt_xprintf_state_restore_format(state);
+        fmt_ostate_restore_format(state);
     }
 }
 
 static void
-fmt_xprintf_state_consume_precision(struct fmt_xprintf_state *state)
+fmt_ostate_consume_precision(struct fmt_ostate *state)
 {
     char c;
 
-    c = fmt_xprintf_state_consume_format(state);
+    c = fmt_ostate_consume_format(state);
 
     if (c == '.') {
-        c = fmt_xprintf_state_consume_format(state);
+        c = fmt_ostate_consume_format(state);
 
         if (fmt_isdigit(c)) {
             state->precision = 0;
 
             do {
                 state->precision = state->precision * 10 + (c - '0');
-                c = fmt_xprintf_state_consume_format(state);
+                c = fmt_ostate_consume_format(state);
             } while (fmt_isdigit(c));
 
-            fmt_xprintf_state_restore_format(state);
+            fmt_ostate_restore_format(state);
         } else if (c == '*') {
             state->precision = va_arg(state->ap, int);
 
@@ -276,26 +285,26 @@ fmt_xprintf_state_consume_precision(struct fmt_xprintf_state *state)
             }
         } else {
             state->precision = 0;
-            fmt_xprintf_state_restore_format(state);
+            fmt_ostate_restore_format(state);
         }
     } else {
         /* precision is >= 0 only if explicit */
         state->precision = -1;
-        fmt_xprintf_state_restore_format(state);
+        fmt_ostate_restore_format(state);
     }
 }
 
 static void
-fmt_xprintf_state_consume_modifier(struct fmt_xprintf_state *state)
+fmt_ostate_consume_modifier(struct fmt_ostate *state)
 {
     char c, c2;
 
-    c = fmt_xprintf_state_consume_format(state);
+    c = fmt_ostate_consume_format(state);
 
     switch (c) {
     case 'h':
     case 'l':
-        c2 = fmt_xprintf_state_consume_format(state);
+        c2 = fmt_ostate_consume_format(state);
 
         if (c == c2) {
             state->modifier = (c == 'h') ? FMT_MODIFIER_CHAR
@@ -303,7 +312,7 @@ fmt_xprintf_state_consume_modifier(struct fmt_xprintf_state *state)
         } else {
             state->modifier = (c == 'h') ? FMT_MODIFIER_SHORT
                                          : FMT_MODIFIER_LONG;
-            fmt_xprintf_state_restore_format(state);
+            fmt_ostate_restore_format(state);
         }
 
         break;
@@ -315,17 +324,17 @@ fmt_xprintf_state_consume_modifier(struct fmt_xprintf_state *state)
         break;
     default:
         state->modifier = FMT_MODIFIER_NONE;
-        fmt_xprintf_state_restore_format(state);
+        fmt_ostate_restore_format(state);
         break;
     }
 }
 
 static void
-fmt_xprintf_state_consume_specifier(struct fmt_xprintf_state *state)
+fmt_ostate_consume_specifier(struct fmt_ostate *state)
 {
     char c;
 
-    c = fmt_xprintf_state_consume_format(state);
+    c = fmt_ostate_consume_format(state);
 
     switch (c) {
     case 'd':
@@ -365,13 +374,13 @@ fmt_xprintf_state_consume_specifier(struct fmt_xprintf_state *state)
         break;
     default:
         state->specifier = FMT_SPECIFIER_INVALID;
-        fmt_xprintf_state_restore_format(state);
+        fmt_ostate_restore_format(state);
         break;
     }
 }
 
 static int
-fmt_xprintf_state_consume(struct fmt_xprintf_state *state)
+fmt_ostate_consume(struct fmt_ostate *state)
 {
     char c;
 
@@ -382,20 +391,20 @@ fmt_xprintf_state_consume(struct fmt_xprintf_state *state)
     }
 
     if (c != '%') {
-        fmt_xprintf_state_produce_raw_char(state, c);
+        fmt_ostate_produce_raw_char(state, c);
         return EAGAIN;
     }
 
-    fmt_xprintf_state_consume_flags(state);
-    fmt_xprintf_state_consume_width(state);
-    fmt_xprintf_state_consume_precision(state);
-    fmt_xprintf_state_consume_modifier(state);
-    fmt_xprintf_state_consume_specifier(state);
+    fmt_ostate_consume_flags(state);
+    fmt_ostate_consume_width(state);
+    fmt_ostate_consume_precision(state);
+    fmt_ostate_consume_modifier(state);
+    fmt_ostate_consume_specifier(state);
     return 0;
 }
 
 static void
-fmt_xprintf_state_produce_int(struct fmt_xprintf_state *state)
+fmt_ostate_produce_int(struct fmt_ostate *state)
 {
     char c, sign, tmp[FMT_MAX_NUM_SIZE];
     unsigned int r, mask, shift;
@@ -551,21 +560,21 @@ fmt_xprintf_state_produce_int(struct fmt_xprintf_state *state)
     if (!(state->flags & (FMT_FORMAT_LEFT_JUSTIFY | FMT_FORMAT_ZERO_PAD))) {
         while (state->width > 0) {
             state->width--;
-            fmt_xprintf_state_produce_raw_char(state, ' ');
+            fmt_ostate_produce_raw_char(state, ' ');
         }
 
         state->width--;
     }
 
     if (state->flags & FMT_FORMAT_ALT_FORM) {
-        fmt_xprintf_state_produce_raw_char(state, '0');
+        fmt_ostate_produce_raw_char(state, '0');
 
         if (state->base == 16) {
             c = 'X' | (state->flags & FMT_FORMAT_LOWER);
-            fmt_xprintf_state_produce_raw_char(state, c);
+            fmt_ostate_produce_raw_char(state, c);
         }
     } else if (sign != '\0') {
-        fmt_xprintf_state_produce_raw_char(state, sign);
+        fmt_ostate_produce_raw_char(state, sign);
     }
 
     if (!(state->flags & FMT_FORMAT_LEFT_JUSTIFY)) {
@@ -573,7 +582,7 @@ fmt_xprintf_state_produce_int(struct fmt_xprintf_state *state)
 
         while (state->width > 0) {
             state->width--;
-            fmt_xprintf_state_produce_raw_char(state, c);
+            fmt_ostate_produce_raw_char(state, c);
         }
 
         state->width--;
@@ -581,26 +590,25 @@ fmt_xprintf_state_produce_int(struct fmt_xprintf_state *state)
 
     while (i < state->precision) {
         state->precision--;
-        fmt_xprintf_state_produce_raw_char(state, '0');
+        fmt_ostate_produce_raw_char(state, '0');
     }
 
     state->precision--;
+    for (int j = 0, k = i - 1; j < k; ++j, --k)
+      SWAP (&tmp[j], &tmp[k]);
 
-    while (i > 0) {
-        i--;
-        fmt_xprintf_state_produce_raw_char(state, tmp[i]);
-    }
+    fmt_ostate_produce_raw_str(state, tmp, i);
 
     while (state->width > 0) {
         state->width--;
-        fmt_xprintf_state_produce_raw_char(state, ' ');
+        fmt_ostate_produce_raw_char(state, ' ');
     }
 
     state->width--;
 }
 
 static void
-fmt_xprintf_state_produce_char(struct fmt_xprintf_state *state)
+fmt_ostate_produce_char(struct fmt_ostate *state)
 {
     char c;
 
@@ -614,11 +622,11 @@ fmt_xprintf_state_produce_char(struct fmt_xprintf_state *state)
                 break;
             }
 
-            fmt_xprintf_state_produce_raw_char(state, ' ');
+            fmt_ostate_produce_raw_char(state, ' ');
         }
     }
 
-    fmt_xprintf_state_produce_raw_char(state, c);
+    fmt_ostate_produce_raw_char(state, c);
 
     for (;;) {
         state->width--;
@@ -627,14 +635,14 @@ fmt_xprintf_state_produce_char(struct fmt_xprintf_state *state)
             break;
         }
 
-        fmt_xprintf_state_produce_raw_char(state, ' ');
+        fmt_ostate_produce_raw_char(state, ' ');
     }
 }
 
 static void
-fmt_xprintf_state_produce_str(struct fmt_xprintf_state *state)
+fmt_ostate_produce_str(struct fmt_ostate *state)
 {
-    int i, len;
+    int len;
     char *s;
 
     s = va_arg(state->ap, char *);
@@ -652,23 +660,20 @@ fmt_xprintf_state_produce_str(struct fmt_xprintf_state *state)
     if (!(state->flags & FMT_FORMAT_LEFT_JUSTIFY)) {
         while (len < state->width) {
             state->width--;
-            fmt_xprintf_state_produce_raw_char(state, ' ');
+            fmt_ostate_produce_raw_char(state, ' ');
         }
     }
 
-    for (i = 0; i < len; i++) {
-        fmt_xprintf_state_produce_raw_char(state, *s);
-        s++;
-    }
+    fmt_ostate_produce_raw_str(state, s, len);
 
     while (len < state->width) {
         state->width--;
-        fmt_xprintf_state_produce_raw_char(state, ' ');
+        fmt_ostate_produce_raw_char(state, ' ');
     }
 }
 
 static void
-fmt_xprintf_state_produce_nrchars(struct fmt_xprintf_state *state)
+fmt_ostate_produce_nrchars(struct fmt_ostate *state)
 {
     if (state->modifier == FMT_MODIFIER_CHAR) {
         signed char *ptr = va_arg(state->ap, signed char *);
@@ -695,38 +700,38 @@ fmt_xprintf_state_produce_nrchars(struct fmt_xprintf_state *state)
 }
 
 static void
-fmt_xprintf_state_produce(struct fmt_xprintf_state *state)
+fmt_ostate_produce(struct fmt_ostate *state)
 {
     switch (state->specifier) {
     case FMT_SPECIFIER_INT:
-        fmt_xprintf_state_produce_int(state);
+        fmt_ostate_produce_int(state);
         break;
     case FMT_SPECIFIER_CHAR:
-        fmt_xprintf_state_produce_char(state);
+        fmt_ostate_produce_char(state);
         break;
     case FMT_SPECIFIER_STR:
-        fmt_xprintf_state_produce_str(state);
+        fmt_ostate_produce_str(state);
         break;
     case FMT_SPECIFIER_NRCHARS:
-        fmt_xprintf_state_produce_nrchars(state);
+        fmt_ostate_produce_nrchars(state);
         break;
     case FMT_SPECIFIER_PERCENT:
     case FMT_SPECIFIER_INVALID:
-        fmt_xprintf_state_produce_raw_char(state, '%');
+        fmt_ostate_produce_raw_char(state, '%');
         break;
     }
 }
 
 int
-fmt_vxprintf(struct fmt_write_op *op, const char *format, va_list ap)
+fmt_vxprintf(struct stream *stream, const char *format, va_list ap)
 {
-    struct fmt_xprintf_state state;
+    struct fmt_ostate state;
     int error;
 
-    fmt_xprintf_state_init(&state, op, format, ap);
+    fmt_ostate_init(&state, stream, format, ap);
 
     for (;;) {
-        error = fmt_xprintf_state_consume(&state);
+        error = fmt_ostate_consume(&state);
 
         if (error == EAGAIN) {
             continue;
@@ -734,33 +739,23 @@ fmt_vxprintf(struct fmt_write_op *op, const char *format, va_list ap)
             break;
         }
 
-        fmt_xprintf_state_produce(&state);
+        fmt_ostate_produce(&state);
     }
 
-    return fmt_xprintf_state_finalize(&state);
+    return fmt_ostate_finalize(&state);
 }
 
 int
-fmt_xprintf(struct fmt_write_op *op, const char *format, ...)
+fmt_xprintf(struct stream *stream, const char *format, ...)
 {
     va_list ap;
     int ret;
 
     va_start(ap, format);
-    ret = fmt_vxprintf(op, format, ap);
+    ret = fmt_vxprintf(stream, format, ap);
     va_end(ap);
 
     return ret;
-}
-
-static void
-sprintf_putc(void *data, int ch)
-{
-    char **ptr;
-
-    ptr = data;
-    **ptr = ch;
-    (*ptr)++;
 }
 
 int
@@ -779,14 +774,7 @@ fmt_sprintf(char *str, const char *format, ...)
 int
 fmt_vsprintf(char *str, const char *format, va_list ap)
 {
-    struct fmt_write_op op;
-    int ret;
-
-    op.data = &str;
-    op.putc = sprintf_putc;
-    ret = fmt_vxprintf(&op, format, ap);
-    *str = '\0';
-    return ret;
+  return (fmt_vsnprintf (str, SIZE_MAX, format, ap));
 }
 
 int
@@ -802,39 +790,14 @@ fmt_snprintf(char *str, size_t size, const char *format, ...)
     return length;
 }
 
-struct snprintf_data {
-    char *cur;
-    char *end;
-};
-
-static void
-snprintf_putc(void *ptr, int ch)
-{
-    struct snprintf_data *data;
-
-    data = ptr;
-    if (data->cur < data->end) {
-        *data->cur++ = ch;
-    }
-}
-
 int
 fmt_vsnprintf(char *str, size_t size, const char *format, va_list ap)
 {
-    struct fmt_write_op op;
-    struct snprintf_data data;
-    int ret;
+    struct stream *stream = string_stream_create (str, size);
+    int ret = fmt_vxprintf(stream, format, ap);
 
-    data.cur = str;
-    data.end = str + size;
-
-    op.data = &data;
-    op.putc = snprintf_putc;
-
-    ret = fmt_vxprintf(&op, format, ap);
-    if (ret >= 0 && (size_t)ret < size) {
-        *data.cur = '\0';
-    }
+    if (ret >= 0)
+      stream_putc (stream, '\0');
 
     return ret;
 }
@@ -868,29 +831,30 @@ fmt_isspace(char c)
 }
 
 static void
-fmt_xscanf_state_init(struct fmt_xscanf_state *state,
-                      struct fmt_read_op *op,
-                      const char *format, va_list ap)
+fmt_istate_init(struct fmt_istate *state, struct stream *stream,
+                const char *format, va_list ap)
 {
     state->format = format;
     state->flags = 0;
     state->width = 0;
     va_copy(state->ap, ap);
     state->nr_convs = 0;
-    state->read_op = *op;
+    state->stream = stream;
     state->nr_chars = 0;
     state->cur_ch = FMT_NOPUTBACK;
+    stream_lock (state->stream);
 }
 
 static int
-fmt_xscanf_state_finalize(struct fmt_xscanf_state *state)
+fmt_istate_finalize(struct fmt_istate *state)
 {
     va_end(state->ap);
+    stream_unlock (state->stream);
     return state->nr_convs;
 }
 
 static void
-fmt_xscanf_state_report_conv(struct fmt_xscanf_state *state)
+fmt_istate_report_conv(struct fmt_istate *state)
 {
     if (state->nr_convs == EOF) {
         state->nr_convs = 1;
@@ -901,7 +865,7 @@ fmt_xscanf_state_report_conv(struct fmt_xscanf_state *state)
 }
 
 static void
-fmt_xscanf_state_report_error(struct fmt_xscanf_state *state)
+fmt_istate_report_error(struct fmt_istate *state)
 {
     if (state->nr_convs != 0) {
         return;
@@ -911,13 +875,13 @@ fmt_xscanf_state_report_error(struct fmt_xscanf_state *state)
 }
 
 static void
-fmt_xscanf_state_putback(struct fmt_xscanf_state *state, int ch)
+fmt_istate_putback(struct fmt_istate *state, int ch)
 {
     state->cur_ch = ch;
 }
 
 static int
-fmt_xscanf_state_consume_char(struct fmt_xscanf_state *state)
+fmt_istate_consume_char(struct fmt_istate *state)
 {
     int ch;
 
@@ -925,7 +889,9 @@ fmt_xscanf_state_consume_char(struct fmt_xscanf_state *state)
         ch = state->cur_ch;
         state->cur_ch = FMT_NOPUTBACK;
     } else {
-        ch = state->read_op.getc(state->read_op.data);
+        char byte;
+        int n = stream_read_unlocked (state->stream, &byte, 1);
+        ch = (n > 0 && byte) ? (int)byte : EOF;
     }
 
     ++state->nr_chars;
@@ -933,25 +899,25 @@ fmt_xscanf_state_consume_char(struct fmt_xscanf_state *state)
 }
 
 static void
-fmt_xscanf_state_skip_space(struct fmt_xscanf_state *state)
+fmt_istate_skip_space(struct fmt_istate *state)
 {
     int ch;
 
     for (;;) {
-        ch = fmt_xscanf_state_consume_char(state);
+        ch = fmt_istate_consume_char(state);
         if (ch < 0 || !fmt_isspace(ch)) {
-            fmt_xscanf_state_putback(state, ch);
+            fmt_istate_putback(state, ch);
             break;
         }
     }
 }
 
 static char
-fmt_xscanf_state_consume_string(struct fmt_xscanf_state *state)
+fmt_istate_consume_string(struct fmt_istate *state)
 {
     char c;
 
-    c = fmt_xscanf_state_consume_char(state);
+    c = fmt_istate_consume_char(state);
 
     if (state->flags & FMT_FORMAT_CHECK_WIDTH) {
         if (state->width == 0) {
@@ -965,26 +931,26 @@ fmt_xscanf_state_consume_string(struct fmt_xscanf_state *state)
 }
 
 static void
-fmt_xscanf_state_restore_string(struct fmt_xscanf_state *state, int ch)
+fmt_istate_restore_string(struct fmt_istate *state, int ch)
 {
     assert(state->cur_ch == FMT_NOPUTBACK);
     state->cur_ch = ch;
 }
 
 static char
-fmt_xscanf_state_consume_format(struct fmt_xscanf_state *state)
+fmt_istate_consume_format(struct fmt_istate *state)
 {
     return *state->format++;
 }
 
 static void
-fmt_xscanf_state_restore_format(struct fmt_xscanf_state *state)
+fmt_istate_restore_format(struct fmt_istate *state)
 {
     --state->format;
 }
 
 static void
-fmt_xscanf_state_consume_flags(struct fmt_xscanf_state *state)
+fmt_istate_consume_flags(struct fmt_istate *state)
 {
     bool found;
     char c;
@@ -993,7 +959,7 @@ fmt_xscanf_state_consume_flags(struct fmt_xscanf_state *state)
     state->flags = 0;
 
     do {
-        c = fmt_xscanf_state_consume_format(state);
+        c = fmt_istate_consume_format(state);
 
         switch (c) {
         case '*':
@@ -1005,18 +971,18 @@ fmt_xscanf_state_consume_flags(struct fmt_xscanf_state *state)
         }
     } while (found);
 
-    fmt_xscanf_state_restore_format(state);
+    fmt_istate_restore_format(state);
 }
 
 static void
-fmt_xscanf_state_consume_width(struct fmt_xscanf_state *state)
+fmt_istate_consume_width(struct fmt_istate *state)
 {
     char c;
 
     state->width = 0;
 
     for (;;) {
-        c = fmt_xscanf_state_consume_format(state);
+        c = fmt_istate_consume_format(state);
 
         if (!fmt_isdigit(c)) {
             break;
@@ -1029,20 +995,20 @@ fmt_xscanf_state_consume_width(struct fmt_xscanf_state *state)
         state->flags |= FMT_FORMAT_CHECK_WIDTH;
     }
 
-    fmt_xscanf_state_restore_format(state);
+    fmt_istate_restore_format(state);
 }
 
 static void
-fmt_xscanf_state_consume_modifier(struct fmt_xscanf_state *state)
+fmt_istate_consume_modifier(struct fmt_istate *state)
 {
     char c, c2;
 
-    c = fmt_xscanf_state_consume_format(state);
+    c = fmt_istate_consume_format(state);
 
     switch (c) {
     case 'h':
     case 'l':
-        c2 = fmt_xscanf_state_consume_format(state);
+        c2 = fmt_istate_consume_format(state);
 
         if (c == c2) {
             state->modifier = (c == 'h') ? FMT_MODIFIER_CHAR
@@ -1050,7 +1016,7 @@ fmt_xscanf_state_consume_modifier(struct fmt_xscanf_state *state)
         } else {
             state->modifier = (c == 'h') ? FMT_MODIFIER_SHORT
                                          : FMT_MODIFIER_LONG;
-            fmt_xscanf_state_restore_format(state);
+            fmt_istate_restore_format(state);
         }
 
         break;
@@ -1062,17 +1028,17 @@ fmt_xscanf_state_consume_modifier(struct fmt_xscanf_state *state)
         break;
     default:
         state->modifier = FMT_MODIFIER_NONE;
-        fmt_xscanf_state_restore_format(state);
+        fmt_istate_restore_format(state);
         break;
     }
 }
 
 static void
-fmt_xscanf_state_consume_specifier(struct fmt_xscanf_state *state)
+fmt_istate_consume_specifier(struct fmt_istate *state)
 {
     char c;
 
-    c = fmt_xscanf_state_consume_format(state);
+    c = fmt_istate_consume_format(state);
 
     switch (c) {
     case 'i':
@@ -1113,22 +1079,22 @@ fmt_xscanf_state_consume_specifier(struct fmt_xscanf_state *state)
         break;
     default:
         state->specifier = FMT_SPECIFIER_INVALID;
-        fmt_xscanf_state_restore_format(state);
+        fmt_istate_restore_format(state);
         break;
     }
 }
 
 static int
-fmt_xscanf_state_discard_char(struct fmt_xscanf_state *state, char c)
+fmt_istate_discard_char(struct fmt_istate *state, char c)
 {
     char c2;
 
     if (fmt_isspace(c)) {
-        fmt_xscanf_state_skip_space(state);
+        fmt_istate_skip_space(state);
         return 0;
     }
 
-    c2 = fmt_xscanf_state_consume_string(state);
+    c2 = fmt_istate_consume_string(state);
 
     if (c != c2) {
         if ((c2 == '\0') && (state->nr_convs == 0)) {
@@ -1142,21 +1108,21 @@ fmt_xscanf_state_discard_char(struct fmt_xscanf_state *state, char c)
 }
 
 static int
-fmt_xscanf_state_consume(struct fmt_xscanf_state *state)
+fmt_istate_consume(struct fmt_istate *state)
 {
     int error;
     char c;
 
     state->flags = 0;
 
-    c = fmt_xscanf_state_consume_format(state);
+    c = fmt_istate_consume_format(state);
 
     if (c == '\0') {
         return ENOENT;
     }
 
     if (c != '%') {
-        error = fmt_xscanf_state_discard_char(state, c);
+        error = fmt_istate_discard_char(state, c);
 
         if (error) {
             return error;
@@ -1165,15 +1131,15 @@ fmt_xscanf_state_consume(struct fmt_xscanf_state *state)
         return EAGAIN;
     }
 
-    fmt_xscanf_state_consume_flags(state);
-    fmt_xscanf_state_consume_width(state);
-    fmt_xscanf_state_consume_modifier(state);
-    fmt_xscanf_state_consume_specifier(state);
+    fmt_istate_consume_flags(state);
+    fmt_istate_consume_width(state);
+    fmt_istate_consume_modifier(state);
+    fmt_istate_consume_specifier(state);
     return 0;
 }
 
 static int
-fmt_xscanf_state_produce_int(struct fmt_xscanf_state *state)
+fmt_istate_produce_int(struct fmt_istate *state)
 {
     unsigned long long n, m, tmp;
     char c, buf[FMT_MAX_NUM_SIZE];
@@ -1182,16 +1148,16 @@ fmt_xscanf_state_produce_int(struct fmt_xscanf_state *state)
 
     negative = 0;
 
-    fmt_xscanf_state_skip_space(state);
-    c = fmt_xscanf_state_consume_string(state);
+    fmt_istate_skip_space(state);
+    c = fmt_istate_consume_string(state);
 
     if (c == '-') {
         negative = true;
-        c = fmt_xscanf_state_consume_string(state);
+        c = fmt_istate_consume_string(state);
     }
 
     if (c == '0') {
-        c = fmt_xscanf_state_consume_string(state);
+        c = fmt_istate_consume_string(state);
 
         if ((c == 'x') || (c == 'X')) {
             if (state->base == 0) {
@@ -1199,9 +1165,9 @@ fmt_xscanf_state_produce_int(struct fmt_xscanf_state *state)
             }
 
             if (state->base == 16) {
-                c = fmt_xscanf_state_consume_string(state);
+                c = fmt_istate_consume_string(state);
             } else {
-                fmt_xscanf_state_restore_string(state, c);
+                fmt_istate_restore_string(state, c);
                 c = '0';
             }
         } else {
@@ -1210,7 +1176,7 @@ fmt_xscanf_state_produce_int(struct fmt_xscanf_state *state)
             }
 
             if (state->base != 8) {
-                fmt_xscanf_state_restore_string(state, c);
+                fmt_istate_restore_string(state, c);
                 c = '0';
             }
         }
@@ -1242,10 +1208,10 @@ fmt_xscanf_state_produce_int(struct fmt_xscanf_state *state)
         }
 
         i++;
-        c = fmt_xscanf_state_consume_string(state);
+        c = fmt_istate_consume_string(state);
     }
 
-    fmt_xscanf_state_restore_string(state, c);
+    fmt_istate_restore_string(state, c);
 
     if (state->flags & FMT_FORMAT_DISCARD) {
         return 0;
@@ -1253,7 +1219,7 @@ fmt_xscanf_state_produce_int(struct fmt_xscanf_state *state)
 
     if (i == 0) {
         if (c == '\0') {
-            fmt_xscanf_state_report_error(state);
+            fmt_istate_report_error(state);
             return EINVAL;
         }
 
@@ -1369,12 +1335,12 @@ fmt_xscanf_state_produce_int(struct fmt_xscanf_state *state)
         }
     }
 
-    fmt_xscanf_state_report_conv(state);
+    fmt_istate_report_conv(state);
     return 0;
 }
 
 static int
-fmt_xscanf_state_produce_char(struct fmt_xscanf_state *state)
+fmt_istate_produce_char(struct fmt_istate *state)
 {
     char c, *dest;
     int i, width;
@@ -1392,7 +1358,7 @@ fmt_xscanf_state_produce_char(struct fmt_xscanf_state *state)
     }
 
     for (i = 0; i < width; i++) {
-        c = fmt_xscanf_state_consume_string(state);
+        c = fmt_istate_consume_string(state);
 
         if ((c == '\0') || (c == EOF)) {
             break;
@@ -1405,25 +1371,25 @@ fmt_xscanf_state_produce_char(struct fmt_xscanf_state *state)
     }
 
     if (i < width) {
-        fmt_xscanf_state_restore_string(state, c);
+        fmt_istate_restore_string(state, c);
     }
 
     if ((dest != NULL) && (i != 0)) {
-        fmt_xscanf_state_report_conv(state);
+        fmt_istate_report_conv(state);
     }
 
     return 0;
 }
 
 static int
-fmt_xscanf_state_produce_str(struct fmt_xscanf_state *state)
+fmt_istate_produce_str(struct fmt_istate *state)
 {
     int orig, off;
     char c, dummy, *dest;
 
     orig = state->nr_chars;
 
-    fmt_xscanf_state_skip_space(state);
+    fmt_istate_skip_space(state);
 
     if (state->flags & FMT_FORMAT_DISCARD) {
         dest = &dummy;
@@ -1434,7 +1400,7 @@ fmt_xscanf_state_produce_str(struct fmt_xscanf_state *state)
     }
 
     for (;;) {
-        c = fmt_xscanf_state_consume_string(state);
+        c = fmt_istate_consume_string(state);
 
         if ((c == '\0') || (c == ' ') || (c == EOF)) {
             break;
@@ -1444,59 +1410,59 @@ fmt_xscanf_state_produce_str(struct fmt_xscanf_state *state)
         dest += off;
     }
 
-    fmt_xscanf_state_restore_string(state, c);
+    fmt_istate_restore_string(state, c);
 
     if (state->nr_chars == orig) {
-        fmt_xscanf_state_report_error(state);
+        fmt_istate_report_error(state);
         return EINVAL;
     }
 
     if (dest != &dummy) {
         *dest = '\0';
-        fmt_xscanf_state_report_conv(state);
+        fmt_istate_report_conv(state);
     }
 
     return 0;
 }
 
 static int
-fmt_xscanf_state_produce_nrchars(struct fmt_xscanf_state *state)
+fmt_istate_produce_nrchars(struct fmt_istate *state)
 {
     *va_arg(state->ap, int *) = state->nr_chars;
     return 0;
 }
 
 static int
-fmt_xscanf_state_produce(struct fmt_xscanf_state *state)
+fmt_istate_produce(struct fmt_istate *state)
 {
     switch (state->specifier) {
     case FMT_SPECIFIER_INT:
-        return fmt_xscanf_state_produce_int(state);
+        return fmt_istate_produce_int(state);
     case FMT_SPECIFIER_CHAR:
-        return fmt_xscanf_state_produce_char(state);
+        return fmt_istate_produce_char(state);
     case FMT_SPECIFIER_STR:
-        return fmt_xscanf_state_produce_str(state);
+        return fmt_istate_produce_str(state);
     case FMT_SPECIFIER_NRCHARS:
-        return fmt_xscanf_state_produce_nrchars(state);
+        return fmt_istate_produce_nrchars(state);
     case FMT_SPECIFIER_PERCENT:
-        fmt_xscanf_state_skip_space(state);
-        return fmt_xscanf_state_discard_char(state, '%');
+        fmt_istate_skip_space(state);
+        return fmt_istate_discard_char(state, '%');
     default:
-        fmt_xscanf_state_report_error(state);
+        fmt_istate_report_error(state);
         return EINVAL;
     }
 }
 
 int
-fmt_vxscanf(struct fmt_read_op *op, const char *format, va_list ap)
+fmt_vxscanf(struct stream *stream, const char *format, va_list ap)
 {
-    struct fmt_xscanf_state state;
+    struct fmt_istate state;
     int error;
 
-    fmt_xscanf_state_init(&state, op, format, ap);
+    fmt_istate_init(&state, stream, format, ap);
 
     for (;;) {
-        error = fmt_xscanf_state_consume(&state);
+        error = fmt_istate_consume(&state);
 
         if (error == EAGAIN) {
             continue;
@@ -1504,43 +1470,27 @@ fmt_vxscanf(struct fmt_read_op *op, const char *format, va_list ap)
             break;
         }
 
-        error = fmt_xscanf_state_produce(&state);
+        error = fmt_istate_produce(&state);
 
         if (error) {
             break;
         }
     }
 
-    return fmt_xscanf_state_finalize(&state);
+    return fmt_istate_finalize(&state);
 }
 
 int
-fmt_xscanf(struct fmt_read_op *op, const char *format, ...)
+fmt_xscanf(struct stream *stream, const char *format, ...)
 {
     va_list ap;
     int ret;
 
     va_start(ap, format);
-    ret = fmt_vxscanf(op, format, ap);
+    ret = fmt_vxscanf(stream, format, ap);
     va_end(ap);
 
     return ret;
-}
-
-static int
-sscanf_getc(void *ptr)
-{
-    char **cur;
-    int ch;
-
-    cur = ptr;
-    ch = **cur;
-
-    if (ch != '\0') {
-        (*cur)++;
-    }
-
-    return ch;
 }
 
 int
@@ -1559,10 +1509,6 @@ fmt_sscanf(const char *str, const char *format, ...)
 int
 fmt_vsscanf(const char *str, const char *format, va_list ap)
 {
-    struct fmt_read_op op;
-
-    op.getc = sscanf_getc;
-    op.data = (void *)&str;
-
-    return fmt_vxscanf(&op, format, ap);
+    struct stream *stream = string_stream_create ((char *)str, SIZE_MAX);
+    return fmt_vxscanf(stream, format, ap);
 }

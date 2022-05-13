@@ -275,6 +275,77 @@ INIT_OP_DEFINE(log_setup_shell,
 
 #endif /* CONFIG_SHELL */
 
+typedef struct
+{
+  struct stream base;
+  struct log_record record;
+  uint32_t off;
+} logger_stream_t;
+
+static size_t
+logger_stream_cap (const logger_stream_t *stream)
+{
+  return (sizeof (stream->record.msg) - 1 - stream->off);
+}
+
+static const void*
+memchr (const void *buf, int ch, size_t bytes)
+{
+  for (size_t i = 0; i < bytes; ++i)
+    if ((unsigned char)((const char *)buf)[i] == ch)
+      return ((const char *)buf + i);
+
+  return (NULL);
+}
+
+static int log_puts (const struct log_record *, int);
+
+static void
+logger_stream_write (struct stream *stream, const void *data, uint32_t bytes)
+{
+  _Auto logstr = (logger_stream_t *)stream;
+  size_t cap = logger_stream_cap (logstr);
+  const char *newl = memchr ((const char *)data, '\n', bytes);
+
+  if (bytes < cap && !newl)
+    {
+      memcpy (logstr->record.msg + logstr->off, data, bytes);
+      logstr->off += bytes;
+      return;
+    }
+
+  if (newl)
+    bytes = newl - (const char *)data;
+
+  bytes = MIN (bytes, cap);
+  memcpy (logstr->record.msg + logstr->off, data, bytes);
+  logstr->off += bytes;
+  logstr->record.msg[logstr->off] = 0;
+  log_puts (&logstr->record, (int)logstr->off);
+  logstr->off = 0;
+}
+
+static const struct stream_ops logger_stream_ops =
+{
+  .write = logger_stream_write
+};
+
+static logger_stream_t logger_streams[LOG_NR_LEVELS];
+
+static void
+logger_stream_init (logger_stream_t *stream)
+{
+  stream_init (&stream->base, &logger_stream_ops);
+  stream->record.level = stream - &logger_streams[0];
+}
+
+struct stream*
+log_stream (unsigned int level)
+{
+  assert (level < ARRAY_SIZE (logger_streams));
+  return (&logger_streams[level].base);
+}
+
 static int __init
 log_setup(void)
 {
@@ -282,6 +353,9 @@ log_setup(void)
               sizeof(struct log_record));
     spinlock_init(&log_lock);
     bulletin_init(&log_bulletin);
+
+    for (size_t i = 0; i < ARRAY_SIZE(logger_streams); ++i)
+      logger_stream_init (&logger_streams[i]);
 
     boot_log_info();
     arg_log_info();
@@ -329,37 +403,28 @@ log_msg(unsigned int level, const char *format, ...)
     return ret;
 }
 
-int
-log_vmsg(unsigned int level, const char *format, va_list ap)
+static int
+log_puts (const struct log_record *record, int nr_chars)
 {
-    struct log_record record;
-    unsigned long flags;
-    int error, nr_chars;
-    size_t size;
-    char *ptr;
-
-    assert(level < LOG_NR_LEVELS);
-    record.level = level;
-    nr_chars = vsnprintf(record.msg, sizeof(record.msg), format, ap);
-
-    if ((unsigned int)nr_chars >= sizeof(record.msg)) {
+    if ((unsigned int)nr_chars >= sizeof(record->msg)) {
         log_msg(LOG_ERR, "log: message too large");
         goto out;
     }
 
-    ptr = strchr(record.msg, '\n');
+    char *ptr = strchr(record->msg, '\n');
 
     if (ptr != NULL) {
         *ptr = '\0';
-        nr_chars = ptr - record.msg;
+        nr_chars = ptr - record->msg;
     }
 
     assert(nr_chars >= 0);
-    size = offsetof(struct log_record, msg) + nr_chars + 1;
+    size_t size = offsetof(struct log_record, msg) + nr_chars + 1;
 
+    unsigned long flags;
     spinlock_lock_intr_save(&log_lock, &flags);
 
-    error = mbuf_push(&log_mbuf, &record, size, true);
+    int error = mbuf_push(&log_mbuf, record, size, true);
 
     if (error) {
         log_nr_overruns++;
@@ -371,6 +436,15 @@ log_vmsg(unsigned int level, const char *format, va_list ap)
 
 out:
     return nr_chars;
+}
+
+int
+log_vmsg(unsigned int level, const char *format, va_list ap)
+{
+    assert(level < LOG_NR_LEVELS);
+    struct log_record record = { .level = level };
+    int nr_chars = vsnprintf(record.msg, sizeof(record.msg), format, ap);
+    return (log_puts (&record, nr_chars));
 }
 
 struct bulletin *

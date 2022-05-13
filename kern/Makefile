@@ -30,6 +30,7 @@ x15_SOURCES-y += \
         kern/sleepq.c \
         kern/spinlock.c \
         kern/sref.c \
+        kern/stream.c \
         kern/string.c \
         kern/symbol.c \
         kern/syscnt.c \

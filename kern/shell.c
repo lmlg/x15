@@ -643,13 +643,10 @@ shell_cmd_set_register(struct shell_cmd_set *cmd_set, struct shell_cmd *cmd)
 
 void
 shell_init(struct shell *shell, struct shell_cmd_set *cmd_set,
-           shell_getc_fn_t getc_fn, shell_vfprintf_fn_t vfprintf_fn,
-           void *io_object)
+           struct stream *stream)
 {
     shell->cmd_set = cmd_set;
-    shell->getc_fn = getc_fn;
-    shell->vfprintf_fn = vfprintf_fn;
-    shell->io_object = io_object;
+    shell->stream = stream;
     shell_history_init(&shell->history);
     shell->esc_seq_index = 0;
 }
@@ -1127,7 +1124,7 @@ shell_run(struct shell *shell)
         escape = 0;
 
         for (;;) {
-            c = shell->getc_fn(shell->io_object);
+            c = stream_getc (shell->stream);
 
             if (escape) {
                 switch (escape) {
@@ -1183,29 +1180,11 @@ shell_printf(struct shell *shell, const char *format, ...)
 void
 shell_vprintf(struct shell *shell, const char *format, va_list ap)
 {
-    shell->vfprintf_fn(shell->io_object, format, ap);
+  fmt_vxprintf (shell->stream, format, ap);
 }
-
-/*
- * XXX Temporary glue until the console module is reworked.
- */
 
 static struct shell_cmd_set shell_main_cmd_set;
 static struct shell shell_main;
-
-static int
-shell_main_getc(void *io_object)
-{
-    (void)io_object;
-    return getchar();
-}
-
-static void
-shell_main_vfprintf(void *io_object, const char *format, va_list ap)
-{
-    (void)io_object;
-    vprintf(format, ap);
-}
 
 static void
 shell_main_run(void *arg)
@@ -1233,8 +1212,7 @@ static int __init
 shell_setup(void)
 {
     shell_cmd_set_init(&shell_main_cmd_set);
-    shell_init(&shell_main, &shell_main_cmd_set,
-               shell_main_getc, shell_main_vfprintf, NULL);
+    shell_init(&shell_main, &shell_main_cmd_set, console_stream);
     bulletin_subscribe(log_get_bulletin(), &shell_log_bulletin_sub,
                        shell_start, NULL);
 
@@ -1244,7 +1222,8 @@ shell_setup(void)
 INIT_OP_DEFINE(shell_setup,
                INIT_OP_DEP(log_setup, true),
                INIT_OP_DEP(mutex_setup, true),
-               INIT_OP_DEP(printf_setup, true));
+               INIT_OP_DEP(printf_setup, true),
+               INIT_OP_DEP(stream_setup, true));
 
 struct shell_cmd_set * __init
 shell_get_main_cmd_set(void)

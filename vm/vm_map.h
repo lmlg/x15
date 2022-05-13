@@ -25,9 +25,9 @@
 
 #include <kern/init.h>
 #include <kern/list.h>
-#include <kern/log.h>
 #include <kern/mutex.h>
 #include <kern/rbtree.h>
+#include <kern/stream.h>
 #include <machine/pmap.h>
 #include <vm/vm_adv.h>
 #include <vm/vm_inherit.h>
@@ -121,7 +121,7 @@ int vm_map_create(struct vm_map **mapp);
 /*
  * Display information about a memory map.
  */
-void vm_map_info(struct vm_map *map, log_print_fn_t print_fn);
+void vm_map_info(struct vm_map *map, struct stream *stream);
 
 /*
  * This init operation provides :

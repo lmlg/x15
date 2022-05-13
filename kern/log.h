@@ -24,6 +24,7 @@
 #include <stdarg.h>
 
 #include <kern/init.h>
+#include <kern/stream.h>
 
 enum {
     LOG_EMERG,
@@ -36,16 +37,6 @@ enum {
     LOG_DEBUG,
     LOG_NR_LEVELS,
 };
-
-/*
- * Type for function pointers that may be used as either a log function
- * or printf.
- *
- * One call to a log print function produces a single log line, with a
- * newline character.
- */
-typedef int (*log_print_fn_t)(const char *format, ...)
-    __attribute__((format(printf, 1, 2)));
 
 /*
  * Generate a message and send it to the log thread.
@@ -97,6 +88,20 @@ int log_vmsg(unsigned int level, const char *format, va_list ap)
  * dump so that console output is well ordered.
  */
 struct bulletin * log_get_bulletin(void);
+
+// Get the logger stream for a particular level.
+struct stream* log_stream (unsigned int level);
+
+// Accesors for the above.
+
+#define log_stream_emerg()     log_stream (LOG_EMERG)
+#define log_stream_alert()     log_stream (LOG_ALERT)
+#define log_stream_crit()      log_stream (LOG_CRIT)
+#define log_stream_err()       log_stream (LOG_ERR)
+#define log_stream_warning()   log_stream (LOG_WARNING)
+#define log_stream_notice()    log_stream (LOG_NOTICE)
+#define log_stream_info()      log_stream (LOG_INFO)
+#define log_stream_debug()     log_stream (LOG_DEBUG)
 
 /*
  * This init operation provides :

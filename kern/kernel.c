@@ -23,26 +23,13 @@
 #include <test/test.h>
 #include <vm/vm_page.h>
 
-static int
-vm_page_info_helper(const char *format, ...)
-{
-    va_list ap;
-    int ret;
-
-    va_start(ap, format);
-    ret = log_vmsg(LOG_INFO, format, ap);
-    va_end(ap);
-
-    return ret;
-}
-
 void __init
 kernel_main(void)
 {
     assert(!cpu_intr_enabled());
 
     init_setup();
-    vm_page_info(vm_page_info_helper);
+    vm_page_info(log_stream_info ());
 
 #ifdef CONFIG_TEST_MODULE
     test_setup();

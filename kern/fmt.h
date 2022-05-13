@@ -43,20 +43,12 @@
 #include <stdarg.h>
 #include <stddef.h>
 
-struct fmt_write_op {
-    void *data;
-    void (*putc)(void *data, int ch);
-};
+#include <kern/stream.h>
 
-struct fmt_read_op {
-    void *data;
-    int (*getc)(void *data);
-};
-
-int fmt_xprintf(struct fmt_write_op *op, const char *format, ...)
+int fmt_xprintf(struct stream *stream, const char *format, ...)
     __attribute__((format(printf, 2, 3)));
 
-int fmt_vxprintf(struct fmt_write_op *op, const char *format, va_list ap)
+int fmt_vxprintf(struct stream *stream, const char *format, va_list ap)
     __attribute__((format(printf, 2, 0)));
 
 int fmt_sprintf(char *str, const char *format, ...)
@@ -71,10 +63,10 @@ int fmt_snprintf(char *str, size_t size, const char *format, ...)
 int fmt_vsnprintf(char *str, size_t size, const char *format, va_list ap)
     __attribute__((format(printf, 3, 0)));
 
-int fmt_xscanf(struct fmt_read_op *op, const char *format, ...)
+int fmt_xscanf(struct stream *stream, const char *format, ...)
     __attribute__((format(printf, 2, 3)));
 
-int fmt_vxscanf(struct fmt_read_op *op, const char *format, va_list ap)
+int fmt_vxscanf(struct stream *stream, const char *format, va_list ap)
     __attribute__((format(printf, 2, 0)));
 
 int fmt_sscanf(const char *str, const char *format, ...)

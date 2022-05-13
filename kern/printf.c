@@ -24,61 +24,12 @@
 #include <machine/boot.h>
 #include <machine/cpu.h>
 
-struct printf_data {
-    char buf[32];
-    char *bp;
-};
-
-static void
-printf_data_init(struct printf_data *data)
-{
-    data->bp = data->buf;
-}
-
-static void
-printf_data_flush(struct printf_data *data)
-{
-    console_puts_nolock(data->buf, data->bp - data->buf);
-    data->bp = data->buf;
-}
-
-static void
-printf_putc(void *ptr, int ch)
-{
-    struct printf_data *data;
-
-    data = ptr;
-    if (data->bp == data->buf + sizeof(data->buf)) {
-        printf_data_flush(data);
-    }
-
-    *data->bp++ = ch;
-}
-
 static int
 vprintf_common(const char *format, va_list ap, bool newline)
 {
-    struct fmt_write_op op;
-    struct printf_data data;
-    int ret;
-    unsigned long flags;
-
-    printf_data_init(&data);
-    op.putc = printf_putc;
-    op.data = &data;
-
-    console_lock(&flags);
-    ret = fmt_vxprintf(&op, format, ap);
-
-    if (newline) {
-        op.putc(op.data, '\n');
-    }
-
-    if (data.bp != data.buf) {
-        printf_data_flush(&data);
-    }
-
-    console_unlock(flags);
+    int ret = fmt_vxprintf (console_stream, format, ap);
+    if (newline)
+      console_putchar ('\n');
     return ret;
 }
 

@@ -23,6 +23,7 @@
 #include <kern/list.h>
 #include <kern/log.h>
 #include <kern/spinlock.h>
+#include <kern/stream.h>
 #include <kern/thread.h>
 #include <vm/vm_map.h>
 
@@ -117,7 +118,7 @@ struct thread * task_lookup_thread(struct task *task, const char *name);
  *
  * If task is NULL, this function displays all tasks.
  */
-void task_info(struct task *task, log_print_fn_t print_fn);
+void task_info(struct task *task, struct stream *stream);
 
 /*
  * This init operation provides :

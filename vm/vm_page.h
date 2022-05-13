@@ -33,9 +33,9 @@
 #include <kern/atomic.h>
 #include <kern/init.h>
 #include <kern/list.h>
-#include <kern/log.h>
 #include <kern/log2.h>
 #include <kern/macros.h>
+#include <kern/stream.h>
 #include <machine/page.h>
 #include <machine/pmap.h>
 #include <machine/pmem.h>
@@ -231,7 +231,7 @@ const char * vm_page_zone_name(unsigned int zone_index);
 /*
  * Log information about physical pages.
  */
-void vm_page_info(log_print_fn_t print_fn);
+void vm_page_info(struct stream *stream);
 
 static inline bool
 vm_page_referenced(const struct vm_page *page)

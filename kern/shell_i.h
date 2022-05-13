@@ -25,6 +25,7 @@
 
 #include <kern/macros.h>
 #include <kern/mutex.h>
+#include <kern/stream.h>
 
 struct shell_cmd {
     struct shell_cmd *ht_next;
@@ -109,11 +110,7 @@ struct shell_history {
  */
 struct shell {
     struct shell_cmd_set *cmd_set;
-
-    shell_getc_fn_t getc_fn;
-    shell_vfprintf_fn_t vfprintf_fn;
-    void *io_object;
-
+    struct stream *stream;
     struct shell_history history;
 
     /* Cursor within the current line */

@@ -58,10 +58,20 @@
 #define STRLEN(x)           (sizeof(x) - 1)
 #define ARRAY_SIZE(x)       (sizeof(x) / sizeof((x)[0]))
 
-#define MIN(a, b)           ((a) < (b) ? (a) : (b))
-#define MAX(a, b)           ((a) > (b) ? (a) : (b))
+#define MIN(a, b)   ((a) < (b) ? (a) : (b))
 
-#define DIV_CEIL(n, d)      (((n) + (d) - 1) / (d))
+#define MAX(a, b)   ((a) > (b) ? (a) : (b))
+
+#define SWAP(a, b)   \
+  do   \
+    {   \
+      _Auto a_ = *(a);   \
+      *(a) = *(b);   \
+      *(b) = a_;   \
+    }   \
+  while (0)
+
+#define DIV_CEIL(n, d)   (((n) + (d) - 1) / (d))
 
 #define P2ALIGNED(x, a)     (((x) & ((a) - 1)) == 0)
 #define ISP2(x)             P2ALIGNED(x, x)
@@ -116,5 +126,8 @@
 #define __fallthrough
 #endif /* __GNUC__ >= 7 */
 #endif
+
+// Type inference.
+#define _Auto   __auto_type
 
 #endif /* KERN_MACROS_H */

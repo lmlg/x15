@@ -28,9 +28,9 @@
 
 #include <kern/atomic.h>
 #include <kern/init.h>
-#include <kern/log.h>
 #include <kern/macros.h>
 #include <kern/spinlock.h>
+#include <kern/stream.h>
 
 /*
  * Size of the buffer storing a system counter name.
@@ -126,7 +126,7 @@ syscnt_dec(struct syscnt *syscnt)
  * A prefix can be used to filter the output, where only counters with the
  * given prefix are displayed. If NULL, all counters are reported.
  */
-void syscnt_info(const char *prefix, log_print_fn_t print_fn);
+void syscnt_info(const char *prefix, struct stream *stream);
 
 /*
  * This init operation provides :

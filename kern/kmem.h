@@ -24,7 +24,7 @@
 #include <stddef.h>
 
 #include <kern/init.h>
-#include <kern/log.h>
+#include <kern/stream.h>
 
 /*
  * Object cache.
@@ -77,7 +77,7 @@ void kmem_cache_free(struct kmem_cache *cache, void *obj);
  *
  * If cache is NULL, this function displays all managed caches.
  */
-void kmem_cache_info(struct kmem_cache *cache, log_print_fn_t print_fn);
+void kmem_cache_info(struct kmem_cache *cache, struct stream *stream);
 
 /*
  * Allocate size bytes of uninitialized memory.
@@ -99,7 +99,7 @@ void kmem_free(void *ptr, size_t size);
 /*
  * Display global kernel memory information.
  */
-void kmem_info(log_print_fn_t print_fn);
+void kmem_info(struct stream *stream);
 
 /*
  * This init operation provides :

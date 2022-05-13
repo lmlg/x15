@@ -45,7 +45,7 @@ syscnt_shell_info(struct shell *shell, int argc, char **argv)
     (void)shell;
 
     prefix = (argc >= 2) ? argv[1] : NULL;
-    syscnt_info(prefix, printf_ln);
+    syscnt_info(prefix, shell->stream);
 }
 
 static struct shell_cmd syscnt_shell_cmds[] = {
@@ -98,7 +98,7 @@ syscnt_register(struct syscnt *syscnt, const char *name)
 }
 
 void
-syscnt_info(const char *prefix, log_print_fn_t print_fn)
+syscnt_info(const char *prefix, struct stream *stream)
 {
     struct syscnt *syscnt;
     size_t length, prefix_length;
@@ -120,8 +120,8 @@ syscnt_info(const char *prefix, log_print_fn_t print_fn)
 
         value = syscnt_read(syscnt);
 
-        print_fn("syscnt: %40s %20llu", syscnt->name,
-                 (unsigned long long)value);
+        fmt_xprintf (stream, "syscnt: %40s %20llu", syscnt->name,
+                     (unsigned long long)value);
     }
 
     mutex_unlock(&syscnt_lock);

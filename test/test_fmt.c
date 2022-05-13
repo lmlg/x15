@@ -24,15 +24,30 @@
 #include <kern/log.h>
 #include <test/test.h>
 
-static void
-test_printf_putc(void *data, int ch)
+typedef struct
 {
-    char **ptr;
+  struct stream base;
+  char *buf;
+  uint32_t len;
+} test_stream_t;
 
-    ptr = data;
-    **ptr = ch < 'A' || ch > 'Z' ? ch : ((ch - 'A') + 'a');
-    (*ptr)++;
+static void
+test_stream_write (struct stream *stream, const void *data, uint32_t bytes)
+{
+  test_stream_t *sp = (test_stream_t *)stream;
+  for (uint32_t i = 0; i < bytes; ++i)
+    {
+      int ch = ((const char *)data)[i];
+      sp->buf[sp->len + i] = ch < 'A' || ch > 'Z' ? ch : ((ch - 'A') + 'a');
+    }
+
+  sp->len += bytes;
 }
+
+static const struct stream_ops test_stream_ops =
+{
+  .write = test_stream_write
+};
 
 static void
 test_sscanf(void)
@@ -51,8 +66,8 @@ test_sscanf(void)
 void __init
 test_setup(void)
 {
-    char buf[32], *p;
-    struct fmt_write_op write_op;
+    char buf[32];
+    test_stream_t stream;
     int rv;
 
     rv = fmt_sprintf(buf, "hello %d %s", -4, "???");
@@ -66,16 +81,16 @@ test_setup(void)
     rv = strcmp(buf, "abc3");
     assert(rv == 0);
 
-    p = buf;
-    write_op.data = &p;
-    write_op.putc = test_printf_putc;
+    stream_init (&stream.base, &test_stream_ops);
+    stream.buf = buf;
+    stream.len = 0;
 
-    rv = fmt_xprintf(&write_op, "HELLO %d", -1);
+    rv = fmt_xprintf(&stream.base, "HELLO %d", -1);
     assert(rv > 0);
     buf[rv] = '\0';
     assert(strcmp(buf, "hello -1") == 0);
 
     test_sscanf();
 
-    log_info("fmt test done");
+    log_info("test (fmt) done");
 }

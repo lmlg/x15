@@ -1108,7 +1108,7 @@ fast_free:
 }
 
 void
-kmem_cache_info(struct kmem_cache *cache, log_print_fn_t print_fn)
+kmem_cache_info(struct kmem_cache *cache, struct stream *stream)
 {
     char flags_str[64];
 
@@ -1118,24 +1118,26 @@ kmem_cache_info(struct kmem_cache *cache, log_print_fn_t print_fn)
 
     mutex_lock(&cache->lock);
 
-    print_fn("kmem:         flags: 0x%x%s", cache->flags, flags_str);
-    print_fn("kmem:      obj_size: %zu", cache->obj_size);
-    print_fn("kmem:         align: %zu", cache->align);
-    print_fn("kmem:      buf_size: %zu", cache->buf_size);
-    print_fn("kmem:   bufctl_dist: %zu", cache->bufctl_dist);
-    print_fn("kmem:     slab_size: %zu", cache->slab_size);
-    print_fn("kmem:     color_max: %zu", cache->color_max);
-    print_fn("kmem: bufs_per_slab: %lu", cache->bufs_per_slab);
-    print_fn("kmem:       nr_objs: %lu", cache->nr_objs);
-    print_fn("kmem:       nr_bufs: %lu", cache->nr_bufs);
-    print_fn("kmem:      nr_slabs: %lu", cache->nr_slabs);
-    print_fn("kmem: nr_free_slabs: %lu", cache->nr_free_slabs);
-    print_fn("kmem:   buftag_dist: %zu", cache->buftag_dist);
-    print_fn("kmem:   redzone_pad: %zu", cache->redzone_pad);
+    fmt_xprintf (stream, "kmem:         flags: 0x%x%s\n",
+                 cache->flags, flags_str);
+    fmt_xprintf (stream, "kmem:      obj_size: %zu", cache->obj_size);
+    fmt_xprintf (stream, "kmem:         align: %zu", cache->align);
+    fmt_xprintf (stream, "kmem:      buf_size: %zu", cache->buf_size);
+    fmt_xprintf (stream, "kmem:   bufctl_dist: %zu", cache->bufctl_dist);
+    fmt_xprintf (stream, "kmem:     slab_size: %zu", cache->slab_size);
+    fmt_xprintf (stream, "kmem:     color_max: %zu", cache->color_max);
+    fmt_xprintf (stream, "kmem: bufs_per_slab: %lu", cache->bufs_per_slab);
+    fmt_xprintf (stream, "kmem:       nr_objs: %lu", cache->nr_objs);
+    fmt_xprintf (stream, "kmem:       nr_bufs: %lu", cache->nr_bufs);
+    fmt_xprintf (stream, "kmem:      nr_slabs: %lu", cache->nr_slabs);
+    fmt_xprintf (stream, "kmem: nr_free_slabs: %lu", cache->nr_free_slabs);
+    fmt_xprintf (stream, "kmem:   buftag_dist: %zu", cache->buftag_dist);
+    fmt_xprintf (stream, "kmem:   redzone_pad: %zu", cache->redzone_pad);
 
 #ifdef KMEM_USE_CPU_LAYER
-    print_fn("kmem: cpu_pool_size: %d", cache->cpu_pool_type->array_size);
-#endif /* KMEM_USE_CPU_LAYER */
+    fmt_xprintf (stream, "kmem: cpu_pool_size: %d",
+                 cache->cpu_pool_type->array_size);
+#endif
 
     mutex_unlock(&cache->lock);
 }
@@ -1171,16 +1173,16 @@ kmem_shell_info(struct shell *shell, int argc, char **argv)
     (void)shell;
 
     if (argc < 2) {
-        kmem_info(printf_ln);
+        kmem_info(shell->stream);
     } else {
         cache = kmem_lookup_cache(argv[1]);
 
         if (cache == NULL) {
-            printf_ln("kmem: info: invalid argument");
+            printf_ln("kmem: info: cache not found");
             return;
         }
 
-        kmem_cache_info(cache, printf_ln);
+        kmem_cache_info(cache, shell->stream);
     }
 }
 
@@ -1379,7 +1381,7 @@ kmem_free(void *ptr, size_t size)
 }
 
 void
-kmem_info(log_print_fn_t print_fn)
+kmem_info(struct stream *stream)
 {
     size_t total_reclaim, total_reclaim_physical, total_reclaim_virtual;
     size_t total, total_physical, total_virtual;
@@ -1393,10 +1395,10 @@ kmem_info(log_print_fn_t print_fn)
     total_reclaim_physical = 0;
     total_reclaim_virtual = 0;
 
-    print_fn("kmem: cache                  obj slab  bufs   objs   bufs "
-             "   total reclaimable");
-    print_fn("kmem: name                  size size /slab  usage  count "
-             "  memory      memory");
+    fmt_xprintf (stream, "kmem: cache                  "
+                 "obj slab  bufs   objs   bufs    total reclaimable\n");
+    fmt_xprintf (stream, "kmem: name                  size size /slab  "
+                 "usage  count   memory      memory\n");
 
     mutex_lock(&kmem_cache_list_lock);
 
@@ -1416,18 +1418,19 @@ kmem_info(log_print_fn_t print_fn)
             total_reclaim_physical += mem_reclaim;
         }
 
-        print_fn("kmem: %-19s %6zu %3zuk  %4lu %6lu %6lu %7zuk %10zuk",
-                 cache->name, cache->obj_size, cache->slab_size >> 10,
-                 cache->bufs_per_slab, cache->nr_objs, cache->nr_bufs,
-                 mem_usage, mem_reclaim);
+        fmt_xprintf (stream,
+                     "kmem: %-19s %6zu %3zuk  %4lu %6lu %6lu %7zuk %10zuk\n",
+                     cache->name, cache->obj_size, cache->slab_size >> 10,
+                     cache->bufs_per_slab, cache->nr_objs, cache->nr_bufs,
+                     mem_usage, mem_reclaim);
 
         mutex_unlock(&cache->lock);
     }
 
     mutex_unlock(&kmem_cache_list_lock);
 
-    print_fn("total: %zuk (phys: %zuk virt: %zuk), "
-             "reclaim: %zuk (phys: %zuk virt: %zuk)",
-             total, total_physical, total_virtual,
-             total_reclaim, total_reclaim_physical, total_reclaim_virtual);
+    fmt_xprintf (stream, "total: %zuk (phys: %zuk virt: %zuk), "
+                 "reclaim: %zuk (phys: %zuk virt: %zuk)\n",
+                 total, total_physical, total_virtual,
+                 total_reclaim, total_reclaim_physical, total_reclaim_virtual);
 }

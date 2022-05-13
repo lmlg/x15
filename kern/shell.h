@@ -32,13 +32,6 @@
 #include <kern/macros.h>
 
 /*
- * Types for I/O functions.
- */
-typedef int (*shell_getc_fn_t)(void *io_object);
-typedef void (*shell_vfprintf_fn_t)(void *io_object,
-                                    const char *format, va_list ap);
-
-/*
  * Shell structure, statically allocatable.
  */
 struct shell;
@@ -111,8 +104,7 @@ int shell_cmd_set_register(struct shell_cmd_set *cmd_set,
  * On return, shell commands can be registered.
  */
 void shell_init(struct shell *shell, struct shell_cmd_set *cmd_set,
-                shell_getc_fn_t getc_fn, shell_vfprintf_fn_t vfprintf_fn,
-                void *io_object);
+                struct stream *stream);
 
 /*
  * Obtain the command set associated with a shell.

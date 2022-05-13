@@ -71,7 +71,7 @@ task_shell_info(struct shell *shell, int argc, char *argv[])
     (void)shell;
 
     if (argc == 1) {
-        task_info(NULL, printf_ln);
+        task_info(NULL, shell->stream);
         return;
     } else {
         task = task_lookup(argv[1]);
@@ -81,7 +81,7 @@ task_shell_info(struct shell *shell, int argc, char *argv[])
             goto error;
         }
 
-        task_info(task, printf_ln);
+        task_info(task, shell->stream);
         task_unref(task);
     }
 
@@ -228,7 +228,7 @@ task_lookup_thread(struct task *task, const char *name)
 }
 
 void
-task_info(struct task *task, log_print_fn_t print_fn)
+task_info(struct task *task, struct stream *stream)
 {
     struct thread *thread;
 
@@ -236,7 +236,7 @@ task_info(struct task *task, log_print_fn_t print_fn)
         spinlock_lock(&task_list_lock);
 
         list_for_each_entry(&task_list, task, node) {
-            task_info(task, print_fn);
+            task_info(task, stream);
         }
 
         spinlock_unlock(&task_list_lock);
@@ -246,7 +246,7 @@ task_info(struct task *task, log_print_fn_t print_fn)
 
     spinlock_lock(&task->lock);
 
-    print_fn("task: name: %s, threads:", task->name);
+    fmt_xprintf (stream, "task: name: %s, threads:", task->name);
 
     /*
      * Don't grab any lock when accessing threads, so that the function
@@ -257,16 +257,16 @@ task_info(struct task *task, log_print_fn_t print_fn)
      * TODO Handle tasks and threads names modifications.
      */
     list_for_each_entry(&task->threads, thread, task_node) {
-        print_fn(TASK_INFO_ADDR_FMT " %c %8s:" TASK_INFO_ADDR_FMT
-                 " %.2s:%02hu %02u %s",
-                 (unsigned long)thread,
-                 thread_state_to_chr(thread_state(thread)),
-                 thread_wchan_desc(thread),
-                 (unsigned long)thread_wchan_addr(thread),
-                 thread_sched_class_to_str(thread_user_sched_class(thread)),
-                 thread_user_priority(thread),
-                 thread_real_global_priority(thread),
-                 thread_name(thread));
+        fmt_xprintf (stream, TASK_INFO_ADDR_FMT " %c %8s:" TASK_INFO_ADDR_FMT
+                     " %.2s:%02hu %02u %s\n",
+                     (unsigned long)thread,
+                     thread_state_to_chr(thread_state(thread)),
+                     thread_wchan_desc(thread),
+                     (unsigned long)thread_wchan_addr(thread),
+                     thread_sched_class_to_str(thread_user_sched_class(thread)),
+                     thread_user_priority(thread),
+                     thread_real_global_priority(thread),
+                     thread_name(thread));
     }
 
     spinlock_unlock(&task->lock);

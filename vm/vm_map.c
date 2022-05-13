@@ -714,7 +714,7 @@ vm_map_shell_info(struct shell *shell, int argc, char **argv)
             goto error;
         }
 
-        vm_map_info(task_get_vm_map(task), printf_ln);
+        vm_map_info(task_get_vm_map(task), shell->stream);
     }
 
     return;
@@ -804,7 +804,7 @@ error_map:
 }
 
 void
-vm_map_info(struct vm_map *map, log_print_fn_t print_fn)
+vm_map_info(struct vm_map *map, struct stream *stream)
 {
     struct vm_map_entry *entry;
     const char *type, *name;
@@ -817,10 +817,10 @@ vm_map_info(struct vm_map *map, log_print_fn_t print_fn)
 
     mutex_lock(&map->lock);
 
-    print_fn("vm_map: %s: %016lx-%016lx", name,
-             (unsigned long)map->start, (unsigned long)map->end);
-    print_fn("vm_map:      start             end          "
-             "size     offset   flags    type");
+    fmt_xprintf (stream, "vm_map: %s: %016lx-%016lx\n", name,
+                 (unsigned long)map->start, (unsigned long)map->end);
+    fmt_xprintf (stream, "vm_map:      start             end          "
+                 "size     offset   flags    type\n");
 
     list_for_each_entry(&map->entry_list, entry, list_node) {
         if (entry->object == NULL) {
@@ -829,13 +829,13 @@ vm_map_info(struct vm_map *map, log_print_fn_t print_fn)
             type = "object";
         }
 
-        print_fn("vm_map: %016lx %016lx %8luk %08llx %08x %s",
-                 (unsigned long)entry->start, (unsigned long)entry->end,
-                 (unsigned long)(entry->end - entry->start) >> 10,
-                 (unsigned long long)entry->offset, entry->flags, type);
+        fmt_xprintf (stream, "vm_map: %016lx %016lx %8luk %08llx %08x %s\n",
+                    (unsigned long)entry->start, (unsigned long)entry->end,
+                    (unsigned long)(entry->end - entry->start) >> 10,
+                    (unsigned long long)entry->offset, entry->flags, type);
     }
 
-    print_fn("vm_map: total: %zuk", map->size >> 10);
+    fmt_xprintf (stream, "vm_map: total: %zuk", map->size >> 10);
 
     mutex_unlock(&map->lock);
 }
