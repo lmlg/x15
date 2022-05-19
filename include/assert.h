@@ -27,24 +27,21 @@
  * but this may result in many "set but not used" warnings. Using sizeof()
  * silences these warnings without producing side effects.
  */
-#define assert(expression) ((void)sizeof(expression))
+#define assert(expression)   ((void)sizeof (expression))
 
-#else /* NDEBUG */
+#else
 
 #include <kern/macros.h>
 #include <kern/panic.h>
 
-/*
- * Panic if the given expression is false.
- */
-#define assert(expression)                                          \
+// Panic if the given expression is false.
+#define assert(expression)   \
 MACRO_BEGIN                                                         \
-    if (unlikely(!(expression))) {                                  \
-        panic("assertion (%s) failed in %s:%d, function %s()",      \
-              __QUOTE(expression), __FILE__, __LINE__, __func__);   \
-    }                                                               \
+  if (unlikely(!(expression)))   \
+      panic ("assertion (%s) failed in %s:%d, function %s()",   \
+             QUOTE (expression), __FILE__, __LINE__, __func__);   \
 MACRO_END
 
-#endif /* NDEBUG */
+#endif
 
-#endif /* ASSERT_H */
+#endif

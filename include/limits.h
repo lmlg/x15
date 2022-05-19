@@ -21,9 +21,9 @@
 #define CHAR_BIT 8
 
 #ifdef __LP64__
-#define LONG_BIT 64
-#else /* __LP64__ */
-#define LONG_BIT 32
-#endif /* __LP64__ */
+  #define LONG_BIT 64
+#else
+  #define LONG_BIT 32
+#endif
 
-#endif /* LIMITS_H */
+#endif

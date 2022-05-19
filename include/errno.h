@@ -32,4 +32,4 @@
 #define EOVERFLOW           12
 #define EMSGSIZE            13
 
-#endif /* ERRNO_H */
+#endif

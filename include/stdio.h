@@ -22,11 +22,11 @@
 #include <kern/printf.h>
 
 #ifndef EOF
-#define EOF (-1)
+  #define EOF (-1)
 #endif
 
-void console_putchar(char c);
-char console_getchar(void);
+void console_putchar (char c);
+char console_getchar (void);
 
 #define getchar console_getchar
 #define putchar console_putchar
@@ -39,4 +39,4 @@ char console_getchar(void);
 #define sscanf      fmt_sscanf
 #define vsscanf     fmt_vsscanf
 
-#endif /* STDIO_H */
+#endif

@@ -20,4 +20,4 @@
 
 #include <kern/string.h>
 
-#endif /* STRING_H */
+#endif
