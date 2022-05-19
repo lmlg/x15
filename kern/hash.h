@@ -47,92 +47,85 @@
 #include <stdint.h>
 
 #ifdef __LP64__
-#define HASH_ALLBITS 64
-#define hash_long(n, bits) hash_int64(n, bits)
-#else /* __LP64__ */
-static_assert(sizeof(long) == 4, "unsupported data model");
-#define HASH_ALLBITS 32
-#define hash_long(n, bits) hash_int32(n, bits)
+  #define HASH_ALLBITS   64
+  #define hash_long      hash_int64
+#else
+  static_assert (sizeof (long) == 4, "unsupported data model");
+  #define HASH_ALLBITS   32
+  #define hash_long      hash_int32
 #endif
 
 static inline bool
-hash_bits_valid(unsigned int bits)
+hash_bits_valid (unsigned int bits)
 {
-    return (bits != 0) && (bits <= HASH_ALLBITS);
+  return (bits && bits <= HASH_ALLBITS);
 }
 
 static inline uint32_t
-hash_int32(uint32_t n, unsigned int bits)
+hash_int32 (uint32_t n, unsigned int bits)
 {
-    uint32_t hash;
+  assert (hash_bits_valid (bits));
 
-    assert(hash_bits_valid(bits));
+  uint32_t hash = n;
+  hash = ~hash + (hash << 15);
+  hash ^= (hash >> 12);
+  hash += (hash << 2);
+  hash ^= (hash >> 4);
+  hash += (hash << 3) + (hash << 11);
+  hash ^= (hash >> 16);
 
-    hash = n;
-    hash = ~hash + (hash << 15);
-    hash ^= (hash >> 12);
-    hash += (hash << 2);
-    hash ^= (hash >> 4);
-    hash += (hash << 3) + (hash << 11);
-    hash ^= (hash >> 16);
-
-    return hash >> (32 - bits);
+  return (hash >> (32 - bits));
 }
 
 static inline uint64_t
-hash_int64(uint64_t n, unsigned int bits)
+hash_int64 (uint64_t n, unsigned int bits)
 {
-    uint64_t hash;
+  assert (hash_bits_valid (bits));
 
-    assert(hash_bits_valid(bits));
+  uint64_t hash = n;
+  hash = ~hash + (hash << 21);
+  hash ^= (hash >> 24);
+  hash += (hash << 3) + (hash << 8);
+  hash ^= (hash >> 14);
+  hash += (hash << 2) + (hash << 4);
+  hash ^= (hash >> 28);
+  hash += (hash << 31);
 
-    hash = n;
-    hash = ~hash + (hash << 21);
-    hash ^= (hash >> 24);
-    hash += (hash << 3) + (hash << 8);
-    hash ^= (hash >> 14);
-    hash += (hash << 2) + (hash << 4);
-    hash ^= (hash >> 28);
-    hash += (hash << 31);
-
-    return hash >> (64 - bits);
+  return (hash >> (64 - bits));
 }
 
 static inline uintptr_t
-hash_ptr(const void *ptr, unsigned int bits)
+hash_ptr (const void *ptr, unsigned int bits)
 {
-    if (sizeof(uintptr_t) == 8) {
-        return hash_int64((uintptr_t)ptr, bits);
-    } else {
-        return hash_int32((uintptr_t)ptr, bits);
-    }
+#ifdef __LP64__
+  return (hash_int64 ((uintptr_t) ptr, bits));
+#else
+  return (hash_int32 ((uintptr_t) ptr, bits));
+#endif
 }
 
 static inline unsigned long
-hash_str(const char *str, unsigned int bits)
+hash_str (const char *str, unsigned int bits)
 {
-    unsigned long hash, mask;
-    char c;
+  assert (hash_bits_valid (bits));
 
-    assert(hash_bits_valid(bits));
+  uintptr_t hash;
+  for (hash = 0; /* no condition */ ; str++)
+    {
+      int c = *str;
+      if (! c)
+        break;
 
-    for (hash = 0; /* no condition */; str++) {
-        c = *str;
-
-        if (c == '\0') {
-            break;
-        }
-
-        hash = ((hash << 5) - hash) + c;
+      hash = ((hash << 5) - hash) + c;
     }
 
-    /*
-     * This mask construction avoids the undefined behavior that would
-     * result from directly shifting by the number of bits, if that number
-     * is equal to the width of the hash.
-     */
-    mask = (~0UL >> (HASH_ALLBITS - bits));
-    return hash & mask;
+  /*
+   * This mask construction avoids the undefined behavior that would
+   * result from directly shifting by the number of bits, if that number
+   * is equal to the width of the hash.
+   */
+  uintptr_t mask = (~0UL >> (HASH_ALLBITS - bits));
+  return (hash & mask);
 }
 
-#endif /* KERN_HASH_H */
+#endif

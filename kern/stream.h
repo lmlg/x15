@@ -94,7 +94,7 @@ stream_write (struct stream *strm, const void *data, uint32_t bytes)
   stream_lock (strm);
   stream_write_unlocked (strm, data, bytes);
   stream_unlock (strm);
-} 
+}
 
 static inline int32_t
 stream_read (struct stream *strm, void *out, uint32_t bytes)
@@ -108,7 +108,7 @@ stream_read (struct stream *strm, void *out, uint32_t bytes)
 static inline void
 stream_putc (struct stream *strm, int ch)
 {
-  char c = (char)ch;
+  char c = (char) ch;
   stream_write (strm, &c, 1);
 }
 
@@ -120,15 +120,14 @@ stream_getc (struct stream *strm)
 }
 
 // String streams.
-int string_stream_init (struct string_stream *strm,
-                        char *ptr, size_t size);
+int string_stream_init (struct string_stream *strm, char *ptr, size_t size);
 
 #define string_stream_create(ptr, size)   \
   ({   \
-     struct string_stream *s_ = __builtin_alloca (sizeof (*s_));   \
-     string_stream_init (s_, (ptr), (size)) == 0 ?   \
-       (struct stream *)s_ : (struct stream *)NULL;   \
-   })
+    struct string_stream *s_ = __builtin_alloca (sizeof (*s_));   \
+    string_stream_init (s_, (ptr), (size)) == 0 ?   \
+    (struct stream *)s_ : (struct stream *)NULL;   \
+  })
 
 // Standard console stream.
 

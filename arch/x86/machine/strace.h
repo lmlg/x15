@@ -33,19 +33,16 @@
  * Attempt to resolve the given instruction pointer, then walk the calling
  * chain from the given frame pointer.
  */
-void strace_show(uintptr_t ip, uintptr_t bp);
+void strace_show (uintptr_t ip, uintptr_t bp);
 
-/*
- * Display the current call trace.
- */
+// Display the current call trace.
 static __always_inline void
-strace_dump(void)
+strace_dump (void)
 {
-    uintptr_t ip, bp;
-
-    asm volatile("1: mov $1b, %0" : "=r" (ip));
-    bp = (uintptr_t)__builtin_frame_address(0);
-    strace_show(ip, bp);
+  uintptr_t ip;
+  asm volatile ("1: mov $1b, %0" : "=r" (ip));
+  uintptr_t bp = (uintptr_t) __builtin_frame_address (0);
+  strace_show (ip, bp);
 }
 
-#endif /* X86_STRACE_H */
+#endif

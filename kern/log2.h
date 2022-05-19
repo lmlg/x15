@@ -29,10 +29,10 @@
  * power-of-two below the given value if it's not a power-of-two.
  */
 static inline unsigned int
-log2(unsigned long x)
+log2 (unsigned long x)
 {
-    assert(x != 0);
-    return LONG_BIT - __builtin_clzl(x) - 1;
+  assert (x != 0);
+  return (LONG_BIT - __builtin_clzl (x) - 1);
 }
 
 /*
@@ -40,15 +40,10 @@ log2(unsigned long x)
  * power-of-two above the given value if it's not a power-of-two.
  */
 static inline unsigned int
-log2_order(unsigned long size)
+log2_order (unsigned long size)
 {
-    assert(size != 0);
-
-    if (size == 1) {
-        return 0;
-    }
-
-    return log2(size - 1) + 1;
+  assert (size != 0);
+  return (size == 1 ? 0 : (log2 (size - 1) + 1));
 }
 
-#endif /* KERN_LOG2_H */
+#endif

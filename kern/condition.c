@@ -29,76 +29,60 @@
 #include <kern/sleepq.h>
 
 static int
-condition_wait_common(struct condition *condition, struct mutex *mutex,
-                      bool timed, uint64_t ticks)
+condition_wait_common (struct condition *condition, struct mutex *mutex,
+                       bool timed, uint64_t ticks)
 {
-    struct sleepq *sleepq;
-    int error;
+  assert (mutex_locked (mutex));
+  struct sleepq *sleepq = sleepq_lend (condition, true);
 
-    assert(mutex_locked(mutex));
+  int error;
+  mutex_unlock (mutex);
 
-    sleepq = sleepq_lend(condition, true);
-
-    mutex_unlock(mutex);
-
-    if (timed) {
-        error = sleepq_timedwait(sleepq, "cond", ticks);
-    } else {
-        sleepq_wait(sleepq, "cond");
-        error = 0;
+  if (timed)
+    error = sleepq_timedwait (sleepq, "cond", ticks);
+  else
+    {
+      sleepq_wait (sleepq, "cond");
+      error = 0;
     }
 
-    sleepq_return(sleepq);
-
-    mutex_lock(mutex);
-
-    return error;
+  sleepq_return (sleepq);
+  mutex_lock (mutex);
+  return (error);
 }
 
 void
-condition_wait(struct condition *condition, struct mutex *mutex)
+condition_wait (struct condition *condition, struct mutex *mutex)
 {
-    int error;
-
-    error = condition_wait_common(condition, mutex, false, 0);
-    assert(!error);
+  int error = condition_wait_common (condition, mutex, false, 0);
+  assert (!error);
 }
 
 int
-condition_timedwait(struct condition *condition,
-                    struct mutex *mutex, uint64_t ticks)
+condition_timedwait (struct condition *condition,
+                     struct mutex *mutex, uint64_t ticks)
 {
-    return condition_wait_common(condition, mutex, true, ticks);
+  return (condition_wait_common (condition, mutex, true, ticks));
 }
 
 void
-condition_signal(struct condition *condition)
+condition_signal (struct condition *condition)
 {
-    struct sleepq *sleepq;
+  struct sleepq *sleepq = sleepq_acquire (condition, true);
+  if (! sleepq)
+    return;
 
-    sleepq = sleepq_acquire(condition, true);
-
-    if (sleepq == NULL) {
-        return;
-    }
-
-    sleepq_signal(sleepq);
-
-    sleepq_release(sleepq);
+  sleepq_signal (sleepq);
+  sleepq_release (sleepq);
 }
 
 void
-condition_broadcast(struct condition *condition)
+condition_broadcast (struct condition *condition)
 {
-    struct sleepq *sleepq;
+  struct sleepq *sleepq = sleepq_acquire (condition, true);
+  if (! sleepq)
+    return;
 
-    sleepq = sleepq_acquire(condition, true);
-
-    if (sleepq == NULL) {
-        return;
-    }
-
-    sleepq_broadcast(sleepq);
-
-    sleepq_release(sleepq);
+  sleepq_broadcast (sleepq);
+  sleepq_release (sleepq);
 }

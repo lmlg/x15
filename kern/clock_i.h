@@ -23,21 +23,23 @@
 
 #include <machine/cpu.h>
 
-union clock_global_time {
-    alignas(CPU_L1_SIZE) uint64_t ticks;
+union clock_global_time
+{
+  alignas (CPU_L1_SIZE) uint64_t ticks;
 
 #ifndef ATOMIC_HAVE_64B_OPS
-    struct {
+  struct
+    {
 #if __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
-        uint32_t high1;
-        uint32_t low;
-#else /* __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__ */
-        uint32_t low;
-        uint32_t high1;
-#endif /* __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__ */
-        uint32_t high2;
+      uint32_t high1;
+      uint32_t low;
+#else
+      uint32_t low;
+      uint32_t high1;
+#endif
+      uint32_t high2;
     };
-#endif /* ATOMIC_HAVE_64B_OPS */
+#endif
 };
 
-#endif /* KERN_CLOCK_I_H */
+#endif

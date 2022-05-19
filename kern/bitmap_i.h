@@ -25,7 +25,7 @@
 
 #include <kern/macros.h>
 
-#define BITMAP_LONGS(nr_bits) DIV_CEIL(nr_bits, LONG_BIT)
+#define BITMAP_LONGS(nr_bits)   DIV_CEIL (nr_bits, LONG_BIT)
 
 /*
  * Adjust the bitmap pointer and the bit index so that the latter refers
@@ -33,19 +33,17 @@
  *
  * Implemented as a macro for const-correctness.
  */
-#define bitmap_lookup(bmp, bitp)        \
-MACRO_BEGIN                             \
-    int i;                              \
-                                        \
-    i = BITMAP_LONGS(*(bitp) + 1) - 1;  \
-    *(bmp) += i;                        \
-    *(bitp) -= i * LONG_BIT;            \
+#define bitmap_lookup(bmp, bitp)   \
+MACRO_BEGIN   \
+  int i_ = BITMAP_LONGS (*(bitp) + 1) - 1;   \
+  *(bmp) += i_;   \
+  *(bitp) -= i_ * LONG_BIT;   \
 MACRO_END
 
 static inline unsigned long
-bitmap_mask(int bit)
+bitmap_mask (int bit)
 {
-    return (1UL << bit);
+  return (1UL << bit);
 }
 
 /*
@@ -54,7 +52,7 @@ bitmap_mask(int bit)
  * complement is true, bits are toggled before searching so that the
  * result is the index of the next zero bit.
  */
-int bitmap_find_next_bit(const unsigned long *bm, int nr_bits, int bit,
-                         int complement);
+int bitmap_find_next_bit (const unsigned long *bm, int nr_bits, int bit,
+                          int complement);
 
-#endif /* KERN_BITMAP_I_H */
+#endif

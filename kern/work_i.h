@@ -18,15 +18,17 @@
 #ifndef KERN_WORK_I_H
 #define KERN_WORK_I_H
 
-struct work {
-    struct work *next;
-    work_fn_t fn;
+struct work
+{
+  struct work *next;
+  work_fn_t fn;
 };
 
-struct work_queue {
-    struct work *first;
-    struct work *last;
-    unsigned int nr_works;
+struct work_queue
+{
+  struct work *first;
+  struct work *last;
+  unsigned int nr_works;
 };
 
-#endif /* KERN_WORK_I_H */
+#endif

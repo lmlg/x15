@@ -25,16 +25,12 @@
  * other clocks. The PIT is used despite its lack of precision because
  * it's the only architectural timer with a known frequency.
  */
-void pit_setup_free_running(void);
+void pit_setup_free_running (void);
 
-/*
- * Initialize the pit module.
- */
-void pit_setup(void);
+// Initialize the pit module.
+void pit_setup (void);
 
-/*
- * Wait (without sleeping) until the specified amount of time has elapsed.
- */
-void pit_delay(unsigned long usecs);
+// Wait (without sleeping) until the specified amount of time has elapsed.
+void pit_delay (size_t usecs);
 
-#endif /* X86_PIT_H */
+#endif

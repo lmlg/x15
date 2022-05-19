@@ -22,6 +22,6 @@
  * If error denotes an actual error (i.e. is not 0), panic, using the given
  * string as a prefix for the error message. A NULL prefix is allowed.
  */
-void error_check(int error, const char *prefix);
+void error_check (int error, const char *prefix);
 
-#endif /* KERN_ERROR_H */
+#endif

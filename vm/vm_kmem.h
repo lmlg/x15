@@ -29,12 +29,10 @@
  * report allocation errors.
  */
 #if PMAP_START_KMEM_ADDRESS == 0
-#error "kernel space must not start at address 0"
-#endif /* PMAP_START_KMEM_ADDRESS == 0 */
+  #error "kernel space must not start at address 0"
+#endif
 
-/*
- * Special kernel addresses.
- */
+// Special kernel addresses.
 extern char _text;
 extern char _rodata;
 extern char _data;
@@ -45,24 +43,20 @@ extern char _end;
  *
  * The caller is reponsible for taking care of the underlying physical memory.
  */
-void * vm_kmem_alloc_va(size_t size);
+void* vm_kmem_alloc_va (size_t size);
 
 /*
  * Free virtual kernel pages.
  *
  * The caller is reponsible for taking care of the underlying physical memory.
  */
-void vm_kmem_free_va(void *addr, size_t size);
+void vm_kmem_free_va (void *addr, size_t size);
 
-/*
- * Allocate kernel pages.
- */
-void * vm_kmem_alloc(size_t size);
+// Allocate kernel pages.
+void* vm_kmem_alloc (size_t size);
 
-/*
- * Free kernel pages.
- */
-void vm_kmem_free(void *addr, size_t size);
+// Free kernel pages.
+void vm_kmem_free (void *addr, size_t size);
 
 /*
  * Map physical memory in the kernel map.
@@ -77,18 +71,16 @@ void vm_kmem_free(void *addr, size_t size);
  * TODO When mapping attributes are implemented, make this function disable
  * caching on the mapping.
  */
-void * vm_kmem_map_pa(phys_addr_t pa, size_t size,
+void* vm_kmem_map_pa (phys_addr_t pa, size_t size,
                       uintptr_t *map_vap, size_t *map_sizep);
 
-/*
- * Unmap physical memory from the kernel map.
- */
-void vm_kmem_unmap_pa(uintptr_t map_va, size_t map_size);
+// Unmap physical memory from the kernel map.
+void vm_kmem_unmap_pa (uintptr_t map_va, size_t map_size);
 
 /*
  * This init operation provides :
  *  - kernel virtual memory allocation
  */
-INIT_OP_DECLARE(vm_kmem_setup);
+INIT_OP_DECLARE (vm_kmem_setup);
 
-#endif /* VM_VM_KMEM_H */
+#endif

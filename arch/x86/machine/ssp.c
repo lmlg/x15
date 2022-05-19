@@ -19,12 +19,12 @@
 #include <kern/panic.h>
 #include <machine/ssp.h>
 
-void ssp_panic(void);
+void ssp_panic (void);
 
 __used void
-ssp_panic(void)
+ssp_panic (void)
 {
-    panic("ssp: stack corruption detected");
+  panic ("ssp: stack corruption detected");
 }
 
-__used void __stack_chk_fail(void) __attribute__((alias("ssp_panic")));
+__used void __stack_chk_fail (void) __attribute__ ((alias ("ssp_panic")));

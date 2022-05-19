@@ -28,10 +28,8 @@
 
 #include <kern/init.h>
 
-/*
- * Work scheduling flags.
- */
-#define WORK_HIGHPRIO   0x1 /* Use a high priority worker thread */
+// Work scheduling flags.
+#define WORK_HIGHPRIO   0x1   // Use a high priority worker thread.
 
 /*
  * Deferred work.
@@ -50,82 +48,77 @@ struct work_queue;
 /*
  * Type for work functions.
  */
-typedef void (*work_fn_t)(struct work *);
+typedef void (*work_fn_t) (struct work *);
 
 #include <kern/work_i.h>
 
 static inline void
-work_queue_init(struct work_queue *queue)
+work_queue_init (struct work_queue *queue)
 {
-    queue->first = NULL;
-    queue->last = NULL;
-    queue->nr_works = 0;
+  queue->first = NULL;
+  queue->last = NULL;
+  queue->nr_works = 0;
 }
 
 static inline unsigned int
-work_queue_nr_works(const struct work_queue *queue)
+work_queue_nr_works (const struct work_queue *queue)
 {
-    return queue->nr_works;
+  return (queue->nr_works);
 }
 
 static inline void
-work_queue_push(struct work_queue *queue, struct work *work)
+work_queue_push (struct work_queue *queue, struct work *work)
 {
-    work->next = NULL;
+  work->next = NULL;
 
-    if (queue->last == NULL) {
-        queue->first = work;
-    } else {
-        queue->last->next = work;
-    }
+  if (queue->last == NULL)
+    queue->first = work;
+  else
+    queue->last->next = work;
 
-    queue->last = work;
-    queue->nr_works++;
+  queue->last = work;
+  ++queue->nr_works;
 }
 
-static inline struct work *
-work_queue_pop(struct work_queue *queue)
+static inline struct work*
+work_queue_pop (struct work_queue *queue)
 {
-    struct work *work;
+  struct work *work = queue->first;
+  queue->first = work->next;
 
-    work = queue->first;
-    queue->first = work->next;
+  if (queue->last == work)
+    queue->last = NULL;
 
-    if (queue->last == work) {
-        queue->last = NULL;
-    }
-
-    queue->nr_works--;
-    return work;
+  --queue->nr_works;
+  return (work);
 }
 
 static inline void
-work_queue_transfer(struct work_queue *dest, struct work_queue *src)
+work_queue_transfer (struct work_queue *dest, struct work_queue *src)
 {
-    *dest = *src;
+  *dest = *src;
 }
 
 static inline void
-work_queue_concat(struct work_queue *queue1, struct work_queue *queue2)
+work_queue_concat (struct work_queue *queue1, struct work_queue *queue2)
 {
-    if (queue2->nr_works == 0) {
-        return;
+  if (queue2->nr_works == 0)
+    return;
+  else if (!queue1->nr_works)
+    {
+      *queue1 = *queue2;
+      return;
     }
 
-    if (queue1->nr_works == 0) {
-        *queue1 = *queue2;
-        return;
-    }
-
-    queue1->last->next = queue2->first;
-    queue1->last = queue2->last;
-    queue1->nr_works += queue2->nr_works;
+  queue1->last->next = queue2->first;
+  queue1->last = queue2->last;
+  queue1->nr_works += queue2->nr_works;
 }
 
 static inline void
-work_init(struct work *work, work_fn_t fn)
+work_init (struct work *work, work_fn_t fn)
 {
-    work->fn = fn;
+  work->fn = fn;
 }
 
 /*
@@ -136,8 +129,8 @@ work_init(struct work *work, work_fn_t fn)
  *
  * This function may be called from interrupt context.
  */
-void work_schedule(struct work *work, int flags);
-void work_queue_schedule(struct work_queue *queue, int flags);
+void work_schedule (struct work *work, int flags);
+void work_queue_schedule (struct work_queue *queue, int flags);
 
 /*
  * Report a periodic event (normally the periodic timer interrupt) on the
@@ -147,12 +140,12 @@ void work_queue_schedule(struct work_queue *queue, int flags);
  *
  * Interrupts and preemption must be disabled when calling this function.
  */
-void work_report_periodic_event(void);
+void work_report_periodic_event (void);
 
 /*
  * This init operation provides :
  *  - work / work queue initialization and scheduling
  */
-INIT_OP_DECLARE(work_bootstrap);
+INIT_OP_DECLARE (work_bootstrap);
 
-#endif /* KERN_WORK_H */
+#endif

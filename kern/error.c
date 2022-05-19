@@ -23,14 +23,11 @@
 #include <kern/panic.h>
 
 void
-error_check(int error, const char *prefix)
+error_check (int error, const char *prefix)
 {
-    if (!error) {
-        return;
-    }
-
-    panic("%s%s%s",
-          (prefix == NULL) ? "" : prefix,
-          (prefix == NULL) ? "" : ": ",
-          strerror(error));
+  if (error)
+    panic ("%s%s%s",
+           prefix ?: "",
+           prefix ? ": " : "",
+           strerror (error));
 }

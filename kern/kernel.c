@@ -24,43 +24,38 @@
 #include <vm/vm_page.h>
 
 void __init
-kernel_main(void)
+kernel_main (void)
 {
-    assert(!cpu_intr_enabled());
+  assert (!cpu_intr_enabled ());
 
-    init_setup();
-    vm_page_info(log_stream_info ());
+  init_setup();
+  vm_page_info (log_stream_info ());
 
 #ifdef CONFIG_TEST_MODULE
-    test_setup();
-#endif /* CONFIG_TEST_MODULE */
+  test_setup ();
+#endif
 
-    /*
-     * Enabling application processors is done late in the boot process for
-     * two reasons :
-     *  - It's much simpler to bootstrap with interrupts disabled on all
-     *    processors, enabling them only when necessary on the BSP.
-     *  - Depending on the architecture, the pmap module could create per
-     *    processor page tables. Once done, keeping the kernel page tables
-     *    synchronized requires interrupts (and potentially scheduling)
-     *    enabled on all processors.
-     *
-     * It is highly recommended not to do anything else than starting the
-     * scheduler right after this call.
-     */
-    cpu_mp_setup();
-
-    thread_run_scheduler();
-
-    /* Never reached */
+  /*
+   * Enabling application processors is done late in the boot process for
+   * two reasons :
+   *  - It's much simpler to bootstrap with interrupts disabled on all
+   *    processors, enabling them only when necessary on the BSP.
+   *  - Depending on the architecture, the pmap module could create per
+   *    processor page tables. Once done, keeping the kernel page tables
+   *    synchronized requires interrupts (and potentially scheduling)
+   *    enabled on all processors.
+   *
+   * It is highly recommended not to do anything else than starting the
+   * scheduler right after this call.
+   */
+  cpu_mp_setup ();
+  thread_run_scheduler ();
+  __builtin_unreachable ();
 }
 
 void __init
-kernel_ap_main(void)
+kernel_ap_main (void)
 {
-    assert(!cpu_intr_enabled());
-
-    thread_run_scheduler();
-
-    /* Never reached */
+  assert (!cpu_intr_enabled ());
+  thread_run_scheduler ();
 }

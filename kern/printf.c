@@ -25,59 +25,55 @@
 #include <machine/cpu.h>
 
 static int
-vprintf_common(const char *format, va_list ap, bool newline)
+vprintf_common (const char *format, va_list ap, bool newline)
 {
-    int ret = fmt_vxprintf (console_stream, format, ap);
-    if (newline)
-      console_putchar ('\n');
-    return ret;
+  int ret = fmt_vxprintf (console_stream, format, ap);
+  if (newline)
+    console_putchar ('\n');
+  return ret;
 }
 
 int
-printf(const char *format, ...)
+printf (const char *format, ...)
 {
-    va_list ap;
-    int length;
+  va_list ap;
+  va_start (ap, format);
 
-    va_start(ap, format);
-    length = vprintf(format, ap);
-    va_end(ap);
-
-    return length;
+  int length = vprintf (format, ap);
+  va_end (ap);
+  return (length);
 }
 
 int
-vprintf(const char *format, va_list ap)
+vprintf (const char *format, va_list ap)
 {
-    return vprintf_common(format, ap, false);
+  return (vprintf_common (format, ap, false));
 }
 
 int
-printf_ln(const char *format, ...)
+printf_ln (const char *format, ...)
 {
-    va_list ap;
-    int length;
+  va_list ap;
+  va_start (ap, format);
 
-    va_start(ap, format);
-    length = vprintf_common(format, ap, true);
-    va_end(ap);
-
-    return length;
+  int length = vprintf_common (format, ap, true);
+  va_end (ap);
+  return (length);
 }
 
 int
-vprintf_ln(const char *format, va_list ap)
+vprintf_ln (const char *format, va_list ap)
 {
-    return vprintf_common(format, ap, true);
+  return (vprintf_common (format, ap, true));
 }
 
 static int __init
-printf_setup(void)
+printf_setup (void)
 {
-    return 0;
+  return (0);
 }
 
-INIT_OP_DEFINE(printf_setup,
-               INIT_OP_DEP(boot_bootstrap_console, true),
-               INIT_OP_DEP(console_bootstrap, true),
-               INIT_OP_DEP(spinlock_setup, true));
+INIT_OP_DEFINE (printf_setup,
+                INIT_OP_DEP (boot_bootstrap_console, true),
+                INIT_OP_DEP (console_bootstrap, true),
+                INIT_OP_DEP (spinlock_setup, true));

@@ -18,44 +18,49 @@
 #ifndef X86_ELF_H
 #define X86_ELF_H
 
-#define ELF_SHT_SYMTAB  2
-#define ELF_SHT_STRTAB  3
+#include <stdint.h>
 
-struct elf_shdr {
-    unsigned int name;
-    unsigned int type;
-    unsigned int flags;
-    unsigned long addr;
-    unsigned long offset;
-    unsigned int size;
-    unsigned int link;
-    unsigned int info;
-    unsigned int addralign;
-    unsigned int entsize;
+#define ELF_SHT_SYMTAB   2
+#define ELF_SHT_STRTAB   3
+
+struct elf_shdr
+{
+  uint32_t name;
+  uint32_t type;
+  uint32_t flags;
+  uintptr_t addr;
+  uintptr_t offset;
+  uint32_t size;
+  uint32_t link;
+  uint32_t info;
+  uint32_t addralign;
+  uint32_t entsize;
 };
 
 #ifdef __LP64__
 
-struct elf_sym {
-    unsigned int name;
-    unsigned char info;
-    unsigned char other;
-    unsigned short shndx;
-    unsigned long value;
-    unsigned long size;
+struct elf_sym
+{
+  uint32_t name;
+  uint8_t info;
+  uint8_t other;
+  uint16_t shndx;
+  uintptr_t value;
+  uintptr_t size;
 };
 
-#else /* __LP64__ */
+#else
 
-struct elf_sym {
-    unsigned int name;
-    unsigned long value;
-    unsigned long size;
-    unsigned char info;
-    unsigned char other;
-    unsigned short shndx;
+struct elf_sym
+{
+  uint32_t name;
+  uintptr_t value;
+  uintptr_t size;
+  uint8_t info;
+  uint8_t other;
+  uint16_t shndx;
 };
 
-#endif /* __LP64__ */
+#endif
 
-#endif /* X86_ELF_H */
+#endif

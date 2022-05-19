@@ -21,15 +21,17 @@
 #include <kern/list.h>
 #include <kern/spinlock.h>
 
-struct bulletin_sub {
-    struct list node;
-    bulletin_notif_fn_t notif_fn;
-    void *arg;
+struct bulletin_sub
+{
+  struct list node;
+  bulletin_notif_fn_t notif_fn;
+  void *arg;
 };
 
-struct bulletin {
-    struct spinlock lock;
-    struct list subs;
+struct bulletin
+{
+  struct spinlock lock;
+  struct list subs;
 };
 
-#endif /* KERN_BULLETIN_I_H */
+#endif

@@ -33,20 +33,14 @@
 
 #include <kern/init.h>
 
-/*
- * Scalable reference counter.
- */
+// Scalable reference counter.
 struct sref_counter;
 
-/*
- * Weak reference.
- */
+// Weak reference.
 struct sref_weakref;
 
-/*
- * Type for no-reference functions.
- */
-typedef void (*sref_noref_fn_t)(struct sref_counter *);
+// Type for no-reference functions.
+typedef void (*sref_noref_fn_t) (struct sref_counter *);
 
 #include <kern/sref_i.h>
 
@@ -56,7 +50,7 @@ typedef void (*sref_noref_fn_t)(struct sref_counter *);
  *
  * Interrupts and preemption must be disabled when calling this function.
  */
-void sref_report_periodic_event(void);
+void sref_report_periodic_event (void);
 
 /*
  * Initialize a scalable reference counter.
@@ -64,10 +58,10 @@ void sref_report_periodic_event(void);
  * The no-reference function is called (from thread context) when it is
  * certain that the true number of references is 0.
  */
-void sref_counter_init(struct sref_counter *counter,
-                       unsigned long init_value,
-                       struct sref_weakref *weakref,
-                       sref_noref_fn_t noref_fn);
+void sref_counter_init (struct sref_counter *counter,
+                        unsigned long init_value,
+                        struct sref_weakref *weakref,
+                        sref_noref_fn_t noref_fn);
 
 /*
  * Counter operations.
@@ -76,8 +70,8 @@ void sref_counter_init(struct sref_counter *counter,
  *
  * These functions imply a compiler barrier.
  */
-void sref_counter_inc(struct sref_counter *counter);
-void sref_counter_dec(struct sref_counter *counter);
+void sref_counter_inc (struct sref_counter *counter);
+void sref_counter_dec (struct sref_counter *counter);
 
 /*
  * Attempt to get a reference from a weak reference.
@@ -87,12 +81,12 @@ void sref_counter_dec(struct sref_counter *counter);
  *
  * This function may safely be called in interrupt context.
  */
-struct sref_counter * sref_weakref_get(struct sref_weakref *weakref);
+struct sref_counter* sref_weakref_get (struct sref_weakref *weakref);
 
 /*
  * This init operation provides :
  *  - sref counter and weakref initialization and usage
  */
-INIT_OP_DECLARE(sref_bootstrap);
+INIT_OP_DECLARE (sref_bootstrap);
 
-#endif /* KERN_SREF_H */
+#endif

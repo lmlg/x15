@@ -45,14 +45,15 @@ struct turnstile_waiter;
  * (b) bucket
  * (t) turnstile_td
  */
-struct turnstile_td {
-    struct spinlock lock;
-    struct turnstile *turnstile;                /* (t)   */
-    struct turnstile_waiter *waiter;            /* (b,t) */
-    struct plist owned_turnstiles;              /* (t)   */
-    unsigned int top_global_priority;           /* (t)   */
-    unsigned char top_sched_policy;             /* (t)   */
-    unsigned short top_priority;                /* (t)   */
+struct turnstile_td
+{
+  struct spinlock lock;
+  struct turnstile *turnstile;       // (t)
+  struct turnstile_waiter *waiter;   // (b,t)
+  struct plist owned_turnstiles;     // (t)
+  uint32_t top_global_priority;      // (t)
+  uint8_t top_sched_policy;          // (t)
+  uint16_t top_priority;             // (t)
 };
 
-#endif /* KERN_TURNSTILE_TYPES_H */
+#endif

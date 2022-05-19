@@ -26,241 +26,189 @@
 #include <machine/string.h>
 
 #ifndef STRING_ARCH_MEMCPY
-void *
-memcpy(void *dest, const void *src, size_t n)
+
+void*
+memcpy (void *dest, const void *src, size_t n)
 {
-    const char *src_ptr;
-    char *dest_ptr;
-    size_t i;
+  char *dest_ptr = dest;
+  const char *src_ptr = src;
 
-    dest_ptr = dest;
-    src_ptr = src;
+  for (size_t i = 0; i < n; i++)
+    *dest_ptr++ = *src_ptr++;
 
-    for (i = 0; i < n; i++) {
-        *dest_ptr = *src_ptr;
-        dest_ptr++;
-        src_ptr++;
-    }
-
-    return dest;
+  return (dest);
 }
-#endif /* STRING_ARCH_MEMCPY */
+
+#endif
 
 #ifndef STRING_ARCH_MEMMOVE
-void *
-memmove(void *dest, const void *src, size_t n)
+
+void*
+memmove (void *dest, const void *src, size_t n)
 {
-    const char *src_ptr;
-    char *dest_ptr;
-    size_t i;
+  if (dest <= src)
+    return (memcpy (dest, src, n));
+  
+  char *dest_ptr = dest + n - 1;
+  const char *src_ptr = src + n - 1;
 
-    if (dest <= src) {
-        dest_ptr = dest;
-        src_ptr = src;
+  for (size_t i = 0; i < n; i++)
+    *--dest_ptr = *--src_ptr;
 
-        for (i = 0; i < n; i++) {
-            *dest_ptr = *src_ptr;
-            dest_ptr++;
-            src_ptr++;
-        }
-    } else {
-        dest_ptr = dest + n - 1;
-        src_ptr = src + n - 1;
-
-        for (i = 0; i < n; i++) {
-            *dest_ptr = *src_ptr;
-            dest_ptr--;
-            src_ptr--;
-        }
-    }
-
-    return dest;
+  return (dest);
 }
-#endif /* STRING_ARCH_MEMMOVE */
+
+#endif
 
 #ifndef STRING_ARCH_MEMSET
-void *
-memset(void *s, int c, size_t n)
+
+void*
+memset (void *s, int c, size_t n)
 {
-    char *buffer;
-    size_t i;
+  for (size_t i = 0; i < n; ++i)
+    ((unsigned char *)s)[i] = c;
 
-    buffer = s;
-
-    for (i = 0; i < n; i++) {
-        buffer[i] = c;
-    }
-
-    return s;
+  return (s);
 }
-#endif /* STRING_ARCH_MEMSET */
+
+#endif
 
 #ifndef STRING_ARCH_MEMCMP
+
 int
-memcmp(const void *s1, const void *s2, size_t n)
+memcmp (const void *s1, const void *s2, size_t n)
 {
-    const unsigned char *a1, *a2;
-    size_t i;
+  const unsigned char *a1 = s1, *a2 = s2;
+  for (size_t i = 0; i < n; i++)
+    if (a1[i] != a2[i])
+      return ((int)a1[i] - (int)a2[i]);
 
-    a1 = s1;
-    a2 = s2;
-
-    for (i = 0; i < n; i++) {
-        if (a1[i] != a2[i]) {
-            return (int)a1[i] - (int)a2[i];
-        }
-    }
-
-    return 0;
+  return (0);
 }
-#endif /* STRING_ARCH_MEMCMP */
+
+#endif
 
 #ifndef STRING_ARCH_STRLEN
+
 size_t
-strlen(const char *s)
+strlen (const char *s)
 {
-    const char *start;
+  const char *start = s;
+  for (; *s; ++s) 
+    ;
 
-    start = s;
-
-    while (*s != '\0') {
-        s++;
-    }
-
-    return (s - start);
+  return (s - start);
 }
-#endif /* STRING_ARCH_STRLEN */
+
+#endif
 
 #ifndef STRING_ARCH_STRCPY
+
 char *
-strcpy(char *dest, const char *src)
+strcpy (char *dest, const char *src)
 {
-    char *tmp;
-
-    tmp = dest;
-
-    while ((*dest = *src) != '\0') {
-        dest++;
-        src++;
-    }
-
-    return tmp;
+  char *tmp = dest;
+  while (*dest++ = *src++)
+    ;
+  return (tmp);
 }
-#endif /* STRING_ARCH_STRCPY */
+#endif
 
 size_t
-strlcpy(char *dest, const char *src, size_t n)
+strlcpy (char *dest, const char *src, size_t n)
 {
-    size_t len;
+  size_t len = strlen (src);
+  if (! n)
+    return (len);
 
-    len = strlen(src);
-
-    if (n == 0) {
-        goto out;
-    }
-
-    n = (len < n) ? len : n - 1;
-    memcpy(dest, src, n);
-    dest[n] = '\0';
-
-out:
-    return len;
+  n = len < n ? len : n - 1;
+  memcpy (dest, src, n);
+  dest[n] = '\0';
+  return len;
 }
 
 #ifndef STRING_ARCH_STRCMP
+
 int
-strcmp(const char *s1, const char *s2)
+strcmp (const char *s1, const char *s2)
 {
-    char c1, c2;
+  char c1, c2;
+  for (; (c1 = *s1) == (c2 = *s2); ++s1, ++s2)
+    if (! c1)
+      return (0);
 
-    while ((c1 = *s1) == (c2 = *s2)) {
-        if (c1 == '\0') {
-            return 0;
-        }
-
-        s1++;
-        s2++;
-    }
-
-    /* See C11 7.24.4 Comparison functions */
-    return (int)(unsigned char)c1 - (int)(unsigned char)c2;
+  // See C11 7.24.4 Comparison functions.
+  return ((int)(unsigned char)c1 - (int)(unsigned char)c2);
 }
-#endif /* STRING_ARCH_STRCMP */
+#endif
 
 #ifndef STRING_ARCH_STRNCMP
+
 int
-strncmp(const char *s1, const char *s2, size_t n)
+strncmp (const char *s1, const char *s2, size_t n)
 {
-    char c1, c2;
+  if (unlikely (! n))
+    return (0);
 
-    if (unlikely(n == 0)) {
-        return 0;
-    }
+  char c1, c2;
+  for (; n && (c1 = *s1) == (c2 = *s2); --n, ++s1, ++s2)
+    if (! c1)
+      return (0);
 
-    while ((n != 0) && (c1 = *s1) == (c2 = *s2)) {
-        if (c1 == '\0') {
-            return 0;
-        }
-
-        n--;
-        s1++;
-        s2++;
-    }
-
-    /* See C11 7.24.4 Comparison functions */
-    return (int)(unsigned char)c1 - (int)(unsigned char)c2;
+  // See C11 7.24.4 Comparison functions */
+  return ((int) (unsigned char)c1 - (int)(unsigned char)c2);
 }
-#endif /* STRING_ARCH_STRNCMP */
+
+#endif
 
 #ifndef STRING_ARCH_STRCHR
-char *
-strchr(const char *s, int c)
-{
-    for (;;) {
-        if (*s == c) {
-            return (char *)s;
-        } else if (*s == '\0') {
-            return NULL;
-        }
 
-        s++;
-    }
+char*
+strchr (const char *s, int c)
+{
+  for ( ; ; ++s)
+    if (*s == c)
+      return ((char *)s);
+    else if (*s == '\0')
+      return (NULL);
 }
-#endif /* STRING_ARCH_STRCHR */
 
-const char *
-strerror(int error)
+#endif
+
+const char*
+strerror (int error)
 {
-    switch (error) {
-    case 0:
-        return "success";
-    case ENOMEM:
-        return "out of memory";
-    case EAGAIN:
-        return "resource temporarily unavailable";
-    case EINVAL:
-        return "invalid argument";
-    case EBUSY:
-        return "device or resource busy";
-    case EFAULT:
-        return "bad address";
-    case ENODEV:
-        return "no such device";
-    case EEXIST:
-        return "entry exists";
-    case EIO:
-        return "input/output error";
-    case ESRCH:
-        return "no such process";
-    case ETIMEDOUT:
-        return "timeout error";
-    case ENOENT:
-        return "no such file or directory";
-    case EOVERFLOW:
-        return "value too large to be stored in data type";
-    case EMSGSIZE:
-        return "message too long";
-    default:
-        return "unknown error";
+  switch (error)
+    {
+      case 0:
+        return ("success");
+      case ENOMEM:
+        return ("out of memory");
+      case EAGAIN:
+        return ("resource temporarily unavailable");
+      case EINVAL:
+        return ("invalid argument");
+      case EBUSY:
+        return ("device or resource busy");
+      case EFAULT:
+        return ("bad address");
+      case ENODEV:
+        return ("no such device");
+      case EEXIST:
+        return ("entry exists");
+      case EIO:
+        return ("input/output error");
+      case ESRCH:
+        return ("no such process");
+      case ETIMEDOUT:
+        return ("timeout error");
+      case ENOENT:
+        return ("no such file or directory");
+      case EOVERFLOW:
+        return ("value too large to be stored in data type");
+      case EMSGSIZE:
+        return ("message too long");
+      default:
+        return ("unknown error");
     }
 }

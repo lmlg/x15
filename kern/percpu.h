@@ -61,10 +61,10 @@
 #include <kern/macros.h>
 #include <kern/slist_types.h>
 
-#define PERCPU_SECTION .percpu
-#define __percpu __section(QUOTE(PERCPU_SECTION))
+#define PERCPU_SECTION   .percpu
+#define __percpu   __section(QUOTE(PERCPU_SECTION))
 
-typedef void (*percpu_op_fn_t)(void);
+typedef void (*percpu_op_fn_t) (void);
 
 /*
  * Per-CPU operation.
@@ -72,12 +72,13 @@ typedef void (*percpu_op_fn_t)(void);
  * These operations allow initialization code to register functions to be run
  * on APs when they're started.
  */
-struct percpu_op {
-    struct slist_node node;
-    percpu_op_fn_t fn;
+struct percpu_op
+{
+  struct slist_node node;
+  percpu_op_fn_t fn;
 };
 
-#define PERCPU_OP_INITIALIZER(op_fn) { .fn = op_fn }
+#define PERCPU_OP_INITIALIZER(op_fn)   { .fn = op_fn }
 
 /*
  * Boundaries of the percpu section.
@@ -88,27 +89,22 @@ struct percpu_op {
 extern char _percpu;
 extern char _percpu_end;
 
-/*
- * Expands to the address of a percpu variable.
- */
-#define percpu_ptr(var, cpu) \
-    ((typeof(var) *)(percpu_area(cpu) + ((uintptr_t)(&(var)))))
+// Expands to the address of a percpu variable.
+#define percpu_ptr(var, cpu)   \
+  ((typeof (var) *)(percpu_area (cpu) + ((uintptr_t)(&(var)))))
 
-/*
- * Expands to the lvalue of a percpu variable.
- */
-#define percpu_var(var, cpu) (*(percpu_ptr(var, cpu)))
+// Expands to the lvalue of a percpu variable.
+#define percpu_var(var, cpu)   (*percpu_ptr(var, cpu))
 
-static inline void *
-percpu_area(unsigned int cpu)
+static inline void*
+percpu_area (unsigned int cpu)
 {
-    extern void *percpu_areas[CONFIG_MAX_CPUS];
-    void *area;
+  extern void *percpu_areas[CONFIG_MAX_CPUS];
 
-    assert(cpu < ARRAY_SIZE(percpu_areas));
-    area = percpu_areas[cpu];
-    assert(area != NULL);
-    return area;
+  assert (cpu < ARRAY_SIZE (percpu_areas));
+  void *area = percpu_areas[cpu];
+  assert (area);
+  return (area);
 }
 
 /*
@@ -118,7 +114,7 @@ percpu_area(unsigned int cpu)
  * The operation is run on the BSP when it's registered. It's run as late as
  * possible on APs, normally right before scheduling is enabled.
  */
-void percpu_register_op(struct percpu_op *op);
+void percpu_register_op (struct percpu_op *op);
 
 /*
  * Register a processor.
@@ -127,18 +123,18 @@ void percpu_register_op(struct percpu_op *op);
  * given processor. The created area is filled from the content of the
  * percpu section.
  */
-int percpu_add(unsigned int cpu);
+int percpu_add (unsigned int cpu);
 
 /*
  * Run registered percpu operations on an AP.
  */
-void percpu_ap_setup(void);
+void percpu_ap_setup (void);
 
 /*
  * This init operation provides :
  *  - access to percpu variables on processor 0
  */
-INIT_OP_DECLARE(percpu_bootstrap);
+INIT_OP_DECLARE (percpu_bootstrap);
 
 /*
  * This init operation provides :
@@ -150,6 +146,6 @@ INIT_OP_DECLARE(percpu_bootstrap);
  *
  * TODO Add percpu alias to cpu_mp_probe.
  */
-INIT_OP_DECLARE(percpu_setup);
+INIT_OP_DECLARE (percpu_setup);
 
-#endif /* KERN_PERCPU_H */
+#endif

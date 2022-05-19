@@ -34,17 +34,17 @@
 struct vm_object;
 
 static inline struct vm_object *
-vm_object_get_kernel_object(void)
+vm_object_get_kernel_object (void)
 {
-    extern struct vm_object vm_object_kernel_object;
+  extern struct vm_object vm_object_kernel_object;
 
-    return &vm_object_kernel_object;
+  return &vm_object_kernel_object;
 }
 
 /*
  * Initialize a VM object.
  */
-void vm_object_init(struct vm_object *object, uint64_t size);
+void vm_object_init (struct vm_object *object, uint64_t size);
 
 /*
  * Insert a page into a VM object.
@@ -55,8 +55,8 @@ void vm_object_init(struct vm_object *object, uint64_t size);
  * the reference is kept. Otherwise it's dropped. If the page had
  * no references on entry, and a failure occurs, the page is freed.
  */
-int vm_object_insert(struct vm_object *object, struct vm_page *page,
-                     uint64_t offset);
+int vm_object_insert (struct vm_object *object, struct vm_page *page,
+                      uint64_t offset);
 
 /*
  * Remove pages from a VM object.
@@ -66,7 +66,7 @@ int vm_object_insert(struct vm_object *object, struct vm_page *page,
  * Holes in the given range are silently skipped. Pages that are removed
  * become unmanaged and lose a reference.
  */
-void vm_object_remove(struct vm_object *object, uint64_t start, uint64_t end);
+void vm_object_remove (struct vm_object *object, uint64_t start, uint64_t end);
 
 /*
  * Look up a page in a VM object.
@@ -77,12 +77,12 @@ void vm_object_remove(struct vm_object *object, uint64_t start, uint64_t end);
  * page is returned, it may already have been removed from the object, or
  * moved at a different offset.
  */
-struct vm_page * vm_object_lookup(struct vm_object *object, uint64_t offset);
+struct vm_page * vm_object_lookup (struct vm_object *object, uint64_t offset);
 
 /*
  * This init operation provides :
  *  - module fully initialized
  */
-INIT_OP_DECLARE(vm_object_setup);
+INIT_OP_DECLARE (vm_object_setup);
 
 #endif /* VM_OBJECT_H */

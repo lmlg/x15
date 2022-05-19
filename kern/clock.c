@@ -32,8 +32,9 @@
 #include <machine/boot.h>
 #include <machine/cpu.h>
 
-struct clock_cpu_data {
-    struct syscnt sc_tick_intrs;
+struct clock_cpu_data
+{
+  struct syscnt sc_tick_intrs;
 };
 
 static struct clock_cpu_data clock_cpu_data __percpu;
@@ -41,59 +42,55 @@ static struct clock_cpu_data clock_cpu_data __percpu;
 union clock_global_time clock_global_time;
 
 static inline void __init
-clock_cpu_data_init(struct clock_cpu_data *cpu_data, unsigned int cpu)
+clock_cpu_data_init (struct clock_cpu_data *cpu_data, unsigned int cpu)
 {
-    char name[SYSCNT_NAME_SIZE];
+  char name[SYSCNT_NAME_SIZE];
 
-    snprintf(name, sizeof(name), "clock_tick_intrs/%u", cpu);
-    syscnt_register(&cpu_data->sc_tick_intrs, name);
+  snprintf (name, sizeof (name), "clock_tick_intrs/%u", cpu);
+  syscnt_register (&cpu_data->sc_tick_intrs, name);
 }
 
 static int __init
-clock_setup(void)
+clock_setup (void)
 {
-    for (unsigned int cpu = 0; cpu < cpu_count(); cpu++) {
-        clock_cpu_data_init(percpu_ptr(clock_cpu_data, cpu), cpu);
-    }
+  for (unsigned int cpu = 0; cpu < cpu_count (); cpu++)
+    clock_cpu_data_init (percpu_ptr (clock_cpu_data, cpu), cpu);
 
-    return 0;
+  return 0;
 }
 
-INIT_OP_DEFINE(clock_setup,
-               INIT_OP_DEP(cpu_mp_probe, true),
-               INIT_OP_DEP(syscnt_setup, true));
+INIT_OP_DEFINE (clock_setup,
+                INIT_OP_DEP (cpu_mp_probe, true),
+                INIT_OP_DEP (syscnt_setup, true));
 
-void clock_tick_intr(void)
+void clock_tick_intr (void)
 {
-    struct clock_cpu_data *cpu_data;
+  struct clock_cpu_data *cpu_data;
 
-    assert(thread_check_intr_context());
+  assert (thread_check_intr_context ());
 
-    if (cpu_id() == 0) {
-#ifdef ATOMIC_HAVE_64B_OPS
+  if (cpu_id() == 0)
+    {
+#ifdef __LP64__
+      atomic_add (&clock_global_time.ticks, 1ULL, ATOMIC_RELAXED);
+#else
+      union clock_global_time t;
 
-        atomic_add(&clock_global_time.ticks, 1ULL, ATOMIC_RELAXED);
+      t.ticks = clock_global_time.ticks;
+      t.ticks++;
 
-#else /* ATOMIC_HAVE_64B_OPS */
-
-        union clock_global_time t;
-
-        t.ticks = clock_global_time.ticks;
-        t.ticks++;
-
-        atomic_store(&clock_global_time.high2, t.high1, ATOMIC_RELAXED);
-        atomic_store(&clock_global_time.low, t.low, ATOMIC_RELEASE);
-        atomic_store(&clock_global_time.high1, t.high1, ATOMIC_RELEASE);
-
-#endif /* ATOMIC_HAVE_64B_OPS */
+      atomic_store (&clock_global_time.high2, t.high1, ATOMIC_RELAXED);
+      atomic_store (&clock_global_time.low, t.low, ATOMIC_RELEASE);
+      atomic_store (&clock_global_time.high1, t.high1, ATOMIC_RELEASE);
+#endif
     }
 
-    timer_report_periodic_event();
-    rcu_report_periodic_event();
-    sref_report_periodic_event();
-    work_report_periodic_event();
-    thread_report_periodic_event();
+  timer_report_periodic_event ();
+  rcu_report_periodic_event ();
+  sref_report_periodic_event ();
+  work_report_periodic_event ();
+  thread_report_periodic_event ();
 
-    cpu_data = cpu_local_ptr(clock_cpu_data);
-    syscnt_inc(&cpu_data->sc_tick_intrs);
+  cpu_data = cpu_local_ptr (clock_cpu_data);
+  syscnt_inc (&cpu_data->sc_tick_intrs);
 }

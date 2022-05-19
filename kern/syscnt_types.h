@@ -31,14 +31,15 @@
  * Use atomic access on 64-bits systems, spinlock based critical sections
  * on 32-bits ones.
  */
-struct syscnt {
+struct syscnt
+{
 #ifndef ATOMIC_HAVE_64B_OPS
-    struct spinlock lock;
-#endif /* __LP64__ */
+  struct spinlock lock;
+#endif
 
-    uint64_t value;
-    struct list node;
-    char name[SYSCNT_NAME_SIZE];
+  uint64_t value;
+  struct list node;
+  char name[SYSCNT_NAME_SIZE];
 };
 
-#endif /* KERN_SYSCNT_TYPES_H */
+#endif

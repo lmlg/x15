@@ -25,8 +25,8 @@
 #include <kern/mutex.h>
 #include <machine/cpu.h>
 
-#if defined(CONFIG_SMP) && !defined(CONFIG_KMEM_NO_CPU_LAYER)
-#define KMEM_USE_CPU_LAYER
+#if defined (CONFIG_SMP) && !defined (CONFIG_KMEM_NO_CPU_LAYER)
+  #define KMEM_USE_CPU_LAYER
 #endif
 
 #ifdef KMEM_USE_CPU_LAYER
@@ -36,13 +36,14 @@
  *
  * The flags member is a read-only CPU-local copy of the parent cache flags.
  */
-struct kmem_cpu_pool {
-    alignas(CPU_L1_SIZE) struct mutex lock;
-    int flags;
-    int size;
-    int transfer_size;
-    int nr_objs;
-    void **array;
+struct kmem_cpu_pool
+{
+  alignas (CPU_L1_SIZE) struct mutex lock;
+  int flags;
+  int size;
+  int transfer_size;
+  int nr_objs;
+  void **array;
 };
 
 /*
@@ -51,14 +52,15 @@ struct kmem_cpu_pool {
  * Conversely, for large buffer sizes, this would incur much overhead, so only
  * a few objects are stored in a CPU pool.
  */
-struct kmem_cpu_pool_type {
-    size_t buf_size;
-    int array_size;
-    size_t array_align;
-    struct kmem_cache *array_cache;
+struct kmem_cpu_pool_type
+{
+  size_t buf_size;
+  int array_size;
+  size_t array_align;
+  struct kmem_cache *array_cache;
 };
 
-#endif /* KMEM_USE_CPU_LAYER */
+#endif   // KMEM_USE_CPU_LAYER
 
 /*
  * Buffer descriptor.
@@ -70,32 +72,29 @@ struct kmem_cpu_pool_type {
  * When an object is allocated to a client, its bufctl isn't used. This memory
  * is instead used for redzoning if cache debugging is in effect.
  */
-union kmem_bufctl {
-    union kmem_bufctl *next;
-    unsigned long redzone;
+union kmem_bufctl
+{
+  union kmem_bufctl *next;
+  uintptr_t redzone;
 };
 
-/*
- * Redzone guard word.
- */
+// Redzone guard word.
 #ifdef __LP64__
-#if __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
-#define KMEM_REDZONE_WORD 0xfeedfacefeedfaceUL
-#else /* __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__ */
-#define KMEM_REDZONE_WORD 0xcefaedfecefaedfeUL
-#endif /* __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__ */
-#else /* __LP64__ */
-#if __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
-#define KMEM_REDZONE_WORD 0xfeedfaceUL
-#else /* __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__ */
-#define KMEM_REDZONE_WORD 0xcefaedfeUL
-#endif /* __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__ */
-#endif /* __LP64__ */
+  #if __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
+    #define KMEM_REDZONE_WORD 0xfeedfacefeedfaceUL
+  #else
+    #define KMEM_REDZONE_WORD 0xcefaedfecefaedfeUL
+  #endif
+#else
+  #if __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
+    #define KMEM_REDZONE_WORD 0xfeedfaceUL
+  #else
+    #define KMEM_REDZONE_WORD 0xcefaedfeUL
+  #endif
+#endif
 
-/*
- * Redzone byte for padding.
- */
-#define KMEM_REDZONE_BYTE 0xbb
+// Redzone byte for padding.
+#define KMEM_REDZONE_BYTE   0xbb
 
 /*
  * Buffer tag.
@@ -105,30 +104,29 @@ union kmem_bufctl {
  * describes (allocated or not). It should be thought of as a debugging
  * extension of the bufctl.
  */
-struct kmem_buftag {
-    unsigned long state;
+struct kmem_buftag
+{
+  uintptr_t state;
 };
 
-/*
- * Values the buftag state member can take.
- */
+// Values the buftag state member can take.
 #ifdef __LP64__
-#if __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
-#define KMEM_BUFTAG_ALLOC   0xa110c8eda110c8edUL
-#define KMEM_BUFTAG_FREE    0xf4eeb10cf4eeb10cUL
-#else /* __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__ */
-#define KMEM_BUFTAG_ALLOC   0xedc810a1edc810a1UL
-#define KMEM_BUFTAG_FREE    0x0cb1eef40cb1eef4UL
-#endif /* __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__ */
-#else /* __LP64__ */
-#if __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
-#define KMEM_BUFTAG_ALLOC   0xa110c8edUL
-#define KMEM_BUFTAG_FREE    0xf4eeb10cUL
-#else /* __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__ */
-#define KMEM_BUFTAG_ALLOC   0xedc810a1UL
-#define KMEM_BUFTAG_FREE    0x0cb1eef4UL
-#endif /* __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__ */
-#endif /* __LP64__ */
+  #if __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
+    #define KMEM_BUFTAG_ALLOC   0xa110c8eda110c8edUL
+    #define KMEM_BUFTAG_FREE    0xf4eeb10cf4eeb10cUL
+  #else
+    #define KMEM_BUFTAG_ALLOC   0xedc810a1edc810a1UL
+    #define KMEM_BUFTAG_FREE    0x0cb1eef40cb1eef4UL
+  #endif
+#else
+  #if __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
+    #define KMEM_BUFTAG_ALLOC   0xa110c8edUL
+    #define KMEM_BUFTAG_FREE    0xf4eeb10cUL
+  #else
+    #define KMEM_BUFTAG_ALLOC   0xedc810a1UL
+    #define KMEM_BUFTAG_FREE    0x0cb1eef4UL
+  #endif
+#endif
 
 /*
  * Free and uninitialized patterns.
@@ -137,12 +135,12 @@ struct kmem_buftag {
  * 8-byte aligned.
  */
 #if __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
-#define KMEM_FREE_PATTERN   0xdeadbeefdeadbeefULL
-#define KMEM_UNINIT_PATTERN 0xbaddcafebaddcafeULL
-#else /* __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__ */
-#define KMEM_FREE_PATTERN   0xefbeaddeefbeaddeULL
-#define KMEM_UNINIT_PATTERN 0xfecaddbafecaddbaULL
-#endif /* __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__ */
+  #define KMEM_FREE_PATTERN     0xdeadbeefdeadbeefULL
+  #define KMEM_UNINIT_PATTERN   0xbaddcafebaddcafeULL
+#else
+  #define KMEM_FREE_PATTERN     0xefbeaddeefbeaddeULL
+  #define KMEM_UNINIT_PATTERN   0xfecaddbafecaddbaULL
+#endif
 
 /*
  * Page-aligned collection of unconstructed buffers.
@@ -151,17 +149,16 @@ struct kmem_buftag {
  * fragmentation allows it, or if forced by the cache creator, from the slab
  * it describes.
  */
-struct kmem_slab {
-    struct list node;
-    unsigned long nr_refs;
-    union kmem_bufctl *first_free;
-    void *addr;
+struct kmem_slab
+{
+  struct list node;
+  size_t nr_refs;
+  union kmem_bufctl *first_free;
+  void *addr;
 };
 
-/*
- * Cache name buffer size.
- */
-#define KMEM_NAME_SIZE 32
+// Cache name buffer size.
+#define KMEM_NAME_SIZE   32
 
 /*
  * Cache flags.
@@ -176,35 +173,36 @@ struct kmem_slab {
  *
  * Locking order : cpu_pool -> cache. CPU pools locking is ordered by CPU ID.
  */
-struct kmem_cache {
+struct kmem_cache
+{
 #ifdef KMEM_USE_CPU_LAYER
-    /* CPU pool layer */
-    struct kmem_cpu_pool cpu_pools[CONFIG_MAX_CPUS];
-    struct kmem_cpu_pool_type *cpu_pool_type;
-#endif /* KMEM_USE_CPU_LAYER */
+  // CPU pool layer.
+  struct kmem_cpu_pool cpu_pools[CONFIG_MAX_CPUS];
+  struct kmem_cpu_pool_type *cpu_pool_type;
+#endif
 
-    /* Slab layer */
-    struct mutex lock;
-    struct list node;   /* Cache list linkage */
-    struct list partial_slabs;
-    struct list free_slabs;
-    int flags;
-    size_t obj_size;    /* User-provided size */
-    size_t align;
-    size_t buf_size;    /* Aligned object size */
-    size_t bufctl_dist; /* Distance from buffer to bufctl */
-    size_t slab_size;
-    size_t color;
-    size_t color_max;
-    unsigned long bufs_per_slab;
-    unsigned long nr_objs;  /* Number of allocated objects */
-    unsigned long nr_bufs;  /* Total number of buffers */
-    unsigned long nr_slabs;
-    unsigned long nr_free_slabs;
-    kmem_ctor_fn_t ctor;
-    char name[KMEM_NAME_SIZE];
-    size_t buftag_dist; /* Distance from buffer to buftag */
-    size_t redzone_pad; /* Bytes from end of object to redzone word */
+  // Slab layer.
+  struct mutex lock;
+  struct list node;   // Cache list linkage.
+  struct list partial_slabs;
+  struct list free_slabs;
+  int flags;
+  size_t obj_size;    // User-provided size.
+  size_t align;
+  size_t buf_size;    /* Aligned object size */
+  size_t bufctl_dist; /* Distance from buffer to bufctl */
+  size_t slab_size;
+  size_t color;
+  size_t color_max;
+  size_t bufs_per_slab;
+  size_t nr_objs;  // Number of allocated objects.
+  size_t nr_bufs;  // Total number of buffers.
+  size_t nr_slabs;
+  size_t nr_free_slabs;
+  kmem_ctor_fn_t ctor;
+  char name[KMEM_NAME_SIZE];
+  size_t buftag_dist; // Distance from buffer to buftag.
+  size_t redzone_pad; // Bytes from end of object to redzone word.
 };
 
-#endif /* KERN_KMEM_I_H */
+#endif

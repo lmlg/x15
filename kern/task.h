@@ -27,63 +27,54 @@
 #include <kern/thread.h>
 #include <vm/vm_map.h>
 
-/*
- * Task name buffer size.
- */
-#define TASK_NAME_SIZE 32
+// Task name buffer size.
+#define TASK_NAME_SIZE   32
 
-/*
- * Task structure.
- */
-struct task {
-    unsigned long nr_refs;
-    struct spinlock lock;
-    struct list node;
-    struct list threads;
-    struct vm_map *map;
-    char name[TASK_NAME_SIZE];
+// Task structure.
+struct task
+{
+  size_t nr_refs;
+  struct spinlock lock;
+  struct list node;
+  struct list threads;
+  struct vm_map *map;
+  char name[TASK_NAME_SIZE];
 };
 
-static inline struct task *
-task_get_kernel_task(void)
+static inline struct task*
+task_get_kernel_task (void)
 {
-    extern struct task task_kernel_task;
-
-    return &task_kernel_task;
+  extern struct task task_kernel_task;
+  return (&task_kernel_task);
 }
 
 static inline void
-task_ref(struct task *task)
+task_ref (struct task *task)
 {
-    unsigned long nr_refs;
-
-    nr_refs = atomic_fetch_add(&task->nr_refs, 1UL, ATOMIC_RELAXED);
-    assert(nr_refs != (unsigned long)-1);
+  size_t nr_refs = atomic_add_rlx (&task->nr_refs, 1);
+  assert (nr_refs != (size_t)-1);
 }
 
 static inline void
-task_unref(struct task *task)
+task_unref (struct task *task)
 {
-    unsigned long nr_refs;
+  size_t nr_refs = atomic_sub (&task->nr_refs, 1UL, ATOMIC_ACQ_REL);
+  assert (nr_refs);
 
-    nr_refs = atomic_fetch_sub(&task->nr_refs, 1UL, ATOMIC_ACQ_REL);
-    assert(nr_refs != 0);
-
-    if (nr_refs == 1) {
-        /* TODO Task destruction */
+  if (nr_refs == 1)
+    {
+      /* TODO Task destruction */
     }
 }
 
-static inline struct vm_map *
-task_get_vm_map(const struct task *task)
+static inline struct vm_map*
+task_get_vm_map (const struct task *task)
 {
-    return task->map;
+  return (task->map);
 }
 
-/*
- * Create a task.
- */
-int task_create(struct task **taskp, const char *name);
+// Create a task.
+int task_create (struct task **taskp, const char *name);
 
 /*
  * Look up a task from its name.
@@ -92,17 +83,13 @@ int task_create(struct task **taskp, const char *name);
  *
  * This function is meant for debugging only.
  */
-struct task * task_lookup(const char *name);
+struct task * task_lookup (const char *name);
 
-/*
- * Add a thread to a task.
- */
-void task_add_thread(struct task *task, struct thread *thread);
+// Add a thread to a task.
+void task_add_thread (struct task *task, struct thread *thread);
 
-/*
- * Remove a thread from a task.
- */
-void task_remove_thread(struct task *task, struct thread *thread);
+// Remove a thread from a task.
+void task_remove_thread (struct task *task, struct thread *thread);
 
 /*
  * Look up a thread in a task from its name.
@@ -111,20 +98,20 @@ void task_remove_thread(struct task *task, struct thread *thread);
  *
  * This function is meant for debugging only.
  */
-struct thread * task_lookup_thread(struct task *task, const char *name);
+struct thread * task_lookup_thread (struct task *task, const char *name);
 
 /*
  * Display task information.
  *
  * If task is NULL, this function displays all tasks.
  */
-void task_info(struct task *task, struct stream *stream);
+void task_info (struct task *task, struct stream *stream);
 
 /*
  * This init operation provides :
  *  - task creation
  *  - module fully initialized
  */
-INIT_OP_DECLARE(task_setup);
+INIT_OP_DECLARE (task_setup);
 
-#endif /* KERN_TASK_H */
+#endif

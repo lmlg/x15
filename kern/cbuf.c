@@ -27,202 +27,180 @@
 #include <kern/cbuf.h>
 #include <kern/macros.h>
 
-/* Negative close to 0 so that an overflow occurs early */
-#define CBUF_INIT_INDEX ((size_t)-500)
+// Negative close to 0 so that an overflow occurs early.
+#define CBUF_INIT_INDEX   ((size_t)-500)
 
 void
-cbuf_init(struct cbuf *cbuf, void *buf, size_t capacity)
+cbuf_init (struct cbuf *cbuf, void *buf, size_t capacity)
 {
-    assert(ISP2(capacity));
+  assert (ISP2 (capacity));
 
-    cbuf->buf = buf;
-    cbuf->capacity = capacity;
-    cbuf->start = CBUF_INIT_INDEX;
-    cbuf->end = cbuf->start;
+  cbuf->buf = buf;
+  cbuf->capacity = capacity;
+  cbuf->start = CBUF_INIT_INDEX;
+  cbuf->end = cbuf->start;
 }
 
 static size_t
-cbuf_index(const struct cbuf *cbuf, size_t abs_index)
+cbuf_index (const struct cbuf *cbuf, size_t abs_index)
 {
-    return abs_index & (cbuf->capacity - 1);
+  return (abs_index & (cbuf->capacity - 1));
 }
 
 static void
-cbuf_update_start(struct cbuf *cbuf)
+cbuf_update_start (struct cbuf *cbuf)
 {
-    if (cbuf_size(cbuf) > cbuf->capacity) {
-        cbuf->start = cbuf->end - cbuf->capacity;
-    }
+  if (cbuf_size (cbuf) > cbuf->capacity)
+    cbuf->start = cbuf->end - cbuf->capacity;
 }
 
 static void
-cbuf_update_end(struct cbuf *cbuf)
+cbuf_update_end (struct cbuf *cbuf)
 {
-    if (cbuf_size(cbuf) > cbuf->capacity) {
-        cbuf->end = cbuf->start + cbuf->capacity;
-    }
+  if (cbuf_size (cbuf) > cbuf->capacity)
+    cbuf->end = cbuf->start + cbuf->capacity;
 }
 
 int
-cbuf_push(struct cbuf *cbuf, const void *buf, size_t size, bool erase)
+cbuf_push (struct cbuf *cbuf, const void *buf, size_t size, bool erase)
 {
-    if (!erase) {
-        size_t avail_size;
+  if (!erase)
+    {
+      size_t avail_size = cbuf_avail_size (cbuf);
+      if (size > avail_size)
+        return (EAGAIN);
+    }
 
-        avail_size = cbuf_avail_size(cbuf);
+  return (cbuf_write (cbuf, cbuf_end (cbuf), buf, size));
+}
 
-        if (size > avail_size) {
-            return EAGAIN;
+int
+cbuf_pop (struct cbuf *cbuf, void *buf, size_t *sizep)
+{
+  if (cbuf_size (cbuf) == 0)
+    return (EAGAIN);
+
+  int error = cbuf_read (cbuf, cbuf_start (cbuf), buf, sizep);
+  assert (!error);
+  cbuf->start += *sizep;
+  return (0);
+}
+
+int
+cbuf_pushb (struct cbuf *cbuf, uint8_t byte, bool erase)
+{
+  if (!erase)
+    {
+      size_t avail_size = cbuf_avail_size (cbuf);
+      if (! avail_size)
+        return (EAGAIN);
+    }
+
+  cbuf->buf[cbuf_index (cbuf, cbuf->end)] = byte;
+  cbuf->end++;
+  cbuf_update_start (cbuf);
+  return 0;
+}
+
+int
+cbuf_popb (struct cbuf *cbuf, void *bytep)
+{
+  if (cbuf_size (cbuf) == 0)
+    return (EAGAIN);
+
+  uint8_t *ptr = bytep;
+  if (ptr)
+    *ptr = cbuf->buf[cbuf_index (cbuf, cbuf->start)];
+
+  cbuf->start++;
+  return (0);
+}
+
+int
+cbuf_write (struct cbuf *cbuf, size_t index, const void *buf, size_t size)
+{
+  if (!cbuf_index_valid (cbuf, index) )
+    return EINVAL;
+
+  size_t new_end = index + size;
+
+  if (!cbuf_index_valid (cbuf, new_end) )
+    {
+      cbuf->end = new_end;
+      cbuf_update_start (cbuf);
+
+      if (size > cbuf->capacity)
+        {
+          size_t skip = size - cbuf->capacity;
+          buf = (const char *)buf + skip;
+          index += skip;
+          size = cbuf->capacity;
         }
     }
 
-    return cbuf_write(cbuf, cbuf_end(cbuf), buf, size);
+  uint8_t *start = &cbuf->buf[cbuf_index (cbuf, index)],
+          *end = start + size,
+          *buf_end = cbuf->buf + cbuf->capacity;
+
+  if (end < cbuf->buf || end > buf_end)
+    {
+      size_t skip = buf_end - start;
+      memcpy (start, buf, skip);
+      buf = (const char *)buf + skip;
+      start = cbuf->buf;
+      size -= skip;
+    }
+
+  memcpy (start, buf, size);
+  return (0);
 }
 
 int
-cbuf_pop(struct cbuf *cbuf, void *buf, size_t *sizep)
+cbuf_read (const struct cbuf *cbuf, size_t index, void *buf, size_t *sizep)
 {
-    int error;
+  if (!cbuf_index_valid (cbuf, index) )
+    return (EINVAL);
 
-    if (cbuf_size(cbuf) == 0) {
-        return EAGAIN;
-    }
+  size_t size = cbuf->end - index;
+  if (*sizep > size)
+    *sizep = size;
 
-    error = cbuf_read(cbuf, cbuf_start(cbuf), buf, sizep);
-    assert(!error);
-    cbuf->start += *sizep;
-    return 0;
-}
+  const uint8_t *start = &cbuf->buf[cbuf_index (cbuf, index)],
+                *end = start + *sizep,
+                *buf_end = cbuf->buf + cbuf->capacity;
 
-int
-cbuf_pushb(struct cbuf *cbuf, uint8_t byte, bool erase)
-{
-    if (!erase) {
-        size_t avail_size;
+  if (end > cbuf->buf && end <= buf_end)
+    size = *sizep;
+  else
+    {
+      size = buf_end - start;
 
-        avail_size = cbuf_avail_size(cbuf);
-
-        if (avail_size == 0) {
-            return EAGAIN;
-        }
-    }
-
-    cbuf->buf[cbuf_index(cbuf, cbuf->end)] = byte;
-    cbuf->end++;
-    cbuf_update_start(cbuf);
-    return 0;
-}
-
-int
-cbuf_popb(struct cbuf *cbuf, void *bytep)
-{
-    uint8_t *ptr;
-
-    if (cbuf_size(cbuf) == 0) {
-        return EAGAIN;
-    }
-
-    ptr = bytep;
-
-    if (ptr) {
-        *ptr = cbuf->buf[cbuf_index(cbuf, cbuf->start)];
-    }
-
-    cbuf->start++;
-    return 0;
-}
-
-int
-cbuf_write(struct cbuf *cbuf, size_t index, const void *buf, size_t size)
-{
-    uint8_t *start, *end, *buf_end;
-    size_t new_end, skip;
-
-    if (!cbuf_index_valid(cbuf, index)) {
-        return EINVAL;
-    }
-
-    new_end = index + size;
-
-    if (!cbuf_index_valid(cbuf, new_end)) {
-        cbuf->end = new_end;
-        cbuf_update_start(cbuf);
-
-        if (size > cbuf->capacity) {
-            skip = size - cbuf->capacity;
-            buf += skip;
-            index += skip;
-            size = cbuf->capacity;
-        }
-    }
-
-    start = &cbuf->buf[cbuf_index(cbuf, index)];
-    end = start + size;
-    buf_end = cbuf->buf + cbuf->capacity;
-
-    if ((end < cbuf->buf) || (end > buf_end)) {
-        skip = buf_end - start;
-        memcpy(start, buf, skip);
-        buf += skip;
-        start = cbuf->buf;
-        size -= skip;
-    }
-
-    memcpy(start, buf, size);
-    return 0;
-}
-
-int
-cbuf_read(const struct cbuf *cbuf, size_t index, void *buf, size_t *sizep)
-{
-    const uint8_t *start, *end, *buf_end;
-    size_t size;
-
-    if (!cbuf_index_valid(cbuf, index)) {
-        return EINVAL;
-    }
-
-    size = cbuf->end - index;
-
-    if (*sizep > size) {
-        *sizep = size;
-    }
-
-    start = &cbuf->buf[cbuf_index(cbuf, index)];
-    end = start + *sizep;
-    buf_end = cbuf->buf + cbuf->capacity;
-
-    if ((end > cbuf->buf) && (end <= buf_end)) {
-        size = *sizep;
-    } else {
-        size = buf_end - start;
-
-        if (buf) {
-            memcpy(buf, start, size);
-            buf += size;
+      if (buf)
+        {
+          memcpy (buf, start, size);
+          buf += size;
         }
 
-        start = cbuf->buf;
-        size = *sizep - size;
+      start = cbuf->buf;
+      size = *sizep - size;
     }
 
-    if (buf) {
-        memcpy(buf, start, size);
-    }
+  if (buf)
+    memcpy (buf, start, size);
 
-    return 0;
+  return (0);
 }
 
 void
-cbuf_set_start(struct cbuf *cbuf, size_t start)
+cbuf_set_start (struct cbuf *cbuf, size_t start)
 {
-    cbuf->start = start;
-    cbuf_update_end(cbuf);
+  cbuf->start = start;
+  cbuf_update_end (cbuf);
 }
 
 void
-cbuf_set_end(struct cbuf *cbuf, size_t end)
+cbuf_set_end (struct cbuf *cbuf, size_t end)
 {
-    cbuf->end = end;
-    cbuf_update_start(cbuf);
+  cbuf->end = end;
+  cbuf_update_start (cbuf);
 }

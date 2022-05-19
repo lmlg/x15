@@ -26,18 +26,18 @@
 /*
  * Append a character to the CGA screen.
  */
-void cga_putc(char c);
+void cga_putc (char c);
 
 /*
  * Cursor control functions.
  */
-void cga_cursor_left(void);
-void cga_cursor_right(void);
+void cga_cursor_left (void);
+void cga_cursor_right (void);
 
 /*
  * This init operation provides :
  *  - module fully initialized
  */
-INIT_OP_DECLARE(cga_setup);
+INIT_OP_DECLARE (cga_setup);
 
 #endif /* X86_CGA_H */

@@ -30,17 +30,15 @@
 #define KERN_MACROS_H
 
 #if !defined(__GNUC__) || (__GNUC__ < 4)
-#error "GCC 4+ required"
+  #error "GCC 4+ required"
 #endif
 
 #ifndef __ASSEMBLER__
-#include <stddef.h>
+  #include <stddef.h>
 #endif
 
-/*
- * Attributes for variables that are mostly read and seldom changed.
- */
-#define __read_mostly       __section(".data.read_mostly")
+// Attributes for variables that are mostly read and seldom changed.
+#define __read_mostly       __section (".data.read_mostly")
 
 #define MACRO_BEGIN         ({
 #define MACRO_END           })
@@ -48,18 +46,19 @@
 #define __QUOTE(x)          #x
 #define QUOTE(x)            __QUOTE(x)
 
-#ifdef __ASSEMBLER__
-#define DECL_CONST(x, s)    x
-#else /* __ASSEMBLER__ */
-#define __DECL_CONST(x, s)  x##s
-#define DECL_CONST(x, s)    __DECL_CONST(x, s)
-#endif /* __ASSEMBLER__ */
+#define CONCAT_(x, y)       x ## y
+#define CONCAT(x, y)        CONCAT_ (x, y)
 
-#define STRLEN(x)           (sizeof(x) - 1)
-#define ARRAY_SIZE(x)       (sizeof(x) / sizeof((x)[0]))
+#ifdef __ASSEMBLER__
+  #define DECL_CONST(x, s)    x
+#else
+  #define DECL_CONST(x, s)    CONCAT (x, s)
+#endif
+
+#define STRLEN(x)           (sizeof (x) - 1)
+#define ARRAY_SIZE(x)       (sizeof (x) / sizeof ((x)[0]))
 
 #define MIN(a, b)   ((a) < (b) ? (a) : (b))
-
 #define MAX(a, b)   ((a) > (b) ? (a) : (b))
 
 #define SWAP(a, b)   \
@@ -75,59 +74,60 @@
 
 #define P2ALIGNED(x, a)     (((x) & ((a) - 1)) == 0)
 #define ISP2(x)             P2ALIGNED(x, x)
-#define P2ALIGN(x, a)       ((x) & -(a))        /* decreases if not aligned */
-#define P2ROUND(x, a)       (-(-(x) & -(a)))    /* increases if not aligned */
-#define P2END(x, a)         (-(~(x) & -(a)))    /* always increases */
+#define P2ALIGN(x, a)       ((x) & -(a))        // decreases if not aligned
+#define P2ROUND(x, a)       (-(-(x) & -(a)))    // increases if not aligned
+#define P2END(x, a)         (-(~(x) & -(a)))    // always increases
 
-#define structof(ptr, type, member) \
-    ((type *)((char *)(ptr) - offsetof(type, member)))
+#define structof(ptr, type, member)   \
+  ((type *)((char *)(ptr) - offsetof (type, member)))
 
-#define likely(expr)        __builtin_expect(!!(expr), 1)
-#define unlikely(expr)      __builtin_expect(!!(expr), 0)
+#define likely(expr)        __builtin_expect (!!(expr), 1)
+#define unlikely(expr)      __builtin_expect (!!(expr), 0)
 
-#define barrier()           asm volatile("" : : : "memory")
+#define barrier()           asm volatile ("" : : : "memory")
 
-/*
- * The following macros may be provided by the C environment.
- */
+// The following macros may be provided by the C environment.
 
 #ifndef __noinline
-#define __noinline          __attribute__((noinline))
+  #define __noinline          __attribute__ ((noinline))
 #endif
 
 #ifndef __always_inline
-#define __always_inline     inline __attribute__((always_inline))
+  #define __always_inline     inline __attribute__ ((always_inline))
 #endif
 
 #ifndef __section
-#define __section(x)        __attribute__((section(x)))
+  #define __section(x)        __attribute__ ((section(x)))
 #endif
 
 #ifndef __packed
-#define __packed            __attribute__((packed))
+  #define __packed            __attribute__ ((packed))
 #endif
 
 #ifndef __unused
-#define __unused            __attribute__((unused))
+  #define __unused            __attribute__ ((unused))
 #endif
 
 #ifndef __used
-#define __used              __attribute__((used))
+  #define __used              __attribute__ ((used))
 #endif
 
 #ifndef __weak
-#define __weak              __attribute__((weak))
+  #define __weak              __attribute__ ((weak))
 #endif
 
 #ifndef __fallthrough
-#if __GNUC__ >= 7
-#define __fallthrough       __attribute__((fallthrough))
-#else /* __GNUC__ >= 7 */
-#define __fallthrough
-#endif /* __GNUC__ >= 7 */
+  #if __GNUC__ >= 7
+    #define __fallthrough       __attribute__ ((fallthrough))
+  #else
+    #define __fallthrough
+  #endif
 #endif
 
 // Type inference.
 #define _Auto   __auto_type
 
-#endif /* KERN_MACROS_H */
+// Unique identifiers.
+#define UNIQ(prefix)   CONCAT (prefix, __COUNTER__)
+
+#endif

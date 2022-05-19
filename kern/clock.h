@@ -29,14 +29,12 @@
 #include <kern/init.h>
 #include <kern/macros.h>
 
-/*
- * Clock frequency.
- */
+// Clock frequency.
 #define CLOCK_FREQ CONFIG_CLOCK_FREQ
 
-#if (CLOCK_FREQ < 100) || (CLOCK_FREQ > 1000) || (1000 % CLOCK_FREQ) != 0
-#error "invalid clock frequency"
-#endif /* (1000 % CLOCK_FREQ) != 0 */
+#if CLOCK_FREQ < 100 || CLOCK_FREQ > 1000 || (1000 % CLOCK_FREQ) != 0
+  #error "invalid clock frequency"
+#endif
 
 /*
  * Arbitrary value used to determine if a time is in the past or the future.
@@ -53,67 +51,69 @@
  * that using signed integers would be equivalent to dividing the range
  * in two (almost) equal past and future halves.
  */
-#define CLOCK_EXPIRE_THRESHOLD (-(1ULL << 60))
+#define CLOCK_EXPIRE_THRESHOLD   (-(1ULL << 60))
 
 static inline uint64_t
-clock_get_time(void)
+clock_get_time (void)
 {
-    extern union clock_global_time clock_global_time;
+  extern union clock_global_time clock_global_time;
 
 #ifdef ATOMIC_HAVE_64B_OPS
 
-    /*
-     * Don't enforce a stronger memory order, since :
-     *  1/ it's useless as long as the reader remains on the same processor
-     *  2/ thread migration enforces sequential consistency
-     */
-    return atomic_load(&clock_global_time.ticks, ATOMIC_RELAXED);
+  /*
+   * Don't enforce a stronger memory order, since :
+   *  1/ it's useless as long as the reader remains on the same processor
+   *  2/ thread migration enforces sequential consistency
+   */
+  return (atomic_load (&clock_global_time.ticks, ATOMIC_RELAXED));
 
 #else /* ATOMIC_HAVE_64B_OPS */
 
-    uint32_t high1, low, high2;
+  uint32_t high1, low, high2;
 
-    /*
-     * For machines with no 64-bits atomic accessors, this implementation uses
-     * a variant of the two-digit monotonic-clock algorithm, described in the
-     * paper "Concurrent Reading and Writing of Clocks" by Leslie Lamport.
-     */
+  /*
+   * For machines with no 64-bits atomic accessors, this implementation uses
+   * a variant of the two-digit monotonic-clock algorithm, described in the
+   * paper "Concurrent Reading and Writing of Clocks" by Leslie Lamport.
+   */
 
-    do {
-        high1 = atomic_load(&clock_global_time.high1, ATOMIC_ACQUIRE);
-        low = atomic_load(&clock_global_time.low, ATOMIC_ACQUIRE);
-        high2 = atomic_load(&clock_global_time.high2, ATOMIC_RELAXED);
-    } while (high1 != high2);
+  do
+    {
+      high1 = atomic_load (&clock_global_time.high1, ATOMIC_ACQUIRE);
+      low = atomic_load (&clock_global_time.low, ATOMIC_ACQUIRE);
+      high2 = atomic_load (&clock_global_time.high2, ATOMIC_RELAXED);
+    }
+  while (high1 != high2);
 
-    return ((uint64_t)high2 << 32) | low;
+  return (((uint64_t) high2 << 32) | low);
 
-#endif /* ATOMIC_HAVE_64B_OPS */
+#endif
 }
 
 static inline uint64_t
-clock_ticks_to_ms(uint64_t ticks)
+clock_ticks_to_ms (uint64_t ticks)
 {
-    return ticks * (1000 / CLOCK_FREQ);
+  return (ticks * (1000 / CLOCK_FREQ));
 }
 
 static inline uint64_t
-clock_ticks_from_ms(uint64_t ms)
+clock_ticks_from_ms (uint64_t ms)
 {
-    return DIV_CEIL(ms, (1000 / CLOCK_FREQ));
+  return (DIV_CEIL (ms, (1000 / CLOCK_FREQ)));
 }
 
 static inline bool
-clock_time_expired(uint64_t t, uint64_t ref)
+clock_time_expired (uint64_t t, uint64_t ref)
 {
-    return (t - ref) > CLOCK_EXPIRE_THRESHOLD;
+  return (t - ref > CLOCK_EXPIRE_THRESHOLD);
 }
 
 static inline bool
-clock_time_occurred(uint64_t t, uint64_t ref)
+clock_time_occurred (uint64_t t, uint64_t ref)
 {
-    return (t == ref) || clock_time_expired(t, ref);
+  return (t == ref || clock_time_expired (t, ref));
 }
 
-void clock_tick_intr(void);
+void clock_tick_intr (void);
 
-#endif /* KERN_CLOCK_H */
+#endif

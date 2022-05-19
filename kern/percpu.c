@@ -40,125 +40,112 @@ static int percpu_skip_warning __initdata;
 static struct slist percpu_ops __initdata;
 
 static void __init
-percpu_op_run(const struct percpu_op *op)
+percpu_op_run (const struct percpu_op *op)
 {
-    op->fn();
+  op->fn ();
 }
 
 static int __init
-percpu_bootstrap(void)
+percpu_bootstrap (void)
 {
-    percpu_areas[0] = &_percpu;
-    return 0;
+  percpu_areas[0] = &_percpu;
+  return (0);
 }
 
-INIT_OP_DEFINE(percpu_bootstrap);
+INIT_OP_DEFINE (percpu_bootstrap);
 
 static int __init
-percpu_setup(void)
+percpu_setup (void)
 {
-    struct vm_page *page;
-    unsigned int order;
+  slist_init (&percpu_ops);
+  percpu_area_size = &_percpu_end - &_percpu;
+  log_info ("percpu: max_cpus: %u, section size: %zuk", CONFIG_MAX_CPUS,
+            percpu_area_size >> 10);
+  assert (vm_page_aligned (percpu_area_size));
 
-    slist_init(&percpu_ops);
-
-    percpu_area_size = &_percpu_end - &_percpu;
-    log_info("percpu: max_cpus: %u, section size: %zuk", CONFIG_MAX_CPUS,
-             percpu_area_size >> 10);
-    assert(vm_page_aligned(percpu_area_size));
-
-    if (percpu_area_size == 0) {
-        return 0;
-    }
-
-    order = vm_page_order(percpu_area_size);
-    page = vm_page_alloc(order, VM_PAGE_SEL_DIRECTMAP, VM_PAGE_KERNEL);
-
-    if (page == NULL) {
-        panic("percpu: unable to allocate memory for percpu area content");
-    }
-
-    percpu_area_content = vm_page_direct_ptr(page);
-    memcpy(percpu_area_content, &_percpu, percpu_area_size);
+  if (! percpu_area_size)
     return 0;
+
+  unsigned int order = vm_page_order (percpu_area_size);
+  _Auto page = vm_page_alloc (order, VM_PAGE_SEL_DIRECTMAP, VM_PAGE_KERNEL);
+
+  if (! page)
+    panic ("percpu: unable to allocate memory for percpu area content");
+
+  percpu_area_content = vm_page_direct_ptr (page);
+  memcpy (percpu_area_content, &_percpu, percpu_area_size);
+  return (0);
 }
 
-INIT_OP_DEFINE(percpu_setup,
-               INIT_OP_DEP(percpu_bootstrap, true),
-               INIT_OP_DEP(vm_page_setup, true));
+INIT_OP_DEFINE (percpu_setup,
+                INIT_OP_DEP (percpu_bootstrap, true),
+                INIT_OP_DEP (vm_page_setup, true));
 
 void __init
-percpu_register_op(struct percpu_op *op)
+percpu_register_op (struct percpu_op *op)
 {
-    slist_insert_tail(&percpu_ops, &op->node);
-
-    /* Run on BSP */
-    percpu_op_run(op);
+  slist_insert_tail (&percpu_ops, &op->node);
+  // Run on BSP.
+  percpu_op_run (op);
 }
 
 int __init
-percpu_add(unsigned int cpu)
+percpu_add (unsigned int cpu)
 {
-    struct vm_page *page;
-    unsigned int order;
-
-    if (cpu >= ARRAY_SIZE(percpu_areas)) {
-        if (!percpu_skip_warning) {
-            log_warning("percpu: ignoring processor beyond id %zu",
-                        ARRAY_SIZE(percpu_areas) - 1);
-            percpu_skip_warning = 1;
+  if (cpu >= ARRAY_SIZE (percpu_areas))
+    {
+      if (!percpu_skip_warning)
+        {
+          log_warning ("percpu: ignoring processor beyond id %zu",
+                       ARRAY_SIZE (percpu_areas) - 1);
+          percpu_skip_warning = 1;
         }
 
-        return EINVAL;
+      return (EINVAL);
+    }
+  else if (percpu_areas[cpu])
+    {
+      log_err ("percpu: id %u ignored, already registered", cpu);
+      return (EINVAL);
     }
 
-    if (percpu_areas[cpu] != NULL) {
-        log_err("percpu: id %u ignored, already registered", cpu);
-        return EINVAL;
+  if (! percpu_area_size)
+    goto out;
+
+  unsigned int order = vm_page_order (percpu_area_size);
+  _Auto page = vm_page_alloc (order, VM_PAGE_SEL_DIRECTMAP, VM_PAGE_KERNEL);
+
+  if (! page)
+    {
+      log_err ("percpu: unable to allocate percpu area");
+      return (ENOMEM);
     }
 
-    if (percpu_area_size == 0) {
-        goto out;
-    }
-
-    order = vm_page_order(percpu_area_size);
-    page = vm_page_alloc(order, VM_PAGE_SEL_DIRECTMAP, VM_PAGE_KERNEL);
-
-    if (page == NULL) {
-        log_err("percpu: unable to allocate percpu area");
-        return ENOMEM;
-    }
-
-    percpu_areas[cpu] = vm_page_direct_ptr(page);
-    memcpy(percpu_area(cpu), percpu_area_content, percpu_area_size);
+  percpu_areas[cpu] = vm_page_direct_ptr (page);
+  memcpy (percpu_area (cpu), percpu_area_content, percpu_area_size);
 
 out:
-    return 0;
+  return (0);
 }
 
 void __init
-percpu_ap_setup(void)
+percpu_ap_setup (void)
 {
-    struct percpu_op *op;
-
-    slist_for_each_entry(&percpu_ops, op, node) {
-        percpu_op_run(op);
-    }
+  struct percpu_op *op;
+  slist_for_each_entry (&percpu_ops, op, node)
+    percpu_op_run (op);
 }
 
 static int __init
-percpu_cleanup(void)
+percpu_cleanup (void)
 {
-    struct vm_page *page;
-    uintptr_t va;
-
-    va = (uintptr_t)percpu_area_content;
-    page = vm_page_lookup(vm_page_direct_pa(va));
-    vm_page_free(page, vm_page_order(percpu_area_size));
-    return 0;
+  uintptr_t va = (uintptr_t) percpu_area_content;
+  _Auto page = vm_page_lookup (vm_page_direct_pa (va));
+  vm_page_free (page, vm_page_order (percpu_area_size));
+  return (0);
 }
 
-INIT_OP_DEFINE(percpu_cleanup,
-               INIT_OP_DEP(cpu_mp_probe, true),
-               INIT_OP_DEP(percpu_setup, true),
-               INIT_OP_DEP(vm_page_setup, true));
+INIT_OP_DEFINE (percpu_cleanup,
+                INIT_OP_DEP (cpu_mp_probe, true),
+                INIT_OP_DEP (percpu_setup, true),
+                INIT_OP_DEP (vm_page_setup, true));

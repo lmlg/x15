@@ -18,9 +18,7 @@
 #ifndef VM_VM_ADV_H
 #define VM_VM_ADV_H
 
-/*
- * Advice values.
- */
+// Advice values.
 #define VM_ADV_NORMAL       0
 #define VM_ADV_RANDOM       1
 #define VM_ADV_SEQUENTIAL   2
@@ -28,4 +26,4 @@
 #define VM_ADV_DONTNEED     4
 #define VM_ADV_DEFAULT      VM_ADV_NORMAL
 
-#endif /* VM_VM_ADV_H */
+#endif

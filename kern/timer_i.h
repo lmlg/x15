@@ -33,18 +33,20 @@
  * the structure. It must be accessed atomically, but updated while the
  * timer is locked.
  */
-struct timer {
-    union {
-        struct hlist_node node; /* (c)      */
-        struct work work;
+struct timer
+{
+  union
+    {
+      struct hlist_node node;   // (c)
+      struct work work;
     };
 
-    uint64_t ticks;             /* (c)     */
-    timer_fn_t fn;
-    unsigned int cpu;           /* (c,a,*) */
-    unsigned short state;       /* (c)     */
-    unsigned short flags;       /* (c)     */
-    struct thread *joiner;      /* (c)     */
+  uint64_t ticks;             // (c)
+  timer_fn_t fn;
+  unsigned int cpu;           // (c,a,*)
+  unsigned short state;       // (c)
+  unsigned short flags;       // (c)
+  struct thread *joiner;      // (c)
 };
 
-#endif /* KERN_TIMER_I_H */
+#endif

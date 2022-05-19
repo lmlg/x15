@@ -30,17 +30,18 @@
  *  - 0             Interrupt successfully handled
  *  - EAGAIN        Spurious interrupt
  */
-typedef int (*intr_handler_fn_t)(void *arg);
+typedef int (*intr_handler_fn_t) (void *);
 
 /*
  * Operations of an interrupt controller.
  *
  * Operations for interrupts targeting the same processor are serialized.
  */
-struct intr_ops {
-    void (*enable)(void *priv, unsigned int intr, unsigned int cpu);
-    void (*disable)(void *priv, unsigned int intr);
-    void (*eoi)(void *priv, unsigned int intr);
+struct intr_ops
+{
+  void (*enable) (void *priv, uint32_t, uint32_t);
+  void (*disable) (void *priv, uint32_t);
+  void (*eoi) (void *priv, uint32_t);
 };
 
 /*
@@ -49,31 +50,27 @@ struct intr_ops {
  * This function isn't thread-safe and can only be called during system
  * initialization.
  */
-void intr_register_ctl(const struct intr_ops *ops, void *priv,
-                       unsigned int first_intr, unsigned int last_intr);
+void intr_register_ctl (const struct intr_ops *ops, void *priv,
+                        uint32_t first_intr, uint32_t last_intr);
 
-/*
- * Register/unregister an interrupt handler.
- */
-int intr_register(unsigned int intr, intr_handler_fn_t fn, void *arg);
-void intr_unregister(unsigned int intr, intr_handler_fn_t fn);
+// Register/unregister an interrupt handler.
+int intr_register (uint32_t intr, intr_handler_fn_t fn, void *arg);
+void intr_unregister (uint32_t intr, intr_handler_fn_t fn);
 
-/*
- * Handle an interrupt.
- */
-void intr_handle(unsigned int intr);
+// Handle an interrupt.
+void intr_handle (uint32_t intr);
 
 /*
  * This init operation provides :
  *  - registration of interrupt controllers and handlers
  */
-INIT_OP_DECLARE(intr_bootstrap);
+INIT_OP_DECLARE (intr_bootstrap);
 
 /*
  * This init operation provides :
  *  - all interrupt controllers have been registered
  *  - module fully initialized
  */
-INIT_OP_DECLARE(intr_setup);
+INIT_OP_DECLARE (intr_setup);
 
-#endif /* KERN_INTR_H */
+#endif

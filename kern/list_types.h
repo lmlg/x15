@@ -21,9 +21,10 @@
 #ifndef KERN_LIST_TYPES_H
 #define KERN_LIST_TYPES_H
 
-struct list {
-    struct list *prev;
-    struct list *next;
+struct list
+{
+  struct list *prev;
+  struct list *next;
 };
 
-#endif /* KERN_LIST_TYPES_H */
+#endif

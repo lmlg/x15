@@ -24,14 +24,10 @@
 #include <machine/page.h>
 #include <machine/pmap.h>
 
-/*
- * Size of the stack used when booting a processor.
- */
-#define BOOT_STACK_SIZE PAGE_SIZE
+// Size of the stack used when booting a processor.
+#define BOOT_STACK_SIZE   PAGE_SIZE
 
-/*
- * Macros used by the very early panic functions.
- */
+// Macros used by the very early panic functions.
 #define BOOT_CGAMEM     0xb8000
 #define BOOT_CGACHARS   (80 * 25)
 #define BOOT_CGACOLOR   0x7
@@ -43,12 +39,10 @@
  *
  * See the linker script for more information.
  */
-#define BOOT_OFFSET DECL_CONST(0x100000, UL)
+#define BOOT_OFFSET   DECL_CONST (0x100000, UL)
 
-/*
- * Virtual to physical address translation macro.
- */
-#define BOOT_VTOP(addr) ((addr) - PMAP_KERNEL_OFFSET)
+// Virtual to physical address translation macro.
+#define BOOT_VTOP(addr)   ((addr) - PMAP_KERNEL_OFFSET)
 
 /*
  * Address where the MP trampoline code is copied and run at.
@@ -56,7 +50,7 @@
  * It must reside at a free location in the first segment and be page
  * aligned.
  */
-#define BOOT_MP_TRAMPOLINE_ADDR 0x7000
+#define BOOT_MP_TRAMPOLINE_ADDR   0x7000
 
 #ifndef __ASSEMBLER__
 
@@ -69,35 +63,29 @@
  * and .bootdata sections respectively, so that they use physical addresses.
  * Once paging is enabled, their access relies on the kernel identity mapping.
  */
-#define __boot __section(".boot.text")
-#define __bootdata __section(".boot.data") __attribute__((used))
+#define __boot       __section (".boot.text")
+#define __bootdata   __section (".boot.data") __attribute__((used))
 
-/*
- * Boundaries of the .boot section.
- */
+// Boundaries of the .boot section.
 extern char _boot;
 extern char _boot_end;
 
-/*
- * Size of the trampoline code used for APs.
- */
+// Size of the trampoline code used for APs.
 extern uint32_t boot_mp_trampoline_size;
 
-/*
- * Address of the MP trampoline code.
- */
-void boot_mp_trampoline(void);
+// Address of the MP trampoline code.
+void boot_mp_trampoline (void);
 
 /*
  * Helper functions available before paging is enabled.
  *
  * Any memory passed to these must also be accessible without paging.
  */
-void * boot_memcpy(void *dest, const void *src, size_t n);
-void * boot_memmove(void *dest, const void *src, size_t n);
-void * boot_memset(void *s, int c, size_t n);
-size_t boot_strlen(const char *s);
-noreturn void boot_panic(const char *s);
+void* boot_memcpy (void *dest, const void *src, size_t n);
+void* boot_memmove (void *dest, const void *src, size_t n);
+void* boot_memset (void *s, int c, size_t n);
+size_t boot_strlen (const char *s);
+noreturn void boot_panic (const char *s);
 
 /*
  * This function is called by the bootstrap code before paging is enabled.
@@ -105,70 +93,63 @@ noreturn void boot_panic(const char *s);
  * returns the physical address of the page directory. It is up to the
  * caller to actually enable paging.
  */
-pmap_pte_t * boot_setup_paging(struct multiboot_raw_info *mbi,
-                               unsigned long eax);
+pmap_pte_t* boot_setup_paging (struct multiboot_raw_info *mbi, uintptr_t eax);
 
-/*
- * Main entry point, called directly after basic paging is initialized.
- */
-void boot_main(void);
+// Main entry point, called directly after basic paging is initialized.
+void boot_main (void);
 
-/*
- * Entry point for APs.
- */
-void boot_ap_main(void);
+// Entry point for APs.
+void boot_ap_main (void);
 
-void boot_alloc_ap_stacks(void);
+void boot_alloc_ap_stacks (void);
 
-void boot_set_ap_id(unsigned int ap_id);
+void boot_set_ap_id (uint32_t ap_id);
 
-/*
- * Log kernel version and other architecture-specific information.
- */
-void boot_log_info(void);
+// Log kernel version and other architecture-specific information.
+void boot_log_info (void);
 
 /*
  * This init operation provides :
  *  - boot data are saved
  */
-INIT_OP_DECLARE(boot_save_data);
+INIT_OP_DECLARE (boot_save_data);
 
 /*
  * This init operation provides :
  *  - all console devices are bootstrapped
  */
-INIT_OP_DECLARE(boot_bootstrap_console);
+INIT_OP_DECLARE (boot_bootstrap_console);
 
 /*
  * This init operation provides :
  *  - all console devices are fully initialized
  */
-INIT_OP_DECLARE(boot_setup_console);
+INIT_OP_DECLARE (boot_setup_console);
 
 /*
  * This init operation provides :
  *  - physical memory has been loaded to the VM system
  */
-INIT_OP_DECLARE(boot_load_vm_page_zones);
+INIT_OP_DECLARE (boot_load_vm_page_zones);
 
 /*
  * This init operation provides :
  *  - all interrupt controllers have been registered
  */
-INIT_OP_DECLARE(boot_setup_intr);
+INIT_OP_DECLARE (boot_setup_intr);
 
 /*
  * This init operation provides :
  *  - all PMU drivers have probed hardware
  */
-INIT_OP_DECLARE(boot_setup_pmu);
+INIT_OP_DECLARE (boot_setup_pmu);
 
 /*
  * This init operation provides :
  *  - all shutdown operations have been registered
  */
-INIT_OP_DECLARE(boot_setup_shutdown);
+INIT_OP_DECLARE (boot_setup_shutdown);
 
-#endif /* __ASSEMBLER__ */
+#endif   // __ASSEMBLER__
 
-#endif /* X86_BOOT_H */
+#endif

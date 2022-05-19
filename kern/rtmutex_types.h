@@ -23,8 +23,9 @@
 
 #include <stdint.h>
 
-struct rtmutex {
-    uintptr_t owner;
+struct rtmutex
+{
+  uintptr_t owner;
 };
 
-#endif /* KERN_RTMUTEX_TYPES_H */
+#endif

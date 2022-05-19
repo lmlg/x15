@@ -23,42 +23,34 @@
 
 #include <kern/macros.h>
 
-/*
- * Virtual memory layout.
- */
+// Virtual memory layout.
 
-/*
- * User space boundaries.
- */
-#define PMAP_START_ADDRESS              DECL_CONST(0, UL)
+// User space boundaries.
+#define PMAP_START_ADDRESS                DECL_CONST (0, UL)
 
 #ifdef __LP64__
-#define PMAP_END_ADDRESS                DECL_CONST(0x800000000000, UL)
-#else /* __LP64__ */
-#define PMAP_END_ADDRESS                DECL_CONST(0xc0000000, UL)
-#endif/* __LP64__ */
+  #define PMAP_END_ADDRESS                DECL_CONST (0x800000000000, UL)
+#else
+  #define PMAP_END_ADDRESS                DECL_CONST (0xc0000000, UL)
+#endif
 
-/*
- * Kernel space boundaries.
- */
+// Kernel space boundaries.
 #ifdef __LP64__
-#define PMAP_START_KERNEL_ADDRESS       DECL_CONST(0xffff800000000000, UL)
-#define PMAP_END_KERNEL_ADDRESS         DECL_CONST(0xfffffffffffff000, UL)
-#else /* __LP64__ */
-#define PMAP_START_KERNEL_ADDRESS       PMAP_END_ADDRESS
-#define PMAP_END_KERNEL_ADDRESS         DECL_CONST(0xfffff000, UL)
-#endif /* __LP64__ */
+  #define PMAP_START_KERNEL_ADDRESS       DECL_CONST (0xffff800000000000, UL)
+  #define PMAP_END_KERNEL_ADDRESS         DECL_CONST (0xfffffffffffff000, UL)
+#else
+  #define PMAP_START_KERNEL_ADDRESS       PMAP_END_ADDRESS
+  #define PMAP_END_KERNEL_ADDRESS         DECL_CONST (0xfffff000, UL)
+#endif
 
-/*
- * Direct physical mapping boundaries.
- */
+// Direct physical mapping boundaries.
 #ifdef __LP64__
-#define PMAP_START_DIRECTMAP_ADDRESS    PMAP_START_KERNEL_ADDRESS
-#define PMAP_END_DIRECTMAP_ADDRESS      DECL_CONST(0xffffc00000000000, UL)
-#else /* __LP64__ */
-#define PMAP_START_DIRECTMAP_ADDRESS    PMAP_END_ADDRESS
-#define PMAP_END_DIRECTMAP_ADDRESS      DECL_CONST(0xf8000000, UL)
-#endif /* __LP64__ */
+  #define PMAP_START_DIRECTMAP_ADDRESS    PMAP_START_KERNEL_ADDRESS
+  #define PMAP_END_DIRECTMAP_ADDRESS      DECL_CONST (0xffffc00000000000, UL)
+#else
+  #define PMAP_START_DIRECTMAP_ADDRESS    PMAP_END_ADDRESS
+  #define PMAP_END_DIRECTMAP_ADDRESS      DECL_CONST (0xf8000000, UL)
+#endif
 
 /*
  * Kernel mapping offset.
@@ -69,10 +61,10 @@
  * the -mcmodel=kernel gcc option).
  */
 #ifdef __LP64__
-#define PMAP_KERNEL_OFFSET              DECL_CONST(0xffffffff80000000, UL)
-#else /* __LP64__ */
-#define PMAP_KERNEL_OFFSET              PMAP_START_DIRECTMAP_ADDRESS
-#endif /* __LP64__ */
+  #define PMAP_KERNEL_OFFSET              DECL_CONST (0xffffffff80000000, UL)
+#else
+  #define PMAP_KERNEL_OFFSET              PMAP_START_DIRECTMAP_ADDRESS
+#endif
 
 /*
  * Kernel virtual space boundaries.
@@ -80,17 +72,15 @@
  * In addition to the direct physical mapping, the kernel has its own virtual
  * memory space.
  */
-#define PMAP_START_KMEM_ADDRESS         PMAP_END_DIRECTMAP_ADDRESS
+#define PMAP_START_KMEM_ADDRESS           PMAP_END_DIRECTMAP_ADDRESS
 
 #ifdef __LP64__
-#define PMAP_END_KMEM_ADDRESS           PMAP_KERNEL_OFFSET
-#else /* __LP64__ */
-#define PMAP_END_KMEM_ADDRESS           PMAP_END_KERNEL_ADDRESS
-#endif /* __LP64__ */
+  #define PMAP_END_KMEM_ADDRESS           PMAP_KERNEL_OFFSET
+#else
+  #define PMAP_END_KMEM_ADDRESS           PMAP_END_KERNEL_ADDRESS
+#endif
 
-/*
- * Page table entry flags.
- */
+// Page table entry flags.
 #define PMAP_PTE_P      0x00000001
 #define PMAP_PTE_RW     0x00000002
 #define PMAP_PTE_US     0x00000004
@@ -101,9 +91,7 @@
 #define PMAP_PTE_PS     0x00000080
 #define PMAP_PTE_G      0x00000100
 
-/*
- * Page translation hierarchy properties.
- */
+// Page translation hierarchy properties.
 
 /*
  * Masks define valid bits at each page translation level.
@@ -111,43 +99,44 @@
  * Additional bits such as the global bit can be added at runtime for optional
  * features.
  */
-#define PMAP_L0_MASK    (PMAP_PA_MASK | PMAP_PTE_D | PMAP_PTE_A \
-                         | PMAP_PTE_PCD | PMAP_PTE_PWT | PMAP_PTE_US \
-                         | PMAP_PTE_RW | PMAP_PTE_P)
-#define PMAP_L1_MASK    (PMAP_PA_MASK | PMAP_PTE_A | PMAP_PTE_PCD \
-                         | PMAP_PTE_PWT | PMAP_PTE_US | PMAP_PTE_RW \
-                         | PMAP_PTE_P)
+#define PMAP_L0_MASK   \
+  (PMAP_PA_MASK | PMAP_PTE_D | PMAP_PTE_A | PMAP_PTE_PCD | PMAP_PTE_PWT |   \
+   PMAP_PTE_US | PMAP_PTE_RW | PMAP_PTE_P)
 
-#define PMAP_PAE_L2_MASK    (PMAP_PA_MASK | PMAP_PTE_PCD | PMAP_PTE_PWT \
-                             | PMAP_PTE_P)
+#define PMAP_L1_MASK   \
+  (PMAP_PA_MASK | PMAP_PTE_A | PMAP_PTE_PCD | PMAP_PTE_PWT | PMAP_PTE_US |   \
+   PMAP_PTE_RW | PMAP_PTE_P)
+
+#define PMAP_PAE_L2_MASK   \
+  (PMAP_PA_MASK | PMAP_PTE_PCD | PMAP_PTE_PWT | PMAP_PTE_P)
 
 #ifdef __LP64__
-#define PMAP_NR_LEVELS  4
-#define PMAP_L0_BITS    9
-#define PMAP_L1_BITS    9
-#define PMAP_L2_BITS    9
-#define PMAP_L3_BITS    9
-#define PMAP_VA_MASK    DECL_CONST(0x0000ffffffffffff, UL)
-#define PMAP_PA_MASK    DECL_CONST(0x000ffffffffff000, UL)
-#define PMAP_L2_MASK    PMAP_L1_MASK
-#define PMAP_L3_MASK    PMAP_L1_MASK
-#else /* __LP64__ */
-#ifdef CONFIG_X86_PAE
-#define PMAP_NR_LEVELS  3
-#define PMAP_L0_BITS    9
-#define PMAP_L1_BITS    9
-#define PMAP_L2_BITS    2
-#define PMAP_VA_MASK    DECL_CONST(0xffffffff, UL)
-#define PMAP_PA_MASK    DECL_CONST(0x000ffffffffff000, ULL)
-#define PMAP_L2_MASK    PMAP_PAE_L2_MASK
-#else /* CONFIG_X86_PAE */
-#define PMAP_NR_LEVELS  2
-#define PMAP_L0_BITS    10
-#define PMAP_L1_BITS    10
-#define PMAP_VA_MASK    DECL_CONST(0xffffffff, UL)
-#define PMAP_PA_MASK    DECL_CONST(0xfffff000, UL)
-#endif /* CONFIG_X86_PAE */
-#endif /* __LP64__ */
+  #define PMAP_NR_LEVELS  4
+  #define PMAP_L0_BITS    9
+  #define PMAP_L1_BITS    9
+  #define PMAP_L2_BITS    9
+  #define PMAP_L3_BITS    9
+  #define PMAP_VA_MASK    DECL_CONST (0x0000ffffffffffff, UL)
+  #define PMAP_PA_MASK    DECL_CONST (0x000ffffffffff000, UL)
+  #define PMAP_L2_MASK    PMAP_L1_MASK
+  #define PMAP_L3_MASK    PMAP_L1_MASK
+#else
+  #ifdef CONFIG_X86_PAE
+    #define PMAP_NR_LEVELS   3
+    #define PMAP_L0_BITS     9
+    #define PMAP_L1_BITS     9
+    #define PMAP_L2_BITS     2
+    #define PMAP_VA_MASK     DECL_CONST (0xffffffff, UL)
+    #define PMAP_PA_MASK     DECL_CONST (0x000ffffffffff000, ULL)
+    #define PMAP_L2_MASK     PMAP_PAE_L2_MASK
+  #else
+    #define PMAP_NR_LEVELS   2
+    #define PMAP_L0_BITS     10
+    #define PMAP_L1_BITS     10
+    #define PMAP_VA_MASK     DECL_CONST (0xffffffff, UL)
+    #define PMAP_PA_MASK     DECL_CONST (0xfffff000, UL)
+  #endif
+#endif
 
 #define PMAP_L0_SKIP    12
 #define PMAP_L1_SKIP    (PMAP_L0_SKIP + PMAP_L0_BITS)
@@ -171,24 +160,19 @@
 #include <machine/cpu.h>
 #include <machine/types.h>
 
-/*
- * Mapping creation flags.
- */
-#define PMAP_PEF_GLOBAL 0x1 /* Create a mapping on all processors */
+// Mapping creation flags.
+#define PMAP_PEF_GLOBAL   0x1   // Create a mapping on all processors.
 
 typedef phys_addr_t pmap_pte_t;
 
-/*
- * Physical address map.
- */
+// Physical address map.
 struct pmap;
 
-static inline struct pmap *
-pmap_get_kernel_pmap(void)
+static inline struct pmap*
+pmap_get_kernel_pmap (void)
 {
-    extern struct pmap pmap_kernel_pmap;
-
-    return &pmap_kernel_pmap;
+  extern struct pmap pmap_kernel_pmap;
+  return (&pmap_kernel_pmap);
 }
 
 /*
@@ -198,17 +182,13 @@ pmap_get_kernel_pmap(void)
  * maps the kernel at physical and virtual addresses, after which all kernel
  * functions and data can be accessed.
  */
-pmap_pte_t * pmap_setup_paging(void);
+pmap_pte_t* pmap_setup_paging (void);
 
-/*
- * This function is called by the AP bootstrap code before paging is enabled.
- */
-pmap_pte_t * pmap_ap_setup_paging(unsigned int ap_id);
+// This function is called by the AP bootstrap code before paging is enabled.
+pmap_pte_t* pmap_ap_setup_paging (uint32_t ap_id);
 
-/*
- * Initialize the pmap module on APs.
- */
-void pmap_ap_setup(void);
+// Initialize the pmap module on APs.
+void pmap_ap_setup (void);
 
 /*
  * Set up the pmap module for multiprocessor operations.
@@ -220,13 +200,11 @@ void pmap_ap_setup(void);
  * This function must be called before starting the scheduler whatever the
  * number of processors.
  */
-void pmap_mp_setup(void);
+void pmap_mp_setup (void);
 
-/*
- * Build/clean up pmap thread-local data for the given thread.
- */
-int pmap_thread_build(struct thread *thread);
-void pmap_thread_cleanup(struct thread *thread);
+// Build/clean up pmap thread-local data for the given thread.
+int pmap_thread_build (struct thread *thread);
+void pmap_thread_cleanup (struct thread *thread);
 
 /*
  * Extract a mapping from the kernel map.
@@ -234,12 +212,10 @@ void pmap_thread_cleanup(struct thread *thread);
  * This function walks the page tables to retrieve the physical address
  * mapped at the given virtual address.
  */
-int pmap_kextract(uintptr_t va, phys_addr_t *pap);
+int pmap_kextract (uintptr_t va, phys_addr_t *pap);
 
-/*
- * Create a pmap for a user task.
- */
-int pmap_create(struct pmap **pmapp);
+// Create a pmap for a user task.
+int pmap_create (struct pmap **pmapp);
 
 /*
  * Create a mapping on a physical map.
@@ -253,8 +229,8 @@ int pmap_create(struct pmap **pmapp);
  *
  * This function may trigger an implicit update.
  */
-int pmap_enter(struct pmap *pmap, uintptr_t va, phys_addr_t pa,
-               int prot, int flags);
+int pmap_enter (struct pmap *pmap, uintptr_t va, phys_addr_t pa,
+                int prot, int flags);
 
 /*
  * Remove a mapping from a physical map.
@@ -263,16 +239,16 @@ int pmap_enter(struct pmap *pmap, uintptr_t va, phys_addr_t pa,
  *
  * This function may trigger an implicit update.
  */
-int pmap_remove(struct pmap *pmap, uintptr_t va,
-                const struct cpumap *cpumap);
+int pmap_remove (struct pmap *pmap, uintptr_t va,
+                 const struct cpumap *cpumap);
 
 /*
  * Set the protection of a mapping in a physical map.
  *
  * This function may trigger an implicit update.
  */
-int pmap_protect(struct pmap *pmap, uintptr_t va, int prot,
-                 const struct cpumap *cpumap);
+int pmap_protect (struct pmap *pmap, uintptr_t va, int prot,
+                  const struct cpumap *cpumap);
 
 /*
  * Force application of pending modifications on a physical map.
@@ -299,14 +275,14 @@ int pmap_protect(struct pmap *pmap, uintptr_t va, int prot,
  * Therefore, if the caller only queues removals or protection changes
  * between two calls to this function, it is guaranteed to succeed.
  */
-int pmap_update(struct pmap *pmap);
+int pmap_update (struct pmap *pmap);
 
 /*
  * Load the given pmap on the current processor.
  *
  * This function must be called with interrupts and preemption disabled.
  */
-void pmap_load(struct pmap *pmap);
+void pmap_load (struct pmap *pmap);
 
 /*
  * Return the pmap currently loaded on the processor.
@@ -314,26 +290,26 @@ void pmap_load(struct pmap *pmap);
  * Since threads may borrow pmaps, this can be different than the pmap
  * of the caller.
  */
-static inline struct pmap *
-pmap_current(void)
+static inline struct pmap*
+pmap_current (void)
 {
-    extern struct pmap *pmap_current_ptr;
-    return cpu_local_read(pmap_current_ptr);
+  extern struct pmap *pmap_current_ptr;
+  return (cpu_local_read (pmap_current_ptr));
 }
 
 /*
  * This init operation provides :
  *  - kernel pmap operations
  */
-INIT_OP_DECLARE(pmap_bootstrap);
+INIT_OP_DECLARE (pmap_bootstrap);
 
 /*
  * This init operation provides :
  *  - user pmap creation
  *  - module fully initialized
  */
-INIT_OP_DECLARE(pmap_setup);
+INIT_OP_DECLARE (pmap_setup);
 
-#endif /* __ASSEMBLER__ */
+#endif   // __ASSEMBLER__
 
-#endif /* X86_PMAP_H */
+#endif

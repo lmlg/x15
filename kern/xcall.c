@@ -31,9 +31,10 @@
 #include <kern/xcall.h>
 #include <machine/cpu.h>
 
-struct xcall {
-    xcall_fn_t fn;
-    void *arg;
+struct xcall
+{
+  xcall_fn_t fn;
+  void *arg;
 };
 
 /*
@@ -49,140 +50,129 @@ struct xcall {
  * (a) atomic
  * (c) cpu_data
  */
-struct xcall_cpu_data {
-    alignas(CPU_L1_SIZE) struct spinlock lock;
-    struct xcall *recv_call;    /* (c) */
-    struct syscnt sc_sent;      /* (a) */
-    struct syscnt sc_received;  /* (a) */
+struct xcall_cpu_data
+{
+  alignas (CPU_L1_SIZE) struct spinlock lock;
+  struct xcall *recv_call;     // (c)
+  struct syscnt sc_sent;       // (a)
+  struct syscnt sc_received;   // (a)
 };
 
 static struct xcall_cpu_data xcall_cpu_data __percpu;
 
-static struct xcall_cpu_data *
-xcall_get_local_cpu_data(void)
+static struct xcall_cpu_data*
+xcall_get_local_cpu_data (void)
 {
-    return cpu_local_ptr(xcall_cpu_data);
+  return (cpu_local_ptr (xcall_cpu_data));
 }
 
-static struct xcall_cpu_data *
-xcall_get_cpu_data(unsigned int cpu)
+static struct xcall_cpu_data*
+xcall_get_cpu_data (uint32_t cpu)
 {
-    return percpu_ptr(xcall_cpu_data, cpu);
-}
-
-static void
-xcall_init(struct xcall *call, xcall_fn_t fn, void *arg)
-{
-    call->fn = fn;
-    call->arg = arg;
+  return (percpu_ptr (xcall_cpu_data, cpu));
 }
 
 static void
-xcall_process(struct xcall *call)
+xcall_init (struct xcall *call, xcall_fn_t fn, void *arg)
 {
-    call->fn(call->arg);
+  call->fn = fn;
+  call->arg = arg;
 }
 
 static void
-xcall_cpu_data_init(struct xcall_cpu_data *cpu_data, unsigned int cpu)
+xcall_process (struct xcall *call)
 {
-    char name[SYSCNT_NAME_SIZE];
-
-    snprintf(name, sizeof(name), "xcall_sent/%u", cpu);
-    syscnt_register(&cpu_data->sc_sent, name);
-    snprintf(name, sizeof(name), "xcall_received/%u", cpu);
-    syscnt_register(&cpu_data->sc_received, name);
-    cpu_data->recv_call = NULL;
-    spinlock_init(&cpu_data->lock);
-}
-
-static struct xcall *
-xcall_cpu_data_get_recv_call(const struct xcall_cpu_data *cpu_data)
-{
-    return atomic_load(&cpu_data->recv_call, ATOMIC_ACQUIRE);
+  call->fn (call->arg);
 }
 
 static void
-xcall_cpu_data_set_recv_call(struct xcall_cpu_data *cpu_data,
-                             struct xcall *call)
+xcall_cpu_data_init (struct xcall_cpu_data *cpu_data, uint32_t cpu)
 {
-    atomic_store(&cpu_data->recv_call, call, ATOMIC_RELEASE);
+  char name[SYSCNT_NAME_SIZE];
+
+  snprintf (name, sizeof (name), "xcall_sent/%u", cpu);
+  syscnt_register (&cpu_data->sc_sent, name);
+  snprintf (name, sizeof (name), "xcall_received/%u", cpu);
+  syscnt_register (&cpu_data->sc_received, name);
+  cpu_data->recv_call = NULL;
+  spinlock_init (&cpu_data->lock);
+}
+
+static struct xcall*
+xcall_cpu_data_get_recv_call (const struct xcall_cpu_data *cpu_data)
+{
+  return (atomic_load (&cpu_data->recv_call, ATOMIC_ACQUIRE));
 }
 
 static void
-xcall_cpu_data_clear_recv_call(struct xcall_cpu_data *cpu_data)
+xcall_cpu_data_set_recv_call (struct xcall_cpu_data *cpu_data,
+                              struct xcall *call)
 {
-    xcall_cpu_data_set_recv_call(cpu_data, NULL);
+  atomic_store (&cpu_data->recv_call, call, ATOMIC_RELEASE);
+}
+
+static void
+xcall_cpu_data_clear_recv_call (struct xcall_cpu_data *cpu_data)
+{
+  xcall_cpu_data_set_recv_call (cpu_data, NULL);
 }
 
 static int __init
-xcall_setup(void)
+xcall_setup (void)
 {
-    unsigned int i;
+  for (uint32_t i = 0; i < cpu_count (); i++)
+    xcall_cpu_data_init (xcall_get_cpu_data (i), i);
 
-    for (i = 0; i < cpu_count(); i++) {
-        xcall_cpu_data_init(xcall_get_cpu_data(i), i);
-    }
-
-    return 0;
+  return (0);
 }
 
-INIT_OP_DEFINE(xcall_setup,
-               INIT_OP_DEP(cpu_mp_probe, true),
-               INIT_OP_DEP(thread_bootstrap, true),
-               INIT_OP_DEP(spinlock_setup, true),
-               INIT_OP_DEP(syscnt_setup, true));
+INIT_OP_DEFINE (xcall_setup,
+                INIT_OP_DEP (cpu_mp_probe, true),
+                INIT_OP_DEP (thread_bootstrap, true),
+                INIT_OP_DEP (spinlock_setup, true),
+                INIT_OP_DEP (syscnt_setup, true));
 
 void
-xcall_call(xcall_fn_t fn, void *arg, unsigned int cpu)
+xcall_call (xcall_fn_t fn, void *arg, uint32_t cpu)
 {
-    struct xcall_cpu_data *cpu_data;
-    struct xcall call;
+  assert (cpu_intr_enabled ());
+  assert (fn);
 
-    assert(cpu_intr_enabled());
-    assert(fn);
+  struct xcall call;
+  xcall_init (&call, fn, arg);
+  _Auto cpu_data = xcall_get_cpu_data (cpu);
 
-    xcall_init(&call, fn, arg);
-    cpu_data = xcall_get_cpu_data(cpu);
+  spinlock_lock (&cpu_data->lock);
 
-    spinlock_lock(&cpu_data->lock);
+  // Enforce release ordering on the receive call.
+  xcall_cpu_data_set_recv_call (cpu_data, &call);
 
-    /* Enforce release ordering on the receive call */
-    xcall_cpu_data_set_recv_call(cpu_data, &call);
+  cpu_send_xcall (cpu);
 
-    cpu_send_xcall(cpu);
+  // Enforce acquire ordering on the receive call.
+  while (xcall_cpu_data_get_recv_call (cpu_data))
+    cpu_pause ();
 
-    /* Enforce acquire ordering on the receive call */
-    while (xcall_cpu_data_get_recv_call(cpu_data) != NULL) {
-        cpu_pause();
-    }
-
-    spinlock_unlock(&cpu_data->lock);
-
-    syscnt_inc(&cpu_data->sc_sent);
+  spinlock_unlock (&cpu_data->lock);
+  syscnt_inc (&cpu_data->sc_sent);
 }
 
 void
-xcall_intr(void)
+xcall_intr (void)
 {
-    struct xcall_cpu_data *cpu_data;
-    struct xcall *call;
+  assert (thread_check_intr_context ());
+  _Auto cpu_data = xcall_get_local_cpu_data ();
 
-    assert(thread_check_intr_context());
+  // Enforce acquire ordering on the receive call.
+  _Auto call = xcall_cpu_data_get_recv_call (cpu_data);
 
-    cpu_data = xcall_get_local_cpu_data();
+  if (call)
+    xcall_process (call);
+  else
+    log_err ("xcall: spurious interrupt on cpu%u", cpu_id ());
 
-    /* Enforce acquire ordering on the receive call */
-    call = xcall_cpu_data_get_recv_call(cpu_data);
+  syscnt_inc (&cpu_data->sc_received);
 
-    if (call) {
-        xcall_process(call);
-    } else {
-        log_err("xcall: spurious interrupt on cpu%u", cpu_id());
-    }
-
-    syscnt_inc(&cpu_data->sc_received);
-
-    /* Enforce release ordering on the receive call */
-    xcall_cpu_data_clear_recv_call(cpu_data);
+  // Enforce release ordering on the receive call.
+  xcall_cpu_data_clear_recv_call (cpu_data);
 }

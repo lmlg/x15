@@ -24,96 +24,88 @@
 #include <machine/strace.h>
 #include <machine/tcb.h>
 
-noreturn void tcb_context_load(struct tcb *tcb);
-noreturn void tcb_start(void);
-void tcb_context_restore(void);
+noreturn void tcb_context_load (struct tcb *tcb);
+noreturn void tcb_start (void);
+void tcb_context_restore (void);
 
 struct tcb *tcb_current_ptr __percpu;
 
 static void
-tcb_stack_push(struct tcb *tcb, uintptr_t word)
+tcb_stack_push (struct tcb *tcb, uintptr_t word)
 {
-    uintptr_t *ptr;
-
-    ptr = (uintptr_t *)tcb->sp;
-    ptr--;
-    *ptr = word;
-    tcb->sp = (uintptr_t)ptr;
+  tcb->sp -= sizeof (uintptr_t);
+  *(uintptr_t *)tcb->sp = word;
 }
 
 #ifdef __LP64__
 
 static void
-tcb_stack_forge(struct tcb *tcb, void (*fn)(void *), void *arg)
+tcb_stack_forge (struct tcb *tcb, void (*fn) (void *), void *arg)
 {
-    tcb_stack_push(tcb, (uintptr_t)arg);
-    tcb_stack_push(tcb, (uintptr_t)fn);
-    tcb_stack_push(tcb, (uintptr_t)tcb_start);  /* Return address */
-    tcb_stack_push(tcb, 0);                     /* RBX */
-    tcb_stack_push(tcb, 0);                     /* R12 */
-    tcb_stack_push(tcb, 0);                     /* R13 */
-    tcb_stack_push(tcb, 0);                     /* R14 */
-    tcb_stack_push(tcb, 0);                     /* R15 */
+  tcb_stack_push (tcb, (uintptr_t)arg);
+  tcb_stack_push (tcb, (uintptr_t)fn);
+  tcb_stack_push (tcb, (uintptr_t)tcb_start);   // Return address.
+  tcb_stack_push (tcb, 0);                      // RBX
+  tcb_stack_push (tcb, 0);                      // R12
+  tcb_stack_push (tcb, 0);                      // R13
+  tcb_stack_push (tcb, 0);                      // R14
+  tcb_stack_push (tcb, 0);                      // R15
 }
 
-#else /* __LP64__ */
+#else
 
 static void
-tcb_stack_forge(struct tcb *tcb, void (*fn)(void *), void *arg)
+tcb_stack_forge (struct tcb *tcb, void (*fn) (void *), void *arg)
 {
-    tcb_stack_push(tcb, (uintptr_t)arg);
-    tcb_stack_push(tcb, (uintptr_t)fn);
-    tcb_stack_push(tcb, (uintptr_t)tcb_start);  /* Return address */
-    tcb_stack_push(tcb, 0);                     /* EBX */
-    tcb_stack_push(tcb, 0);                     /* EDI */
-    tcb_stack_push(tcb, 0);                     /* ESI */
+  tcb_stack_push (tcb, (uintptr_t) arg);
+  tcb_stack_push (tcb, (uintptr_t) fn);
+  tcb_stack_push (tcb, (uintptr_t) tcb_start);   // Return address.
+  tcb_stack_push (tcb, 0);                       // EBX
+  tcb_stack_push (tcb, 0);                       // EDI
+  tcb_stack_push (tcb, 0);                       // ESI
 }
 
-#endif /* __LP64__ */
+#endif
 
 int
-tcb_build(struct tcb *tcb, void *stack, void (*fn)(void *), void *arg)
+tcb_build (struct tcb *tcb, void *stack, void (*fn) (void *), void *arg)
 {
-    int error;
+  int error = pmap_thread_build (thread_from_tcb (tcb));
+  if (error)
+    return (error);
 
-    error = pmap_thread_build(thread_from_tcb(tcb));
-
-    if (error) {
-        return error;
-    }
-
-    tcb->bp = 0;
-    tcb->sp = (uintptr_t)stack + TCB_STACK_SIZE;
-    tcb_stack_forge(tcb, fn, arg);
-    return 0;
+  tcb->bp = 0;
+  tcb->sp = (uintptr_t)stack + TCB_STACK_SIZE;
+  tcb_stack_forge (tcb, fn, arg);
+  return (0);
 }
 
 void
-tcb_cleanup(struct tcb *tcb)
+tcb_cleanup (struct tcb *tcb)
 {
-    pmap_thread_cleanup(thread_from_tcb(tcb));
+  pmap_thread_cleanup (thread_from_tcb (tcb));
 }
 
 void __init
-tcb_load(struct tcb *tcb)
+tcb_load (struct tcb *tcb)
 {
-    assert(!cpu_intr_enabled());
+  assert (!cpu_intr_enabled ());
 
-    tcb_set_current(tcb);
-    tcb_context_load(tcb);
+  tcb_set_current (tcb);
+  tcb_context_load (tcb);
 }
 
 void
-tcb_trace(const struct tcb *tcb)
+tcb_trace (const struct tcb *tcb)
 {
-    strace_show((uintptr_t)tcb_context_restore, tcb->bp);
+  strace_show ((uintptr_t) tcb_context_restore, tcb->bp);
 }
 
 static int __init
-tcb_setup(void)
+tcb_setup (void)
 {
-    return 0;
+  return (0);
 }
 
-INIT_OP_DEFINE(tcb_setup,
-               INIT_OP_DEP(cpu_setup, true));
+INIT_OP_DEFINE (tcb_setup,
+                INIT_OP_DEP (cpu_setup, true));

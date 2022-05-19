@@ -27,6 +27,6 @@
  * This init operation provides :
  *  - module fully initialized
  */
-INIT_OP_DECLARE(atkbd_setup);
+INIT_OP_DECLARE (atkbd_setup);
 
-#endif /* X86_ATKBD_H */
+#endif

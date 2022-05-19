@@ -20,9 +20,10 @@
 
 #include <stdint.h>
 
-struct semaphore {
-    uint16_t value;
-    uint16_t max_value;
+struct semaphore
+{
+  uint16_t value;
+  uint16_t max_value;
 };
 
-#endif /* KERN_SEMAPHORE_I_H */
+#endif

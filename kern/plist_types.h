@@ -36,15 +36,17 @@
  * prio_list--+ +--+ +------------+ +--+ +-------+
  *
  */
-struct plist {
-    struct list list;
-    struct list prio_list;
+struct plist
+{
+  struct list list;
+  struct list prio_list;
 };
 
-struct plist_node {
-    unsigned int priority;
-    struct list node;
-    struct list prio_node;
+struct plist_node
+{
+  unsigned int priority;
+  struct list node;
+  struct list prio_node;
 };
 
-#endif /* KERN_PLIST_TYPES_H */
+#endif

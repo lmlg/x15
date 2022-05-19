@@ -26,42 +26,38 @@
 
 #include <kern/macros.h>
 
-/*
- * Zone boundaries.
- */
+// Zone boundaries.
 
-#define PMEM_DMA_LIMIT          DECL_CONST(0x1000000, UL)
+#define PMEM_DMA_LIMIT          DECL_CONST (0x1000000, UL)
 
 #ifdef __LP64__
-#define PMEM_MAX_ZONES          4
-#define PMEM_DMA32_LIMIT        DECL_CONST(0x100000000, UL)
-#define PMEM_DIRECTMAP_LIMIT    DECL_CONST(0x400000000000, UL)
-#define PMEM_HIGHMEM_LIMIT      DECL_CONST(0x10000000000000, UL)
-#else /* __LP64__ */
-#define PMEM_DIRECTMAP_LIMIT    DECL_CONST(0x38000000, ULL)
-#ifdef CONFIG_X86_PAE
-#define PMEM_MAX_ZONES          3
-#define PMEM_HIGHMEM_LIMIT      DECL_CONST(0x10000000000000, ULL)
-#else /* CONFIG_X86_PAE */
-#define PMEM_MAX_ZONES          3
-#define PMEM_HIGHMEM_LIMIT      DECL_CONST(0xfffff000, UL)
-#endif /* CONFIG_X86_PAE */
-#endif /* __LP64__ */
+  #define PMEM_MAX_ZONES          4
+  #define PMEM_DMA32_LIMIT        DECL_CONST (0x100000000, UL)
+  #define PMEM_DIRECTMAP_LIMIT    DECL_CONST (0x400000000000, UL)
+  #define PMEM_HIGHMEM_LIMIT      DECL_CONST (0x10000000000000, UL)
+#else
+  #define PMEM_DIRECTMAP_LIMIT    DECL_CONST (0x38000000, ULL)
+  #ifdef CONFIG_X86_PAE
+    #define PMEM_MAX_ZONES          3
+    #define PMEM_HIGHMEM_LIMIT      DECL_CONST (0x10000000000000, ULL)
+  #else
+    #define PMEM_MAX_ZONES          3
+    #define PMEM_HIGHMEM_LIMIT      DECL_CONST (0xfffff000, UL)
+  #endif
+#endif
 
-/*
- * Zone vm_page indexes.
- */
+// Zone vm_page indexes.
 
 #define PMEM_ZONE_DMA           0
 #define PMEM_ZONE_DMA32         1
 
 #ifdef __LP64__
-#define PMEM_ZONE_DIRECTMAP     2
-#define PMEM_ZONE_HIGHMEM       3
-#else /* __LP64__ */
-#define PMEM_ZONE_DMA32         1
-#define PMEM_ZONE_DIRECTMAP     1   /* Alias for the DMA32 zone */
-#define PMEM_ZONE_HIGHMEM       2
-#endif /* __LP64__ */
+  #define PMEM_ZONE_DIRECTMAP     2
+  #define PMEM_ZONE_HIGHMEM       3
+#else
+  #define PMEM_ZONE_DMA32         1
+  #define PMEM_ZONE_DIRECTMAP     1   // Alias for the DMA32 zone.
+  #define PMEM_ZONE_HIGHMEM       2
+#endif
 
-#endif /* X86_PMEM_H */
+#endif

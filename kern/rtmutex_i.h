@@ -41,44 +41,41 @@
  * the turnstile wait function so that only the highest priority thread
  * may lock the mutex.
  */
-#define RTMUTEX_CONTENDED   ((uintptr_t)0x1)
-#define RTMUTEX_FORCE_WAIT  ((uintptr_t)0x2)
+#define RTMUTEX_CONTENDED    ((uintptr_t)0x1)
+#define RTMUTEX_FORCE_WAIT   ((uintptr_t)0x2)
 
-#define RTMUTEX_OWNER_MASK  (~((uintptr_t)(RTMUTEX_FORCE_WAIT \
-                                           | RTMUTEX_CONTENDED)))
+#define RTMUTEX_OWNER_MASK   \
+  (~((uintptr_t)(RTMUTEX_FORCE_WAIT | RTMUTEX_CONTENDED)))
 
 static inline bool
-rtmutex_owner_aligned(uintptr_t owner)
+rtmutex_owner_aligned (uintptr_t owner)
 {
-    return (((owner) & ~RTMUTEX_OWNER_MASK) == 0);
+  return ((owner & ~RTMUTEX_OWNER_MASK) == 0);
 }
 
 static inline uintptr_t
-rtmutex_lock_fast(struct rtmutex *rtmutex)
+rtmutex_lock_fast (struct rtmutex *rtmutex)
 {
-    uintptr_t owner;
-
-    owner = (uintptr_t)thread_self();
-    assert(rtmutex_owner_aligned(owner));
-    return atomic_cas(&rtmutex->owner, 0, owner, ATOMIC_ACQUIRE);
+  uintptr_t owner = (uintptr_t)thread_self ();
+  assert (rtmutex_owner_aligned (owner));
+  return (atomic_cas (&rtmutex->owner, 0, owner, ATOMIC_ACQUIRE));
 }
 
 static inline uintptr_t
-rtmutex_unlock_fast(struct rtmutex *rtmutex)
+rtmutex_unlock_fast (struct rtmutex *rtmutex)
 {
-    uintptr_t owner, prev_owner;
-
-    owner = (uintptr_t)thread_self();
-    assert(rtmutex_owner_aligned(owner));
-    prev_owner = atomic_cas(&rtmutex->owner, owner, 0, ATOMIC_RELEASE);
-    assert((prev_owner & RTMUTEX_OWNER_MASK) == owner);
-    return prev_owner;
+  uintptr_t owner = (uintptr_t)thread_self ();
+  assert (rtmutex_owner_aligned (owner));
+  uintptr_t prev_owner = atomic_cas (&rtmutex->owner, owner, 0,
+                                     ATOMIC_RELEASE);
+  assert ((prev_owner & RTMUTEX_OWNER_MASK) == owner);
+  return (prev_owner);
 }
 
-void rtmutex_lock_slow(struct rtmutex *rtmutex);
+void rtmutex_lock_slow (struct rtmutex *rtmutex);
 
-int rtmutex_timedlock_slow(struct rtmutex *rtmutex, uint64_t ticks);
+int rtmutex_timedlock_slow (struct rtmutex *rtmutex, uint64_t ticks);
 
-void rtmutex_unlock_slow(struct rtmutex *rtmutex);
+void rtmutex_unlock_slow (struct rtmutex *rtmutex);
 
-#endif /* KERN_RTMUTEX_I_H */
+#endif

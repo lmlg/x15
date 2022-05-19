@@ -32,225 +32,209 @@
 
 #ifdef CONFIG_MUTEX_DEBUG
 
-enum {
-    RTMUTEX_SC_WAIT_SUCCESSES,
-    RTMUTEX_SC_WAIT_ERRORS,
-    RTMUTEX_SC_DOWNGRADES,
-    RTMUTEX_SC_ERROR_DOWNGRADES,
-    RTMUTEX_SC_CANCELED_DOWNGRADES,
-    RTMUTEX_NR_SCS
+enum
+{
+  RTMUTEX_SC_WAIT_SUCCESSES,
+  RTMUTEX_SC_WAIT_ERRORS,
+  RTMUTEX_SC_DOWNGRADES,
+  RTMUTEX_SC_ERROR_DOWNGRADES,
+  RTMUTEX_SC_CANCELED_DOWNGRADES,
+  RTMUTEX_NR_SCS
 };
 
 static struct syscnt rtmutex_sc_array[RTMUTEX_NR_SCS];
 
 static void
-rtmutex_register_sc(unsigned int index, const char *name)
+rtmutex_register_sc (unsigned int index, const char *name)
 {
-    assert(index < ARRAY_SIZE(rtmutex_sc_array));
-    syscnt_register(&rtmutex_sc_array[index], name);
+  assert (index < ARRAY_SIZE (rtmutex_sc_array));
+  syscnt_register (&rtmutex_sc_array[index], name);
 }
 
 static void
-rtmutex_setup_debug(void)
+rtmutex_setup_debug (void)
 {
-    rtmutex_register_sc(RTMUTEX_SC_WAIT_SUCCESSES,
-                        "rtmutex_wait_successes");
-    rtmutex_register_sc(RTMUTEX_SC_WAIT_ERRORS,
-                        "rtmutex_wait_errors");
-    rtmutex_register_sc(RTMUTEX_SC_DOWNGRADES,
-                        "rtmutex_downgrades");
-    rtmutex_register_sc(RTMUTEX_SC_ERROR_DOWNGRADES,
-                        "rtmutex_error_downgrades");
-    rtmutex_register_sc(RTMUTEX_SC_CANCELED_DOWNGRADES,
-                        "rtmutex_canceled_downgrades");
+  rtmutex_register_sc (RTMUTEX_SC_WAIT_SUCCESSES, "rtmutex_wait_successes");
+  rtmutex_register_sc (RTMUTEX_SC_WAIT_ERRORS, "rtmutex_wait_errors");
+  rtmutex_register_sc (RTMUTEX_SC_DOWNGRADES, "rtmutex_downgrades");
+  rtmutex_register_sc (RTMUTEX_SC_ERROR_DOWNGRADES,
+                       "rtmutex_error_downgrades");
+  rtmutex_register_sc (RTMUTEX_SC_CANCELED_DOWNGRADES,
+                       "rtmutex_canceled_downgrades");
 }
 
 static void
-rtmutex_inc_sc(unsigned int index)
+rtmutex_inc_sc (unsigned int index)
 {
-    assert(index < ARRAY_SIZE(rtmutex_sc_array));
-    syscnt_inc(&rtmutex_sc_array[index]);
+  assert (index < ARRAY_SIZE (rtmutex_sc_array));
+  syscnt_inc (&rtmutex_sc_array[index]);
 }
 
-#else /* CONFIG_MUTEX_DEBUG */
-#define rtmutex_setup_debug()
-#define rtmutex_inc_sc(x)
-#endif /* CONFIG_MUTEX_DEBUG */
+#else
+  #define rtmutex_setup_debug()
+  #define rtmutex_inc_sc(x)
+#endif
 
-static struct thread *
-rtmutex_get_thread(uintptr_t owner)
+static struct thread*
+rtmutex_get_thread (uintptr_t owner)
 {
-    return (struct thread *)(owner & RTMUTEX_OWNER_MASK);
+  return ((struct thread *)(owner & RTMUTEX_OWNER_MASK));
 }
 
 static void
-rtmutex_set_contended(struct rtmutex *rtmutex)
+rtmutex_set_contended (struct rtmutex *rtmutex)
 {
-    atomic_or(&rtmutex->owner, RTMUTEX_CONTENDED, ATOMIC_RELEASE);
+  atomic_or (&rtmutex->owner, RTMUTEX_CONTENDED, ATOMIC_RELEASE);
 }
 
 static int
-rtmutex_lock_slow_common(struct rtmutex *rtmutex, bool timed, uint64_t ticks)
+rtmutex_lock_slow_common (struct rtmutex *rtmutex, bool timed, uint64_t ticks)
 {
-    struct turnstile *turnstile;
-    uintptr_t self, owner;
-    struct thread *thread;
-    uintptr_t bits;
-    int error;
+  int error = 0;
+  uintptr_t self = (uintptr_t)thread_self(), bits = RTMUTEX_CONTENDED;
 
-    error = 0;
-    self = (uintptr_t)thread_self();
+  struct turnstile *turnstile = turnstile_lend (rtmutex);
+  rtmutex_set_contended (rtmutex);
 
-    turnstile = turnstile_lend(rtmutex);
+  while (1)
+    {
+      uintptr_t owner = atomic_cas (&rtmutex->owner, bits,
+                                    self | bits, ATOMIC_ACQUIRE);
+      assert ((owner & bits) == bits);
 
-    rtmutex_set_contended(rtmutex);
+      if (owner == bits)
+        break;
 
-    bits = RTMUTEX_CONTENDED;
+      struct thread *thread = rtmutex_get_thread (owner);
 
-    for (;;) {
-        owner = atomic_cas(&rtmutex->owner, bits, self | bits, ATOMIC_ACQUIRE);
-        assert((owner & bits) == bits);
+      if (! timed)
+        turnstile_wait (turnstile, "rtmutex", thread);
+      else
+        {
+          error = turnstile_timedwait (turnstile, "rtmutex", thread, ticks);
 
-        if (owner == bits) {
+          if (error)
             break;
         }
 
-        thread = rtmutex_get_thread(owner);
-
-        if (!timed) {
-            turnstile_wait(turnstile, "rtmutex", thread);
-        } else {
-            error = turnstile_timedwait(turnstile, "rtmutex", thread, ticks);
-
-            if (error) {
-                break;
-            }
-        }
-
-        bits |= RTMUTEX_FORCE_WAIT;
+      bits |= RTMUTEX_FORCE_WAIT;
     }
 
-    if (error) {
-        rtmutex_inc_sc(RTMUTEX_SC_WAIT_ERRORS);
+  if (error)
+    {
+      rtmutex_inc_sc (RTMUTEX_SC_WAIT_ERRORS);
 
-        /*
-         * Keep in mind more than one thread may have timed out on waiting.
-         * These threads aren't considered waiters, making the turnstile
-         * potentially empty. The first to reacquire the turnstile clears
-         * the contention bits, allowing the owner to unlock through the
-         * fast path.
-         */
-        if (turnstile_empty(turnstile)) {
-            owner = atomic_load(&rtmutex->owner, ATOMIC_RELAXED);
+      /*
+       * Keep in mind more than one thread may have timed out on waiting.
+       * These threads aren't considered waiters, making the turnstile
+       * potentially empty. The first to reacquire the turnstile clears
+       * the contention bits, allowing the owner to unlock through the
+       * fast path.
+       */
+      if (turnstile_empty (turnstile))
+        {
+          uintptr_t owner = atomic_load (&rtmutex->owner, ATOMIC_RELAXED);
 
-            if (owner & RTMUTEX_CONTENDED) {
-                rtmutex_inc_sc(RTMUTEX_SC_ERROR_DOWNGRADES);
-                owner &= RTMUTEX_OWNER_MASK;
-                atomic_store(&rtmutex->owner, owner, ATOMIC_RELAXED);
-            } else {
-                rtmutex_inc_sc(RTMUTEX_SC_CANCELED_DOWNGRADES);
+          if (owner & RTMUTEX_CONTENDED)
+            {
+              rtmutex_inc_sc (RTMUTEX_SC_ERROR_DOWNGRADES);
+              owner &= RTMUTEX_OWNER_MASK;
+              atomic_store (&rtmutex->owner, owner, ATOMIC_RELAXED);
             }
+          else
+            rtmutex_inc_sc (RTMUTEX_SC_CANCELED_DOWNGRADES);
         }
 
-        goto out;
+      goto out;
     }
 
-    rtmutex_inc_sc(RTMUTEX_SC_WAIT_SUCCESSES);
+  rtmutex_inc_sc (RTMUTEX_SC_WAIT_SUCCESSES);
+  turnstile_own (turnstile);
 
-    turnstile_own(turnstile);
-
-    if (turnstile_empty(turnstile)) {
-        rtmutex_inc_sc(RTMUTEX_SC_DOWNGRADES);
-        owner = atomic_swap(&rtmutex->owner, self, ATOMIC_RELAXED);
-        assert(owner == (self | bits));
+  if (turnstile_empty (turnstile))
+    {
+      rtmutex_inc_sc (RTMUTEX_SC_DOWNGRADES);
+      uintptr_t owner = atomic_swap (&rtmutex->owner, self, ATOMIC_RELAXED);
+      assert (owner == (self | bits));
     }
 
 out:
-    turnstile_return(turnstile);
+  turnstile_return (turnstile);
 
-    /*
-     * A lock owner should never perform priority propagation on itself,
-     * because this process is done using its own priority, potentially
-     * introducing unbounded priority inversion.
-     * Instead, let new waiters do it, using their own priority.
-     */
+  /*
+   * A lock owner should never perform priority propagation on itself,
+   * because this process is done using its own priority, potentially
+   * introducing unbounded priority inversion.
+   * Instead, let new waiters do it, using their own priority.
+   */
 
-    return error;
+  return (error);
 }
 
 void
-rtmutex_lock_slow(struct rtmutex *rtmutex)
+rtmutex_lock_slow (struct rtmutex *rtmutex)
 {
-    int error;
-
-    error = rtmutex_lock_slow_common(rtmutex, false, 0);
-    assert(!error);
+  int error = rtmutex_lock_slow_common (rtmutex, false, 0);
+  assert (! error);
 }
 
 int
-rtmutex_timedlock_slow(struct rtmutex *rtmutex, uint64_t ticks)
+rtmutex_timedlock_slow (struct rtmutex *rtmutex, uint64_t ticks)
 {
-    return rtmutex_lock_slow_common(rtmutex, true, ticks);
+  return (rtmutex_lock_slow_common (rtmutex, true, ticks));
 }
 
 void
-rtmutex_unlock_slow(struct rtmutex *rtmutex)
+rtmutex_unlock_slow (struct rtmutex *rtmutex)
 {
-    struct turnstile *turnstile;
-    uintptr_t owner;
+  struct turnstile *turnstile;
 
-    for (;;) {
-        turnstile = turnstile_acquire(rtmutex);
+  for (;;)
+    {
+      turnstile = turnstile_acquire (rtmutex);
 
-        if (turnstile != NULL) {
-            break;
-        }
-
-        owner = rtmutex_unlock_fast(rtmutex);
-
-        if (!(owner & RTMUTEX_CONTENDED)) {
-            goto out;
-        }
+      if (turnstile != NULL)
+        break;
+      else if (!(rtmutex_unlock_fast (rtmutex) & RTMUTEX_CONTENDED))
+        goto out;
     }
 
-    owner = atomic_swap(&rtmutex->owner,
-                        RTMUTEX_FORCE_WAIT | RTMUTEX_CONTENDED,
-                        ATOMIC_RELEASE);
-    assert(rtmutex_get_thread(owner) == thread_self());
+  uintptr_t owner = atomic_swap (&rtmutex->owner,
+                                 RTMUTEX_FORCE_WAIT | RTMUTEX_CONTENDED,
+                                 ATOMIC_RELEASE);
+  assert (rtmutex_get_thread (owner) == thread_self ());
 
-    turnstile_disown(turnstile);
-    turnstile_signal(turnstile);
-
-    turnstile_release(turnstile);
+  turnstile_disown (turnstile);
+  turnstile_signal (turnstile);
+  turnstile_release (turnstile);
 
 out:
-    thread_propagate_priority();
+  thread_propagate_priority ();
 }
 
 static int
-rtmutex_bootstrap(void)
+rtmutex_bootstrap (void)
 {
-    return 0;
+  return (0);
 }
 
-INIT_OP_DEFINE(rtmutex_bootstrap,
-               INIT_OP_DEP(thread_setup_booter, true));
+INIT_OP_DEFINE (rtmutex_bootstrap,
+                INIT_OP_DEP (thread_setup_booter, true));
 
 static int
-rtmutex_setup(void)
+rtmutex_setup (void)
 {
-    rtmutex_setup_debug();
-    return 0;
+  rtmutex_setup_debug ();
+  return (0);
 }
 
 #ifdef CONFIG_MUTEX_DEBUG
-#define RTMUTEX_DEBUG_INIT_OPS                  \
-               INIT_OP_DEP(syscnt_setup, true),
-#else /* CONFIG_MUTEX_DEBUG */
-#define RTMUTEX_DEBUG_INIT_OPS
-#endif /* CONFIG_MUTEX_DEBUG */
+  #define RTMUTEX_DEBUG_INIT_OPS   INIT_OP_DEP(syscnt_setup, true),
+#else
+  #define RTMUTEX_DEBUG_INIT_OPS
+#endif
 
-INIT_OP_DEFINE(rtmutex_setup,
-               INIT_OP_DEP(rtmutex_bootstrap, true),
-               RTMUTEX_DEBUG_INIT_OPS
-);
+INIT_OP_DEFINE (rtmutex_setup,
+                INIT_OP_DEP (rtmutex_bootstrap, true),
+                RTMUTEX_DEBUG_INIT_OPS
+               );

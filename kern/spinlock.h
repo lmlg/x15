@@ -40,33 +40,27 @@
 struct spinlock;
 
 static inline bool
-spinlock_locked(const struct spinlock *lock)
+spinlock_locked (const struct spinlock *lock)
 {
-    uint32_t value;
-
-    value = atomic_load(&lock->value, ATOMIC_RELAXED);
-    return value != SPINLOCK_UNLOCKED;
+  uint32_t value = atomic_load (&lock->value, ATOMIC_RELAXED);
+  return (value != SPINLOCK_UNLOCKED);
 }
 
 #ifdef SPINLOCK_TRACK_OWNER
 
 static inline void
-spinlock_transfer_owner(struct spinlock *lock, struct thread *owner)
+spinlock_transfer_owner (struct spinlock *lock, struct thread *owner)
 {
-    assert(lock->owner == thread_self());
-    lock->owner = owner;
+  assert (lock->owner == thread_self ());
+  lock->owner = owner;
 }
 
-#else /* SPINLOCK_TRACK_OWNER */
+#else
+  #define spinlock_transfer_owner(lock, owner)
+#endif
 
-#define spinlock_transfer_owner(lock, owner)
-
-#endif /* SPINLOCK_TRACK_OWNER */
-
-/*
- * Initialize a spin lock.
- */
-void spinlock_init(struct spinlock *lock);
+// Initialize a spin lock.
+void spinlock_init (struct spinlock *lock);
 
 /*
  * Attempt to lock the given spin lock.
@@ -76,18 +70,15 @@ void spinlock_init(struct spinlock *lock);
  * Preemption is disabled on success.
  */
 static inline int
-spinlock_trylock(struct spinlock *lock)
+spinlock_trylock (struct spinlock *lock)
 {
-    int error;
+  thread_preempt_disable ();
+  int error = spinlock_lock_fast (lock);
 
-    thread_preempt_disable();
-    error = spinlock_lock_fast(lock);
+  if (unlikely (error))
+    thread_preempt_enable ();
 
-    if (unlikely(error)) {
-        thread_preempt_enable();
-    }
-
-    return error;
+  return (error);
 }
 
 /*
@@ -101,10 +92,10 @@ spinlock_trylock(struct spinlock *lock)
  * This function disables preemption.
  */
 static inline void
-spinlock_lock(struct spinlock *lock)
+spinlock_lock (struct spinlock *lock)
 {
-    thread_preempt_disable();
-    spinlock_lock_common(lock);
+  thread_preempt_disable ();
+  spinlock_lock_common (lock);
 }
 
 /*
@@ -116,10 +107,10 @@ spinlock_lock(struct spinlock *lock)
  * This function may reenable preemption.
  */
 static inline void
-spinlock_unlock(struct spinlock *lock)
+spinlock_unlock (struct spinlock *lock)
 {
-    spinlock_unlock_common(lock);
-    thread_preempt_enable();
+  spinlock_unlock_common (lock);
+  thread_preempt_enable ();
 }
 
 /*
@@ -137,18 +128,15 @@ spinlock_unlock(struct spinlock *lock)
  * CPU flags.
  */
 static inline int
-spinlock_trylock_intr_save(struct spinlock *lock, unsigned long *flags)
+spinlock_trylock_intr_save (struct spinlock *lock, unsigned long *flags)
 {
-    int error;
+  thread_preempt_disable_intr_save (flags);
+  int error = spinlock_lock_fast (lock);
 
-    thread_preempt_disable_intr_save(flags);
-    error = spinlock_lock_fast(lock);
+  if (unlikely (error))
+    thread_preempt_enable_intr_restore (*flags);
 
-    if (unlikely(error)) {
-        thread_preempt_enable_intr_restore(*flags);
-    }
-
-    return error;
+  return (error);
 }
 
 /*
@@ -163,10 +151,10 @@ spinlock_trylock_intr_save(struct spinlock *lock, unsigned long *flags)
  * the caller are filled with the previous value of the CPU flags.
  */
 static inline void
-spinlock_lock_intr_save(struct spinlock *lock, unsigned long *flags)
+spinlock_lock_intr_save (struct spinlock *lock, unsigned long *flags)
 {
-    thread_preempt_disable_intr_save(flags);
-    spinlock_lock_common(lock);
+  thread_preempt_disable_intr_save (flags);
+  spinlock_lock_common (lock);
 }
 
 /*
@@ -179,10 +167,10 @@ spinlock_lock_intr_save(struct spinlock *lock, unsigned long *flags)
  * flags which must have been obtained with a lock or trylock operation.
  */
 static inline void
-spinlock_unlock_intr_restore(struct spinlock *lock, unsigned long flags)
+spinlock_unlock_intr_restore (struct spinlock *lock, unsigned long flags)
 {
-    spinlock_unlock_common(lock);
-    thread_preempt_enable_intr_restore(flags);
+  spinlock_unlock_common (lock);
+  thread_preempt_enable_intr_restore (flags);
 }
 
 /*
@@ -191,6 +179,6 @@ spinlock_unlock_intr_restore(struct spinlock *lock, unsigned long flags)
  *
  * Contended locking may only occur after starting APs.
  */
-INIT_OP_DECLARE(spinlock_setup);
+INIT_OP_DECLARE (spinlock_setup);
 
-#endif /* KERN_SPINLOCK_H */
+#endif

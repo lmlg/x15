@@ -26,16 +26,17 @@
 #include <kern/init.h>
 #include <kern/stream.h>
 
-enum {
-    LOG_EMERG,
-    LOG_ALERT,
-    LOG_CRIT,
-    LOG_ERR,
-    LOG_WARNING,
-    LOG_NOTICE,
-    LOG_INFO,
-    LOG_DEBUG,
-    LOG_NR_LEVELS,
+enum
+{
+  LOG_EMERG,
+  LOG_ALERT,
+  LOG_CRIT,
+  LOG_ERR,
+  LOG_WARNING,
+  LOG_NOTICE,
+  LOG_INFO,
+  LOG_DEBUG,
+  LOG_NR_LEVELS,
 };
 
 /*
@@ -49,45 +50,43 @@ enum {
  *
  * This function may safely be called in interrupt context.
  */
-int log_msg(unsigned int level, const char *format, ...)
-    __attribute__((format(printf, 2, 3)));
+int log_msg (unsigned int level, const char *format, ...)
+  __attribute__ ((format (printf, 2, 3)));
 
-int log_vmsg(unsigned int level, const char *format, va_list ap)
-    __attribute__((format(printf, 2, 0)));
+int log_vmsg (unsigned int level, const char *format, va_list ap)
+  __attribute__ ((format (printf, 2, 0)));
 
-/*
- * Convenience wrappers.
- */
+// Convenience wrappers.
 
 #define log_emerg(format, ...)   \
-    log_msg(LOG_EMERG, (format), ##__VA_ARGS__)
+  log_msg (LOG_EMERG, (format), ##__VA_ARGS__)
 
 #define log_alert(format, ...)   \
-    log_msg(LOG_ALERT, (format), ##__VA_ARGS__)
+  log_msg (LOG_ALERT, (format), ##__VA_ARGS__)
 
 #define log_crit(format, ...)   \
-    log_msg(LOG_CRIT, (format), ##__VA_ARGS__)
+  log_msg (LOG_CRIT, (format), ##__VA_ARGS__)
 
 #define log_err(format, ...)   \
-    log_msg(LOG_ERR, (format), ##__VA_ARGS__)
+  log_msg (LOG_ERR, (format), ##__VA_ARGS__)
 
 #define log_warning(format, ...)   \
-    log_msg(LOG_WARNING, (format), ##__VA_ARGS__)
+  log_msg (LOG_WARNING, (format), ##__VA_ARGS__)
 
 #define log_notice(format, ...)   \
-    log_msg(LOG_NOTICE, (format), ##__VA_ARGS__)
+  log_msg (LOG_NOTICE, (format), ##__VA_ARGS__)
 
 #define log_info(format, ...)   \
-    log_msg(LOG_INFO, (format), ##__VA_ARGS__)
+  log_msg (LOG_INFO, (format), ##__VA_ARGS__)
 
 #define log_debug(format, ...)   \
-    log_msg(LOG_DEBUG, (format), ##__VA_ARGS__)
+  log_msg (LOG_DEBUG, (format), ##__VA_ARGS__)
 
 /*
  * The bulletin returned by this function is used to notify the initial log
  * dump so that console output is well ordered.
  */
-struct bulletin * log_get_bulletin(void);
+struct bulletin* log_get_bulletin (void);
 
 // Get the logger stream for a particular level.
 struct stream* log_stream (unsigned int level);
@@ -110,6 +109,6 @@ struct stream* log_stream (unsigned int level);
  * The log thread isn't yet started and messages are merely stored in an
  * internal buffer.
  */
-INIT_OP_DECLARE(log_setup);
+INIT_OP_DECLARE (log_setup);
 
-#endif /* KERN_LOG_H */
+#endif

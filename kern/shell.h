@@ -31,58 +31,43 @@
 #include <kern/init.h>
 #include <kern/macros.h>
 
-/*
- * Shell structure, statically allocatable.
- */
+// Shell structure, statically allocatable.
 struct shell;
 
-/*
- * Shell command structure.
- */
+// Shell command structure.
 struct shell_cmd;
 
-/*
- * Command container, shareable across multiple shell instances.
- */
+// Command container, shareable across multiple shell instances.
 struct shell_cmd_set;
 
-/*
- * Type for command implementation callbacks.
- */
-typedef void (*shell_fn_t)(struct shell *shell, int argc, char **argv);
+// Type for command implementation callbacks.
+typedef void (*shell_fn_t) (struct shell *shell, int argc, char **argv);
 
 #include <kern/shell_i.h>
 
-#define SHELL_REGISTER_CMDS(cmds, cmd_set)                              \
-MACRO_BEGIN                                                             \
-    size_t i_;                                                          \
-    int error_;                                                         \
-                                                                        \
-    for (i_ = 0; i_ < ARRAY_SIZE(cmds); i_++) {                         \
-        error_ = shell_cmd_set_register(cmd_set, &(cmds)[i_]);          \
-        error_check(error_, __func__);                                  \
-    }                                                                   \
+#define SHELL_REGISTER_CMDS(cmds, cmd_set)   \
+MACRO_BEGIN   \
+  \
+  for (size_t i_ = 0; i_ < ARRAY_SIZE (cmds); i_++)   \
+    {   \
+      int  error_ = shell_cmd_set_register (cmd_set, &(cmds)[i_]);   \
+      error_check (error_, __func__);   \
+    }   \
 MACRO_END
 
-/*
- * Static shell command initializers.
- */
-#define SHELL_CMD_INITIALIZER(name, fn, usage, short_desc) \
-    { NULL, NULL, name, fn, usage, short_desc, NULL }
-#define SHELL_CMD_INITIALIZER2(name, fn, usage, short_desc, long_desc) \
-    { NULL, NULL, name, fn, usage, short_desc, long_desc }
+// Static shell command initializers.
+#define SHELL_CMD_INITIALIZER(name, fn, usage, short_desc)   \
+  { NULL, NULL, name, fn, usage, short_desc, NULL }
+#define SHELL_CMD_INITIALIZER2(name, fn, usage, short_desc, long_desc)   \
+  { NULL, NULL, name, fn, usage, short_desc, long_desc }
 
-/*
- * Initialize a shell command structure.
- */
-void shell_cmd_init(struct shell_cmd *cmd, const char *name,
-                    shell_fn_t fn, const char *usage,
-                    const char *short_desc, const char *long_desc);
+// Initialize a shell command structure.
+void shell_cmd_init (struct shell_cmd *cmd, const char *name,
+                     shell_fn_t fn, const char *usage,
+                     const char *short_desc, const char *long_desc);
 
-/*
- * Initialize a command set.
- */
-void shell_cmd_set_init(struct shell_cmd_set *cmd_set);
+// Initialize a command set.
+void shell_cmd_set_init (struct shell_cmd_set *cmd_set);
 
 /*
  * Register a shell command.
@@ -95,36 +80,33 @@ void shell_cmd_set_init(struct shell_cmd_set *cmd_set);
  * The command structure must persist in memory as long as the command set
  * is used.
  */
-int shell_cmd_set_register(struct shell_cmd_set *cmd_set,
-                           struct shell_cmd *cmd);
+int shell_cmd_set_register (struct shell_cmd_set *cmd_set,
+                            struct shell_cmd *cmd);
 
 /*
  * Initialize a shell instance.
  *
  * On return, shell commands can be registered.
  */
-void shell_init(struct shell *shell, struct shell_cmd_set *cmd_set,
-                struct stream *stream);
+void shell_init (struct shell *shell, struct shell_cmd_set *cmd_set,
+                 struct stream *stream);
 
-/*
- * Obtain the command set associated with a shell.
- */
-struct shell_cmd_set * shell_get_cmd_set(struct shell *shell);
+// Obtain the command set associated with a shell.
+struct shell_cmd_set* shell_get_cmd_set (struct shell *shell);
 
-/*
- * Printf-like functions specific to the given shell instance.
- */
-void shell_printf(struct shell *shell, const char *format, ...)
-    __attribute__((format(printf, 2, 3)));
-void shell_vprintf(struct shell *shell, const char *format, va_list ap)
-    __attribute__((format(printf, 2, 0)));
+// Printf-like functions specific to the given shell instance.
+void shell_printf (struct shell *shell, const char *format, ...)
+  __attribute__ ((format (printf, 2, 3)));
+
+void shell_vprintf (struct shell *shell, const char *format, va_list ap)
+  __attribute__ ((format (printf, 2, 0)));
 
 /*
  * This init operation provides :
  *  - main shell command registration
  */
-INIT_OP_DECLARE(shell_setup);
+INIT_OP_DECLARE (shell_setup);
 
-struct shell_cmd_set * shell_get_main_cmd_set(void);
+struct shell_cmd_set* shell_get_main_cmd_set (void);
 
-#endif /* KERN_SHELL_H */
+#endif

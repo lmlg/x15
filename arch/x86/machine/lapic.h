@@ -21,32 +21,22 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-/*
- * Send an end-of-interrupt message to the local APIC.
- */
-void lapic_eoi(void);
+// Send an end-of-interrupt message to the local APIC.
+void lapic_eoi (void);
 
-/*
- * Set up the lapic module.
- */
-void lapic_setup(uint32_t map_addr);
+// Set up the lapic module.
+void lapic_setup (uint32_t map_addr);
 
-/*
- * Set up the local APIC for an AP.
- */
-void lapic_ap_setup(void);
+// Set up the local APIC for an AP.
+void lapic_ap_setup (void);
 
-/*
- * Functions used when initializing an AP.
- */
-void lapic_ipi_init_assert(uint32_t apic_id);
-void lapic_ipi_init_deassert(uint32_t apic_id);
-void lapic_ipi_startup(uint32_t apic_id, uint32_t vector);
+// Functions used when initializing an AP.
+void lapic_ipi_init_assert (uint32_t apic_id);
+void lapic_ipi_init_deassert (uint32_t apic_id);
+void lapic_ipi_startup (uint32_t apic_id, uint32_t vector);
 
-/*
- * Fixed/broadcast inter-processor interrupts.
- */
-void lapic_ipi_send(uint32_t apic_id, uint32_t vector);
-void lapic_ipi_broadcast(uint32_t vector);
+// Fixed/broadcast inter-processor interrupts.
+void lapic_ipi_send (uint32_t apic_id, uint32_t vector);
+void lapic_ipi_broadcast (uint32_t vector);
 
-#endif /* X86_LAPIC_H */
+#endif

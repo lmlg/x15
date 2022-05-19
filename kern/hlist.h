@@ -35,18 +35,14 @@ struct hlist;
 
 struct hlist_node;
 
-/*
- * Static list initializer.
- */
-#define HLIST_INITIALIZER(list) { NULL }
+// Static list initializer.
+#define HLIST_INITIALIZER(list)   { NULL }
 
-/*
- * Initialize a list.
- */
+// Initialize a list.
 static inline void
-hlist_init(struct hlist *list)
+hlist_init (struct hlist *list)
 {
-    list->first = NULL;
+  list->first = NULL;
 }
 
 /*
@@ -55,63 +51,53 @@ hlist_init(struct hlist *list)
  * A node is in no list when its pprev member points to NULL.
  */
 static inline void
-hlist_node_init(struct hlist_node *node)
+hlist_node_init (struct hlist_node *node)
 {
-    node->pprev = NULL;
+  node->pprev = NULL;
 }
 
-/*
- * Return true if node is in no list.
- */
+// Return true if node is in no list.
 static inline bool
-hlist_node_unlinked(const struct hlist_node *node)
+hlist_node_unlinked (const struct hlist_node *node)
 {
-    return node->pprev == NULL;
+  return (!node->pprev);
 }
 
-/*
- * Return the first node of a list.
- */
-static inline struct hlist_node *
-hlist_first(const struct hlist *list)
+// Return the first node of a list.
+static inline struct hlist_node*
+hlist_first (const struct hlist *list)
 {
-    return list->first;
+  return (list->first);
 }
 
-/*
- * Return the node next to the given node.
- */
-static inline struct hlist_node *
-hlist_next(const struct hlist_node *node)
+// Return the node next to the given node.
+static inline struct hlist_node*
+hlist_next (const struct hlist_node *node)
 {
-    return node->next;
+  return (node->next);
 }
 
-/*
- * Return true if node is invalid and denotes the end of the list.
- */
+// Return true if node is invalid and denotes the end of the list.
 static inline bool
-hlist_end(const struct hlist_node *node)
+hlist_end (const struct hlist_node *node)
 {
-    return node == NULL;
+  return (!node);
 }
 
-/*
- * Return true if list is empty.
- */
+// Return true if list is empty.
 static inline bool
-hlist_empty(const struct hlist *list)
+hlist_empty (const struct hlist *list)
 {
-    return list->first == NULL;
+  return (!list->first);
 }
 
 /*
  * Return true if list contains exactly one node.
  */
 static inline bool
-hlist_singular(const struct hlist *list)
+hlist_singular (const struct hlist *list)
 {
-    return !hlist_empty(list) && hlist_end(list->first->next);
+  return (!hlist_empty (list) && hlist_end (list->first->next));
 }
 
 /*
@@ -120,103 +106,79 @@ hlist_singular(const struct hlist *list)
  * After completion, old_head is stale.
  */
 static inline void
-hlist_set_head(struct hlist *new_head, const struct hlist *old_head)
+hlist_set_head (struct hlist *new_head, const struct hlist *old_head)
 {
-    *new_head = *old_head;
+  *new_head = *old_head;
 
-    if (!hlist_empty(new_head)) {
-        new_head->first->pprev = &new_head->first;
-    }
+  if (!hlist_empty (new_head))
+    new_head->first->pprev = &new_head->first;
 }
 
-/*
- * Insert a node at the head of a list.
- */
+// Insert a node at the head of a list.
 static inline void
-hlist_insert_head(struct hlist *list, struct hlist_node *node)
+hlist_insert_head (struct hlist *list, struct hlist_node *node)
 {
-    struct hlist_node *first;
+  struct hlist_node *first = list->first;
+  node->next = first;
+  node->pprev = &list->first;
 
-    first = list->first;
-    node->next = first;
-    node->pprev = &list->first;
+  if (first != NULL)
+    first->pprev = &node->next;
 
-    if (first != NULL) {
-        first->pprev = &node->next;
-    }
-
-    list->first = node;
+  list->first = node;
 }
 
-/*
- * Insert a node before another node.
- */
+// Insert a node before another node.
 static inline void
-hlist_insert_before(struct hlist_node *node, struct hlist_node *next)
+hlist_insert_before (struct hlist_node *node, struct hlist_node *next)
 {
-    node->next = next;
-    node->pprev = next->pprev;
-    next->pprev = &node->next;
-    *node->pprev = node;
+  node->next = next;
+  node->pprev = next->pprev;
+  next->pprev = &node->next;
+  *node->pprev = node;
 }
 
-/*
- * Insert a node after another node.
- */
+// Insert a node after another node.
 static inline void
-hlist_insert_after(struct hlist_node *node, struct hlist_node *prev)
+hlist_insert_after (struct hlist_node *node, struct hlist_node *prev)
 {
-    node->next = prev->next;
-    node->pprev = &prev->next;
+  node->next = prev->next;
+  node->pprev = &prev->next;
 
-    if (node->next != NULL) {
-        node->next->pprev = &node->next;
-    }
+  if (node->next != NULL)
+    node->next->pprev = &node->next;
 
-    prev->next = node;
+  prev->next = node;
 }
 
-/*
- * Remove a node from a list.
- */
+// Remove a node from a list.
 static inline void
-hlist_remove(struct hlist_node *node)
+hlist_remove (struct hlist_node *node)
 {
-    if (node->next != NULL) {
-        node->next->pprev = node->pprev;
-    }
+  if (node->next != NULL)
+    node->next->pprev = node->pprev;
 
-    *node->pprev = node->next;
+  *node->pprev = node->next;
 }
 
 /*
  * Macro that evaluates to the address of the structure containing the
  * given node based on the given type and member.
  */
-#define hlist_entry(node, type, member) structof(node, type, member)
+#define hlist_entry(node, type, member)   structof (node, type, member)
 
-/*
- * Get the first entry of a list.
- */
-#define hlist_first_entry(list, type, member)                           \
-MACRO_BEGIN                                                             \
-    struct hlist_node *first_;                                          \
-                                                                        \
-    first_ = (list)->first;                                             \
-    hlist_end(first_) ? NULL : hlist_entry(first_, type, member);       \
+// Get the first entry of a list.
+#define hlist_first_entry(list, type, member)   \
+MACRO_BEGIN   \
+  struct hlist_node *first_ = (list)->first;   \
+  hlist_end (first_) ? NULL : hlist_entry (first_, type, member);   \
 MACRO_END
 
-/*
- * Get the entry next to the given entry.
- */
-#define hlist_next_entry(entry, member)                                 \
-MACRO_BEGIN                                                             \
-    struct hlist_node *next_;                                           \
-                                                                        \
-    next_ = (entry)->member.next;                                       \
-    hlist_end(next_)                                                    \
-        ? NULL                                                          \
-        : hlist_entry(next_, typeof(*entry), member);                   \
+// Get the entry next to the given entry.
+#define hlist_next_entry(entry, member)   \
+MACRO_BEGIN   \
+  struct hlist_node *next_ = (entry)->member.next;   \
+  hlist_end (next_) ? NULL : hlist_entry (next_, typeof (*entry), member);   \
 MACRO_END
 
 /*
@@ -224,40 +186,36 @@ MACRO_END
  *
  * The node must not be altered during the loop.
  */
-#define hlist_for_each(list, node)  \
-for (node = hlist_first(list);      \
-     !hlist_end(node);              \
-     node = hlist_next(node))
+#define hlist_for_each(list, node)   \
+  for (struct hlist_node *node = hlist_first (list);   \
+       !hlist_end (node);   \
+       node = hlist_next (node))
 
-/*
- * Forge a loop to process all nodes of a list.
- */
-#define hlist_for_each_safe(list, node, tmp)            \
-for (node = hlist_first(list),                          \
-     tmp = hlist_end(node) ? NULL : hlist_next(node);   \
-     !hlist_end(node);                                  \
-     node = tmp,                                        \
-     tmp = hlist_end(node) ? NULL : hlist_next(node))
+// Forge a loop to process all nodes of a list.
+#define hlist_for_each_safe(list, node, tmp)   \
+  for (struct hlist_node *node = hlist_first (list),   \
+       *tmp = hlist_end (node) ? NULL : hlist_next (node);   \
+       !hlist_end (node);   \
+       node = tmp,   \
+       tmp = hlist_end (node) ? NULL : hlist_next (node))
 
 /*
  * Forge a loop to process all entries of a list.
  *
  * The entry node must not be altered during the loop.
  */
-#define hlist_for_each_entry(list, entry, member)               \
-for (entry = hlist_first_entry(list, typeof(*entry), member);   \
-     entry != NULL;                                             \
-     entry = hlist_next_entry(entry, member))
+#define hlist_for_each_entry(list, entry, member)   \
+  for (entry = hlist_first_entry (list, typeof (*entry), member);   \
+       entry;   \
+       entry = hlist_next_entry (entry, member))
 
-/*
- * Forge a loop to process all entries of a list.
- */
-#define hlist_for_each_entry_safe(list, entry, tmp, member)             \
-for (entry = hlist_first_entry(list, typeof(*entry), member),           \
-     tmp = (entry == NULL) ? NULL : hlist_next_entry(entry, member);    \
-     entry != NULL;                                                     \
-     entry = tmp,                                                       \
-     tmp = (entry == NULL) ? NULL : hlist_next_entry(entry, member))    \
+// Forge a loop to process all entries of a list.
+#define hlist_for_each_entry_safe(list, entry, tmp, member)   \
+  for (entry = hlist_first_entry (list, typeof (*entry), member),   \
+       tmp = entry ? hlist_next_entry (entry, member) : NULL;   \
+       entry;   \
+       entry = tmp,   \
+       tmp = entry ? hlist_next_entry (entry, member) : NULL)   \
 
 /*
  * Lockless variants
@@ -265,129 +223,98 @@ for (entry = hlist_first_entry(list, typeof(*entry), member),           \
  * The hlist_end() function may be used from read-side critical sections.
  */
 
-/*
- * Return the first node of a list.
- */
-static inline struct hlist_node *
-hlist_rcu_first(const struct hlist *list)
+// Return the first node of a list.
+static inline struct hlist_node*
+hlist_rcu_first (const struct hlist *list)
 {
-    return rcu_load_ptr(list->first);
+  return (rcu_load (&list->first));
 }
 
-/*
- * Return the node next to the given node.
- */
-static inline struct hlist_node *
-hlist_rcu_next(const struct hlist_node *node)
+// Return the node next to the given node.
+static inline struct hlist_node*
+hlist_rcu_next (const struct hlist_node *node)
 {
-    return rcu_load_ptr(node->next);
+  return (rcu_load (&node->next));
 }
 
-/*
- * Insert a node at the head of a list.
- */
+// Insert a node at the head of a list.
 static inline void
-hlist_rcu_insert_head(struct hlist *list, struct hlist_node *node)
+hlist_rcu_insert_head (struct hlist *list, struct hlist_node *node)
 {
-    struct hlist_node *first;
+  struct hlist_node *first = list->first;
+  node->next = first;
+  node->pprev = &list->first;
 
-    first = list->first;
-    node->next = first;
-    node->pprev = &list->first;
+  if (first)
+    first->pprev = &node->next;
 
-    if (first != NULL) {
-        first->pprev = &node->next;
-    }
-
-    rcu_store_ptr(list->first, node);
+  rcu_store (&list->first, node);
 }
 
-/*
- * Insert a node before another node.
- */
+// Insert a node before another node.
 static inline void
-hlist_rcu_insert_before(struct hlist_node *node, struct hlist_node *next)
+hlist_rcu_insert_before (struct hlist_node *node, struct hlist_node *next)
 {
-    node->next = next;
-    node->pprev = next->pprev;
-    next->pprev = &node->next;
-    rcu_store_ptr(*node->pprev, node);
+  node->next = next;
+  node->pprev = next->pprev;
+  next->pprev = &node->next;
+  rcu_store (node->pprev, node);
 }
 
-/*
- * Insert a node after another node.
- */
+// Insert a node after another node.
 static inline void
-hlist_rcu_insert_after(struct hlist_node *node, struct hlist_node *prev)
+hlist_rcu_insert_after (struct hlist_node *node, struct hlist_node *prev)
 {
-    node->next = prev->next;
-    node->pprev = &prev->next;
+  node->next = prev->next;
+  node->pprev = &prev->next;
 
-    if (node->next != NULL) {
-        node->next->pprev = &node->next;
-    }
+  if (node->next)
+    node->next->pprev = &node->next;
 
-    rcu_store_ptr(prev->next, node);
+  rcu_store (&prev->next, node);
 }
 
-/*
- * Remove a node from a list.
- */
+// Remove a node from a list.
 static inline void
-hlist_rcu_remove(struct hlist_node *node)
+hlist_rcu_remove (struct hlist_node *node)
 {
-    if (node->next != NULL) {
-        node->next->pprev = node->pprev;
-    }
+  if (node->next)
+    node->next->pprev = node->pprev;
 
-    rcu_store_ptr(*node->pprev, node->next);
+  rcu_store (node->pprev, node->next);
 }
 
 /*
  * Macro that evaluates to the address of the structure containing the
  * given node based on the given type and member.
  */
-#define hlist_rcu_entry(node, type, member) \
-    structof(rcu_load_ptr(node), type, member)
+#define hlist_rcu_entry(node, type, member)   \
+  structof (rcu_load (&(node)), type, member)
 
-/*
- * Get the first entry of a list.
- */
-#define hlist_rcu_first_entry(list, type, member)                       \
-MACRO_BEGIN                                                             \
-    struct hlist_node *first_;                                          \
-                                                                        \
-    first_ = hlist_rcu_first(list);                                     \
-    hlist_end(first_) ? NULL : hlist_entry(first_, type, member);       \
+// Get the first entry of a list.
+#define hlist_rcu_first_entry(list, type, member)   \
+MACRO_BEGIN   \
+  struct hlist_node *first_ = hlist_rcu_first (list);   \
+  hlist_end (first_) ? NULL : hlist_entry (first_, type, member);   \
 MACRO_END
 
-/*
- * Get the entry next to the given entry.
- */
-#define hlist_rcu_next_entry(entry, member)                             \
-MACRO_BEGIN                                                             \
-    struct hlist_node *next_;                                           \
-                                                                        \
-    next_ = hlist_rcu_next(&entry->member);                             \
-    hlist_end(next_)                                                    \
-        ? NULL                                                          \
-        : hlist_entry(next_, typeof(*entry), member);                   \
+// Get the entry next to the given entry.
+#define hlist_rcu_next_entry(entry, member)   \
+MACRO_BEGIN   \
+  struct hlist_node *next_ = hlist_rcu_next (&entry->member);   \
+  hlist_end (next_) ? NULL : hlist_entry (next_, typeof (*entry), member);   \
 MACRO_END
 
-/*
- * Forge a loop to process all nodes of a list.
- */
-#define hlist_rcu_for_each(list, node)      \
-for (node = hlist_rcu_first(list);          \
-     !hlist_end(node);                      \
-     node = hlist_rcu_next(node))
+// Forge a loop to process all nodes of a list.
+#define hlist_rcu_for_each(list, node)   \
+  for (struct hlist_node *node = hlist_rcu_first (list);   \
+       !hlist_end (node);   \
+       node = hlist_rcu_next (node))
 
-/*
- * Forge a loop to process all entries of a list.
- */
-#define hlist_rcu_for_each_entry(list, entry, member)                   \
-for (entry = hlist_rcu_first_entry(list, typeof(*entry), member);       \
-     entry != NULL;                                                     \
-     entry = hlist_rcu_next_entry(entry, member))
+// Forge a loop to process all entries of a list.
+#define hlist_rcu_for_each_entry(list, entry, member)   \
+  for (entry = hlist_rcu_first_entry (list, typeof (*entry), member);   \
+       entry != NULL;   \
+       entry = hlist_rcu_next_entry (entry, member))
 
-#endif /* KERN_HLIST_H */
+#endif

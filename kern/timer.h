@@ -25,19 +25,15 @@
 
 #include <kern/init.h>
 
-/*
- * Scheduling flags.
- */
-#define TIMER_DETACHED      0x1     /* Timer completion isn't synchronized */
-#define TIMER_INTR          0x2     /* Handler is run from interrupt context */
-#define TIMER_HIGH_PRIO     0x4     /* Handler is run in high priority thread */
+// Scheduling flags.
+#define TIMER_DETACHED      0x1   // Timer completion isn't synchronized.
+#define TIMER_INTR          0x2   // Handler is run from interrupt context.
+#define TIMER_HIGH_PRIO     0x4   // Handler is run in high priority thread.
 
 struct timer;
 
-/*
- * Type for timer functions.
- */
-typedef void (*timer_fn_t)(struct timer *);
+// Type for timer functions.
+typedef void (*timer_fn_t) (struct timer *);
 
 #include <kern/timer_i.h>
 
@@ -48,9 +44,9 @@ typedef void (*timer_fn_t)(struct timer *);
  * timer.
  */
 static inline uint64_t
-timer_get_time(const struct timer *timer)
+timer_get_time (const struct timer *timer)
 {
-    return timer->ticks;
+  return (timer->ticks);
 }
 
 /*
@@ -59,7 +55,7 @@ timer_get_time(const struct timer *timer)
  * Timers that are reponsible for releasing their own resources must
  * be detached.
  */
-void timer_init(struct timer *timer, timer_fn_t fn, int flags);
+void timer_init (struct timer *timer, timer_fn_t fn, int flags);
 
 /*
  * Schedule a timer.
@@ -74,7 +70,7 @@ void timer_init(struct timer *timer, timer_fn_t fn, int flags);
  *
  * This function may safely be called in interrupt context.
  */
-void timer_schedule(struct timer *timer, uint64_t ticks);
+void timer_schedule (struct timer *timer, uint64_t ticks);
 
 /*
  * Cancel a timer.
@@ -89,19 +85,19 @@ void timer_schedule(struct timer *timer, uint64_t ticks);
  * the current timer. Canceling a timer from the handler is achieved by
  * simply not rescheduling it.
  */
-void timer_cancel(struct timer *timer);
+void timer_cancel (struct timer *timer);
 
 /*
  * Report a periodic event on the current processor.
  *
  * Interrupts and preemption must be disabled when calling this function.
  */
-void timer_report_periodic_event(void);
+void timer_report_periodic_event (void);
 
 /*
  * This init operation provides :
  *  - timer initialization and scheduling
  */
-INIT_OP_DECLARE(timer_bootstrap);
+INIT_OP_DECLARE (timer_bootstrap);
 
-#endif /* KERN_TIMER_H */
+#endif

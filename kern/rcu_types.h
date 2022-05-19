@@ -31,10 +31,11 @@
  *
  * Interrupts and preemption must be disabled when accessing a reader.
  */
-struct rcu_reader {
-    unsigned int level;
-    unsigned int wid;
-    bool linked;
+struct rcu_reader
+{
+  unsigned int level;
+  unsigned int wid;
+  bool linked;
 };
 
-#endif /* KERN_RCU_TYPES_H */
+#endif

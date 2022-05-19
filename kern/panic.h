@@ -28,7 +28,7 @@
  * in undefined behavior, because it should most likely cause a freeze or
  * reset, which is considered better than a silent failure.
  */
-noreturn void panic(const char *format, ...)
-    __attribute__((format(printf, 1, 2)));
+noreturn void panic (const char *format, ...)
+  __attribute__ ((format (printf, 1, 2)));
 
-#endif /* KERN_PANIC_H */
+#endif

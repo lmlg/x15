@@ -21,18 +21,15 @@
 #ifndef KERN_SLIST_TYPES_H
 #define KERN_SLIST_TYPES_H
 
-#include <stdbool.h>
-#include <stddef.h>
-
-#include "macros.h"
-
-struct slist_node {
-    struct slist_node *next;
+struct slist_node
+{
+  struct slist_node *next;
 };
 
-struct slist {
-    struct slist_node *first;
-    struct slist_node *last;
+struct slist
+{
+  struct slist_node *first;
+  struct slist_node *last;
 };
 
-#endif /* KERN_SLIST_TYPES_H */
+#endif

@@ -30,6 +30,6 @@
  *  - registration of I/O APIC interrupt controllers
  *  - registration of ACPI shutdown operations
  */
-INIT_OP_DECLARE(acpi_setup);
+INIT_OP_DECLARE (acpi_setup);
 
-#endif /* X86_ACPI_H */
+#endif

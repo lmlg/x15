@@ -29,106 +29,104 @@ static struct plist shutdown_ops_list;
 #ifdef CONFIG_SHELL
 
 static void
-shutdown_shell_halt(struct shell *shell, int argc, char **argv)
+shutdown_shell_halt (struct shell *shell, int argc, char **argv)
 {
-    (void)shell;
-    (void)argc;
-    (void)argv;
-
-    shutdown_halt();
+  (void) shell;
+  (void) argc;
+  (void) argv;
+  shutdown_halt();
 }
 
 static void
-shutdown_shell_reboot(struct shell *shell, int argc, char **argv)
+shutdown_shell_reboot (struct shell *shell, int argc, char **argv)
 {
-    (void)shell;
-    (void)argc;
-    (void)argv;
-
-    shutdown_reboot();
+  (void) shell;
+  (void) argc;
+  (void) argv;
+  shutdown_reboot();
 }
 
-static struct shell_cmd shutdown_shell_cmds[] = {
-    SHELL_CMD_INITIALIZER("shutdown_halt", shutdown_shell_halt,
-        "shutdown_halt",
-        "halt the system"),
-    SHELL_CMD_INITIALIZER("shutdown_reboot", shutdown_shell_reboot,
-        "shutdown_reboot",
-        "reboot the system"),
+static struct shell_cmd shutdown_shell_cmds[] =
+{
+  SHELL_CMD_INITIALIZER ("shutdown_halt", shutdown_shell_halt,
+                         "shutdown_halt",
+                         "halt the system"),
+  SHELL_CMD_INITIALIZER ("shutdown_reboot", shutdown_shell_reboot,
+                         "shutdown_reboot",
+                         "reboot the system"),
 };
 
 static int __init
-shutdown_setup_shell(void)
+shutdown_setup_shell (void)
 {
-    SHELL_REGISTER_CMDS(shutdown_shell_cmds, shell_get_main_cmd_set());
-    return 0;
+  SHELL_REGISTER_CMDS (shutdown_shell_cmds, shell_get_main_cmd_set() );
+  return (0);
 }
 
-INIT_OP_DEFINE(shutdown_setup_shell,
-               INIT_OP_DEP(shell_setup, true),
-               INIT_OP_DEP(shutdown_setup, true));
+INIT_OP_DEFINE (shutdown_setup_shell,
+                INIT_OP_DEP (shell_setup, true),
+                INIT_OP_DEP (shutdown_setup, true));
 
-#endif /* CONFIG_SHELL */
+#endif
 
 static int __init
-shutdown_bootstrap(void)
+shutdown_bootstrap (void)
 {
-    plist_init(&shutdown_ops_list);
-    return 0;
+  plist_init (&shutdown_ops_list);
+  return (0);
 }
 
-INIT_OP_DEFINE(shutdown_bootstrap);
+INIT_OP_DEFINE (shutdown_bootstrap);
 
 static int __init
-shutdown_setup(void)
+shutdown_setup (void)
 {
-    return 0;
+  return (0);
 }
 
-INIT_OP_DEFINE(shutdown_setup,
-               INIT_OP_DEP(boot_setup_shutdown, true),
-               INIT_OP_DEP(cpu_setup, true),
-               INIT_OP_DEP(printf_setup, true),
-               INIT_OP_DEP(shutdown_bootstrap, true));
+INIT_OP_DEFINE (shutdown_setup,
+                INIT_OP_DEP (boot_setup_shutdown, true),
+                INIT_OP_DEP (cpu_setup, true),
+                INIT_OP_DEP (printf_setup, true),
+                INIT_OP_DEP (shutdown_bootstrap, true));
 
 void __init
-shutdown_register(struct shutdown_ops *ops, unsigned int priority)
+shutdown_register (struct shutdown_ops *ops, unsigned int priority)
 {
-    plist_node_init(&ops->node, priority);
-    plist_add(&shutdown_ops_list, &ops->node);
+  plist_node_init (&ops->node, priority);
+  plist_add (&shutdown_ops_list, &ops->node);
 }
 
 static void
-shutdown_halt_other_cpus(void)
+shutdown_halt_other_cpus (void)
 {
-    cpu_intr_disable();
-    cpu_halt_broadcast();
+  cpu_intr_disable ();
+  cpu_halt_broadcast ();
 }
 
 void
-shutdown_halt(void)
+shutdown_halt (void)
 {
-    shutdown_halt_other_cpus();
-    printf("shutdown: system halted\n");
-    cpu_halt();
+  shutdown_halt_other_cpus();
+  printf ("shutdown: system halted\n");
+  cpu_halt ();
 }
 
 void
-shutdown_reboot(void)
+shutdown_reboot (void)
 {
-    struct shutdown_ops *ops;
-
-    if (plist_empty(&shutdown_ops_list)) {
-        printf("shutdown: no reset operation available, halting\n");
-        shutdown_halt();
+  if (plist_empty (&shutdown_ops_list))
+    {
+      printf ("shutdown: no reset operation available, halting\n");
+      shutdown_halt();
     }
 
-    shutdown_halt_other_cpus();
-    printf("shutdown: rebooting...\n");
+  shutdown_halt_other_cpus ();
+  printf ("shutdown: rebooting...\n");
 
-    plist_for_each_entry_reverse(&shutdown_ops_list, ops, node) {
-        ops->reset();
-    }
+  struct shutdown_ops *ops;
+  plist_for_each_entry_reverse (&shutdown_ops_list, ops, node)
+    ops->reset ();
 
-    cpu_halt();
+  cpu_halt ();
 }

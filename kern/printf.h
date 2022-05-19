@@ -28,29 +28,29 @@
 #define KERN_PRINTF_H
 
 #ifndef STDIO_H
-#error "do not use <kern/printf.h> directly; include <stdio.h> instead"
-#endif /* STDIO_H */
+  #error "do not use <kern/printf.h> directly; include <stdio.h> instead"
+#endif
 
 #include <stdarg.h>
 
 #include <kern/init.h>
 
-int printf(const char *format, ...)
-    __attribute__((format(printf, 1, 2)));
+int printf (const char *format, ...)
+  __attribute__ ((format (printf, 1, 2)));
 
-int vprintf(const char *format, va_list ap)
-    __attribute__((format(printf, 1, 0)));
+int vprintf (const char *format, va_list ap)
+  __attribute__ ((format (printf, 1, 0)));
 
-int printf_ln(const char *format, ...)
-    __attribute__((format(printf, 1, 2)));
+int printf_ln (const char *format, ...)
+  __attribute__ ((format (printf, 1, 2)));
 
-int vprintf_ln(const char *format, va_list ap)
-    __attribute__((format(printf, 1, 0)));
+int vprintf_ln (const char *format, va_list ap)
+__attribute__ ((format (printf, 1, 0)));
 
 /*
  * This init operation provides :
  *  - printf is usable
  */
-INIT_OP_DECLARE(printf_setup);
+INIT_OP_DECLARE (printf_setup);
 
-#endif /* KERN_PRINTF_H */
+#endif

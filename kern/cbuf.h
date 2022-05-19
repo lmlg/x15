@@ -34,62 +34,63 @@
  * The buffer capacity must be a power-of-two. Indexes are absolute values
  * which can overflow. Their difference cannot exceed the capacity.
  */
-struct cbuf {
-    uint8_t *buf;
-    size_t capacity;
-    size_t start;
-    size_t end;
+struct cbuf
+{
+  uint8_t *buf;
+  size_t capacity;
+  size_t start;
+  size_t end;
 };
 
 static inline size_t
-cbuf_capacity(const struct cbuf *cbuf)
+cbuf_capacity (const struct cbuf *cbuf)
 {
-    return cbuf->capacity;
+  return (cbuf->capacity);
 }
 
 static inline size_t
-cbuf_start(const struct cbuf *cbuf)
+cbuf_start (const struct cbuf *cbuf)
 {
-    return cbuf->start;
+  return (cbuf->start);
 }
 
 static inline size_t
-cbuf_end(const struct cbuf *cbuf)
+cbuf_end (const struct cbuf *cbuf)
 {
-    return cbuf->end;
+  return (cbuf->end);
 }
 
 static inline size_t
-cbuf_size(const struct cbuf *cbuf)
+cbuf_size (const struct cbuf *cbuf)
 {
-    return cbuf->end - cbuf->start;
+  return (cbuf->end - cbuf->start);
 }
 
 static inline size_t
-cbuf_avail_size(const struct cbuf *cbuf)
+cbuf_avail_size (const struct cbuf *cbuf)
 {
-    return cbuf_capacity(cbuf) - cbuf_size(cbuf);
+  return (cbuf_capacity (cbuf) - cbuf_size (cbuf));
 }
 
 static inline void
-cbuf_clear(struct cbuf *cbuf)
+cbuf_clear (struct cbuf *cbuf)
 {
-    cbuf->start = cbuf->end;
+  cbuf->start = cbuf->end;
 }
 
 static inline bool
-cbuf_range_valid(const struct cbuf *cbuf, size_t start, size_t end)
+cbuf_range_valid (const struct cbuf *cbuf, size_t start, size_t end)
 {
-    return (((end - start) <= cbuf_size(cbuf))
-            && ((start - cbuf->start) <= cbuf_size(cbuf))
-            && ((cbuf->end - end) <= cbuf_size(cbuf)));
+  return (end - start <= cbuf_size (cbuf) &&
+          start - cbuf->start <= cbuf_size (cbuf) &&
+          cbuf->end - end <= cbuf_size (cbuf));;
 }
 
 static inline bool
-cbuf_index_valid(const struct cbuf *cbuf, size_t index)
+cbuf_index_valid (const struct cbuf *cbuf, size_t index)
 {
-    return ((index - cbuf->start) <= cbuf_size(cbuf))
-           && ((cbuf->end - index) <= cbuf_size(cbuf));
+  return (index - cbuf->start <= cbuf_size (cbuf) &&
+          cbuf->end - index <= cbuf_size (cbuf));
 }
 
 /*
@@ -98,7 +99,7 @@ cbuf_index_valid(const struct cbuf *cbuf, size_t index)
  * The descriptor is set to use the given buffer for storage. Capacity
  * must be a power-of-two.
  */
-void cbuf_init(struct cbuf *cbuf, void *buf, size_t capacity);
+void cbuf_init (struct cbuf *cbuf, void *buf, size_t capacity);
 
 /*
  * Push data to a circular buffer.
@@ -106,7 +107,7 @@ void cbuf_init(struct cbuf *cbuf, void *buf, size_t capacity);
  * If the function isn't allowed to erase old data and the circular buffer
  * doesn't have enough unused bytes for the new data, EAGAIN is returned.
  */
-int cbuf_push(struct cbuf *cbuf, const void *buf, size_t size, bool erase);
+int cbuf_push (struct cbuf *cbuf, const void *buf, size_t size, bool erase);
 
 /*
  * Pop data from a circular buffer.
@@ -120,7 +121,7 @@ int cbuf_push(struct cbuf *cbuf, const void *buf, size_t size, bool erase);
  * The output buffer may be NULL, in which case this function acts as if
  * it wasn't, but without writing output data.
  */
-int cbuf_pop(struct cbuf *cbuf, void *buf, size_t *sizep);
+int cbuf_pop (struct cbuf *cbuf, void *buf, size_t *sizep);
 
 /*
  * Push a byte to a circular buffer.
@@ -128,7 +129,7 @@ int cbuf_pop(struct cbuf *cbuf, void *buf, size_t *sizep);
  * If the function isn't allowed to erase old data and the circular buffer
  * is full, EAGAIN is returned.
  */
-int cbuf_pushb(struct cbuf *cbuf, uint8_t byte, bool erase);
+int cbuf_pushb (struct cbuf *cbuf, uint8_t byte, bool erase);
 
 /*
  * Pop a byte from a circular buffer.
@@ -138,7 +139,7 @@ int cbuf_pushb(struct cbuf *cbuf, uint8_t byte, bool erase);
  * The output byte pointer may be NULL, in which case this function acts
  * as if it wasn't, but without writing output data.
  */
-int cbuf_popb(struct cbuf *cbuf, void *bytep);
+int cbuf_popb (struct cbuf *cbuf, void *bytep);
 
 /*
  * Write into a circular buffer at a specific location.
@@ -147,7 +148,7 @@ int cbuf_popb(struct cbuf *cbuf, void *bytep);
  * The given [index, size) range may extend beyond the end of the circular
  * buffer.
  */
-int cbuf_write(struct cbuf *cbuf, size_t index, const void *buf, size_t size);
+int cbuf_write (struct cbuf *cbuf, size_t index, const void *buf, size_t size);
 
 /*
  * Read from a circular buffer at a specific location.
@@ -162,7 +163,7 @@ int cbuf_write(struct cbuf *cbuf, size_t index, const void *buf, size_t size);
  * The output buffer may be NULL, in which case this function acts as if
  * it wasn't, but without writing output data.
  */
-int cbuf_read(const struct cbuf *cbuf, size_t index, void *buf, size_t *sizep);
+int cbuf_read (const struct cbuf *cbuf, size_t index, void *buf, size_t *sizep);
 
 /*
  * Set the value of the start/end index.
@@ -173,7 +174,7 @@ int cbuf_read(const struct cbuf *cbuf, size_t index, void *buf, size_t *sizep);
  * Users should try and find a higher level way to manipulate the circular
  * buffer, and only resort to using these functions if there's no other choice.
  */
-void cbuf_set_start(struct cbuf *cbuf, size_t start);
-void cbuf_set_end(struct cbuf *cbuf, size_t end);
+void cbuf_set_start (struct cbuf *cbuf, size_t start);
+void cbuf_set_end (struct cbuf *cbuf, size_t end);
 
-#endif /* KERN_CBUF_H */
+#endif

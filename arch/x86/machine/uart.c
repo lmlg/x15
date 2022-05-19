@@ -69,20 +69,22 @@
 #define UART_SPEED_MAX          115200
 #define UART_SPEED_DEFAULT      UART_SPEED_MAX
 
-enum {
-    UART_PARITY_NONE,
-    UART_PARITY_ODD,
-    UART_PARITY_EVEN,
+enum
+{
+  UART_PARITY_NONE,
+  UART_PARITY_ODD,
+  UART_PARITY_EVEN,
 };
 
 #define UART_PARITY_DEFAULT     UART_PARITY_NONE
 
 #define UART_DATA_BITS_DEFAULT  8
 
-struct uart {
-    struct console console;
-    uint16_t port;
-    uint16_t intr;
+struct uart
+{
+  struct console console;
+  uint16_t port;
+  uint16_t intr;
 };
 
 static struct uart uart_devs[UART_MAX_DEVS];
@@ -90,391 +92,312 @@ static struct uart uart_devs[UART_MAX_DEVS];
 static uint16_t uart_intrs[UART_MAX_DEVS] = { 4, 3, 4, 3 };
 
 static size_t
-uart_get_id(const struct uart *uart)
+uart_get_id (const struct uart *uart)
 {
-    size_t id;
-
-    id = uart - uart_devs;
-    assert(id < ARRAY_SIZE(uart_devs));
-    return id;
+  size_t id = uart - uart_devs;
+  assert (id < ARRAY_SIZE (uart_devs));
+  return (id);
 }
 
 static uint16_t
-uart_get_addr(const struct uart *uart, uint16_t reg)
+uart_get_addr (const struct uart *uart, uint16_t reg)
 {
-    assert(reg < UART_NR_REGS);
-    return uart->port + reg;
+  assert (reg < UART_NR_REGS);
+  return (uart->port + reg);
 }
 
 static uint8_t
-uart_read(struct uart *uart, uint16_t reg)
+uart_read (struct uart *uart, uint16_t reg)
 {
-    return io_read_byte(uart_get_addr(uart, reg));
+  return (io_read_byte (uart_get_addr (uart, reg)));
 }
 
 static void
-uart_write(struct uart *uart, uint16_t reg, uint8_t byte)
+uart_write (struct uart *uart, uint16_t reg, uint8_t byte)
 {
-    io_write_byte(uart_get_addr(uart, reg), byte);
+  io_write_byte (uart_get_addr (uart, reg), byte);
 }
 
 static void
-uart_set(struct uart *uart, uint16_t reg, uint8_t mask)
+uart_set (struct uart *uart, uint16_t reg, uint8_t mask)
 {
-    uint16_t addr;
-    uint8_t byte;
-
-    addr = uart_get_addr(uart, reg);
-    byte = io_read_byte(addr);
-    byte |= mask;
-    io_write_byte(addr, byte);
+  uint16_t addr = uart_get_addr (uart, reg);
+  io_write_byte (addr, io_read_byte (addr) | mask);
 }
 
 static void
-uart_clear(struct uart *uart, uint16_t reg, uint8_t mask)
+uart_clear (struct uart *uart, uint16_t reg, uint8_t mask)
 {
-    uint16_t addr;
-    uint8_t byte;
-
-    addr = uart_get_addr(uart, reg);
-    byte = io_read_byte(addr);
-    byte &= ~mask;
-    io_write_byte(addr, byte);
+  uint16_t addr = uart_get_addr (uart, reg);
+  io_write_byte (addr, io_read_byte (addr) & ~mask);
 }
 
 static void
-uart_recv_intr(struct uart *uart)
+uart_recv_intr (struct uart *uart)
 {
-    uint8_t byte;
-    char tmp[2];
+  char tmp[2] = { 0, 0 };
+  while (1)
+    {
+      uint8_t byte = uart_read (uart, UART_REG_LSR);
 
-    tmp[1] = '\0';
+      if (!(byte & UART_LSR_DATA_READY))
+        break;
 
-    for (;;) {
-        byte = uart_read(uart, UART_REG_LSR);
-
-        if (!(byte & UART_LSR_DATA_READY)) {
-            break;
-        }
-
-        byte = uart_read(uart, UART_REG_DAT);
-        tmp[0] = (char)byte;
-        console_intr(&uart->console, tmp);
+      byte = uart_read (uart, UART_REG_DAT);
+      tmp[0] = (char)byte;
+      console_intr (&uart->console, tmp);
     }
 }
 
 static int
-uart_intr(void *arg)
+uart_intr (void *arg)
 {
-    struct uart *uart;
-    uint8_t byte;
+  struct uart *uart = arg;
+  uint8_t byte = uart_read (uart, UART_REG_IIR);
 
-    uart = arg;
+  if (byte & UART_IIR_NOT_PENDING)
+    return (EAGAIN);
+  else if ((byte & UART_IIR_SRC_MASK) == UART_IIR_SRC_RX)
+    uart_recv_intr (uart);
 
-    byte = uart_read(uart, UART_REG_IIR);
-
-    if (byte & UART_IIR_NOT_PENDING) {
-        return EAGAIN;
-    }
-
-    byte &= UART_IIR_SRC_MASK;
-
-    if (byte == UART_IIR_SRC_RX) {
-        uart_recv_intr(uart);
-    }
-
-    return 0;
+  return (0);
 }
 
 static void __init
-uart_enable_intr(struct uart *uart)
+uart_enable_intr (struct uart *uart)
 {
-    int error;
-
-    error = intr_register(uart->intr, uart_intr, uart);
-
-    if (error) {
-        log_err("uart%zu: unable to register interrupt %u",
-                 uart_get_id(uart), uart->intr);
-        return;
-    }
-
-    uart_write(uart, UART_REG_IER, UART_IER_RX);
+  if (intr_register (uart->intr, uart_intr, uart) != 0)
+    log_err ("uart%zu: unable to register interrupt %u",
+             uart_get_id (uart), uart->intr);
+  else
+    uart_write (uart, UART_REG_IER, UART_IER_RX);
 }
 
 static void
-uart_tx_wait(struct uart *uart)
+uart_tx_wait (struct uart *uart)
 {
-    uint8_t byte;
-
-    for (;;) {
-        byte = uart_read(uart, UART_REG_LSR);
-
-        if (byte & UART_LSR_TX_EMPTY) {
-            break;
-        }
-    }
+  while (1)
+    if (uart_read (uart, UART_REG_LSR) & UART_LSR_TX_EMPTY)
+      break;
 }
 
 static void
-uart_write_char_common(struct uart *uart, char c)
+uart_write_char_common (struct uart *uart, char c)
 {
-    uart_tx_wait(uart);
-    uart_write(uart, UART_REG_DAT, (uint8_t)c);
+  uart_tx_wait (uart);
+  uart_write (uart, UART_REG_DAT, (uint8_t)c);
 }
 
 static void
-uart_write_char(struct uart *uart, char c)
+uart_write_char (struct uart *uart, char c)
 {
-    if (c == '\n') {
-        uart_write_char_common(uart, '\r');
-    }
+  if (c == '\n')
+    uart_write_char_common (uart, '\r');
 
-    uart_write_char_common(uart, c);
+  uart_write_char_common (uart, c);
 }
 
 static struct uart *
-uart_get_dev(size_t i)
+uart_get_dev (size_t i)
 {
-    assert(i < ARRAY_SIZE(uart_devs));
-    return &uart_devs[i];
+  assert (i < ARRAY_SIZE (uart_devs));
+  return (&uart_devs[i]);
 }
 
-static struct uart *
-uart_get_from_console(struct console *console)
+static struct uart*
+uart_get_from_console (struct console *console)
 {
-    return structof(console, struct uart, console);
+  return (structof (console, struct uart, console));
 }
 
 static void
-uart_console_puts(struct console *console, const char *s, size_t size)
+uart_console_puts (struct console *console, const char *s, size_t size)
 {
-    struct uart *uart;
-
-    uart = uart_get_from_console(console);
-
-    while (size) {
-        uart_write_char(uart, *s++);
-        size--;
-    }
+  struct uart *uart = uart_get_from_console (console);
+  for (size_t i = 0; i < size; ++i)
+    uart_write_char (uart, s[i]);
 }
 
-static const struct console_ops uart_console_ops = {
-    .puts = uart_console_puts,
+static const struct console_ops uart_console_ops =
+{
+  .puts = uart_console_puts,
 };
 
 static void __init
-uart_init_default(unsigned int *speed, unsigned int *parity,
-                  unsigned int *data_bits)
+uart_init_default (uint32_t *speed, uint32_t *parity, uint32_t *data_bits)
 {
-    *speed = UART_SPEED_DEFAULT;
-    *parity = UART_PARITY_DEFAULT;
-    *data_bits = UART_DATA_BITS_DEFAULT;
+  *speed = UART_SPEED_DEFAULT;
+  *parity = UART_PARITY_DEFAULT;
+  *data_bits = UART_DATA_BITS_DEFAULT;
 }
 
 static int __init
-uart_init_check_speed(unsigned int speed)
+uart_init_check_speed (uint32_t speed)
 {
-    if (speed > UART_SPEED_MAX) {
-        return EINVAL;
-    }
-
-    return 0;
+  return (speed > UART_SPEED_MAX ? EINVAL : 0);
 }
 
 static int __init
-uart_init_convert_parity_char(char c, unsigned int *parity)
+uart_init_convert_parity_char (char c, uint32_t *parity)
 {
-    switch (c) {
-    case 'n':
+  switch (c)
+    {
+      case 'n':
         *parity = UART_PARITY_NONE;
         break;
-    case 'o':
+      case 'o':
         *parity = UART_PARITY_ODD;
         break;
-    case 'e':
+      case 'e':
         *parity = UART_PARITY_EVEN;
         break;
-    default:
-        return EINVAL;
+      default:
+        return (EINVAL);
     }
 
-    return 0;
+  return (0);
 }
 
 static int __init
-uart_init_check_data_bits(unsigned int data_bits)
+uart_init_check_data_bits (uint32_t data_bits)
 {
-    switch (data_bits) {
-    case 5 ... 8:
-        break;
-    default:
-        return EINVAL;
+  switch (data_bits)
+    {
+      case 5 ... 8:
+        return (0);
+      default:
+        return (EINVAL);
     }
-
-    return 0;
 }
 
 static void __init
-uart_init_args(const struct uart *uart, const char *arg_str,
-               unsigned int *speed, unsigned int *parity,
-               unsigned int *data_bits)
+uart_init_args (const struct uart *uart, const char *arg_str,
+                uint32_t *speed, uint32_t *parity, uint32_t *data_bits)
 {
-    char parity_char;
-    int ret, error;
+  char parity_char;
+  int ret = sscanf (arg_str, "%u%c%1u", speed, &parity_char, data_bits);
 
-    ret = sscanf(arg_str, "%u%c%1u", speed, &parity_char, data_bits);
+  if (ret < 1)
+    goto set_defaults;
 
-    if (ret < 1) {
-        goto set_defaults;
-    }
+  int error = uart_init_check_speed (*speed);
 
-    error = uart_init_check_speed(*speed);
-
-    if (error) {
-        goto set_defaults;
-    } else if (ret < 2) {
-        return;
-    }
-
-    error = uart_init_convert_parity_char(parity_char, parity);
-
-    if (error) {
-        goto set_defaults;
-    } else if (ret < 3) {
-        return;
-    }
-
-    error = uart_init_check_data_bits(*data_bits);
-
-    if (error) {
-        goto set_defaults;
-    }
-
+  if (error)
+    goto set_defaults;
+  else if (ret < 2)
     return;
 
+  error = uart_init_convert_parity_char (parity_char, parity);
+
+  if (error)
+    goto set_defaults;
+  else if (ret < 3)
+    return;
+
+  error = uart_init_check_data_bits (*data_bits);
+
+  if (error)
+    goto set_defaults;
+
+  return;
+
 set_defaults:
-    log_warning("uart%zu: invalid serial configuration, using defaults",
-                uart_get_id(uart));
-    uart_init_default(speed, parity, data_bits);
+  log_warning ("uart%zu: invalid serial configuration, using defaults",
+               uart_get_id (uart) );
+  uart_init_default (speed, parity, data_bits);
 }
 
 static void __init
-uart_init(struct uart *uart, uint16_t port, uint16_t intr)
+uart_init (struct uart *uart, uint16_t port, uint16_t intr)
 {
-    unsigned int speed, parity, data_bits;
-    const char *arg_str;
-    char name[CONSOLE_NAME_SIZE];
-    uint16_t divisor;
-    uint8_t byte;
+  char name[CONSOLE_NAME_SIZE];
+  snprintf (name, sizeof (name), "uart%zu", uart_get_id (uart));
 
-    snprintf(name, sizeof(name), "uart%zu", uart_get_id(uart));
-    arg_str = arg_value(name);
+  uint32_t speed, parity, data_bits;
+  uart_init_default (&speed, &parity, &data_bits);
 
-    uart_init_default(&speed, &parity, &data_bits);
+  const char *arg_str = arg_value (name);
+  if (arg_str)
+    uart_init_args (uart, arg_str, &speed, &parity, &data_bits);
 
-    if (arg_str != NULL) {
-        uart_init_args(uart, arg_str, &speed, &parity, &data_bits);
-    }
+  log_debug ("uart%zu: speed:%u parity:%u data_bits:%u",
+             uart_get_id (uart), speed, parity, data_bits);
 
-    log_debug("uart%zu: speed:%u parity:%u data_bits:%u",
-              uart_get_id(uart), speed, parity, data_bits);
+  uart->port = port;
+  uart->intr = intr;
+  uart_write (uart, UART_REG_IER, 0);
 
-    uart->port = port;
-    uart->intr = intr;
+  uint16_t divisor = UART_SPEED_MAX / speed;
+  uart_set (uart, UART_REG_LCR, UART_LCR_DLAB);
+  uart_write (uart, UART_REG_DLH, divisor >> 8);
+  uart_write (uart, UART_REG_DLL, divisor & 0xff);
+  uart_clear (uart, UART_REG_LCR, UART_LCR_DLAB);
 
-    uart_write(uart, UART_REG_IER, 0);
+  uart_write (uart, UART_REG_MCR, UART_MCR_AUX2 | UART_MCR_RTS | UART_MCR_DTR);
+  uint8_t byte = UART_LCR_1S;
 
-    divisor = UART_SPEED_MAX / speed;
-
-    uart_set(uart, UART_REG_LCR, UART_LCR_DLAB);
-    uart_write(uart, UART_REG_DLH, divisor >> 8);
-    uart_write(uart, UART_REG_DLL, divisor & 0xff);
-    uart_clear(uart, UART_REG_LCR, UART_LCR_DLAB);
-
-    uart_write(uart, UART_REG_MCR, UART_MCR_AUX2 | UART_MCR_RTS | UART_MCR_DTR);
-
-    byte = UART_LCR_1S;
-
-    switch (parity) {
-    case UART_PARITY_NONE:
+  switch (parity)
+    {
+      case UART_PARITY_NONE:
         byte |= UART_LCR_NP;
         break;
-    case UART_PARITY_ODD:
+      case UART_PARITY_ODD:
         byte |= UART_LCR_OP;
         break;
-    case UART_PARITY_EVEN:
+      case UART_PARITY_EVEN:
         byte |= UART_LCR_EP;
         break;
     }
 
-    byte |= (data_bits - 5);
-    uart_write(uart, UART_REG_LCR, byte);
+  byte |= data_bits - 5;
+  uart_write (uart, UART_REG_LCR, byte);
 
-    console_init(&uart->console, name, &uart_console_ops);
-    console_register(&uart->console);
+  console_init (&uart->console, name, &uart_console_ops);
+  console_register (&uart->console);
 }
 
 static void __init
-uart_log_info(void)
+uart_log_info (void)
 {
-    const struct uart *uart;
-    size_t i;
-
-    for (i = 0; i < ARRAY_SIZE(uart_devs); i++) {
-        uart = uart_get_dev(i);
-
-        if (uart->port != 0) {
-            log_info("uart%zu: port:%#x irq:%u", i, (unsigned int)uart->port,
-                     (unsigned int)uart->intr);
-        }
+  for (size_t i = 0; i < ARRAY_SIZE (uart_devs); i++)
+    {
+      const struct uart *uart = uart_get_dev (i);
+      if (uart->port != 0)
+        log_info ("uart%zu: port:%#x irq:%u", i, (unsigned int) uart->port,
+                  (unsigned int) uart->intr);
     }
 }
 
 static int __init
-uart_bootstrap(void)
+uart_bootstrap (void)
 {
-    const uint16_t *ptr;
-    size_t i;
+  const uint16_t *ptr = biosmem_get_bda () + UART_BDA_COM1_OFFSET;
+  for (size_t i = 0; i < UART_MAX_DEVS; i++)
+    if (ptr[i])
+      uart_init (uart_get_dev (i), ptr[i], uart_intrs[i]);
 
-    ptr = biosmem_get_bda() + UART_BDA_COM1_OFFSET;
-
-    for (i = 0; i < UART_MAX_DEVS; i++) {
-        if (ptr[i] == 0) {
-            continue;
-        }
-
-        uart_init(uart_get_dev(i), ptr[i], uart_intrs[i]);
-    }
-
-    uart_log_info();
-    return 0;
+  uart_log_info ();
+  return (0);
 }
 
-INIT_OP_DEFINE(uart_bootstrap,
-               INIT_OP_DEP(arg_setup, true),
-               INIT_OP_DEP(console_bootstrap, true),
-               INIT_OP_DEP(log_setup, true));
+INIT_OP_DEFINE (uart_bootstrap,
+                INIT_OP_DEP (arg_setup, true),
+                INIT_OP_DEP (console_bootstrap, true),
+                INIT_OP_DEP (log_setup, true));
 
 static int __init
-uart_setup(void)
+uart_setup (void)
 {
-    struct uart *uart;
-    size_t i;
-
-    for (i = 0; i < ARRAY_SIZE(uart_devs); i++) {
-        uart = uart_get_dev(i);
-
-        if (uart->port == 0) {
-            continue;
-        }
-
-        uart_enable_intr(uart);
+  for (size_t i = 0; i < ARRAY_SIZE (uart_devs); i++)
+    {
+      struct uart *uart = uart_get_dev (i);
+      if (uart->port)
+        uart_enable_intr (uart);
     }
 
-    return 0;
+  return (0);
 }
 
-INIT_OP_DEFINE(uart_setup,
-               INIT_OP_DEP(intr_setup, true),
-               INIT_OP_DEP(uart_bootstrap, true));
+INIT_OP_DEFINE (uart_setup,
+                INIT_OP_DEP (intr_setup, true),
+                INIT_OP_DEP (uart_bootstrap, true));

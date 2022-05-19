@@ -27,36 +27,35 @@
 #include <kern/mutex.h>
 #include <kern/stream.h>
 
-struct shell_cmd {
-    struct shell_cmd *ht_next;
-    struct shell_cmd *ls_next;
-    const char *name;
-    shell_fn_t fn;
-    const char *usage;
-    const char *short_desc;
-    const char *long_desc;
+struct shell_cmd
+{
+  struct shell_cmd *ht_next;
+  struct shell_cmd *ls_next;
+  const char *name;
+  shell_fn_t fn;
+  const char *usage;
+  const char *short_desc;
+  const char *long_desc;
 };
 
-struct shell_bucket {
-    struct shell_cmd *cmd;
+struct shell_bucket
+{
+  struct shell_cmd *cmd;
 };
 
-/*
- * Binary exponent and size of the hash table used to store commands.
- */
+// Binary exponent and size of the hash table used to store commands.
 #define SHELL_HTABLE_BITS   6
 #define SHELL_HTABLE_SIZE   (1 << SHELL_HTABLE_BITS)
 
-/*
- * The command list is sorted.
- */
-struct shell_cmd_set {
-    struct mutex lock;
-    struct shell_bucket htable[SHELL_HTABLE_SIZE];
-    struct shell_cmd *cmd_list;
+// The command list is sorted.
+struct shell_cmd_set
+{
+  struct mutex lock;
+  struct shell_bucket htable[SHELL_HTABLE_SIZE];
+  struct shell_cmd *cmd_list;
 };
 
-#define SHELL_LINE_MAX_SIZE 64
+#define SHELL_LINE_MAX_SIZE   64
 
 /*
  * Line containing a shell entry.
@@ -64,9 +63,10 @@ struct shell_cmd_set {
  * The string must be nul-terminated. The size doesn't include this
  * additional nul character, the same way strlen() doesn't account for it.
  */
-struct shell_line {
-    char str[SHELL_LINE_MAX_SIZE];
-    size_t size;
+struct shell_line
+{
+  char str[SHELL_LINE_MAX_SIZE];
+  size_t size;
 };
 
 /*
@@ -77,8 +77,8 @@ struct shell_line {
 #define SHELL_HISTORY_SIZE 21
 
 #if SHELL_HISTORY_SIZE == 0
-#error "shell history size must be non-zero"
-#endif /* SHELL_HISTORY_SIZE == 0 */
+  #error "shell history size must be non-zero"
+#endif
 
 /*
  * Shell history.
@@ -89,48 +89,48 @@ struct shell_line {
  * erased by new ones. The index references the entry used as a template
  * for the current line.
  */
-struct shell_history {
-    struct shell_line lines[SHELL_HISTORY_SIZE];
-    size_t newest;
-    size_t oldest;
-    size_t index;
+struct shell_history
+{
+  struct shell_line lines[SHELL_HISTORY_SIZE];
+  size_t newest;
+  size_t oldest;
+  size_t index;
 };
 
-/*
- * This value changes depending on the standard used and was chosen arbitrarily.
- */
-#define SHELL_ESC_SEQ_MAX_SIZE 8
+// This value changes depending on the standard used and was chosen arbitrarily.
+#define SHELL_ESC_SEQ_MAX_SIZE   8
 
-#define SHELL_MAX_ARGS 16
+#define SHELL_MAX_ARGS   16
 
 /*
  * Shell structure.
  *
  * A shell instance can include temporary variables to minimize stack usage.
  */
-struct shell {
-    struct shell_cmd_set *cmd_set;
-    struct stream *stream;
-    struct shell_history history;
+struct shell
+{
+  struct shell_cmd_set *cmd_set;
+  struct stream *stream;
+  struct shell_history history;
 
-    /* Cursor within the current line */
-    size_t cursor;
+  // Cursor within the current line.
+  size_t cursor;
 
-    /* Members used for escape sequence parsing */
-    char esc_seq[SHELL_ESC_SEQ_MAX_SIZE];
-    size_t esc_seq_index;
+  // Members used for escape sequence parsing.
+  char esc_seq[SHELL_ESC_SEQ_MAX_SIZE];
+  size_t esc_seq_index;
 
-    /*
-     * Buffer used to store the current line during argument processing.
-     *
-     * The pointers in the argv array point inside this buffer. The
-     * separators immediately following the arguments are replaced with
-     * null characters.
-     */
-    char tmp_line[SHELL_LINE_MAX_SIZE];
+  /*
+   * Buffer used to store the current line during argument processing.
+   *
+   * The pointers in the argv array point inside this buffer. The
+   * separators immediately following the arguments are replaced with
+   * null characters.
+   */
+  char tmp_line[SHELL_LINE_MAX_SIZE];
 
-    int argc;
-    char *argv[SHELL_MAX_ARGS];
+  int argc;
+  char *argv[SHELL_MAX_ARGS];
 };
 
-#endif /* KERN_SHELL_I_H */
+#endif

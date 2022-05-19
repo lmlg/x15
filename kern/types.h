@@ -23,6 +23,4 @@
 
 typedef long ssize_t;
 
-/* TODO cpu_flags_t */
-
-#endif /* KERN_TYPES_H */
+#endif

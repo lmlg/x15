@@ -28,13 +28,15 @@
  * so that it may safely refer to the first member of the list head. Its
  * main purpose is to allow O(1) removal.
  */
-struct hlist_node {
-    struct hlist_node *next;
-    struct hlist_node **pprev;
+struct hlist_node
+{
+  struct hlist_node *next;
+  struct hlist_node **pprev;
 };
 
-struct hlist {
-    struct hlist_node *first;
+struct hlist
+{
+  struct hlist_node *first;
 };
 
-#endif /* KERN_HLIST_TYPES_H */
+#endif

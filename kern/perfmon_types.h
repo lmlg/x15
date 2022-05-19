@@ -29,10 +29,8 @@
 
 #include <kern/spinlock_types.h>
 
-/*
- * Maximum number of supported hardware counters.
- */
-#define PERFMON_MAX_PMCS CONFIG_PERFMON_MAX_PMCS
+// Maximum number of supported hardware counters.
+#define PERFMON_MAX_PMCS   CONFIG_PERFMON_MAX_PMCS
 
 /*
  * Performance monitoring event.
@@ -42,19 +40,21 @@
  * When it is updated, the delta between the current and saved PMC values
  * is added to the event value.
  */
-struct perfmon_event {
-    struct spinlock lock;
-    unsigned int flags;
-    unsigned int id;
-    uint64_t pmc_value;
-    uint64_t value;
+struct perfmon_event
+{
+  struct spinlock lock;
+  unsigned int flags;
+  unsigned int id;
+  uint64_t pmc_value;
+  uint64_t value;
 
-    union {
-        struct thread *thread;
-        unsigned int cpu;
+  union
+    {
+      struct thread *thread;
+      unsigned int cpu;
     };
 
-    unsigned int pmc_index;
+  unsigned int pmc_index;
 };
 
 /*
@@ -78,13 +78,14 @@ struct perfmon_event {
  * PMC is saved, and when it's updated, the delta between the current
  * and saved PMC values is added to the per-thread PMC value.
  */
-struct perfmon_td_pmc {
-    unsigned int nr_refs;
-    bool loaded;
-    unsigned int pmc_id;
-    unsigned int raw_event_id;
-    uint64_t cpu_pmc_value;
-    uint64_t value;
+struct perfmon_td_pmc
+{
+  unsigned int nr_refs;
+  bool loaded;
+  unsigned int pmc_id;
+  unsigned int raw_event_id;
+  uint64_t cpu_pmc_value;
+  uint64_t value;
 };
 
 /*
@@ -92,11 +93,12 @@ struct perfmon_td_pmc {
  *
  * Interrupts must be disabled when locking thread data.
  */
-struct perfmon_td {
-    struct spinlock lock;
-    struct perfmon_td_pmc pmcs[PERFMON_MAX_PMCS];
+struct perfmon_td
+{
+  struct spinlock lock;
+  struct perfmon_td_pmc pmcs[PERFMON_MAX_PMCS];
 };
 
-#endif /* CONFIG_PERFMON */
+#endif   // CONFIG_PERFMON
 
-#endif /* KERN_PERFMON_TYPES_H */
+#endif

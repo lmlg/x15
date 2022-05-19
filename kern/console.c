@@ -33,237 +33,208 @@
 #include <machine/boot.h>
 #include <machine/cpu.h>
 
-struct console_waiter {
-    struct list node;
-    struct thread *thread;
+struct console_waiter
+{
+  struct list node;
+  struct thread *thread;
 };
 
-/*
- * Registered consoles.
- */
+// Registered consoles.
 static struct list console_devs;
 
-/*
- * Active console device.
- */
+// Active console device.
 static struct console *console_dev;
 
 static const char *console_name __initdata;
 
 static bool __init
-console_name_match(const char *name)
+console_name_match (const char *name)
 {
-    if (console_name == NULL) {
-        return true;
-    }
-
-    return (strcmp(console_name, name) == 0);
+  return (!console_name || strcmp (console_name, name) == 0);
 }
 
 void __init
-console_init(struct console *console, const char *name,
-             const struct console_ops *ops)
+console_init (struct console *console, const char *name,
+              const struct console_ops *ops)
 {
-    assert(ops != NULL);
+  assert (ops);
 
-    spinlock_init(&console->lock);
-    console->ops = ops;
-    cbuf_init(&console->recvbuf, console->buffer, sizeof(console->buffer));
-    list_init(&console->waiters);
-    strlcpy(console->name, name, sizeof(console->name));
+  spinlock_init (&console->lock);
+  console->ops = ops;
+  cbuf_init (&console->recvbuf, console->buffer, sizeof (console->buffer));
+  list_init (&console->waiters);
+  strlcpy (console->name, name, sizeof (console->name));
 }
 
 static int
-console_process_ctrl_char(struct console *console, char c)
+console_process_ctrl_char (struct console *console, char c)
 {
-    switch (c) {
-    case CONSOLE_SCROLL_UP:
-    case CONSOLE_SCROLL_DOWN:
+  switch (c)
+    {
+      case CONSOLE_SCROLL_UP:
+      case CONSOLE_SCROLL_DOWN:
         break;
-    default:
-        return EINVAL;
+      default:
+        return (EINVAL);
     }
 
-    console->ops->puts(console, &c, 1);
-    return 0;
+  console->ops->puts (console, &c, 1);
+  return 0;
 }
 
 static size_t
-console_read_nolock(struct console *console, char *s, size_t size)
+console_read_nolock (struct console *console, char *s, size_t size)
 {
-    int error;
-    struct console_waiter waiter;
-    size_t i, nc;
+  struct console_waiter waiter = { .thread = thread_self () };
+  list_insert_tail (&console->waiters, &waiter.node);
 
-    waiter.thread = thread_self();
-    list_insert_tail(&console->waiters, &waiter.node);
+  for (;;)
+    {
+      int error = cbuf_pop (&console->recvbuf, s, &size);
 
-    for (;;) {
-        error = cbuf_pop(&console->recvbuf, s, &size);
+      if (!error)
+        {
+          size_t nc;
+          for (size_t i = (nc = 0); i < size; ++i)
+            if (console_process_ctrl_char (console, s[i]) == 0)
+              nc++;
 
-        if (!error) {
-            for (i = nc = 0; i < size; ++i) {
-                error = console_process_ctrl_char(console, s[i]);
-                if (!error) {
-                    nc++;
-                }
-            }
-
-            size -= nc;
-            if (size) {
-                break;
-            }
+          size -= nc;
+          if (size)
+            break;
         }
 
-        thread_sleep(&console->lock, console, "consgetc");
+      thread_sleep (&console->lock, console, "consgetc");
     }
 
-    list_remove(&waiter.node);
-
-    return size;
+  list_remove (&waiter.node);
+  return (size);
 }
 
 static int __init
-console_bootstrap(void)
+console_bootstrap (void)
 {
-    list_init(&console_devs);
-    console_name = arg_value("console");
-    return 0;
+  list_init (&console_devs);
+  console_name = arg_value ("console");
+  return (0);
 }
 
-INIT_OP_DEFINE(console_bootstrap,
-               INIT_OP_DEP(arg_setup, true),
-               INIT_OP_DEP(log_setup, true));
+INIT_OP_DEFINE (console_bootstrap,
+                INIT_OP_DEP (arg_setup, true),
+                INIT_OP_DEP (log_setup, true));
 
 static int __init
-console_setup(void)
+console_setup (void)
 {
-    return 0;
+  return (0);
 }
 
-INIT_OP_DEFINE(console_setup,
-               INIT_OP_DEP(boot_setup_console, true),
-               INIT_OP_DEP(thread_setup, true));
+INIT_OP_DEFINE (console_setup,
+                INIT_OP_DEP (boot_setup_console, true),
+                INIT_OP_DEP (thread_setup, true));
 
 void __init
-console_register(struct console *console)
+console_register (struct console *console)
 {
-    assert(console->ops != NULL);
+  assert (console->ops);
+  list_insert_tail (&console_devs, &console->node);
 
-    list_insert_tail(&console_devs, &console->node);
+  if (!console_dev && console_name_match (console->name))
+    console_dev = console;
 
-    if ((console_dev == NULL) && console_name_match(console->name)) {
-        console_dev = console;
-    }
-
-    log_info("console: %s registered", console->name);
-
-    if (console == console_dev) {
-        log_info("console: %s selected as active console", console->name);
-    }
+  log_info ("console: %s registered", console->name);
+  if (console == console_dev)
+    log_info ("console: %s selected as active console", console->name);
 }
 
 void
-console_intr(struct console *console, const char *s)
+console_intr (struct console *console, const char *s)
 {
-    struct list *node;
+  assert (thread_check_intr_context ());
 
-    assert(thread_check_intr_context());
+  if (*s == '\0')
+    return;
 
-    if (*s == '\0') {
-        return;
+  spinlock_lock (&console->lock);
+
+  for (; *s; ++s)
+    {
+      if (cbuf_size (&console->recvbuf) == cbuf_capacity (&console->recvbuf) )
+        goto out;
+
+      cbuf_pushb (&console->recvbuf, *s, false);
     }
 
-    spinlock_lock(&console->lock);
-
-    while (*s != '\0') {
-        if (cbuf_size(&console->recvbuf) == cbuf_capacity(&console->recvbuf)) {
-            goto out;
-        }
-
-        cbuf_pushb(&console->recvbuf, *s, false);
-        s++;
-    }
-
-    node = list_first(&console->waiters);
-    if (node) {
-        thread_wakeup(list_entry(node, struct console_waiter, node)->thread);
-    }
+  struct list *node = list_first (&console->waiters);
+  if (node)
+    thread_wakeup (list_entry(node, struct console_waiter, node)->thread);
 
 out:
-    spinlock_unlock(&console->lock);
+  spinlock_unlock (&console->lock);
 }
 
 void
-console_putchar(char c)
+console_putchar (char c)
 {
-    console_puts(&c, 1);
+  console_puts (&c, 1);
 }
 
 char
-console_getchar(void)
+console_getchar (void)
 {
-    char c;
+  char c;
 
-    if (!console_gets(&c, 1)) {
-        c = EOF;
-    }
+  if (!console_gets (&c, 1))
+    c = EOF;
 
-    return c;
+  return (c);
 }
 
 void
-console_puts_nolock(const char *s, size_t size)
+console_puts_nolock (const char *s, size_t size)
 {
-    if (console_dev) {
-        console_dev->ops->puts(console_dev, s, size);
-    }
+  if (console_dev)
+    console_dev->ops->puts (console_dev, s, size);
 }
 
 void
-console_puts(const char *s, size_t size)
+console_puts (const char *s, size_t size)
 {
-    unsigned long flags;
+  unsigned long flags;
 
-    console_lock(&flags);
-    console_puts_nolock(s, size);
-    console_unlock(flags);
+  console_lock (&flags);
+  console_puts_nolock (s, size);
+  console_unlock (flags);
 }
 
 size_t
-console_gets_nolock(char *s, size_t size)
+console_gets_nolock (char *s, size_t size)
 {
-    if (!console_dev) {
-        return 0;
-    }
-
-    return console_read_nolock(console_dev, s, size);
+  return (console_dev ? console_read_nolock (console_dev, s, size) : 0);
 }
 
 size_t
-console_gets(char *s, size_t size)
+console_gets (char *s, size_t size)
 {
-    unsigned long flags;
+  unsigned long flags;
 
-    console_lock(&flags);
-    size = console_gets_nolock(s, size);
-    console_unlock(flags);
+  console_lock (&flags);
+  size = console_gets_nolock (s, size);
+  console_unlock (flags);
 
-    return size;
+  return (size);
 }
 
 void
-console_lock(unsigned long *flags)
+console_lock (unsigned long *flags)
 {
-    if (console_dev) {
-        spinlock_lock_intr_save(&console_dev->lock, flags);
-    }
+  if (console_dev)
+    spinlock_lock_intr_save (&console_dev->lock, flags);
 }
 
 void
-console_unlock(unsigned long flags)
+console_unlock (unsigned long flags)
 {
-    if (console_dev) {
-        spinlock_unlock_intr_restore(&console_dev->lock, flags);
-    }
+  if (console_dev)
+    spinlock_unlock_intr_restore (&console_dev->lock, flags);
 }

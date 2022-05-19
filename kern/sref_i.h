@@ -25,7 +25,7 @@
 #include <kern/work.h>
 
 #ifdef CONFIG_SREF_DEBUG
-#define SREF_VERIFY
+  #define SREF_VERIFY
 #endif
 
 #define SREF_WEAKREF_DYING  ((uintptr_t)1)
@@ -42,16 +42,15 @@
  * enforce memory order on access since the only data that depends on
  * the weak reference are cpu-local deltas.
  */
-struct sref_weakref {
-    uintptr_t addr;
+struct sref_weakref
+{
+  uintptr_t addr;
 };
 
-/*
- * Counter flags.
- */
-#define SREF_CNTF_QUEUED  0x1     /* Queued for review */
-#define SREF_CNTF_DIRTY   0x2     /* Dirty zero seen */
-#define SREF_CNTF_UNREF   0x4     /* Unreferenced, for debugging only */
+// Counter flags.
+#define SREF_CNTF_QUEUED  0x1     // Queued for review
+#define SREF_CNTF_DIRTY   0x2     // Dirty zero seen
+#define SREF_CNTF_UNREF   0x4     // Unreferenced, for debugging only
 
 /*
  * Scalable reference counter.
@@ -65,24 +64,27 @@ struct sref_weakref {
  *
  * Interrupts must be disabled when accessing a global counter.
  */
-struct sref_counter {
-    sref_noref_fn_t noref_fn;
+struct sref_counter
+{
+  sref_noref_fn_t noref_fn;
 
 #ifdef SREF_VERIFY
-    struct {
-#else /* SREF_VERIFY */
-    union {
-#endif /* SREF_VERIFY */
-        struct {
-            struct slist_node node;         /* (g) */
-            struct spinlock lock;
-            int flags;                      /* (c) */
-            unsigned long value;            /* (c) */
-            struct sref_weakref *weakref;
+  struct
+#else
+  union
+#endif
+    {
+      struct
+        {
+          struct slist_node node;         // (g)
+          struct spinlock lock;
+          int flags;                      // (c)
+          unsigned long value;            // (c)
+          struct sref_weakref *weakref;
         };
 
-        struct work work;
+      struct work work;
     };
 };
 
-#endif /* KERN_SREF_I_H */
+#endif

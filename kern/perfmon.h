@@ -31,9 +31,7 @@
 #include <kern/perfmon_types.h>
 #include <kern/thread.h>
 
-/*
- * IDs of generic performance monitoring events.
- */
+// IDs of generic performance monitoring events.
 #define PERFMON_EV_CYCLE            0
 #define PERFMON_EV_REF_CYCLE        1
 #define PERFMON_EV_INSTRUCTION      2
@@ -43,12 +41,10 @@
 #define PERFMON_EV_BRANCH_MISS      6
 #define PERFMON_NR_GENERIC_EVENTS   7
 
-/*
- * Event flags.
- */
-#define PERFMON_EF_KERN     0x1 /* Monitor events in kernel mode */
-#define PERFMON_EF_USER     0x2 /* Monitor events in user mode */
-#define PERFMON_EF_RAW      0x4 /* Raw event ID, generic if unset */
+// Event flags.
+#define PERFMON_EF_KERN     0x1   // Monitor events in kernel mode.
+#define PERFMON_EF_USER     0x2   // Monitor events in user mode.
+#define PERFMON_EF_RAW      0x4   // Raw event ID, generic if unset.
 
 /*
  * Performance monitoring operations.
@@ -62,60 +58,60 @@
  * handler must be set to NULL, making the perfmon module perdiocally
  * check the raw value of the hardware counters.
  */
-struct perfmon_dev_ops {
-    /*
-     * Convert a generic event ID into a raw event ID.
-     *
-     * Global operation.
-     */
-    int (*translate)(unsigned int *raw_event_idp, unsigned int event_id);
+struct perfmon_dev_ops
+{
+  /*
+   * Convert a generic event ID into a raw event ID.
+   *
+   * Global operation.
+   */
+  int (*translate) (unsigned int *, unsigned int);
 
-    /*
-     * Allocate a performance monitoring counter globally for the given
-     * raw event ID, and return the counter ID through the given pointer.
-     * The driver may return any PMC ID, as long as it uniquely identifies
-     * the underlying counter. The PMC index is passed when reporting
-     * overflows, if using a custom overflow interrupt handler.
-     *
-     * Global operation.
-     */
-    int (*alloc)(unsigned int *pmc_idp, unsigned int pmc_index,
-                 unsigned int raw_event_id);
+  /*
+   * Allocate a performance monitoring counter globally for the given
+   * raw event ID, and return the counter ID through the given pointer.
+   * The driver may return any PMC ID, as long as it uniquely identifies
+   * the underlying counter. The PMC index is passed when reporting
+   * overflows, if using a custom overflow interrupt handler.
+   *
+   * Global operation.
+   */
+  int (*alloc) (unsigned int *, unsigned int, unsigned int);
 
-    /*
-     * Free an allocated performance monitoring counter.
-     *
-     * Global operation.
-     */
-    void (*free)(unsigned int pmc_id);
+  /*
+   * Free an allocated performance monitoring counter.
+   *
+   * Global operation.
+   */
+  void (*free) (unsigned int);
 
-    /*
-     * Start a performance monitoring counter for the given raw event ID.
-     *
-     * Processor-local operation.
-     */
-    void (*start)(unsigned int pmc_id, unsigned int raw_event_id);
+  /*
+   * Start a performance monitoring counter for the given raw event ID.
+   *
+   * Processor-local operation.
+   */
+  void (*start) (unsigned int, unsigned int);
 
-    /*
-     * Stop a performance monitoring counter.
-     *
-     * Processor-local operation.
-     */
-    void (*stop)(unsigned int pmc_id);
+  /*
+   * Stop a performance monitoring counter.
+   *
+   * Processor-local operation.
+   */
+  void (*stop) (unsigned int);
 
-    /*
-     * Read the value of a performance monitoring counter.
-     *
-     * Processor-local operation.
-     */
-    uint64_t (*read)(unsigned int pmc_id);
+  /*
+   * Read the value of a performance monitoring counter.
+   *
+   * Processor-local operation.
+   */
+  uint64_t (*read) (unsigned int);
 
-    /*
-     * Custom overflow interrupt handler.
-     *
-     * Processor-local operation.
-     */
-    void (*handle_overflow_intr)(void);
+  /*
+   * Custom overflow interrupt handler.
+   *
+   * Processor-local operation.
+   */
+  void (*handle_overflow_intr) (void);
 };
 
 /*
@@ -130,15 +126,14 @@ struct perfmon_dev_ops {
  * of a single overflow. A value of 0 lets the perfmon module compute a poll
  * interval itself.
  */
-struct perfmon_dev {
-    const struct perfmon_dev_ops *ops;
-    unsigned int pmc_width;
-    uint64_t poll_interval;
+struct perfmon_dev
+{
+  const struct perfmon_dev_ops *ops;
+  unsigned int pmc_width;
+  uint64_t poll_interval;
 };
 
-/*
- * Performance monitoring thread data.
- */
+// Performance monitoring thread data.
 struct perfmon_td;
 
 /*
@@ -149,10 +144,8 @@ struct perfmon_td;
  */
 struct perfmon_event;
 
-/*
- * Initialize thread-specific data.
- */
-void perfmon_td_init(struct perfmon_td *td);
+// Initialize thread-specific data.
+void perfmon_td_init (struct perfmon_td *td);
 
 /*
  * Load/unload events attached to a thread on the current processor.
@@ -160,14 +153,12 @@ void perfmon_td_init(struct perfmon_td *td);
  * These functions should only be used by the scheduler on a context switch.
  * Interrupts and preemption must be disabled when calling these functions.
  */
-void perfmon_td_load(struct perfmon_td *td);
-void perfmon_td_unload(struct perfmon_td *td);
+void perfmon_td_load (struct perfmon_td *td);
+void perfmon_td_unload (struct perfmon_td *td);
 
-/*
- * Initialize an event.
- */
-int perfmon_event_init(struct perfmon_event *event, unsigned int id,
-                       unsigned int flags);
+// Initialize an event.
+int perfmon_event_init (struct perfmon_event *event, unsigned int id,
+                        unsigned int flags);
 
 /*
  * Attach/detach an event to/from a thread or a processor.
@@ -177,14 +168,12 @@ int perfmon_event_init(struct perfmon_event *event, unsigned int id,
  *
  * An event can only be attached to one thread or processor at a time.
  */
-int perfmon_event_attach(struct perfmon_event *event, struct thread *thread);
-int perfmon_event_attach_cpu(struct perfmon_event *event, unsigned int cpu);
-int perfmon_event_detach(struct perfmon_event *event);
+int perfmon_event_attach (struct perfmon_event *event, struct thread *thread);
+int perfmon_event_attach_cpu (struct perfmon_event *event, unsigned int cpu);
+int perfmon_event_detach (struct perfmon_event *event);
 
-/*
- * Obtain the number of occurrences of an event.
- */
-uint64_t perfmon_event_read(struct perfmon_event *event);
+// Obtain the number of occurrences of an event.
+uint64_t perfmon_event_read (struct perfmon_event *event);
 
 /*
  * Register a PMU device.
@@ -192,14 +181,14 @@ uint64_t perfmon_event_read(struct perfmon_event *event);
  * Currently, there can only be a single system-wide PMU device, which
  * assumes the driver is the same for all processors.
  */
-void perfmon_register(struct perfmon_dev *dev);
+void perfmon_register (struct perfmon_dev *dev);
 
 /*
  * Handle an overflow interrupt.
  *
  * This function must be called in interrupt context.
  */
-void perfmon_overflow_intr(void);
+void perfmon_overflow_intr (void);
 
 /*
  * Report a PMC overflow.
@@ -209,12 +198,12 @@ void perfmon_overflow_intr(void);
  *
  * This function must be called in interrupt context.
  */
-void perfmon_report_overflow(unsigned int pmc_index);
+void perfmon_report_overflow (unsigned int pmc_index);
 
 /*
  * This init operation provides :
  *  - PMU device registration
  */
-INIT_OP_DECLARE(perfmon_bootstrap);
+INIT_OP_DECLARE (perfmon_bootstrap);
 
-#endif /* KERN_PERFMON_H */
+#endif

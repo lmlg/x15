@@ -22,31 +22,27 @@
 
 #include <machine/page.h>
 
-/*
- * Architecture defined exception vectors.
- */
-#define CPU_EXC_DE                  0   /* Divide Error */
-#define CPU_EXC_DB                  1   /* Debug */
-#define CPU_EXC_NMI                 2   /* NMI Interrupt */
-#define CPU_EXC_BP                  3   /* Breakpoint */
-#define CPU_EXC_OF                  4   /* Overflow */
-#define CPU_EXC_BR                  5   /* BOUND Range Exceeded */
-#define CPU_EXC_UD                  6   /* Undefined Opcode */
-#define CPU_EXC_NM                  7   /* No Math Coprocessor */
-#define CPU_EXC_DF                  8   /* Double Fault */
-#define CPU_EXC_TS                  10  /* Invalid TSS */
-#define CPU_EXC_NP                  11  /* Segment Not Present */
-#define CPU_EXC_SS                  12  /* Stack-Segment Fault */
-#define CPU_EXC_GP                  13  /* General Protection */
-#define CPU_EXC_PF                  14  /* Page Fault */
-#define CPU_EXC_MF                  16  /* Math Fault */
-#define CPU_EXC_AC                  17  /* Alignment Check */
-#define CPU_EXC_MC                  18  /* Machine Check */
-#define CPU_EXC_XM                  19  /* SIMD Floating-Point Exception */
+// Architecture defined exception vectors.
+#define CPU_EXC_DE                  0    // Divide Error.
+#define CPU_EXC_DB                  1    // Debug.
+#define CPU_EXC_NMI                 2    // NMI Interrupt.
+#define CPU_EXC_BP                  3    // Breakpoint.
+#define CPU_EXC_OF                  4    // Overflow.
+#define CPU_EXC_BR                  5    // BOUND Range Exceeded.
+#define CPU_EXC_UD                  6    // Undefined Opcode.
+#define CPU_EXC_NM                  7    // No Math Coprocessor.
+#define CPU_EXC_DF                  8    // Double Fault.
+#define CPU_EXC_TS                  10   // Invalid TSS.
+#define CPU_EXC_NP                  11   // Segment Not Present.
+#define CPU_EXC_SS                  12   // Stack-Segment Fault.
+#define CPU_EXC_GP                  13   // General Protection.
+#define CPU_EXC_PF                  14   // Page Fault.
+#define CPU_EXC_MF                  16   // Math Fault.
+#define CPU_EXC_AC                  17   // Alignment Check.
+#define CPU_EXC_MC                  18   // Machine Check.
+#define CPU_EXC_XM                  19   // SIMD Floating-Point Exception.
 
-/*
- * Exception vectors used for external interrupts.
- */
+// Exception vectors used for external interrupts.
 #define CPU_EXC_INTR_FIRST          32
 #define CPU_EXC_INTR_LAST           223
 
@@ -65,14 +61,14 @@
 
 #define CPU_NR_EXC_VECTORS          256
 
-#define CPU_INTR_STACK_SIZE PAGE_SIZE
+#define CPU_INTR_STACK_SIZE   PAGE_SIZE
 
-#define CPU_VENDOR_STR_SIZE 13
-#define CPU_MODEL_NAME_SIZE 49
+#define CPU_VENDOR_STR_SIZE   13
+#define CPU_MODEL_NAME_SIZE   49
 
-#define CPU_VENDOR_UNKNOWN  0
-#define CPU_VENDOR_INTEL    1
-#define CPU_VENDOR_AMD      2
+#define CPU_VENDOR_UNKNOWN   0
+#define CPU_VENDOR_INTEL     1
+#define CPU_VENDOR_AMD       2
 
 /*
  * L1 cache line size.
@@ -82,12 +78,10 @@
  * TODO Add macros to specifically align to the cache line size, and to
  * do so only in SMP configurations.
  */
-#define CPU_L1_SIZE 64
+#define CPU_L1_SIZE   64
 
-/*
- * CPU word size, 4 or 8 bytes.
- */
-#define CPU_WORD_SIZE (LONG_BIT / 8)
+// CPU word size, 4 or 8 bytes.
+#define CPU_WORD_SIZE   (LONG_BIT / 8)
 
 /*
  * Data alignment.
@@ -110,17 +104,13 @@
  *
  * XXX Use this value until processor selection is available.
  */
-#define CPU_TEXT_ALIGN 16
+#define CPU_TEXT_ALIGN   16
 
-/*
- * Processor privilege levels.
- */
+// Processor privilege levels.
 #define CPU_PL_KERNEL                           0
 #define CPU_PL_USER                             3
 
-/*
- * Control register 0 flags.
- */
+// Control register 0 flags.
 #define CPU_CR0_PE                              0x00000001
 #define CPU_CR0_MP                              0x00000002
 #define CPU_CR0_TS                              0x00000008
@@ -130,33 +120,23 @@
 #define CPU_CR0_AM                              0x00040000
 #define CPU_CR0_PG                              0x80000000
 
-/*
- * Control register 4 flags.
- */
+// Control register 4 flags.
 #define CPU_CR4_PSE                             0x00000010
 #define CPU_CR4_PAE                             0x00000020
 #define CPU_CR4_PGE                             0x00000080
 
-/*
- * Model specific registers.
- */
+// Model specific registers.
 #define CPU_MSR_EFER                            0xc0000080
 #define CPU_MSR_FSBASE                          0xc0000100
 #define CPU_MSR_GSBASE                          0xc0000101
 
-/*
- * EFER MSR flags.
- */
+// EFER MSR flags.
 #define CPU_EFER_LME                            0x00000100
 
-/*
- * Bit used to make extended CPUID requests.
- */
+// Bit used to make extended CPUID requests.
 #define CPU_CPUID_EXT_BIT                       0x80000000
 
-/*
- * CPU feature flags as returned by CPUID.
- */
+// CPU feature flags as returned by CPUID.
 #define CPU_CPUID_BASIC1_EDX_FPU                0x00000001
 #define CPU_CPUID_BASIC1_EDX_PSE                0x00000008
 #define CPU_CPUID_BASIC1_EDX_PAE                0x00000040
@@ -169,20 +149,21 @@
 
 #ifndef __ASSEMBLER__
 
-enum cpu_feature {
-    CPU_FEATURE_FPU,
-    CPU_FEATURE_PSE,
-    CPU_FEATURE_PAE,
-    CPU_FEATURE_MSR,
-    CPU_FEATURE_CX8,
-    CPU_FEATURE_APIC,
-    CPU_FEATURE_PGE,
-    CPU_FEATURE_1GP,
-    CPU_FEATURE_LM,
-    CPU_NR_FEATURES
+enum cpu_feature
+{
+  CPU_FEATURE_FPU,
+  CPU_FEATURE_PSE,
+  CPU_FEATURE_PAE,
+  CPU_FEATURE_MSR,
+  CPU_FEATURE_CX8,
+  CPU_FEATURE_APIC,
+  CPU_FEATURE_PGE,
+  CPU_FEATURE_1GP,
+  CPU_FEATURE_LM,
+  CPU_NR_FEATURES
 };
 
-#endif /* __ASSEMBLER__ */
+#endif
 
 #include <machine/cpu_i.h>
 
@@ -200,11 +181,10 @@ enum cpu_feature {
 #include <machine/pit.h>
 #include <machine/ssp.h>
 
-#define CPU_INTR_TABLE_SIZE (CPU_EXC_INTR_LAST - CPU_EXC_INTR_FIRST)
+#define CPU_INTR_TABLE_SIZE   \
+  (CPU_EXC_INTR_LAST - CPU_EXC_INTR_FIRST)
 
-/*
- * Gate/segment descriptor bits and masks.
- */
+// Gate/segment descriptor bits and masks.
 #define CPU_DESC_TYPE_DATA                      0x00000200
 #define CPU_DESC_TYPE_CODE                      0x00000a00
 #define CPU_DESC_TYPE_TSS                       0x00000900
@@ -225,10 +205,8 @@ enum cpu_feature {
 #define CPU_DESC_SEG_LIMIT_LOW_MASK             0x0000ffff
 #define CPU_DESC_SEG_LIMIT_HIGH_MASK            0x000f0000
 
-/*
- * Type for interrupt handler functions.
- */
-typedef void (*cpu_intr_handler_fn_t)(unsigned int vector);
+// Type for interrupt handler functions.
+typedef void (*cpu_intr_handler_fn_t) (uint32_t);
 
 /*
  * TLS segment, as expected by the compiler.
@@ -239,9 +217,10 @@ typedef void (*cpu_intr_handler_fn_t)(unsigned int vector);
  * This is a public structure, made available to the boot module so that
  * C code that runs early correctly works when built with stack protection.
  */
-struct cpu_tls_seg {
-    uintptr_t unused[SSP_WORD_TLS_OFFSET];
-    uintptr_t ssp_guard_word;
+struct cpu_tls_seg
+{
+  uintptr_t unused[SSP_WORD_TLS_OFFSET];
+  uintptr_t ssp_guard_word;
 };
 
 /*
@@ -250,9 +229,10 @@ struct cpu_tls_seg {
  * See Intel 64 and IA-32 Architecture Software Developer's Manual,
  * Volume 3 System Programming Guide, 3.4.5 Segment Descriptors.
  */
-struct cpu_seg_desc {
-    uint32_t low;
-    uint32_t high;
+struct cpu_seg_desc
+{
+  uint32_t low;
+  uint32_t high;
 };
 
 /*
@@ -260,20 +240,19 @@ struct cpu_seg_desc {
  *
  * TODO Break down.
  */
-#define CPU_DECL_GETSET_CR(name)                                            \
-static __always_inline unsigned long                                        \
-cpu_get_ ## name(void)                                                      \
-{                                                                           \
-    unsigned long name;                                                     \
-                                                                            \
-    asm volatile("mov %%" __QUOTE(name) ", %0" : "=r" (name) : : "memory"); \
-    return name;                                                            \
-}                                                                           \
-                                                                            \
-static __always_inline void                                                 \
-cpu_set_ ## name(unsigned long value)                                       \
-{                                                                           \
-    asm volatile("mov %0, %%" __QUOTE(name) : : "r" (value) : "memory");    \
+#define CPU_DECL_GETSET_CR(name)   \
+static __always_inline unsigned long   \
+cpu_get_ ## name(void)   \
+{   \
+  unsigned long name;   \
+  asm volatile("mov %%" QUOTE (name) ", %0" : "=r" (name) : : "memory");   \
+  return (name);   \
+}   \
+\
+static __always_inline void   \
+cpu_set_ ## name(unsigned long value)   \
+{   \
+  asm volatile ("mov %0, %%" QUOTE (name) : : "r" (value) : "memory");   \
 }
 
 /*
@@ -285,10 +264,10 @@ cpu_set_ ## name(unsigned long value)                                       \
  *
  * They all imply a compiler barrier.
  */
-CPU_DECL_GETSET_CR(cr0)
-CPU_DECL_GETSET_CR(cr2)
-CPU_DECL_GETSET_CR(cr3)
-CPU_DECL_GETSET_CR(cr4)
+CPU_DECL_GETSET_CR (cr0)
+CPU_DECL_GETSET_CR (cr2)
+CPU_DECL_GETSET_CR (cr3)
+CPU_DECL_GETSET_CR (cr4)
 
 /*
  * Enable local interrupts.
@@ -296,9 +275,9 @@ CPU_DECL_GETSET_CR(cr4)
  * Implies a compiler barrier.
  */
 static __always_inline void
-cpu_intr_enable(void)
+cpu_intr_enable (void)
 {
-    asm volatile("sti" : : : "memory");
+  asm volatile ("sti" : : : "memory");
 }
 
 /*
@@ -307,9 +286,9 @@ cpu_intr_enable(void)
  * Implies a compiler barrier.
  */
 static __always_inline void
-cpu_intr_disable(void)
+cpu_intr_disable (void)
 {
-    asm volatile("cli" : : : "memory");
+  asm volatile ("cli" : : : "memory");
 }
 
 /*
@@ -318,12 +297,12 @@ cpu_intr_disable(void)
  * Implies a compiler barrier.
  */
 static __always_inline void
-cpu_intr_restore(unsigned long flags)
+cpu_intr_restore (unsigned long flags)
 {
-    asm volatile("push %0\n"
-                 "popf\n"
-                 : : "r" (flags)
-                 : "memory");
+  asm volatile ("push %0\n"
+                "popf\n"
+                : : "r" (flags)
+                : "memory");
 }
 
 /*
@@ -333,10 +312,10 @@ cpu_intr_restore(unsigned long flags)
  * Implies a compiler barrier.
  */
 static __always_inline void
-cpu_intr_save(unsigned long *flags)
+cpu_intr_save (unsigned long *flags)
 {
-    *flags = cpu_get_eflags();
-    cpu_intr_disable();
+  *flags = cpu_get_eflags ();
+  cpu_intr_disable ();
 }
 
 /*
@@ -345,12 +324,12 @@ cpu_intr_save(unsigned long *flags)
  * Implies a compiler barrier.
  */
 static __always_inline int
-cpu_intr_enabled(void)
+cpu_intr_enabled (void)
 {
-    unsigned long eflags;
+  unsigned long eflags;
 
-    eflags = cpu_get_eflags();
-    return (eflags & CPU_EFL_IF) ? 1 : 0;
+  eflags = cpu_get_eflags ();
+  return ((eflags & CPU_EFL_IF) ? 1 : 0);
 }
 
 /*
@@ -359,9 +338,9 @@ cpu_intr_enabled(void)
  * Implies a compiler barrier.
  */
 static __always_inline void
-cpu_pause(void)
+cpu_pause (void)
 {
-    asm volatile("pause" : : : "memory");
+  asm volatile ("pause" : : : "memory");
 }
 
 /*
@@ -374,9 +353,9 @@ cpu_pause(void)
  * Implies a compiler barrier.
  */
 static __always_inline void
-cpu_idle(void)
+cpu_idle (void)
 {
-    asm volatile("sti; hlt" : : : "memory");
+  asm volatile ("sti; hlt" : : : "memory");
 }
 
 /*
@@ -385,13 +364,11 @@ cpu_idle(void)
  * Implies a compiler barrier.
  */
 noreturn static __always_inline void
-cpu_halt(void)
+cpu_halt (void)
 {
-    cpu_intr_disable();
-
-    for (;;) {
-        asm volatile("hlt" : : : "memory");
-    }
+  cpu_intr_disable ();
+  while (1)
+    asm volatile ("hlt" : : : "memory");
 }
 
 /*
@@ -399,90 +376,86 @@ cpu_halt(void)
  *
  * Interrupts must be disabled when calling this function.
  */
-void cpu_halt_broadcast(void);
+void cpu_halt_broadcast (void);
 
-/* Generic percpu accessors */
+// Generic percpu accessors.
 
-#define cpu_local_ptr(var)                  \
-MACRO_BEGIN                                 \
-    typeof(var) *ptr_ = &(var);             \
-                                            \
-    asm("add %%fs:%1, %0"                   \
-                 : "+r" (ptr_)              \
-                 : "m" (cpu_local_area));   \
-                                            \
-    ptr_;                                   \
+#define cpu_local_ptr(var)   \
+MACRO_BEGIN   \
+  typeof(var) *ptr_ = &(var);   \
+  asm ("add %%fs:%1, %0"   \
+       : "+r" (ptr_)   \
+       : "m" (cpu_local_area));   \
+  ptr_;   \
 MACRO_END
 
-#define cpu_local_var(var) (*cpu_local_ptr(var))
+#define cpu_local_var(var)   (*cpu_local_ptr(var))
 
-/* Generic interrupt-safe percpu accessors */
+// Generic interrupt-safe percpu accessors.
 
-#define cpu_local_assign(var, val)          \
-    asm("mov %0, %%fs:%1"                   \
-                 : : "r" (val), "m" (var));
+#define cpu_local_assign(var, val)   \
+  asm ("mov %0, %%fs:%1"   \
+       : : "r" (val), "m" (var));
 
-#define cpu_local_read(var)         \
-MACRO_BEGIN                         \
-    typeof(var) val_;               \
-                                    \
-    asm("mov %%fs:%1, %0"           \
-                 : "=r" (val_)      \
-                 : "m" (var));      \
-                                    \
-    val_;                           \
+#define cpu_local_read(var)   \
+MACRO_BEGIN   \
+  typeof(var) val_;   \
+  asm ("mov %%fs:%1, %0"   \
+       : "=r" (val_)   \
+       : "m" (var));   \
+  val_;   \
 MACRO_END
 
-static inline struct cpu *
-cpu_current(void)
+static inline struct cpu*
+cpu_current (void)
 {
-    extern struct cpu cpu_desc;
-    return cpu_local_ptr(cpu_desc);
+  extern struct cpu cpu_desc;
+  return (cpu_local_ptr (cpu_desc));
 }
 
-static inline unsigned int
-cpu_id(void)
+static inline uint32_t
+cpu_id (void)
 {
-    extern struct cpu cpu_desc;
-    return cpu_local_read(cpu_desc.id);
+  extern struct cpu cpu_desc;
+  return (cpu_local_read (cpu_desc.id));
 }
 
-static inline unsigned int
-cpu_count(void)
+static inline uint32_t
+cpu_count (void)
 {
-    extern unsigned int cpu_nr_active;
-    return cpu_nr_active;
+  extern unsigned int cpu_nr_active;
+  return (cpu_nr_active);
 }
 
-static inline struct cpu *
-cpu_from_id(unsigned int cpu)
+static inline struct cpu*
+cpu_from_id (uint32_t cpu)
 {
-    extern struct cpu cpu_desc;
-    return percpu_ptr(cpu_desc, cpu);
+  extern struct cpu cpu_desc;
+  return (percpu_ptr (cpu_desc, cpu));
 }
 
 static inline bool
-cpu_has_feature(const struct cpu *cpu, enum cpu_feature feature)
+cpu_has_feature (const struct cpu *cpu, enum cpu_feature feature)
 {
-    return cpu_feature_map_test(&cpu->feature_map, feature);
+  return (cpu_feature_map_test (&cpu->feature_map, feature));
 }
 
 static __always_inline void
-cpu_enable_pse(void)
+cpu_enable_pse (void)
 {
-    cpu_set_cr4(cpu_get_cr4() | CPU_CR4_PSE);
+  cpu_set_cr4 (cpu_get_cr4 () | CPU_CR4_PSE);
 }
 
 static __always_inline void
-cpu_enable_pae(void)
+cpu_enable_pae (void)
 {
-    cpu_set_cr4(cpu_get_cr4() | CPU_CR4_PAE);
+  cpu_set_cr4 (cpu_get_cr4 () | CPU_CR4_PAE);
 }
 
 static inline int
-cpu_has_global_pages(void)
+cpu_has_global_pages (void)
 {
-    return cpu_has_feature(cpu_current(), CPU_FEATURE_PGE);
+  return (cpu_has_feature (cpu_current (), CPU_FEATURE_PGE));
 }
 
 /*
@@ -495,9 +468,9 @@ cpu_has_global_pages(void)
  * TODO Update barrier description.
  */
 static __always_inline void
-cpu_enable_global_pages(void)
+cpu_enable_global_pages (void)
 {
-    cpu_set_cr4(cpu_get_cr4() | CPU_CR4_PGE);
+  cpu_set_cr4 (cpu_get_cr4 () | CPU_CR4_PGE);
 }
 
 /*
@@ -506,48 +479,40 @@ cpu_enable_global_pages(void)
  * The CPUID instruction is a serializing instruction.
  */
 static __always_inline void
-cpu_cpuid(unsigned int *eax, unsigned int *ebx, unsigned int *ecx,
-          unsigned int *edx)
+cpu_cpuid (uint32_t *eax, uint32_t *ebx, uint32_t *ecx, uint32_t *edx)
 {
-    asm volatile("cpuid" : "+a" (*eax), "=b" (*ebx), "=c" (*ecx), "=d" (*edx)
-                 : : "memory");
+  asm volatile ("cpuid" : "+a" (*eax), "=b" (*ebx), "=c" (*ecx), "=d" (*edx)
+                : : "memory");
 }
 
 static inline void
-cpu_get_msr(uint32_t msr, uint32_t *high, uint32_t *low)
+cpu_get_msr (uint32_t msr, uint32_t *high, uint32_t *low)
 {
-    asm("rdmsr" : "=a" (*low), "=d" (*high) : "c" (msr));
+  asm ("rdmsr" : "=a" (*low), "=d" (*high) : "c" (msr) );
 }
 
 static inline uint64_t
-cpu_get_msr64(uint32_t msr)
+cpu_get_msr64 (uint32_t msr)
 {
-    uint32_t high, low;
-
-    cpu_get_msr(msr, &high, &low);
-    return (((uint64_t)high << 32) | low);
+  uint32_t high, low;
+  cpu_get_msr (msr, &high, &low);
+  return (((uint64_t) high << 32) | low);
 }
 
-/*
- * Implies a full memory barrier.
- */
+// Implies a full memory barrier.
 static inline void
-cpu_set_msr(uint32_t msr, uint32_t high, uint32_t low)
+cpu_set_msr (uint32_t msr, uint32_t high, uint32_t low)
 {
-    asm volatile("wrmsr" : : "c" (msr), "a" (low), "d" (high) : "memory");
+  asm volatile ("wrmsr" : : "c" (msr), "a" (low), "d" (high) : "memory");
 }
 
-/*
- * Implies a full memory barrier.
- */
+// Implies a full memory barrier.
 static inline void
-cpu_set_msr64(uint32_t msr, uint64_t value)
+cpu_set_msr64 (uint32_t msr, uint64_t value)
 {
-    uint32_t low, high;
-
-    low = value & 0xffffffff;
-    high = value >> 32;
-    cpu_set_msr(msr, high, low);
+  uint32_t low = value & 0xffffffff;
+  uint32_t high = value >> 32;
+  cpu_set_msr (msr, high, low);
 }
 
 /*
@@ -557,9 +522,9 @@ cpu_set_msr64(uint32_t msr, uint64_t value)
  * TODO Update barrier description.
  */
 static __always_inline void
-cpu_tlb_flush(void)
+cpu_tlb_flush (void)
 {
-    cpu_set_cr3(cpu_get_cr3());
+  cpu_set_cr3 (cpu_get_cr3 ());
 }
 
 /*
@@ -569,22 +534,22 @@ cpu_tlb_flush(void)
  * TODO Update barrier description.
  */
 static __always_inline void
-cpu_tlb_flush_all(void)
+cpu_tlb_flush_all (void)
 {
-    if (!cpu_has_global_pages()) {
-        cpu_tlb_flush();
-    } else {
-        unsigned long cr4;
+  if (!cpu_has_global_pages ())
+    cpu_tlb_flush ();
+  else
+    {
+      unsigned long cr4 = cpu_get_cr4 ();
 
-        cr4 = cpu_get_cr4();
-
-        if (!(cr4 & CPU_CR4_PGE)) {
-            cpu_tlb_flush();
-        } else {
-            cr4 &= ~CPU_CR4_PGE;
-            cpu_set_cr4(cr4);
-            cr4 |= CPU_CR4_PGE;
-            cpu_set_cr4(cr4);
+      if (!(cr4 & CPU_CR4_PGE))
+        cpu_tlb_flush ();
+      else
+        {
+          cr4 &= ~CPU_CR4_PGE;
+          cpu_set_cr4 (cr4);
+          cr4 |= CPU_CR4_PGE;
+          cpu_set_cr4 (cr4);
         }
     }
 }
@@ -596,56 +561,50 @@ cpu_tlb_flush_all(void)
  * TODO Update barrier description.
  */
 static __always_inline void
-cpu_tlb_flush_va(unsigned long va)
+cpu_tlb_flush_va (uintptr_t va)
 {
-    asm volatile("invlpg (%0)" : : "r" (va) : "memory");
+  asm volatile ("invlpg (%0)" : : "r" (va) : "memory");
 }
 
-static inline unsigned int
-cpu_cpuid_max_basic(const struct cpu *cpu)
+static inline uint32_t
+cpu_cpuid_max_basic (const struct cpu *cpu)
 {
-    return cpu->cpuid_max_basic;
+  return (cpu->cpuid_max_basic);
 }
 
-static inline unsigned int
-cpu_vendor_id(const struct cpu *cpu)
+static inline uint32_t
+cpu_vendor_id (const struct cpu *cpu)
 {
-    return cpu->vendor_id;
+  return (cpu->vendor_id);
 }
 
-static inline unsigned int
-cpu_family(const struct cpu *cpu)
+static inline uint32_t
+cpu_family (const struct cpu *cpu)
 {
-    return cpu->family;
+  return (cpu->family);
 }
 
-static inline unsigned int
-cpu_phys_addr_width(const struct cpu *cpu)
+static inline uint32_t
+cpu_phys_addr_width (const struct cpu *cpu)
 {
-    return cpu->phys_addr_width;
+  return (cpu->phys_addr_width);
 }
 
-/*
- * Get CPU frequency in Hz.
- */
-uint64_t cpu_get_freq(void);
+// Get CPU frequency in Hz.
+uint64_t cpu_get_freq (void);
 
 /*
  * Busy-wait for a given amount of time, in microseconds.
  *
  * Implies a compiler barrier.
  */
-void cpu_delay(unsigned long usecs);
+void cpu_delay (size_t usecs);
 
-/*
- * Log processor information.
- */
-void cpu_log_info(const struct cpu *cpu);
+// Log processor information.
+void cpu_log_info (const struct cpu *cpu);
 
-/*
- * Register a local APIC.
- */
-void cpu_mp_register_lapic(unsigned int apic_id, bool is_bsp);
+// Register a local APIC.
+void cpu_mp_register_lapic (uint32_t apic_id, bool is_bsp);
 
 /*
  * Start application processors.
@@ -657,35 +616,29 @@ void cpu_mp_register_lapic(unsigned int apic_id, bool is_bsp);
  * On return, physical mappings must not be altered until inter-processor
  * communication is available.
  */
-void cpu_mp_setup(void);
+void cpu_mp_setup (void);
 
-/*
- * CPU initialization on APs.
- */
-void cpu_ap_setup(unsigned int ap_id);
+// CPU initialization on APs.
+void cpu_ap_setup (uint32_t ap_id);
 
 static inline unsigned int
-cpu_apic_id(unsigned int cpu)
+cpu_apic_id (uint32_t cpu)
 {
-    return cpu_from_id(cpu)->apic_id;
+  return (cpu_from_id(cpu)->apic_id);
 }
 
-/*
- * Send a cross-call interrupt to a remote processor.
- */
+// Send a cross-call interrupt to a remote processor.
 static inline void
-cpu_send_xcall(unsigned int cpu)
+cpu_send_xcall (uint32_t cpu)
 {
-    lapic_ipi_send(cpu_apic_id(cpu), CPU_EXC_XCALL);
+  lapic_ipi_send (cpu_apic_id (cpu), CPU_EXC_XCALL);
 }
 
-/*
- * Send a scheduling interrupt to a remote processor.
- */
+// Send a scheduling interrupt to a remote processor.
 static inline void
-cpu_send_thread_schedule(unsigned int cpu)
+cpu_send_thread_schedule (uint32_t cpu)
 {
-    lapic_ipi_send(cpu_apic_id(cpu), CPU_EXC_THREAD_SCHEDULE);
+  lapic_ipi_send (cpu_apic_id (cpu), CPU_EXC_THREAD_SCHEDULE);
 }
 
 /*
@@ -698,7 +651,7 @@ cpu_send_thread_schedule(unsigned int cpu)
  *
  * Registration is system-wide.
  */
-void cpu_register_intr(unsigned int vector, cpu_intr_handler_fn_t fn);
+void cpu_register_intr (uint32_t vector, cpu_intr_handler_fn_t fn);
 
 /*
  * This init operation provides :
@@ -706,21 +659,21 @@ void cpu_register_intr(unsigned int vector, cpu_intr_handler_fn_t fn);
  *  - cpu_delay()
  *  - cpu_local_ptr() and cpu_local_var()
  */
-INIT_OP_DECLARE(cpu_setup);
+INIT_OP_DECLARE (cpu_setup);
 
 /*
  * This init operation provides :
  *  - cpu_count()
  *  - access to percpu variables on all processors
  */
-INIT_OP_DECLARE(cpu_mp_probe);
+INIT_OP_DECLARE (cpu_mp_probe);
 
 /*
  * This init operation provides :
  *  - cpu shutdown operations registered
  */
-INIT_OP_DECLARE(cpu_setup_shutdown);
+INIT_OP_DECLARE (cpu_setup_shutdown);
 
-#endif /* __ASSEMBLER__ */
+#endif   // __ASSEMBLER__
 
-#endif /* X86_CPU_H */
+#endif

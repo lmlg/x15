@@ -31,21 +31,23 @@
 #define INIT_OP_STATE_PENDING       1
 #define INIT_OP_STATE_COMPLETE      2
 
-struct init_op {
-    alignas(INIT_OP_ALIGN) struct slist_node list_node;
-    struct slist_node stack_node;
-    const char *name;
-    init_op_fn_t fn;
-    struct init_op_dep *deps;
-    int error;
-    unsigned char state;
-    unsigned char nr_deps;
-    unsigned char nr_parents;
+struct init_op
+{
+  alignas (INIT_OP_ALIGN) struct slist_node list_node;
+  struct slist_node stack_node;
+  const char *name;
+  init_op_fn_t fn;
+  struct init_op_dep *deps;
+  int error;
+  unsigned char state;
+  unsigned char nr_deps;
+  unsigned char nr_parents;
 };
 
-struct init_op_dep {
-    struct init_op *op;
-    bool required;
+struct init_op_dep
+{
+  struct init_op *op;
+  bool required;
 };
 
 #define __INIT_OP_DEPS(fn)  fn ## _init_op_deps

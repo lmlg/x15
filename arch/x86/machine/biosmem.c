@@ -35,7 +35,7 @@
 #include <machine/types.h>
 #include <vm/vm_page.h>
 
-#define BIOSMEM_MAX_BOOT_DATA 64
+#define BIOSMEM_MAX_BOOT_DATA   64
 
 /*
  * Boot data descriptor.
@@ -43,17 +43,16 @@
  * The start and end addresses must not be page-aligned, since there
  * could be more than one range inside a single page.
  */
-struct biosmem_boot_data {
-    phys_addr_t start;
-    phys_addr_t end;
-    bool temporary;
+struct biosmem_boot_data
+{
+  phys_addr_t start;
+  phys_addr_t end;
+  bool temporary;
 };
 
-/*
- * Sorted array of boot data descriptors.
- */
+// Sorted array of boot data descriptors.
 static struct biosmem_boot_data biosmem_boot_data_array[BIOSMEM_MAX_BOOT_DATA]
-    __bootdata;
+  __bootdata;
 static unsigned int biosmem_nr_boot_data __bootdata;
 
 /*
@@ -64,23 +63,20 @@ static unsigned int biosmem_nr_boot_data __bootdata;
  */
 #define BIOSMEM_MAX_MAP_SIZE 128
 
-/*
- * Memory range types.
- */
-#define BIOSMEM_TYPE_AVAILABLE  1
-#define BIOSMEM_TYPE_RESERVED   2
-#define BIOSMEM_TYPE_ACPI       3
-#define BIOSMEM_TYPE_NVS        4
-#define BIOSMEM_TYPE_UNUSABLE   5
-#define BIOSMEM_TYPE_DISABLED   6
+// Memory range types.
+#define BIOSMEM_TYPE_AVAILABLE   1
+#define BIOSMEM_TYPE_RESERVED    2
+#define BIOSMEM_TYPE_ACPI        3
+#define BIOSMEM_TYPE_NVS         4
+#define BIOSMEM_TYPE_UNUSABLE    5
+#define BIOSMEM_TYPE_DISABLED    6
 
-/*
- * Memory map entry.
- */
-struct biosmem_map_entry {
-    uint64_t base_addr;
-    uint64_t length;
-    unsigned int type;
+// Memory map entry.
+struct biosmem_map_entry
+{
+  uint64_t base_addr;
+  uint64_t length;
+  unsigned int type;
 };
 
 /*
@@ -90,25 +86,20 @@ struct biosmem_map_entry {
  * based on the mem_lower and mem_upper multiboot fields.
  */
 static struct biosmem_map_entry biosmem_map[BIOSMEM_MAX_MAP_SIZE * 2]
-    __bootdata;
+  __bootdata;
 static unsigned int biosmem_map_size __bootdata;
 
-/*
- * Temporary copy of the BIOS Data Area.
- */
+// Temporary copy of the BIOS Data Area.
 static char biosmem_bda[BIOSMEM_BDA_SIZE] __bootdata;
 
-/*
- * Contiguous block of physical memory.
- */
-struct biosmem_zone {
-    phys_addr_t start;
-    phys_addr_t end;
+// Contiguous block of physical memory.
+struct biosmem_zone
+{
+  phys_addr_t start;
+  phys_addr_t end;
 };
 
-/*
- * Physical zone boundaries.
- */
+// Physical zone boundaries.
 static struct biosmem_zone biosmem_zones[PMEM_MAX_ZONES] __bootdata;
 
 /*
@@ -130,314 +121,304 @@ static phys_addr_t biosmem_heap_end __bootdata;
 static bool biosmem_heap_topdown __bootdata;
 
 static char biosmem_panic_inval_boot_data[] __bootdata
-    = "biosmem: invalid boot data";
+  = "biosmem: invalid boot data";
 static char biosmem_panic_too_many_boot_data[] __bootdata
-    = "biosmem: too many boot data ranges";
+  = "biosmem: too many boot data ranges";
 static char biosmem_panic_too_big_msg[] __bootdata
-    = "biosmem: too many memory map entries";
+  = "biosmem: too many memory map entries";
 static char biosmem_panic_setup_msg[] __bootdata
-    = "biosmem: unable to set up the early memory allocator";
+  = "biosmem: unable to set up the early memory allocator";
 static char biosmem_panic_nozone_msg[] __bootdata
-    = "biosmem: unable to find any memory zone";
+  = "biosmem: unable to find any memory zone";
 static char biosmem_panic_inval_msg[] __bootdata
-    = "biosmem: attempt to allocate 0 page";
+  = "biosmem: attempt to allocate 0 page";
 static char biosmem_panic_nomem_msg[] __bootdata
-    = "biosmem: unable to allocate memory";
+  = "biosmem: unable to allocate memory";
 
 void __boot
-biosmem_register_boot_data(phys_addr_t start, phys_addr_t end, bool temporary)
+biosmem_register_boot_data (phys_addr_t start, phys_addr_t end, bool temporary)
 {
-    unsigned int i;
+  if (start >= end)
+    boot_panic (biosmem_panic_inval_boot_data);
+  else if (biosmem_nr_boot_data == ARRAY_SIZE (biosmem_boot_data_array))
+    boot_panic (biosmem_panic_too_many_boot_data);
 
-    if (start >= end) {
-        boot_panic(biosmem_panic_inval_boot_data);
-    }
+  uint32_t i;
+  for (i = 0; i < biosmem_nr_boot_data; i++)
+    {
+      // Check if the new range overlaps.
+      if (end > biosmem_boot_data_array[i].start &&
+          start < biosmem_boot_data_array[i].end)
+        {
 
-    if (biosmem_nr_boot_data == ARRAY_SIZE(biosmem_boot_data_array)) {
-        boot_panic(biosmem_panic_too_many_boot_data);
-    }
+          /*
+           * If it does, check whether it's part of another range.
+           * For example, this applies to debugging symbols directly
+           * taken from the kernel image.
+           */
+          if (start >= biosmem_boot_data_array[i].start &&
+              end <= biosmem_boot_data_array[i].end)
+            {
 
-    for (i = 0; i < biosmem_nr_boot_data; i++) {
-        /* Check if the new range overlaps */
-        if ((end > biosmem_boot_data_array[i].start)
-            && (start < biosmem_boot_data_array[i].end)) {
+              /*
+               * If it's completely included, make sure that a permanent
+               * range remains permanent.
+               *
+               * XXX This means that if one big range is first registered
+               * as temporary, and a smaller range inside of it is
+               * registered as permanent, the bigger range becomes
+               * permanent. It's not easy nor useful in practice to do
+               * better than that.
+               */
+              if (biosmem_boot_data_array[i].temporary != temporary)
+                biosmem_boot_data_array[i].temporary = false;
 
-            /*
-             * If it does, check whether it's part of another range.
-             * For example, this applies to debugging symbols directly
-             * taken from the kernel image.
-             */
-            if ((start >= biosmem_boot_data_array[i].start)
-                && (end <= biosmem_boot_data_array[i].end)) {
-
-                /*
-                 * If it's completely included, make sure that a permanent
-                 * range remains permanent.
-                 *
-                 * XXX This means that if one big range is first registered
-                 * as temporary, and a smaller range inside of it is
-                 * registered as permanent, the bigger range becomes
-                 * permanent. It's not easy nor useful in practice to do
-                 * better than that.
-                 */
-                if (biosmem_boot_data_array[i].temporary != temporary) {
-                    biosmem_boot_data_array[i].temporary = false;
-                }
-
-                return;
+              return;
             }
 
-            boot_panic(biosmem_panic_inval_boot_data);
+          boot_panic (biosmem_panic_inval_boot_data);
         }
 
-        if (end <= biosmem_boot_data_array[i].start) {
-            break;
-        }
+      if (end <= biosmem_boot_data_array[i].start)
+        break;
     }
 
-    boot_memmove(&biosmem_boot_data_array[i + 1],
-                 &biosmem_boot_data_array[i],
-                 (biosmem_nr_boot_data - i) * sizeof(*biosmem_boot_data_array));
+  boot_memmove (&biosmem_boot_data_array[i + 1],
+                &biosmem_boot_data_array[i],
+                (biosmem_nr_boot_data - i) *
+                  sizeof (*biosmem_boot_data_array));
 
-    biosmem_boot_data_array[i].start = start;
-    biosmem_boot_data_array[i].end = end;
-    biosmem_boot_data_array[i].temporary = temporary;
-    biosmem_nr_boot_data++;
+  biosmem_boot_data_array[i].start = start;
+  biosmem_boot_data_array[i].end = end;
+  biosmem_boot_data_array[i].temporary = temporary;
+  ++biosmem_nr_boot_data;
 }
 
 static void __init
-biosmem_unregister_boot_data(phys_addr_t start, phys_addr_t end)
+biosmem_unregister_boot_data (phys_addr_t start, phys_addr_t end)
 {
-    unsigned int i;
+  if (start >= end)
+    panic ("%s", biosmem_panic_inval_boot_data);
 
-    if (start >= end) {
-        panic("%s", biosmem_panic_inval_boot_data);
-    }
+  assert (biosmem_nr_boot_data != 0);
 
-    assert(biosmem_nr_boot_data != 0);
+  uint32_t i;
+  for (i = 0; biosmem_nr_boot_data; i++)
+    if (start == biosmem_boot_data_array[i].start &&
+        end == biosmem_boot_data_array[i].end)
+      break;
 
-    for (i = 0; biosmem_nr_boot_data; i++) {
-        if ((start == biosmem_boot_data_array[i].start)
-            && (end == biosmem_boot_data_array[i].end)) {
-            break;
-        }
-    }
+  if (i == biosmem_nr_boot_data)
+    return;
 
-    if (i == biosmem_nr_boot_data) {
-        return;
-    }
+  log_debug ("biosmem: unregister boot data: %llx:%llx",
+             (unsigned long long)biosmem_boot_data_array[i].start,
+             (unsigned long long)biosmem_boot_data_array[i].end);
 
-    log_debug("biosmem: unregister boot data: %llx:%llx",
-              (unsigned long long)biosmem_boot_data_array[i].start,
-              (unsigned long long)biosmem_boot_data_array[i].end);
-
-    biosmem_nr_boot_data--;
-
-    memmove(&biosmem_boot_data_array[i],
-            &biosmem_boot_data_array[i + 1],
-            (biosmem_nr_boot_data - i) * sizeof(*biosmem_boot_data_array));
+  --biosmem_nr_boot_data;
+  memmove (&biosmem_boot_data_array[i],
+           &biosmem_boot_data_array[i + 1],
+           (biosmem_nr_boot_data - i) * sizeof (*biosmem_boot_data_array));
 }
 
 static void __boot
-biosmem_map_build(const struct multiboot_raw_info *mbi)
+biosmem_map_build (const struct multiboot_raw_info *mbi)
 {
-    struct multiboot_raw_mmap_entry *mb_entry, *mb_end;
-    struct biosmem_map_entry *start, *entry, *end;
-    unsigned long addr;
+  uintptr_t addr = mbi->mmap_addr;
+  _Auto mb_entry = (struct multiboot_raw_mmap_entry *) addr,
+        mb_end = (struct multiboot_raw_mmap_entry *) (addr + mbi->mmap_length);
+  struct biosmem_map_entry *start = biosmem_map,
+                           *entry = start,
+                           *end = entry + BIOSMEM_MAX_MAP_SIZE;
 
-    addr = mbi->mmap_addr;
-    mb_entry = (struct multiboot_raw_mmap_entry *)addr;
-    mb_end = (struct multiboot_raw_mmap_entry *)(addr + mbi->mmap_length);
-    start = biosmem_map;
-    entry = start;
-    end = entry + BIOSMEM_MAX_MAP_SIZE;
+  for (;mb_entry < mb_end && entry < end; ++entry)
+    {
+      entry->base_addr = mb_entry->base_addr;
+      entry->length = mb_entry->length;
+      entry->type = mb_entry->type;
 
-    while ((mb_entry < mb_end) && (entry < end)) {
-        entry->base_addr = mb_entry->base_addr;
-        entry->length = mb_entry->length;
-        entry->type = mb_entry->type;
-
-        mb_entry = (void *)mb_entry + sizeof(mb_entry->size) + mb_entry->size;
-        entry++;
+      mb_entry = (void *)((char *)mb_entry + sizeof (mb_entry->size) +
+                          mb_entry->size);
     }
 
-    biosmem_map_size = entry - start;
+  biosmem_map_size = entry - start;
 }
 
 static void __boot
-biosmem_map_build_simple(const struct multiboot_raw_info *mbi)
+biosmem_map_build_simple (const struct multiboot_raw_info *mbi)
 {
-    struct biosmem_map_entry *entry;
+  struct biosmem_map_entry *entry = biosmem_map;
+  entry->base_addr = 0;
+  entry->length = mbi->mem_lower << 10;
+  entry->type = BIOSMEM_TYPE_AVAILABLE;
 
-    entry = biosmem_map;
-    entry->base_addr = 0;
-    entry->length = mbi->mem_lower << 10;
-    entry->type = BIOSMEM_TYPE_AVAILABLE;
+  entry++;
+  entry->base_addr = BIOSMEM_END;
+  entry->length = mbi->mem_upper << 10;
+  entry->type = BIOSMEM_TYPE_AVAILABLE;
 
-    entry++;
-    entry->base_addr = BIOSMEM_END;
-    entry->length = mbi->mem_upper << 10;
-    entry->type = BIOSMEM_TYPE_AVAILABLE;
-
-    biosmem_map_size = 2;
+  biosmem_map_size = 2;
 }
 
 static int __boot
-biosmem_map_entry_is_invalid(const struct biosmem_map_entry *entry)
+biosmem_map_entry_is_invalid (const struct biosmem_map_entry *entry)
 {
-    return (entry->base_addr + entry->length) <= entry->base_addr;
+  return (entry->base_addr + entry->length <= entry->base_addr);
 }
 
 static void __boot
-biosmem_map_filter(void)
+biosmem_map_filter (void)
 {
-    struct biosmem_map_entry *entry;
-    unsigned int i;
+  for (uint32_t i = 0; i < biosmem_map_size; ++i)
+    {
+      _Auto entry = &biosmem_map[i];
 
-    i = 0;
-
-    while (i < biosmem_map_size) {
-        entry = &biosmem_map[i];
-
-        if (biosmem_map_entry_is_invalid(entry)) {
-            biosmem_map_size--;
-            boot_memmove(entry, entry + 1,
-                         (biosmem_map_size - i) * sizeof(*entry));
-            continue;
+      if (biosmem_map_entry_is_invalid (entry))
+        {
+          --biosmem_map_size;
+          boot_memmove (entry, entry + 1,
+                        (biosmem_map_size - i) * sizeof (*entry));
+          continue;
         }
-
-        i++;
     }
 }
 
 static void __boot
-biosmem_map_sort(void)
+biosmem_map_sort (void)
 {
-    struct biosmem_map_entry tmp;
-    unsigned int i, j;
+  // Simple insertion sort.
+  for (uint32_t i = 1; i < biosmem_map_size; i++)
+    {
+      struct biosmem_map_entry tmp;
+      boot_memcpy (&tmp, &biosmem_map[i], sizeof (tmp));
 
-    /*
-     * Simple insertion sort.
-     */
-    for (i = 1; i < biosmem_map_size; i++) {
-        boot_memcpy(&tmp, &biosmem_map[i], sizeof(tmp));
+      uint32_t j;
+      for (j = i - 1; j < i; j--)
+        {
+          if (biosmem_map[j].base_addr < tmp.base_addr)
+            break;
 
-        for (j = i - 1; j < i; j--) {
-            if (biosmem_map[j].base_addr < tmp.base_addr) {
-                break;
-            }
-
-            boot_memcpy(&biosmem_map[j + 1], &biosmem_map[j],
-                        sizeof(biosmem_map[j + 1]));
+          boot_memcpy (&biosmem_map[j + 1], &biosmem_map[j],
+                       sizeof (biosmem_map[j + 1]));
         }
 
-        boot_memcpy(&biosmem_map[j + 1], &tmp, sizeof(biosmem_map[j + 1]));
+      boot_memcpy (&biosmem_map[j + 1], &tmp, sizeof (biosmem_map[j + 1]));
     }
 }
 
 static void __boot
-biosmem_map_adjust(void)
+biosmem_map_adjust (void)
 {
-    struct biosmem_map_entry tmp, *a, *b, *first, *second;
-    uint64_t a_end, b_end, last_end;
-    unsigned int i, j, last_type;
+  biosmem_map_filter ();
 
-    biosmem_map_filter();
+  /*
+   * Resolve overlapping areas, giving priority to most restrictive
+   * (i.e. numerically higher) types.
+   */
+  for (uint32_t i = 0; i < biosmem_map_size; i++)
+    {
+      struct biosmem_map_entry tmp;
+      _Auto a = &biosmem_map[i];
+      uint64_t a_end = a->base_addr + a->length;
 
-    /*
-     * Resolve overlapping areas, giving priority to most restrictive
-     * (i.e. numerically higher) types.
-     */
-    for (i = 0; i < biosmem_map_size; i++) {
-        a = &biosmem_map[i];
-        a_end = a->base_addr + a->length;
+      for (uint32_t j = i + 1; j < biosmem_map_size; )
+        {
+          _Auto b = &biosmem_map[j];
+          uint64_t b_end = b->base_addr + b->length;
 
-        j = i + 1;
-
-        while (j < biosmem_map_size) {
-            b = &biosmem_map[j];
-            b_end = b->base_addr + b->length;
-
-            if ((a->base_addr >= b_end) || (a_end <= b->base_addr)) {
-                j++;
-                continue;
+          if (a->base_addr >= b_end || a_end <= b->base_addr)
+            {
+              j++;
+              continue;
             }
 
-            if (a->base_addr < b->base_addr) {
-                first = a;
-                second = b;
-            } else {
-                first = b;
-                second = a;
+          struct biosmem_map_entry *first, *second;
+          if (a->base_addr < b->base_addr)
+            {
+              first = a;
+              second = b;
+            }
+          else
+            {
+              first = b;
+              second = a;
             }
 
-            if (a_end > b_end) {
-                last_end = a_end;
-                last_type = a->type;
-            } else {
-                last_end = b_end;
-                last_type = b->type;
+          uint64_t last_end;
+          uint32_t last_type;
+
+          if (a_end > b_end)
+            {
+              last_end = a_end;
+              last_type = a->type;
+            }
+          else
+            {
+              last_end = b_end;
+              last_type = b->type;
             }
 
-            tmp.base_addr = second->base_addr;
-            tmp.length = MIN(a_end, b_end) - tmp.base_addr;
-            tmp.type = MAX(a->type, b->type);
-            first->length = tmp.base_addr - first->base_addr;
-            second->base_addr += tmp.length;
-            second->length = last_end - second->base_addr;
-            second->type = last_type;
+          tmp.base_addr = second->base_addr;
+          tmp.length = MIN (a_end, b_end) - tmp.base_addr;
+          tmp.type = MAX (a->type, b->type);
+          first->length = tmp.base_addr - first->base_addr;
+          second->base_addr += tmp.length;
+          second->length = last_end - second->base_addr;
+          second->type = last_type;
 
-            /*
-             * Filter out invalid entries.
-             */
-            if (biosmem_map_entry_is_invalid(a)
-                && biosmem_map_entry_is_invalid(b)) {
-                boot_memcpy(a, &tmp, sizeof(*a));
-                biosmem_map_size--;
-                memmove(b, b + 1, (biosmem_map_size - j) * sizeof(*b));
-                continue;
-            } else if (biosmem_map_entry_is_invalid(a)) {
-                boot_memcpy(a, &tmp, sizeof(*a));
-                j++;
-                continue;
-            } else if (biosmem_map_entry_is_invalid(b)) {
-                boot_memcpy(b, &tmp, sizeof(*b));
-                j++;
-                continue;
+          // Filter out invalid entries.
+          if (biosmem_map_entry_is_invalid (a) &&
+              biosmem_map_entry_is_invalid (b))
+            {
+              boot_memcpy (a, &tmp, sizeof (*a));
+              --biosmem_map_size;
+              boot_memmove (b, b + 1, (biosmem_map_size - j) * sizeof (*b));
+              continue;
+            }
+          else if (biosmem_map_entry_is_invalid (a))
+            {
+              boot_memcpy (a, &tmp, sizeof (*a));
+              j++;
+              continue;
+            }
+          else if (biosmem_map_entry_is_invalid (b))
+            {
+              boot_memcpy (b, &tmp, sizeof (*b));
+              j++;
+              continue;
             }
 
-            if (tmp.type == a->type) {
-                first = a;
-            } else if (tmp.type == b->type) {
-                first = b;
-            } else {
+          if (tmp.type == a->type)
+            first = a;
+          else if (tmp.type == b->type)
+            first = b;
+          else
+            {
 
-                /*
-                 * If the overlapping area can't be merged with one of its
-                 * neighbors, it must be added as a new entry.
-                 */
+              /*
+               * If the overlapping area can't be merged with one of its
+               * neighbors, it must be added as a new entry.
+               */
 
-                if (biosmem_map_size >= ARRAY_SIZE(biosmem_map)) {
-                    boot_panic(biosmem_panic_too_big_msg);
-                }
+              if (biosmem_map_size >= ARRAY_SIZE (biosmem_map))
+                boot_panic (biosmem_panic_too_big_msg);
 
-                boot_memcpy(&biosmem_map[biosmem_map_size], &tmp,
-                            sizeof(biosmem_map[biosmem_map_size]));
-                biosmem_map_size++;
-                j++;
-                continue;
+              boot_memcpy (&biosmem_map[biosmem_map_size], &tmp,
+                           sizeof (biosmem_map[biosmem_map_size]));
+              ++biosmem_map_size;
+              ++j;
+              continue;
             }
 
-            if (first->base_addr > tmp.base_addr) {
-                first->base_addr = tmp.base_addr;
-            }
+          if (first->base_addr > tmp.base_addr)
+            first->base_addr = tmp.base_addr;
 
-            first->length += tmp.length;
-            j++;
+          first->length += tmp.length;
+          j++;
         }
     }
 
-    biosmem_map_sort();
+  biosmem_map_sort ();
 }
 
 /*
@@ -451,103 +432,88 @@ biosmem_map_adjust(void)
  * These addresses are normally used to establish the range of a zone.
  */
 static int __boot
-biosmem_map_find_avail(phys_addr_t *phys_start, phys_addr_t *phys_end)
+biosmem_map_find_avail (phys_addr_t *phys_start, phys_addr_t *phys_end)
 {
-    const struct biosmem_map_entry *entry, *map_end;
-    phys_addr_t zone_start, zone_end;
-    uint64_t start, end;
+  phys_addr_t zone_start = (phys_addr_t)-1,
+              zone_end = (phys_addr_t)-1;
+  const _Auto map_end = biosmem_map + biosmem_map_size;
 
-    zone_start = (phys_addr_t)-1;
-    zone_end = (phys_addr_t)-1;
-    map_end = biosmem_map + biosmem_map_size;
+  for (_Auto entry = biosmem_map; entry < map_end; ++entry)
+    {
+      if (entry->type != BIOSMEM_TYPE_AVAILABLE)
+        continue;
 
-    for (entry = biosmem_map; entry < map_end; entry++) {
-        if (entry->type != BIOSMEM_TYPE_AVAILABLE) {
-            continue;
-        }
+      uint64_t start = vm_page_round (entry->base_addr);
+      if (start >= *phys_end)
+        break;
 
-        start = vm_page_round(entry->base_addr);
+      uint64_t end = vm_page_trunc (entry->base_addr + entry->length);
+      if (start < end && start < *phys_end && end > *phys_start)
+        {
+          if (zone_start == (phys_addr_t)-1)
+            zone_start = start;
 
-        if (start >= *phys_end) {
-            break;
-        }
-
-        end = vm_page_trunc(entry->base_addr + entry->length);
-
-        if ((start < end) && (start < *phys_end) && (end > *phys_start)) {
-            if (zone_start == (phys_addr_t)-1) {
-                zone_start = start;
-            }
-
-            zone_end = end;
+          zone_end = end;
         }
     }
 
-    if ((zone_start == (phys_addr_t)-1) || (zone_end == (phys_addr_t)-1)) {
-        return -1;
-    }
+  if (zone_start == (phys_addr_t)-1 || zone_end == (phys_addr_t)-1)
+    return (-1);
 
-    if (zone_start > *phys_start) {
-        *phys_start = zone_start;
-    }
+  if (zone_start > *phys_start)
+    *phys_start = zone_start;
 
-    if (zone_end < *phys_end) {
-        *phys_end = zone_end;
-    }
+  if (zone_end < *phys_end)
+    *phys_end = zone_end;
 
-    return 0;
+  return (0);
 }
 
 static void __boot
-biosmem_set_zone(unsigned int zone_index, phys_addr_t start, phys_addr_t end)
+biosmem_set_zone (uint32_t zone_index, phys_addr_t start, phys_addr_t end)
 {
-    biosmem_zones[zone_index].start = start;
-    biosmem_zones[zone_index].end = end;
+  biosmem_zones[zone_index].start = start;
+  biosmem_zones[zone_index].end = end;
 }
 
 static phys_addr_t __boot
-biosmem_zone_end(unsigned int zone_index)
+biosmem_zone_end (uint32_t zone_index)
 {
-    return biosmem_zones[zone_index].end;
+  return (biosmem_zones[zone_index].end);
 }
 
 static phys_addr_t __boot
-biosmem_zone_size(unsigned int zone_index)
+biosmem_zone_size (uint32_t zone_index)
 {
-    return biosmem_zones[zone_index].end - biosmem_zones[zone_index].start;
+  return (biosmem_zones[zone_index].end - biosmem_zones[zone_index].start);
 }
 
 static int __boot
-biosmem_find_avail_clip(phys_addr_t *avail_start, phys_addr_t *avail_end,
-                        phys_addr_t data_start, phys_addr_t data_end)
+biosmem_find_avail_clip (phys_addr_t *avail_start, phys_addr_t *avail_end,
+                         phys_addr_t data_start, phys_addr_t data_end)
 {
-    phys_addr_t orig_end;
+  assert (data_start < data_end);
 
-    assert(data_start < data_end);
+  phys_addr_t orig_end = data_end;
+  data_start = vm_page_trunc (data_start);
+  data_end = vm_page_round (data_end);
 
-    orig_end = data_end;
-    data_start = vm_page_trunc(data_start);
-    data_end = vm_page_round(data_end);
+  if (data_end < orig_end)
+    boot_panic (biosmem_panic_inval_boot_data);
+  else if (data_end <= *avail_start || data_start >= *avail_end)
+    return (0);
 
-    if (data_end < orig_end) {
-        boot_panic(biosmem_panic_inval_boot_data);
+  if (data_start > *avail_start)
+    *avail_end = data_start;
+  else
+    {
+      if (data_end >= *avail_end)
+        return (-1);
+
+      *avail_start = data_end;
     }
 
-    if ((data_end <= *avail_start) || (data_start >= *avail_end)) {
-        return 0;
-    }
-
-    if (data_start > *avail_start) {
-        *avail_end = data_start;
-    } else {
-        if (data_end >= *avail_end) {
-            return -1;
-        }
-
-        *avail_start = data_end;
-    }
-
-    return 0;
+  return (0);
 }
 
 /*
@@ -560,418 +526,338 @@ biosmem_find_avail_clip(phys_addr_t *avail_start, phys_addr_t *avail_end,
  * The range boundaries are page-aligned on return.
  */
 static int __boot
-biosmem_find_avail(phys_addr_t start, phys_addr_t end,
-                   phys_addr_t *avail_start, phys_addr_t *avail_end)
+biosmem_find_avail (phys_addr_t start, phys_addr_t end,
+                    phys_addr_t *avail_start, phys_addr_t *avail_end)
 {
-    phys_addr_t orig_start;
-    unsigned int i;
-    int error;
+  assert (start <= end);
 
-    assert(start <= end);
+  phys_addr_t orig_start = start;
+  start = vm_page_round (start);
+  end = vm_page_trunc (end);
 
-    orig_start = start;
-    start = vm_page_round(start);
-    end = vm_page_trunc(end);
+  if (start < orig_start || start >= end)
+    return (-1);
 
-    if ((start < orig_start) || (start >= end)) {
-        return -1;
-    }
+  *avail_start = start;
+  *avail_end = end;
 
-    *avail_start = start;
-    *avail_end = end;
+  for (uint32_t i = 0; i < biosmem_nr_boot_data; i++)
+    if (biosmem_find_avail_clip (avail_start, avail_end,
+                                 biosmem_boot_data_array[i].start,
+                                 biosmem_boot_data_array[i].end) != 0)
+      return (-1);
 
-    for (i = 0; i < biosmem_nr_boot_data; i++) {
-        error = biosmem_find_avail_clip(avail_start, avail_end,
-                                        biosmem_boot_data_array[i].start,
-                                        biosmem_boot_data_array[i].end);
-
-        if (error) {
-            return -1;
-        }
-    }
-
-    return 0;
+  return (0);
 }
 
 static void __boot
-biosmem_setup_allocator(const struct multiboot_raw_info *mbi)
+biosmem_setup_allocator (const struct multiboot_raw_info *mbi)
 {
-    phys_addr_t heap_start, heap_end, max_heap_start, max_heap_end;
-    phys_addr_t start, end;
-    int error;
-
-    /*
-     * Find some memory for the heap. Look for the largest unused area in
-     * upper memory, carefully avoiding all boot data.
-     */
-    end = vm_page_trunc((mbi->mem_upper + 1024) << 10);
+  /*
+   * Find some memory for the heap. Look for the largest unused area in
+   * upper memory, carefully avoiding all boot data.
+   */
+  phys_addr_t end = vm_page_trunc ((mbi->mem_upper + 1024) << 10);
 
 #ifndef __LP64__
-    if (end > PMEM_DIRECTMAP_LIMIT) {
-        end = PMEM_DIRECTMAP_LIMIT;
-    }
-#endif /* __LP64__ */
+  if (end > PMEM_DIRECTMAP_LIMIT)
+    end = PMEM_DIRECTMAP_LIMIT;
+#endif
 
-    max_heap_start = 0;
-    max_heap_end = 0;
-    start = BIOSMEM_END;
+  phys_addr_t max_heap_start = 0, max_heap_end = 0, start = BIOSMEM_END;
 
-    for (;;) {
-        error = biosmem_find_avail(start, end, &heap_start, &heap_end);
+  while (1)
+    {
+      phys_addr_t heap_start, heap_end;
 
-        if (error) {
-            break;
+      if (biosmem_find_avail (start, end, &heap_start, &heap_end))
+        break;
+      else if (heap_end - heap_start > max_heap_end - max_heap_start)
+        {
+          max_heap_start = heap_start;
+          max_heap_end = heap_end;
         }
 
-        if ((heap_end - heap_start) > (max_heap_end - max_heap_start)) {
-            max_heap_start = heap_start;
-            max_heap_end = heap_end;
-        }
-
-        start = heap_end;
+      start = heap_end;
     }
 
-    if (max_heap_start >= max_heap_end) {
-        boot_panic(biosmem_panic_setup_msg);
-    }
+  if (max_heap_start >= max_heap_end)
+    boot_panic (biosmem_panic_setup_msg);
 
-    biosmem_heap_start = max_heap_start;
-    biosmem_heap_end = max_heap_end;
-    biosmem_heap_bottom = biosmem_heap_start;
-    biosmem_heap_top = biosmem_heap_end;
-    biosmem_heap_topdown = true;
+  biosmem_heap_start = max_heap_start;
+  biosmem_heap_end = max_heap_end;
+  biosmem_heap_bottom = biosmem_heap_start;
+  biosmem_heap_top = biosmem_heap_end;
+  biosmem_heap_topdown = true;
 
-    /* Prevent biosmem_free_usable() from releasing the heap */
-    biosmem_register_boot_data(biosmem_heap_start, biosmem_heap_end, false);
+  // Prevent biosmem_free_usable() from releasing the heap.
+  biosmem_register_boot_data (biosmem_heap_start, biosmem_heap_end, false);
 }
 
 void __boot
-biosmem_bootstrap(const struct multiboot_raw_info *mbi)
+biosmem_bootstrap (const struct multiboot_raw_info *mbi)
 {
-    phys_addr_t phys_start, phys_end;
-    int error;
+  boot_memcpy (biosmem_bda, (const void *)BIOSMEM_BDA_ADDR, BIOSMEM_BDA_SIZE);
 
-    boot_memcpy(biosmem_bda, (const void *)BIOSMEM_BDA_ADDR, BIOSMEM_BDA_SIZE);
+  if (mbi->flags & MULTIBOOT_LOADER_MMAP)
+    biosmem_map_build (mbi);
+  else
+    biosmem_map_build_simple (mbi);
 
-    if (mbi->flags & MULTIBOOT_LOADER_MMAP) {
-        biosmem_map_build(mbi);
-    } else {
-        biosmem_map_build_simple(mbi);
-    }
+  biosmem_map_adjust ();
 
-    biosmem_map_adjust();
+  phys_addr_t phys_start = BIOSMEM_BASE, phys_end = PMEM_DMA_LIMIT;
+  if (biosmem_map_find_avail (&phys_start, &phys_end) != 0)
+    boot_panic (biosmem_panic_nozone_msg);
 
-    phys_start = BIOSMEM_BASE;
-    phys_end = PMEM_DMA_LIMIT;
-    error = biosmem_map_find_avail(&phys_start, &phys_end);
+  biosmem_set_zone (PMEM_ZONE_DMA, phys_start, phys_end);
 
-    if (error) {
-        boot_panic(biosmem_panic_nozone_msg);
-    }
-
-    biosmem_set_zone(PMEM_ZONE_DMA, phys_start, phys_end);
-
-    phys_start = PMEM_DMA_LIMIT;
+  phys_start = PMEM_DMA_LIMIT;
 #ifdef PMEM_DMA32_LIMIT
-    phys_end = PMEM_DMA32_LIMIT;
-    error = biosmem_map_find_avail(&phys_start, &phys_end);
+  phys_end = PMEM_DMA32_LIMIT;
+  if (biosmem_map_find_avail (&phys_start, &phys_end) != 0)
+    goto out;
 
-    if (error) {
-        goto out;
-    }
+  biosmem_set_zone (PMEM_ZONE_DMA32, phys_start, phys_end);
+  phys_start = PMEM_DMA32_LIMIT;
+#endif
+  phys_end = PMEM_DIRECTMAP_LIMIT;
+  if (biosmem_map_find_avail (&phys_start, &phys_end) != 0)
+    goto out;
 
-    biosmem_set_zone(PMEM_ZONE_DMA32, phys_start, phys_end);
+  biosmem_set_zone (PMEM_ZONE_DIRECTMAP, phys_start, phys_end);
 
-    phys_start = PMEM_DMA32_LIMIT;
-#endif /* PMEM_DMA32_LIMIT */
-    phys_end = PMEM_DIRECTMAP_LIMIT;
-    error = biosmem_map_find_avail(&phys_start, &phys_end);
-
-    if (error) {
-        goto out;
-    }
-
-    biosmem_set_zone(PMEM_ZONE_DIRECTMAP, phys_start, phys_end);
-
-    phys_start = PMEM_DIRECTMAP_LIMIT;
-    phys_end = PMEM_HIGHMEM_LIMIT;
-    error = biosmem_map_find_avail(&phys_start, &phys_end);
-
-    if (error) {
-        goto out;
-    }
-
-    biosmem_set_zone(PMEM_ZONE_HIGHMEM, phys_start, phys_end);
+  phys_start = PMEM_DIRECTMAP_LIMIT;
+  phys_end = PMEM_HIGHMEM_LIMIT;
+  if (biosmem_map_find_avail (&phys_start, &phys_end) == 0)
+    biosmem_set_zone (PMEM_ZONE_HIGHMEM, phys_start, phys_end);
 
 out:
-    biosmem_setup_allocator(mbi);
+  biosmem_setup_allocator (mbi);
 }
 
-void * __boot
-biosmem_bootalloc(unsigned int nr_pages)
+void* __boot
+biosmem_bootalloc (uint32_t nr_pages)
 {
-    unsigned long addr, size;
+  size_t size = vm_page_ptob (nr_pages);
+  if (! size)
+    boot_panic (biosmem_panic_inval_msg);
 
-    size = vm_page_ptob(nr_pages);
+  uintptr_t addr;
+  if (biosmem_heap_topdown)
+    {
+      addr = biosmem_heap_top - size;
 
-    if (size == 0) {
-        boot_panic(biosmem_panic_inval_msg);
+      if (addr < biosmem_heap_start || addr > biosmem_heap_top)
+        boot_panic (biosmem_panic_nomem_msg);
+
+      biosmem_heap_top = addr;
+    }
+  else
+    {
+      addr = biosmem_heap_bottom;
+      uintptr_t end = addr + size;
+
+      if (end > biosmem_heap_end || end < biosmem_heap_bottom)
+        boot_panic (biosmem_panic_nomem_msg);
+
+      biosmem_heap_bottom = end;
     }
 
-    if (biosmem_heap_topdown) {
-        addr = biosmem_heap_top - size;
-
-        if ((addr < biosmem_heap_start) || (addr > biosmem_heap_top)) {
-            boot_panic(biosmem_panic_nomem_msg);
-        }
-
-        biosmem_heap_top = addr;
-    } else {
-        unsigned long end;
-
-        addr = biosmem_heap_bottom;
-        end = addr + size;
-
-        if ((end > biosmem_heap_end) || (end < biosmem_heap_bottom)) {
-            boot_panic(biosmem_panic_nomem_msg);
-        }
-
-        biosmem_heap_bottom = end;
-    }
-
-    return boot_memset((void *)addr, 0, size);
+  return (boot_memset ((void *)addr, 0, size));
 }
 
-const void *
-biosmem_get_bda(void)
+const void*
+biosmem_get_bda (void)
 {
-    return biosmem_bda;
+  return (biosmem_bda);
 }
 
 phys_addr_t __boot
-biosmem_directmap_end(void)
+biosmem_directmap_end (void)
 {
-    if (biosmem_zone_size(PMEM_ZONE_DIRECTMAP) != 0) {
-        return biosmem_zone_end(PMEM_ZONE_DIRECTMAP);
-    } else if (biosmem_zone_size(PMEM_ZONE_DMA32) != 0) {
-        return biosmem_zone_end(PMEM_ZONE_DMA32);
-    } else {
-        return biosmem_zone_end(PMEM_ZONE_DMA);
-    }
+  if (biosmem_zone_size (PMEM_ZONE_DIRECTMAP) != 0)
+    return (biosmem_zone_end (PMEM_ZONE_DIRECTMAP));
+  else if (biosmem_zone_size (PMEM_ZONE_DMA32) != 0)
+    return (biosmem_zone_end (PMEM_ZONE_DMA32));
+  else
+    return (biosmem_zone_end (PMEM_ZONE_DMA));
 }
 
-static const char * __init
-biosmem_type_desc(unsigned int type)
+static const char* __init
+biosmem_type_desc (unsigned int type)
 {
-    switch (type) {
-    case BIOSMEM_TYPE_AVAILABLE:
-        return "available";
-    case BIOSMEM_TYPE_RESERVED:
-        return "reserved";
-    case BIOSMEM_TYPE_ACPI:
-        return "ACPI";
-    case BIOSMEM_TYPE_NVS:
-        return "ACPI NVS";
-    case BIOSMEM_TYPE_UNUSABLE:
-        return "unusable";
-    default:
-        return "unknown (reserved)";
+  switch (type)
+    {
+      case BIOSMEM_TYPE_AVAILABLE:
+        return ("available");
+      case BIOSMEM_TYPE_RESERVED:
+        return ("reserved");
+      case BIOSMEM_TYPE_ACPI:
+        return ("ACPI");
+      case BIOSMEM_TYPE_NVS:
+        return ("ACPI NVS");
+      case BIOSMEM_TYPE_UNUSABLE:
+        return ("unusable");
+      default:
+        return ("unknown (reserved)");
     }
 }
 
 static void __init
-biosmem_map_show(void)
+biosmem_map_show (void)
 {
-    const struct biosmem_map_entry *entry, *end;
+  log_debug ("biosmem: physical memory map:");
 
-    log_debug("biosmem: physical memory map:");
+  for (_Auto entry = biosmem_map, end = entry + biosmem_map_size;
+       entry < end; ++entry)
+    log_debug ("biosmem: %018llx:%018llx, %s",
+               (unsigned long long)entry->base_addr,
+               (unsigned long long)(entry->base_addr + entry->length),
+               biosmem_type_desc (entry->type));
 
-    for (entry = biosmem_map, end = entry + biosmem_map_size;
-         entry < end;
-         entry++)
-        log_debug("biosmem: %018llx:%018llx, %s",
-                  (unsigned long long)entry->base_addr,
-                  (unsigned long long)(entry->base_addr + entry->length),
-                  biosmem_type_desc(entry->type));
-
-    log_debug("biosmem: heap: %llx:%llx",
-              (unsigned long long)biosmem_heap_start,
-              (unsigned long long)biosmem_heap_end);
+  log_debug ("biosmem: heap: %llx:%llx",
+             (unsigned long long) biosmem_heap_start,
+             (unsigned long long) biosmem_heap_end);
 }
 
 static void __init
-biosmem_load_zone(struct biosmem_zone *zone, uint64_t max_phys_end)
+biosmem_load_zone (struct biosmem_zone *zone, uint64_t max_phys_end)
 {
-    phys_addr_t phys_start, phys_end, avail_start, avail_end;
-    unsigned int zone_index;
+  phys_addr_t phys_start = zone->start,
+              phys_end = zone->end;
+  uint32_t zone_index = zone - biosmem_zones;
 
-    phys_start = zone->start;
-    phys_end = zone->end;
-    zone_index = zone - biosmem_zones;
-
-    if (phys_end > max_phys_end) {
-        if (max_phys_end <= phys_start) {
-            log_warning("biosmem: zone %s physically unreachable, "
-                        "not loaded", vm_page_zone_name(zone_index));
-            return;
+  if (phys_end > max_phys_end)
+    {
+      if (max_phys_end <= phys_start)
+        {
+          log_warning ("biosmem: zone %s physically unreachable, "
+                       "not loaded", vm_page_zone_name (zone_index) );
+          return;
         }
 
-        log_warning("biosmem: warning: zone %s truncated to %#llx",
-                    vm_page_zone_name(zone_index),
-                    (unsigned long long)max_phys_end);
-        phys_end = max_phys_end;
+      log_warning ("biosmem: warning: zone %s truncated to %#llx",
+                   vm_page_zone_name (zone_index),
+                   (unsigned long long) max_phys_end);
+      phys_end = max_phys_end;
     }
 
-    vm_page_load(zone_index, phys_start, phys_end);
+  vm_page_load (zone_index, phys_start, phys_end);
 
-    /*
-     * Clip the remaining available heap to fit it into the loaded
-     * zone if possible.
-     */
+  /*
+   * Clip the remaining available heap to fit it into the loaded
+   * zone if possible.
+   */
 
-    if ((biosmem_heap_top > phys_start) && (biosmem_heap_bottom < phys_end)) {
-        if (biosmem_heap_bottom >= phys_start) {
-            avail_start = biosmem_heap_bottom;
-        } else {
-            avail_start = phys_start;
-        }
+  if (biosmem_heap_top > phys_start && biosmem_heap_bottom < phys_end)
+    {
+      phys_addr_t avail_start = MAX (biosmem_heap_bottom, phys_start),
+                  avail_end = MIN (biosmem_heap_top, phys_end);
 
-        if (biosmem_heap_top <= phys_end) {
-            avail_end = biosmem_heap_top;
-        } else {
-            avail_end = phys_end;
-        }
-
-        vm_page_load_heap(zone_index, avail_start, avail_end);
+      vm_page_load_heap (zone_index, avail_start, avail_end);
     }
 }
 
 static int __init
-biosmem_setup(void)
+biosmem_setup (void)
 {
-    unsigned int phys_addr_width;
-    uint64_t max_phys_end;
-    struct biosmem_zone *zone;
+  biosmem_map_show ();
 
-    biosmem_map_show();
+  uint32_t phys_addr_width = cpu_phys_addr_width (cpu_current ());
+  uint64_t max_phys_end = !phys_addr_width || phys_addr_width == 64 ?
+                          (uint64_t)-1 : ((uint64_t)1 << phys_addr_width);
 
-    phys_addr_width = cpu_phys_addr_width(cpu_current());
-    max_phys_end = ((phys_addr_width == 0) || (phys_addr_width == 64))
-                   ? (uint64_t)-1
-                   : (uint64_t)1 << phys_addr_width;
+  for (size_t i = 0; i < ARRAY_SIZE (biosmem_zones); i++)
+    {
+      if (biosmem_zone_size (i) == 0)
+        break;
 
-    for (size_t i = 0; i < ARRAY_SIZE(biosmem_zones); i++) {
-        if (biosmem_zone_size(i) == 0) {
-            break;
-        }
-
-        zone = &biosmem_zones[i];
-        biosmem_load_zone(zone, max_phys_end);
+      biosmem_load_zone (&biosmem_zones[i], max_phys_end);
     }
 
-    return 0;
+  return (0);
 }
 
-INIT_OP_DEFINE(biosmem_setup,
-               INIT_OP_DEP(cpu_setup, true),
-               INIT_OP_DEP(log_setup, true));
+INIT_OP_DEFINE (biosmem_setup,
+                INIT_OP_DEP (cpu_setup, true),
+                INIT_OP_DEP (log_setup, true));
 
 static void __init
-biosmem_unregister_temporary_boot_data(void)
+biosmem_unregister_temporary_boot_data (void)
 {
-    struct biosmem_boot_data *data;
-    unsigned int i;
+  for (uint32_t i = 0; i < biosmem_nr_boot_data; i++)
+    {
+      _Auto data = &biosmem_boot_data_array[i];
+      if (!data->temporary)
+        continue;
 
-    for (i = 0; i < biosmem_nr_boot_data; i++) {
-        data = &biosmem_boot_data_array[i];
-
-        if (!data->temporary) {
-            continue;
-        }
-
-        biosmem_unregister_boot_data(data->start, data->end);
-        i = (unsigned int)-1;
+      biosmem_unregister_boot_data (data->start, data->end);
+      i = (unsigned int)-1;
     }
 }
 
 static void __init
-biosmem_free_usable_range(phys_addr_t start, phys_addr_t end)
+biosmem_free_usable_range (phys_addr_t start, phys_addr_t end)
 {
-    struct vm_page *page;
+  log_debug ("biosmem: release to vm_page: %llx:%llx (%lluk)",
+             (unsigned long long) start, (unsigned long long) end,
+             (unsigned long long) ((end - start) >> 10));
 
-    log_debug("biosmem: release to vm_page: %llx:%llx (%lluk)",
-              (unsigned long long)start, (unsigned long long)end,
-              (unsigned long long)((end - start) >> 10));
-
-    while (start < end) {
-        page = vm_page_lookup(start);
-        assert(page != NULL);
-        vm_page_manage(page);
-        start += PAGE_SIZE;
+  while (start < end)
+    {
+      _Auto page = vm_page_lookup (start);
+      assert (page);
+      vm_page_manage (page);
+      start += PAGE_SIZE;
     }
 }
 
 static void __init
-biosmem_free_usable_entry(phys_addr_t start, phys_addr_t end)
+biosmem_free_usable_entry (phys_addr_t start, phys_addr_t end)
 {
-    phys_addr_t avail_start, avail_end;
-    int error;
+  for (;;)
+    {
+      phys_addr_t avail_start, avail_end;
+      if (biosmem_find_avail (start, end, &avail_start, &avail_end) != 0)
+        break;
 
-    for (;;) {
-        error = biosmem_find_avail(start, end, &avail_start, &avail_end);
-
-        if (error) {
-            break;
-        }
-
-        biosmem_free_usable_range(avail_start, avail_end);
-        start = avail_end;
+      biosmem_free_usable_range (avail_start, avail_end);
+      start = avail_end;
     }
 }
 
 static int __init
-biosmem_free_usable(void)
+biosmem_free_usable (void)
 {
-    struct biosmem_map_entry *entry;
-    uint64_t start, end;
-    unsigned int i;
+  biosmem_unregister_temporary_boot_data ();
 
-    biosmem_unregister_temporary_boot_data();
+  for (uint32_t i = 0; i < biosmem_map_size; i++)
+    {
+      _Auto entry = &biosmem_map[i];
+      if (entry->type != BIOSMEM_TYPE_AVAILABLE)
+        continue;
 
-    for (i = 0; i < biosmem_map_size; i++) {
-        entry = &biosmem_map[i];
+      uint64_t start = vm_page_round (entry->base_addr);
+      if (start >= PMEM_HIGHMEM_LIMIT)
+        break;
 
-        if (entry->type != BIOSMEM_TYPE_AVAILABLE) {
-            continue;
-        }
+      uint64_t end = vm_page_trunc (entry->base_addr + entry->length);
 
-        start = vm_page_round(entry->base_addr);
+      if (end > PMEM_HIGHMEM_LIMIT)
+        end = PMEM_HIGHMEM_LIMIT;
 
-        if (start >= PMEM_HIGHMEM_LIMIT) {
-            break;
-        }
+      if (start < BIOSMEM_BASE)
+        start = BIOSMEM_BASE;
 
-        end = vm_page_trunc(entry->base_addr + entry->length);
-
-        if (end > PMEM_HIGHMEM_LIMIT) {
-            end = PMEM_HIGHMEM_LIMIT;
-        }
-
-        if (start < BIOSMEM_BASE) {
-            start = BIOSMEM_BASE;
-        }
-
-        if (start >= end) {
-            continue;
-        }
-
-        biosmem_free_usable_entry(start, end);
+      if (start < end)
+        biosmem_free_usable_entry (start, end);
     }
 
-    return 0;
+  return (0);
 }
 
-INIT_OP_DEFINE(biosmem_free_usable,
-               INIT_OP_DEP(boot_save_data, true),
-               INIT_OP_DEP(log_setup, true),
-               INIT_OP_DEP(vm_page_setup, true));
+INIT_OP_DEFINE (biosmem_free_usable,
+                INIT_OP_DEP (boot_save_data, true),
+                INIT_OP_DEP (log_setup, true),
+                INIT_OP_DEP (vm_page_setup, true));

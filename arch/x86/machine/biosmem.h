@@ -60,8 +60,8 @@
  *
  * This function is called before paging is enabled.
  */
-void biosmem_register_boot_data(phys_addr_t start, phys_addr_t end,
-                                bool temporary);
+void biosmem_register_boot_data (phys_addr_t start, phys_addr_t end,
+                                 bool temporary);
 
 /*
  * Initialize the early page allocator.
@@ -72,7 +72,7 @@ void biosmem_register_boot_data(phys_addr_t start, phys_addr_t end,
  *
  * This function is called before paging is enabled.
  */
-void biosmem_bootstrap(const struct multiboot_raw_info *mbi);
+void biosmem_bootstrap (const struct multiboot_raw_info *mbi);
 
 /*
  * Allocate contiguous physical pages during bootstrap.
@@ -87,7 +87,7 @@ void biosmem_bootstrap(const struct multiboot_raw_info *mbi);
  *
  * This function is called before paging is enabled.
  */
-void * biosmem_bootalloc(unsigned int nr_pages);
+void * biosmem_bootalloc (unsigned int nr_pages);
 
 /*
  * Return a pointer to a copy of the BIOS Data Area.
@@ -95,17 +95,17 @@ void * biosmem_bootalloc(unsigned int nr_pages);
  * The region denoted by the returned address is of size BIOSMEM_BDA_SIZE,
  * and is only valid during initialization.
  */
-const void * biosmem_get_bda(void);
+const void * biosmem_get_bda (void);
 
 /*
  * Return the limit of physical memory that can be directly mapped.
  */
-phys_addr_t biosmem_directmap_end(void);
+phys_addr_t biosmem_directmap_end (void);
 
 /*
  * This init operation provides :
  *  - heaps of physical memory are loaded by the VM system
  */
-INIT_OP_DECLARE(biosmem_setup);
+INIT_OP_DECLARE (biosmem_setup);
 
 #endif /* X86_BIOSMEM_H */

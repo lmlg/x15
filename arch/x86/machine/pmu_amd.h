@@ -28,6 +28,6 @@
  * This init operation provides :
  *  - module fully initialized
  */
-INIT_OP_DECLARE(pmu_amd_setup);
+INIT_OP_DECLARE (pmu_amd_setup);
 
-#endif /* X86_PMU_AMD_H */
+#endif

@@ -22,17 +22,18 @@
 
 #include <kern/macros.h>
 
-#define __symbol_table __section(".symbol")
+#define __symbol_table __section (".symbol")
 
 /*
  * Symbol structure.
  *
  * This structure is public.
  */
-struct symbol {
-    uintptr_t addr;
-    uintptr_t size;
-    const char *name;
+struct symbol
+{
+  uintptr_t addr;
+  uintptr_t size;
+  const char *name;
 };
 
 /*
@@ -40,6 +41,6 @@ struct symbol {
  *
  * NULL is returned if no symbol was found for the given address.
  */
-const struct symbol * symbol_lookup(uintptr_t addr);
+const struct symbol* symbol_lookup (uintptr_t addr);
 
-#endif /* KERN_SYMBOL_H */
+#endif

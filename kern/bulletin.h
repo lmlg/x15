@@ -33,18 +33,16 @@
  * cast into a pointer. Notification functions run in the context of the
  * publisher.
  */
-typedef void (*bulletin_notif_fn_t)(uintptr_t value, void *arg);
+typedef void (*bulletin_notif_fn_t) (uintptr_t, void *);
 
 #include <kern/bulletin_i.h>
 
 struct bulletin;
 
-/*
- * Bulletin subscriber.
- */
+// Bulletin subscriber.
 struct bulletin_sub;
 
-void bulletin_init(struct bulletin *bulletin);
+void bulletin_init (struct bulletin *bulletin);
 
 /*
  * Subscribe to a bulletin.
@@ -52,8 +50,8 @@ void bulletin_init(struct bulletin *bulletin);
  * Once subscribed, the notification function is called with its argument
  * each time the bulletin is published.
  */
-void bulletin_subscribe(struct bulletin *bulletin, struct bulletin_sub *sub,
-                        bulletin_notif_fn_t notif_fn, void *arg);
+void bulletin_subscribe (struct bulletin *bulletin, struct bulletin_sub *sub,
+                         bulletin_notif_fn_t notif_fn, void *arg);
 
 /*
  * Unsubscribe from a bulletin.
@@ -62,7 +60,7 @@ void bulletin_subscribe(struct bulletin *bulletin, struct bulletin_sub *sub,
  *
  * This function synchronizes with RCU.
  */
-void bulletin_unsubscribe(struct bulletin *bulletin, struct bulletin_sub *sub);
+void bulletin_unsubscribe (struct bulletin *bulletin, struct bulletin_sub *sub);
 
 /*
  * Publish a bulletin.
@@ -70,6 +68,6 @@ void bulletin_unsubscribe(struct bulletin *bulletin, struct bulletin_sub *sub);
  * All subscribers are notified by calling their notification function, with
  * the given value passed unmodified.
  */
-void bulletin_publish(struct bulletin *bulletin, uintptr_t value);
+void bulletin_publish (struct bulletin *bulletin, uintptr_t value);
 
-#endif /* KERN_BULLETIN_H */
+#endif

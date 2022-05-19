@@ -22,41 +22,35 @@
 #include <machine/page.h>
 #include <machine/pmap.h>
 
-/*
- * Boot GDT segment selectors.
- */
-#define BOOT_GDT_SEL_NULL   0
-#define BOOT_GDT_SEL_CODE   8
-#define BOOT_GDT_SEL_DATA   16
-#define BOOT_GDT_SEL_CODE64 24
-#define BOOT_GDT_SEL_TLS    24
+// Boot GDT segment selectors.
+#define BOOT_GDT_SEL_NULL      0
+#define BOOT_GDT_SEL_CODE      8
+#define BOOT_GDT_SEL_DATA     16
+#define BOOT_GDT_SEL_CODE64   24
+#define BOOT_GDT_SEL_TLS      24
 
 /*
  * Convert a physical address in the .boot section to its real address in
  * the MP trampoline code.
  */
-#define BOOT_MP_ADDR_PTOT(addr) (BOOT_MP_TRAMPOLINE_ADDR + (addr) \
-                                 - boot_mp_trampoline)
+#define BOOT_MP_ADDR_PTOT(addr)   \
+  (BOOT_MP_TRAMPOLINE_ADDR + (addr) - boot_mp_trampoline)
 
 .section .boot.hdr, "awx"
 .code32
 
- /*
-  * Multiboot header.
-  */
-ASM_DATA(boot_header)
+// Multiboot header.
+ASM_DATA (boot_header)
  .long MULTIBOOT_OS_MAGIC
  .long MULTIBOOT_OS_FLAGS
  .long -(MULTIBOOT_OS_FLAGS + MULTIBOOT_OS_MAGIC)
-ASM_END(boot_header)
+ASM_END (boot_header)
 
-/*
- * Entry point.
- */
-ASM_ENTRY(boot_start)
+// Entry point.
+ASM_ENTRY (boot_start)
  lgdt boot_gdtr
 
- /* Keep %eax and %ebx */
+ // Keep %eax and %ebx.
  movl $BOOT_GDT_SEL_DATA, %ecx
  movl %ecx, %ds
  movl %ecx, %es
@@ -84,21 +78,21 @@ ASM_ENTRY(boot_start)
  .code64
  movl %ebx, %edi
  movl %eax, %esi
-#else /* __LP64__ */
+#else
  call boot_build_tls_seg_desc
  movl $BOOT_GDT_SEL_TLS, %ecx
  movl %ecx, %gs
 
  pushl %eax
  pushl %ebx
-#endif /* __LP64__ */
+#endif
 
  call boot_setup_paging
 
 #ifdef __LP64__
  movq %rax, %cr3
  movq $(boot_stack + BOOT_STACK_SIZE), %rsp
-#else /* __LP64__ */
+#else
  movl %eax, %cr3
  movl %cr0, %eax
  orl $CPU_CR0_PG, %eax
@@ -107,29 +101,27 @@ ASM_ENTRY(boot_start)
 
 1:
  movl $(boot_stack + BOOT_STACK_SIZE), %esp
-#endif /* __LP64__ */
+#endif
 
  xorl %ebp, %ebp
  call boot_main
 
- /* Never reached */
+ // Never reached.
  nop
-ASM_END(boot_start)
+ASM_END (boot_start)
 
 .code32
 
-ASM_DATA(boot_gdtr)
+ASM_DATA (boot_gdtr)
  .word boot_gdt_end - boot_gdt - 1
  .long boot_gdt
-ASM_END(boot_gdtr)
+ASM_END (boot_gdtr)
 
 #ifdef __LP64__
 
-/*
- * The %eax and %ebx registers must be preserved.
- */
+// The %eax and %ebx registers must be preserved.
 
-ASM_ENTRY(boot_check_long_mode)
+ASM_ENTRY (boot_check_long_mode)
  pushl %eax
  pushl %ebx
  movl $CPU_CPUID_EXT_BIT, %eax
@@ -143,9 +135,9 @@ ASM_ENTRY(boot_check_long_mode)
  popl %ebx
  popl %eax
  ret
-ASM_END(boot_check_long_mode)
+ASM_END (boot_check_long_mode)
 
-ASM_ENTRY(boot_no_long_mode)
+ASM_ENTRY (boot_no_long_mode)
  movl $boot_panic_long_mode_msg, %esi
  movl $BOOT_CGAMEM, %edi
  movl $(BOOT_CGAMEM + (BOOT_CGACHARS * 2)), %edx
@@ -172,15 +164,15 @@ ASM_ENTRY(boot_no_long_mode)
 2:
  hlt
  jmp 2b
-ASM_END(boot_no_long_mode)
+ASM_END (boot_no_long_mode)
 
-ASM_ENTRY(boot_setup_long_mode)
- /* Set PML4[0] */
+ASM_ENTRY (boot_setup_long_mode)
+ // Set PML4[0]
  movl $boot_pdpt, %edx
  orl $(PMAP_PTE_RW | PMAP_PTE_P), %edx
  movl %edx, boot_pml4
 
- /* Set PDPT[0] through PDPT[3] */
+ // Set PDPT[0] through PDPT[3]
  movl $boot_pdir, %edx
  orl $(PMAP_PTE_RW | PMAP_PTE_P), %edx
  movl $boot_pdpt, %edi
@@ -192,7 +184,7 @@ ASM_ENTRY(boot_setup_long_mode)
  addl $8, %edi
  loop 1b
 
- /* Set PDIR[0] through PDIR[2047] */
+ // Set PDIR[0] through PDIR[2047]
  movl $(PMAP_PTE_PS | PMAP_PTE_RW | PMAP_PTE_P), %edx
  movl $boot_pdir, %edi
  movl $2048, %ecx
@@ -203,7 +195,7 @@ ASM_ENTRY(boot_setup_long_mode)
  addl $8, %edi
  loop 1b
 
- /* Switch to long mode */
+ // Switch to long mode.
  movl %eax, %edi
  movl %cr4, %eax
  orl $CPU_CR4_PAE, %eax
@@ -222,9 +214,9 @@ ASM_ENTRY(boot_setup_long_mode)
 1:
  movl %edi, %eax
  ret
-ASM_END(boot_setup_long_mode)
+ASM_END (boot_setup_long_mode)
 
-ASM_ENTRY(boot_setup_tls)
+ASM_ENTRY (boot_setup_tls)
  pushl %eax
  movl $boot_tls_seg, %eax
  movl $0, %edx
@@ -232,9 +224,9 @@ ASM_ENTRY(boot_setup_tls)
  wrmsr
  popl %eax
  ret
-ASM_END(boot_setup_tls)
+ASM_END (boot_setup_tls)
 
-#else /* __LP64__ */
+#else   // __LP64__
 
 /*
  * Complete the temporary boot TLS segment descriptor and copy it into
@@ -242,49 +234,47 @@ ASM_END(boot_setup_tls)
  *
  * The %eax and %ebx registers must be preserved.
  */
-ASM_ENTRY(boot_build_tls_seg_desc)
+ASM_ENTRY (boot_build_tls_seg_desc)
  pushl %eax
 
- /* Load boot_tls_seg_desc address */
+ // Load boot_tls_seg_desc address.
  movl $boot_tls_seg_desc, %ecx
 
- /* Add the base 15:0 bits to boot_tls_seg_desc.low */
+ // Add the base 15:0 bits to boot_tls_seg_desc.low.
  movl $boot_tls_seg, %eax
  shll $16, %eax
  orl %eax, (%ecx)
 
- /* Add the base 23:16 bits to boot_tls_seg_desc.high */
+ // Add the base 23:16 bits to boot_tls_seg_desc.high.
  movl $boot_tls_seg, %eax
  shrl $16, %eax
  andl $0xff, %eax
  orl %eax, 4(%ecx)
 
- /* Add the base 31:24 bits to boot_tls_seg_desc.high */
+ // Add the base 31:24 bits to boot_tls_seg_desc.high.
  movl $boot_tls_seg, %eax
  andl $0xff000000, %eax
  orl %eax, 4(%ecx)
 
- /* Load boot_gdt[BOOT_GDT_SEL_TLS] address */
+ // Load boot_gdt[BOOT_GDT_SEL_TLS] address.
  movl $boot_gdt + BOOT_GDT_SEL_TLS, %edx
 
- /* Set boot_gdt[BOOT_GDT_SEL_TLS].low */
+ // Set boot_gdt[BOOT_GDT_SEL_TLS].low.
  movl (%ecx), %eax
  movl %eax, (%edx)
 
- /* Set boot_gdt[BOOT_GDT_SEL_TLS].high */
+ // Set boot_gdt[BOOT_GDT_SEL_TLS].high.
  movl 4(%ecx), %eax
  movl %eax, 4(%edx)
 
  popl %eax
  ret
-ASM_END(boot_build_tls_seg_desc)
+ASM_END (boot_build_tls_seg_desc)
 
-#endif /* __LP64__ */
+#endif
 
-/*
- * This is where an AP runs after leaving the trampoline code.
- */
-ASM_ENTRY(boot_ap_start32)
+// This is where an AP runs after leaving the trampoline code.
+ASM_ENTRY (boot_ap_start32)
  /*
   * Set up the GDT again, because the current one is from the trampoline code
   * which isn't part of the identity mapping and won't be available once paging
@@ -311,13 +301,13 @@ ASM_ENTRY(boot_ap_start32)
 
 1:
  .code64
-#endif /* __LP64__ */
+#endif
 
  call boot_ap_setup
 
 #ifdef __LP64__
  movq %rax, %cr3
-#else /* __LP64__ */
+#else
  movl %eax, %cr3
  movl %cr0, %eax
  orl $CPU_CR0_PG, %eax
@@ -325,24 +315,24 @@ ASM_ENTRY(boot_ap_start32)
  ljmp $BOOT_GDT_SEL_CODE, $1f
 
 1:
-#endif /* __LP64__ */
+#endif
 
  call boot_get_ap_stack
 
 #ifdef __LP64__
  movq %rax, %rsp
  addq $BOOT_STACK_SIZE, %rsp
-#else /* __LP64__ */
+#else
  movl %eax, %esp
  addl $BOOT_STACK_SIZE, %esp
-#endif /* __LP64__ */
+#endif
 
  xorl %ebp, %ebp
  call boot_ap_main
 
- /* Never reached */
+ // Never reached.
  nop
-ASM_END(boot_ap_start32)
+ASM_END (boot_ap_start32)
 
 .code32
 
@@ -360,11 +350,11 @@ ASM_ENTRY(boot_mp_trampoline)
  movw %ax, %fs
  movw %ax, %gs
  movw %ax, %ss
- lgdt BOOT_MP_ADDR_PTOT(boot_ap_gdtr)
+ lgdt BOOT_MP_ADDR_PTOT (boot_ap_gdtr)
  movl %cr0, %eax
  orl $CPU_CR0_PE, %eax
  movl %eax, %cr0
- ljmp $BOOT_GDT_SEL_CODE, $BOOT_MP_ADDR_PTOT(1f)
+ ljmp $BOOT_GDT_SEL_CODE, $BOOT_MP_ADDR_PTOT (1f)
 
 .align 4
 1:
@@ -377,7 +367,7 @@ ASM_ENTRY(boot_mp_trampoline)
  movl %eax, %fs
  movl %eax, %gs
  ljmp $BOOT_GDT_SEL_CODE, $boot_ap_start32
-ASM_END(boot_mp_trampoline)
+ASM_END (boot_mp_trampoline)
 
 ASM_DATA(boot_ap_gdtr)
  .word boot_gdt_end - boot_gdt - 1
@@ -385,17 +375,17 @@ ASM_DATA(boot_ap_gdtr)
 ASM_END(boot_ap_gdtr)
 
 ASM_DATA(boot_gdt)
- .quad 0x0000000000000000   /* Null descriptor */
- .quad 0x00cf9a000000ffff   /* Code segment descriptor */
- .quad 0x00cf92000000ffff   /* Data segment descriptor */
+ .quad 0x0000000000000000   // Null descriptor.
+ .quad 0x00cf9a000000ffff   // Code segment descriptor.
+ .quad 0x00cf92000000ffff   // Data segment descriptor.
 #ifdef __LP64__
- .quad 0x00209a0000000000   /* 64-bit code segment selector */
-#else /* __LP64__ */
- .quad 0x0                  /* TLS segment descriptor, filled at boot time */
-#endif /* __LP64__ */
-ASM_END(boot_gdt)
+ .quad 0x00209a0000000000   // 64-bit code segment selector.
+#else
+ .quad 0x0                  // TLS segment descriptor, filled at boot time.
+#endif
+ASM_END (boot_gdt)
 boot_gdt_end:
 
-ASM_DATA(boot_mp_trampoline_size)
+ASM_DATA (boot_mp_trampoline_size)
  .long . - boot_mp_trampoline
-ASM_END(boot_mp_trampoline_size)
+ASM_END (boot_mp_trampoline_size)

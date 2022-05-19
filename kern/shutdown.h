@@ -23,27 +23,28 @@
 #include <kern/init.h>
 #include <kern/plist.h>
 
-struct shutdown_ops {
-    struct plist_node node;
-    void (*reset)(void);
+struct shutdown_ops
+{
+  struct plist_node node;
+  void (*reset) (void);
 };
 
-void shutdown_register(struct shutdown_ops *ops, unsigned int priority);
+void shutdown_register (struct shutdown_ops *ops, unsigned int priority);
 
-noreturn void shutdown_halt(void);
-noreturn void shutdown_reboot(void);
+noreturn void shutdown_halt (void);
+noreturn void shutdown_reboot (void);
 
 /*
  * This init operation provides :
  *  - registration of shutdown operations
  */
-INIT_OP_DECLARE(shutdown_bootstrap);
+INIT_OP_DECLARE (shutdown_bootstrap);
 
 /*
  * This init operation provides :
  *  - all shutdown operations have been registered
  *  - module fully initialized
  */
-INIT_OP_DECLARE(shutdown_setup);
+INIT_OP_DECLARE (shutdown_setup);
 
-#endif /* KERN_SHUTDOWN_H */
+#endif

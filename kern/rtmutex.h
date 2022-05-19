@@ -38,21 +38,17 @@
 struct rtmutex;
 
 static inline bool
-rtmutex_locked(const struct rtmutex *rtmutex)
+rtmutex_locked (const struct rtmutex *rtmutex)
 {
-    uintptr_t owner;
-
-    owner = atomic_load(&rtmutex->owner, ATOMIC_RELAXED);
-    return (owner != 0);
+  uintptr_t owner = atomic_load (&rtmutex->owner, ATOMIC_RELAXED);
+  return (owner != 0);
 }
 
-/*
- * Initialize a real-time mutex.
- */
+// Initialize a real-time mutex.
 static inline void
-rtmutex_init(struct rtmutex *rtmutex)
+rtmutex_init (struct rtmutex *rtmutex)
 {
-    rtmutex->owner = 0;
+  rtmutex->owner = 0;
 }
 
 /*
@@ -63,17 +59,10 @@ rtmutex_init(struct rtmutex *rtmutex)
  * Return 0 on success, EBUSY if the mutex is already locked.
  */
 static inline int
-rtmutex_trylock(struct rtmutex *rtmutex)
+rtmutex_trylock (struct rtmutex *rtmutex)
 {
-    uintptr_t prev_owner;
-
-    prev_owner = rtmutex_lock_fast(rtmutex);
-
-    if (unlikely(prev_owner != 0)) {
-        return EBUSY;
-    }
-
-    return 0;
+  uintptr_t prev_owner = rtmutex_lock_fast (rtmutex);
+  return (prev_owner ? EBUSY : 0);
 }
 
 /*
@@ -88,15 +77,11 @@ rtmutex_trylock(struct rtmutex *rtmutex)
  * This function may sleep.
  */
 static inline void
-rtmutex_lock(struct rtmutex *rtmutex)
+rtmutex_lock (struct rtmutex *rtmutex)
 {
-    uintptr_t prev_owner;
-
-    prev_owner = rtmutex_lock_fast(rtmutex);
-
-    if (unlikely(prev_owner != 0)) {
-        rtmutex_lock_slow(rtmutex);
-    }
+  uintptr_t prev_owner = rtmutex_lock_fast (rtmutex);
+  if (unlikely (prev_owner))
+    rtmutex_lock_slow (rtmutex);
 }
 
 /*
@@ -110,17 +95,10 @@ rtmutex_lock(struct rtmutex *rtmutex)
  * This function may sleep.
  */
 static inline int
-rtmutex_timedlock(struct rtmutex *rtmutex, uint64_t ticks)
+rtmutex_timedlock (struct rtmutex *rtmutex, uint64_t ticks)
 {
-    uintptr_t prev_owner;
-
-    prev_owner = rtmutex_lock_fast(rtmutex);
-
-    if (unlikely(prev_owner != 0)) {
-        return rtmutex_timedlock_slow(rtmutex, ticks);
-    }
-
-    return 0;
+  uintptr_t prev_owner = rtmutex_lock_fast (rtmutex);
+  return (prev_owner ? rtmutex_timedlock_slow (rtmutex, ticks) : 0);
 }
 
 /*
@@ -130,21 +108,15 @@ rtmutex_timedlock(struct rtmutex *rtmutex, uint64_t ticks)
  * thread.
  */
 static inline void
-rtmutex_unlock(struct rtmutex *rtmutex)
+rtmutex_unlock (struct rtmutex *rtmutex)
 {
-    uintptr_t prev_owner;
-
-    prev_owner = rtmutex_unlock_fast(rtmutex);
-
-    if (unlikely(prev_owner & RTMUTEX_CONTENDED)) {
-        rtmutex_unlock_slow(rtmutex);
-    }
+  uintptr_t prev_owner = rtmutex_unlock_fast (rtmutex);
+  if (unlikely (prev_owner & RTMUTEX_CONTENDED))
+    rtmutex_unlock_slow (rtmutex);
 }
 
-/*
- * Mutex init operations. See kern/mutex.h.
- */
-INIT_OP_DECLARE(rtmutex_bootstrap);
-INIT_OP_DECLARE(rtmutex_setup);
+// Mutex init operations. See kern/mutex.h.
+INIT_OP_DECLARE (rtmutex_bootstrap);
+INIT_OP_DECLARE (rtmutex_setup);
 
-#endif /* KERN_RTMUTEX_H */
+#endif

@@ -29,27 +29,25 @@
  * This function is called by the AT keyboard interrupt handler
  * to handle machine-independent console management.
  */
-void atcons_intr(const char *s);
+void atcons_intr (const char *s);
 
-/*
- * Direction control processing functions.
- */
-void atcons_left(void);
-void atcons_bottom(void);
-void atcons_right(void);
-void atcons_up(void);
+// Direction control processing functions.
+void atcons_left (void);
+void atcons_bottom (void);
+void atcons_right (void);
+void atcons_up (void);
 
 /*
  * This init operation provides :
  *  - CGA output through the console module
  */
-INIT_OP_DECLARE(atcons_bootstrap);
+INIT_OP_DECLARE (atcons_bootstrap);
 
 /*
  * This init operation provides :
  *  - AT keyboard input through the console module
  *  - module fully initialized
  */
-INIT_OP_DECLARE(atcons_setup);
+INIT_OP_DECLARE (atcons_setup);
 
-#endif /* X86_ATCONS_H */
+#endif

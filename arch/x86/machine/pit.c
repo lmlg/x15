@@ -25,103 +25,84 @@
 #include <machine/io.h>
 #include <machine/pit.h>
 
-/*
- * I/O ports.
- */
+// I/O ports.
 #define PIT_PORT_COUNTER0   0x40
 #define PIT_PORT_MODE       0x43
 
-/*
- * Mode control register bits.
- */
+// Mode control register bits.
 #define PIT_MODE_LATCH      0x00
 #define PIT_MODE_RATE_GEN   0x04
 #define PIT_MODE_RW_LSB     0x10
 #define PIT_MODE_RW_MSB     0x20
 
-/*
- * Native timer frequency.
- */
-#define PIT_FREQ 1193182
+// Native timer frequency.
+#define PIT_FREQ   1193182
 
-/*
- * Maximum value of a counter.
- */
-#define PIT_MAX_COUNT 0xffff
+// Maximum value of a counter.
+#define PIT_MAX_COUNT   0xffff
 
-/*
- * Timer interrupt.
- */
-#define PIT_INTR 0
+// Timer interrupt.
+#define PIT_INTR   0
 
 static int
-pit_intr(void *arg)
+pit_intr (void *arg)
 {
-    (void)arg;
-
-    clock_tick_intr();
-    return 0;
+  (void)arg;
+  clock_tick_intr ();
+  return (0);
 }
 
 static void __init
-pit_setup_common(uint16_t count)
+pit_setup_common (uint16_t count)
 {
-    io_write_byte(PIT_PORT_MODE, PIT_MODE_RATE_GEN | PIT_MODE_RW_LSB
-                                 | PIT_MODE_RW_MSB);
-    io_write_byte(PIT_PORT_COUNTER0, count & 0xff);
-    io_write_byte(PIT_PORT_COUNTER0, count >> 8);
+  io_write_byte (PIT_PORT_MODE, PIT_MODE_RATE_GEN | PIT_MODE_RW_LSB |
+                 PIT_MODE_RW_MSB);
+  io_write_byte (PIT_PORT_COUNTER0, count & 0xff);
+  io_write_byte (PIT_PORT_COUNTER0, count >> 8);
 }
 
 void __init
-pit_setup_free_running(void)
+pit_setup_free_running (void)
 {
-    pit_setup_common(PIT_MAX_COUNT);
+  pit_setup_common (PIT_MAX_COUNT);
 }
 
 void __init
-pit_setup(void)
+pit_setup (void)
 {
-    int error;
-
-    pit_setup_common(DIV_CEIL(PIT_FREQ, CLOCK_FREQ));
-    error = intr_register(PIT_INTR, pit_intr, NULL);
-
-    if (error) {
-        log_err("pit: unable to register interrupt handler");
-    }
+  pit_setup_common (DIV_CEIL (PIT_FREQ, CLOCK_FREQ));
+  if (intr_register (PIT_INTR, pit_intr, NULL) != 0)
+    log_err ("pit: unable to register interrupt handler");
 }
 
 static unsigned int
-pit_read(void)
+pit_read (void)
 {
-    unsigned int low, high;
-
-    io_write_byte(PIT_PORT_MODE, PIT_MODE_LATCH);
-    low = io_read_byte(PIT_PORT_COUNTER0);
-    high = io_read_byte(PIT_PORT_COUNTER0);
-    return (high << 8) | low;
+  io_write_byte (PIT_PORT_MODE, PIT_MODE_LATCH);
+  uint32_t low = io_read_byte (PIT_PORT_COUNTER0),
+           high = io_read_byte (PIT_PORT_COUNTER0);
+  return ((high << 8) | low);
 }
 
 void
-pit_delay(unsigned long usecs)
+pit_delay (size_t usecs)
 {
-    long total, prev, count, diff;
+  assert (usecs);
 
-    assert(usecs != 0);
+  /* TODO Avoid 64-bits conversion if result is known not to overflow */
+  long total = (long) (((int64_t)usecs * PIT_FREQ + 999999) / 1000000),
+       prev = pit_read ();
 
-    /* TODO Avoid 64-bits conversion if result is known not to overflow */
-    total = (long)(((long long)usecs * PIT_FREQ + 999999) / 1000000);
-    prev = pit_read();
+  do
+    {
+      long count = pit_read (),
+           diff = prev - count;
+      prev = count;
 
-    do {
-        count = pit_read();
-        diff = prev - count;
-        prev = count;
+      if (diff < 0)
+        diff += PIT_MAX_COUNT;
 
-        if (diff < 0) {
-            diff += PIT_MAX_COUNT;
-        }
-
-        total -= diff;
-    } while (total > 0);
+      total -= diff;
+    }
+  while (total > 0);
 }

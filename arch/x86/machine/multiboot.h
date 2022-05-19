@@ -18,26 +18,18 @@
 #ifndef X86_MULTIBOOT_H
 #define X86_MULTIBOOT_H
 
-/*
- * Magic number provided by the OS to the boot loader.
- */
-#define MULTIBOOT_OS_MAGIC 0x1badb002
+// Magic number provided by the OS to the boot loader.
+#define MULTIBOOT_OS_MAGIC   0x1badb002
 
-/*
- * Multiboot flags requesting services from the boot loader.
- */
-#define MULTIBOOT_OS_MEMORY_INFO 0x2
+// Multiboot flags requesting services from the boot loader.
+#define MULTIBOOT_OS_MEMORY_INFO   0x2
 
-#define MULTIBOOT_OS_FLAGS MULTIBOOT_OS_MEMORY_INFO
+#define MULTIBOOT_OS_FLAGS   MULTIBOOT_OS_MEMORY_INFO
 
-/*
- * Magic number to identify a multiboot compliant boot loader.
- */
-#define MULTIBOOT_LOADER_MAGIC 0x2badb002
+// Magic number to identify a multiboot compliant boot loader.
+#define MULTIBOOT_LOADER_MAGIC   0x2badb002
 
-/*
- * Multiboot flags set by the boot loader.
- */
+// Multiboot flags set by the boot loader.
 #define MULTIBOOT_LOADER_MEMORY     0x01
 #define MULTIBOOT_LOADER_CMDLINE    0x04
 #define MULTIBOOT_LOADER_MODULES    0x08
@@ -50,62 +42,59 @@
 
 #include <kern/macros.h>
 
-/*
- * A multiboot module.
- */
-struct multiboot_raw_module {
-    uint32_t mod_start;
-    uint32_t mod_end;
-    uint32_t string;
-    uint32_t reserved;
+// A multiboot module.
+struct multiboot_raw_module
+{
+  uint32_t mod_start;
+  uint32_t mod_end;
+  uint32_t string;
+  uint32_t reserved;
 } __packed;
 
-/*
- * Memory map entry.
- */
-struct multiboot_raw_mmap_entry {
-    uint32_t size;
-    uint64_t base_addr;
-    uint64_t length;
-    uint32_t type;
+// Memory map entry.
+struct multiboot_raw_mmap_entry
+{
+  uint32_t size;
+  uint64_t base_addr;
+  uint64_t length;
+  uint32_t type;
 } __packed;
 
-/*
- * Multiboot information structure as passed by the boot loader.
- */
-struct multiboot_raw_info {
-    uint32_t flags;
-    uint32_t mem_lower;
-    uint32_t mem_upper;
-    uint32_t unused0;
-    uint32_t cmdline;
-    uint32_t mods_count;
-    uint32_t mods_addr;
-    uint32_t shdr_num;
-    uint32_t shdr_size;
-    uint32_t shdr_addr;
-    uint32_t shdr_strndx;
-    uint32_t mmap_length;
-    uint32_t mmap_addr;
-    uint32_t unused1[9];
+// Multiboot information structure as passed by the boot loader.
+struct multiboot_raw_info
+{
+  uint32_t flags;
+  uint32_t mem_lower;
+  uint32_t mem_upper;
+  uint32_t unused0;
+  uint32_t cmdline;
+  uint32_t mods_count;
+  uint32_t mods_addr;
+  uint32_t shdr_num;
+  uint32_t shdr_size;
+  uint32_t shdr_addr;
+  uint32_t shdr_strndx;
+  uint32_t mmap_length;
+  uint32_t mmap_addr;
+  uint32_t unused1[9];
 } __packed;
 
-/*
- * Versions of the multiboot structures suitable for use with 64-bit pointers.
- */
+// Versions of the multiboot structures suitable for use with 64-bit pointers.
 
-struct multiboot_module {
-    void *mod_start;
-    void *mod_end;
-    char *string;
+struct multiboot_module
+{
+  void *mod_start;
+  void *mod_end;
+  char *string;
 };
 
-struct multiboot_info {
-    uint32_t flags;
-    struct multiboot_module *mods_addr;
-    uint32_t mods_count;
+struct multiboot_info
+{
+  uint32_t flags;
+  struct multiboot_module *mods_addr;
+  uint32_t mods_count;
 };
 
-#endif /* __ASSEMBLER__ */
+#endif   // __ASSEMBLER__
 
-#endif /* X86_MULTIBOOT_H */
+#endif

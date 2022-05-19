@@ -24,13 +24,12 @@
 #include <stdbool.h>
 #include <stddef.h>
 
-/*
- * Radix tree.
- */
-struct rdxtree {
-    unsigned short height;
-    unsigned short flags;
-    void *root;
+// Radix tree.
+struct rdxtree
+{
+  uint16_t height;
+  uint16_t flags;
+  void *root;
 };
 
 /*
@@ -40,30 +39,29 @@ struct rdxtree {
  * The key member refers to the current pointer, and is valid if and only if
  * rdxtree_walk() has been called at least once on the iterator.
  */
-struct rdxtree_iter {
-    void *node;
-    rdxtree_key_t key;
+struct rdxtree_iter
+{
+  void *node;
+  rdxtree_key_t key;
 };
 
-/*
- * Initialize an iterator.
- */
+// Initialize an iterator.
 static inline void
-rdxtree_iter_init(struct rdxtree_iter *iter)
+rdxtree_iter_init (struct rdxtree_iter *iter)
 {
-    iter->node = NULL;
-    iter->key = (rdxtree_key_t)-1;
+  iter->node = NULL;
+  iter->key = (rdxtree_key_t)-1;
 }
 
-int rdxtree_insert_common(struct rdxtree *tree, rdxtree_key_t key,
-                          void *ptr, void ***slotp);
+int rdxtree_insert_common (struct rdxtree *tree, rdxtree_key_t key,
+                           void *ptr, void ***slotp);
 
-int rdxtree_insert_alloc_common(struct rdxtree *tree, void *ptr,
-                                rdxtree_key_t *keyp, void ***slotp);
+int rdxtree_insert_alloc_common (struct rdxtree *tree, void *ptr,
+                                 rdxtree_key_t *keyp, void ***slotp);
 
-void * rdxtree_lookup_common(const struct rdxtree *tree, rdxtree_key_t key,
+void* rdxtree_lookup_common (const struct rdxtree *tree, rdxtree_key_t key,
                              bool get_slot);
 
-void * rdxtree_walk(struct rdxtree *tree, struct rdxtree_iter *iter);
+void* rdxtree_walk (struct rdxtree *tree, struct rdxtree_iter *iter);
 
-#endif /* KERN_RDXTREE_I_H */
+#endif

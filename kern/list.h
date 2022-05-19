@@ -43,19 +43,15 @@
  */
 struct list;
 
-/*
- * Static list initializer.
- */
-#define LIST_INITIALIZER(list) { &(list), &(list) }
+// Static list initializer.
+#define LIST_INITIALIZER(list)   { &(list), &(list) }
 
-/*
- * Initialize a list.
- */
+// Initialize a list.
 static inline void
-list_init(struct list *list)
+list_init (struct list *list)
 {
-    list->prev = list;
-    list->next = list;
+  list->prev = list;
+  list->next = list;
 }
 
 /*
@@ -64,82 +60,66 @@ list_init(struct list *list)
  * A node is in no list when its node members point to NULL.
  */
 static inline void
-list_node_init(struct list *node)
+list_node_init (struct list *node)
 {
-    node->prev = NULL;
-    node->next = NULL;
+  node->prev = NULL;
+  node->next = NULL;
 }
 
-/*
- * Return true if node is in no list.
- */
+// Return true if node is in no list.
 static inline bool
-list_node_unlinked(const struct list *node)
+list_node_unlinked (const struct list *node)
 {
-    return node->prev == NULL;
+  return (!node->prev);
 }
 
-/*
- * Return the first node of a list.
- */
-static inline struct list *
-list_first(const struct list *list)
+// Return the first node of a list.
+static inline struct list*
+list_first (const struct list *list)
 {
-    return list->next;
+  return (list->next);
 }
 
-/*
- * Return the last node of a list.
- */
-static inline struct list *
-list_last(const struct list *list)
+// Return the last node of a list.
+static inline struct list*
+list_last (const struct list *list)
 {
-    return list->prev;
+  return (list->prev);
 }
 
-/*
- * Return the node next to the given node.
- */
-static inline struct list *
-list_next(const struct list *node)
+// Return the node next to the given node.
+static inline struct list*
+list_next (const struct list *node)
 {
-    return node->next;
+  return (node->next);
 }
 
-/*
- * Return the node previous to the given node.
- */
-static inline struct list *
-list_prev(const struct list *node)
+// Return the node previous to the given node.
+static inline struct list*
+list_prev (const struct list *node)
 {
-    return node->prev;
+  return (node->prev);
 }
 
-/*
- * Return true if node is invalid and denotes one of the ends of the list.
- */
+// Return true if node is invalid and denotes one of the ends of the list.
 static inline bool
-list_end(const struct list *list, const struct list *node)
+list_end (const struct list *list, const struct list *node)
 {
-    return list == node;
+  return (list == node);
 }
 
-/*
- * Return true if list is empty.
- */
+// Return true if list is empty.
 static inline bool
-list_empty(const struct list *list)
+list_empty (const struct list *list)
 {
-    return list == list->next;
+  return (list == list->next);
 }
 
-/*
- * Return true if list contains exactly one node.
- */
+// Return true if list contains exactly one node.
 static inline bool
-list_singular(const struct list *list)
+list_singular (const struct list *list)
 {
-    return !list_empty(list) && (list->next == list->prev);
+  return (!list_empty (list) && list->next == list->prev);
 }
 
 /*
@@ -150,21 +130,22 @@ list_singular(const struct list *list)
  * initialized.
  */
 static inline void
-list_split(struct list *list1, struct list *list2, struct list *node)
+list_split (struct list *list1, struct list *list2, struct list *node)
 {
-    if (list_empty(list2) || (list2->next == node) || list_end(list2, node)) {
-        list_init(list1);
-        return;
+  if (list_empty (list2) || list2->next == node || list_end (list2, node))
+    {
+      list_init (list1);
+      return;
     }
 
-    list1->next = list2->next;
-    list1->next->prev = list1;
+  list1->next = list2->next;
+  list1->next->prev = list1;
 
-    list1->prev = node->prev;
-    node->prev->next = list1;
+  list1->prev = node->prev;
+  node->prev->next = list1;
 
-    list2->next = node;
-    node->prev = list2;
+  list2->next = node;
+  node->prev = list2;
 }
 
 /*
@@ -173,23 +154,20 @@ list_split(struct list *list1, struct list *list2, struct list *node)
  * After completion, list2 is stale.
  */
 static inline void
-list_concat(struct list *list1, const struct list *list2)
+list_concat (struct list *list1, const struct list *list2)
 {
-    struct list *last1, *first2, *last2;
+  if (list_empty (list2))
+    return;
 
-    if (list_empty(list2)) {
-        return;
-    }
+  struct list *last1 = list1->prev,
+              *first2 = list2->next,
+              *last2 = list2->prev;
 
-    last1 = list1->prev;
-    first2 = list2->next;
-    last2 = list2->prev;
+  last1->next = first2;
+  first2->prev = last1;
 
-    last1->next = first2;
-    first2->prev = last1;
-
-    last2->next = list1;
-    list1->prev = last2;
+  last2->next = list1;
+  list1->prev = last2;
 }
 
 /*
@@ -202,16 +180,17 @@ list_concat(struct list *list1, const struct list *list2)
  * After completion, old_head is stale.
  */
 static inline void
-list_set_head(struct list *new_head, const struct list *old_head)
+list_set_head (struct list *new_head, const struct list *old_head)
 {
-    if (list_empty(old_head)) {
-        list_init(new_head);
-        return;
+  if (list_empty (old_head))
+    {
+      list_init (new_head);
+      return;
     }
 
-    *new_head = *old_head;
-    new_head->next->prev = new_head;
-    new_head->prev->next = new_head;
+  *new_head = *old_head;
+  new_head->next->prev = new_head;
+  new_head->prev->next = new_head;
 }
 
 /*
@@ -220,49 +199,41 @@ list_set_head(struct list *new_head, const struct list *old_head)
  * This function is private.
  */
 static inline void
-list_add(struct list *prev, struct list *next, struct list *node)
+list_add (struct list *prev, struct list *next, struct list *node)
 {
-    next->prev = node;
-    node->next = next;
+  next->prev = node;
+  node->next = next;
 
-    prev->next = node;
-    node->prev = prev;
+  prev->next = node;
+  node->prev = prev;
 }
 
-/*
- * Insert a node at the head of a list.
- */
+// Insert a node at the head of a list.
 static inline void
-list_insert_head(struct list *list, struct list *node)
+list_insert_head (struct list *list, struct list *node)
 {
-    list_add(list, list->next, node);
+  list_add (list, list->next, node);
 }
 
-/*
- * Insert a node at the tail of a list.
- */
+// Insert a node at the tail of a list.
 static inline void
-list_insert_tail(struct list *list, struct list *node)
+list_insert_tail (struct list *list, struct list *node)
 {
-    list_add(list->prev, list, node);
+  list_add (list->prev, list, node);
 }
 
-/*
- * Insert a node before another node.
- */
+// Insert a node before another node.
 static inline void
-list_insert_before(struct list *node, struct list *next)
+list_insert_before (struct list *node, struct list *next)
 {
-    list_add(next->prev, next, node);
+  list_add (next->prev, next, node);
 }
 
-/*
- * Insert a node after another node.
- */
+// Insert a node after another node.
 static inline void
-list_insert_after(struct list *node, struct list *prev)
+list_insert_after (struct list *node, struct list *prev)
 {
-    list_add(prev, prev->next, node);
+  list_add (prev, prev->next, node);
 }
 
 /*
@@ -271,41 +242,33 @@ list_insert_after(struct list *node, struct list *prev)
  * After completion, the node is stale.
  */
 static inline void
-list_remove(struct list *node)
+list_remove (struct list *node)
 {
-    node->prev->next = node->next;
-    node->next->prev = node->prev;
+  node->prev->next = node->next;
+  node->next->prev = node->prev;
 }
 
 /*
  * Macro that evaluates to the address of the structure containing the
  * given node based on the given type and member.
  */
-#define list_entry(node, type, member) structof(node, type, member)
+#define list_entry(node, type, member)   structof (node, type, member)
 
-/*
- * Get the first entry of a list.
- */
-#define list_first_entry(list, type, member) \
-    list_entry(list_first(list), type, member)
+// Get the first entry of a list.
+#define list_first_entry(list, type, member)   \
+  list_entry (list_first (list), type, member)
 
-/*
- * Get the last entry of a list.
- */
+// Get the last entry of a list.
 #define list_last_entry(list, type, member) \
-    list_entry(list_last(list), type, member)
+  list_entry (list_last (list), type, member)
 
-/*
- * Get the entry next to the given entry.
- */
-#define list_next_entry(entry, member) \
-    list_entry(list_next(&(entry)->member), typeof(*(entry)), member)
+// Get the entry next to the given entry.
+#define list_next_entry(entry, member)   \
+  list_entry (list_next (&(entry)->member), typeof (*(entry)), member)
 
-/*
- * Get the entry previous to the given entry.
- */
-#define list_prev_entry(entry, member) \
-    list_entry(list_prev(&(entry)->member), typeof(*(entry)), member)
+// Get the entry previous to the given entry.
+#define list_prev_entry(entry, member)   \
+  list_entry (list_prev (&(entry)->member), typeof (*(entry)), member)
 
 /*
  * Forge a loop to process all nodes of a list.
@@ -313,69 +276,57 @@ list_remove(struct list *node)
  * The node must not be altered during the loop.
  */
 #define list_for_each(list, node)   \
-for (node = list_first(list);       \
-     !list_end(list, node);         \
-     node = list_next(node))
+  for (struct list *node = list_first (list);   \
+       !list_end (list, node);   \
+       node = list_next (node))
 
-/*
- * Forge a loop to process all nodes of a list.
- */
-#define list_for_each_safe(list, node, tmp)             \
-for (node = list_first(list), tmp = list_next(node);    \
-     !list_end(list, node);                             \
-     node = tmp, tmp = list_next(node))
+// Forge a loop to process all nodes of a list.
+#define list_for_each_safe(list, node, tmp)   \
+  for (struct list *node = list_first (list), *tmp = list_next (node);   \
+       !list_end (list, node);   \
+       node = tmp, tmp = list_next (node))
 
-/*
- * Version of list_for_each() that processes nodes backward.
- */
+// Version of list_for_each() that processes nodes backward.
 #define list_for_each_reverse(list, node)   \
-for (node = list_last(list);                \
-     !list_end(list, node);                 \
-     node = list_prev(node))
+  for (node = list_last (list);   \
+       !list_end (list, node);   \
+       node = list_prev (node))
 
-/*
- * Version of list_for_each_safe() that processes nodes backward.
- */
-#define list_for_each_reverse_safe(list, node, tmp) \
-for (node = list_last(list), tmp = list_prev(node); \
-     !list_end(list, node);                         \
-     node = tmp, tmp = list_prev(node))
+// Version of list_for_each_safe() that processes nodes backward.
+#define list_for_each_reverse_safe(list, node, tmp)   \
+  for (struct list *node = list_last (list), tmp = list_prev (node);   \
+       !list_end (list, node);   \
+       node = tmp, tmp = list_prev (node))
 
 /*
  * Forge a loop to process all entries of a list.
  *
  * The entry node must not be altered during the loop.
  */
-#define list_for_each_entry(list, entry, member)                    \
-for (entry = list_first_entry(list, typeof(*entry), member);        \
-     !list_end(list, &entry->member);                               \
-     entry = list_next_entry(entry, member))
+#define list_for_each_entry(list, entry, member)   \
+  for (entry = list_first_entry (list, typeof (*entry), member);   \
+       !list_end (list, &entry->member);   \
+       entry = list_next_entry (entry, member))
 
-/*
- * Forge a loop to process all entries of a list.
- */
-#define list_for_each_entry_safe(list, entry, tmp, member)          \
-for (entry = list_first_entry(list, typeof(*entry), member),        \
-       tmp = list_next_entry(entry, member);                        \
-     !list_end(list, &entry->member);                               \
-     entry = tmp, tmp = list_next_entry(entry, member))
+// Forge a loop to process all entries of a list.
+#define list_for_each_entry_safe(list, entry, tmp, member)   \
+  for (entry = list_first_entry (list, typeof (*entry), member),   \
+       tmp = list_next_entry (entry, member);   \
+       !list_end (list, &entry->member);   \
+       entry = tmp, tmp = list_next_entry (entry, member))
 
-/*
- * Version of list_for_each_entry() that processes entries backward.
- */
-#define list_for_each_entry_reverse(list, entry, member)            \
-for (entry = list_last_entry(list, typeof(*entry), member);         \
-     !list_end(list, &entry->member);                               \
-     entry = list_prev_entry(entry, member))
+// Version of list_for_each_entry() that processes entries backward.
+#define list_for_each_entry_reverse(list, entry, member)   \
+  for (entry = list_last_entry (list, typeof (*entry), member);   \
+       !list_end (list, &entry->member);   \
+       entry = list_prev_entry (entry, member))
 
-/*
- * Version of list_for_each_entry_safe() that processes entries backward.
- */
-#define list_for_each_entry_reverse_safe(list, entry, tmp, member)  \
-for (entry = list_last_entry(list, typeof(*entry), member),         \
-       tmp = list_prev_entry(entry, member);                        \
-     !list_end(list, &entry->member);                               \
-     entry = tmp, tmp = list_prev_entry(entry, member))
+// Version of list_for_each_entry_safe() that processes entries backward.
+#define list_for_each_entry_reverse_safe(list, entry, tmp, member)   \
+  for (entry = list_last_entry (list, typeof(*entry), member),   \
+       tmp = list_prev_entry (entry, member);   \
+       !list_end (list, &entry->member);   \
+       entry = tmp, tmp = list_prev_entry (entry, member))
 
 /*
  * Lockless variants
@@ -384,22 +335,18 @@ for (entry = list_last_entry(list, typeof(*entry), member),         \
  * In addition, list_end() is also allowed in read-side critical sections.
  */
 
-/*
- * Return the first node of a list.
- */
-static inline struct list *
-list_rcu_first(const struct list *list)
+// Return the first node of a list.
+static inline struct list*
+list_rcu_first (const struct list *list)
 {
-    return rcu_load_ptr(list->next);
+  return (rcu_load (&list->next));
 }
 
-/*
- * Return the node next to the given node.
- */
-static inline struct list *
-list_rcu_next(const struct list *node)
+// Return the node next to the given node.
+static inline struct list*
+list_rcu_next (const struct list *node)
 {
-    return rcu_load_ptr(node->next);
+  return (rcu_load (&node->next));
 }
 
 /*
@@ -408,48 +355,40 @@ list_rcu_next(const struct list *node)
  * This function is private.
  */
 static inline void
-list_rcu_add(struct list *prev, struct list *next, struct list *node)
+list_rcu_add (struct list *prev, struct list *next, struct list *node)
 {
-    node->next = next;
-    node->prev = prev;
-    rcu_store_ptr(prev->next, node);
-    next->prev = node;
+  node->next = next;
+  node->prev = prev;
+  rcu_store (&prev->next, node);
+  next->prev = node;
 }
 
-/*
- * Insert a node at the head of a list.
- */
+// Insert a node at the head of a list.
 static inline void
-list_rcu_insert_head(struct list *list, struct list *node)
+list_rcu_insert_head (struct list *list, struct list *node)
 {
-    list_rcu_add(list, list->next, node);
+  list_rcu_add (list, list->next, node);
 }
 
-/*
- * Insert a node at the tail of a list.
- */
+// Insert a node at the tail of a list.
 static inline void
-list_rcu_insert_tail(struct list *list, struct list *node)
+list_rcu_insert_tail (struct list *list, struct list *node)
 {
-    list_rcu_add(list->prev, list, node);
+  list_rcu_add (list->prev, list, node);
 }
 
-/*
- * Insert a node before another node.
- */
+// Insert a node before another node.
 static inline void
-list_rcu_insert_before(struct list *node, struct list *next)
+list_rcu_insert_before (struct list *node, struct list *next)
 {
-    list_rcu_add(next->prev, next, node);
+  list_rcu_add (next->prev, next, node);
 }
 
-/*
- * Insert a node after another node.
- */
+// Insert a node after another node.
 static inline void
-list_rcu_insert_after(struct list *node, struct list *prev)
+list_rcu_insert_after (struct list *node, struct list *prev)
 {
-    list_rcu_add(prev, prev->next, node);
+  list_rcu_add (prev, prev->next, node);
 }
 
 /*
@@ -458,18 +397,18 @@ list_rcu_insert_after(struct list *node, struct list *prev)
  * After completion, the node is stale.
  */
 static inline void
-list_rcu_remove(struct list *node)
+list_rcu_remove (struct list *node)
 {
-    node->next->prev = node->prev;
-    rcu_store_ptr(node->prev->next, node->next);
+  node->next->prev = node->prev;
+  rcu_store (&node->prev->next, node->next);
 }
 
 /*
  * Macro that evaluates to the address of the structure containing the
  * given node based on the given type and member.
  */
-#define list_rcu_entry(node, type, member) \
-    structof(rcu_load_ptr(node), type, member)
+#define list_rcu_entry(node, type, member)   \
+  structof (rcu_load (&(node)), type, member)
 
 /*
  * Get the first entry of a list.
@@ -478,16 +417,11 @@ list_rcu_remove(struct list *node)
  * the node pointer can only be read once, preventing the combination
  * of lockless list_empty()/list_first_entry() variants.
  */
-#define list_rcu_first_entry(head, type, member)            \
-MACRO_BEGIN                                                 \
-    struct list *list_;                                     \
-    struct list *first_;                                    \
-                                                            \
-    list_ = (head);                                         \
-    first_ = list_rcu_first(list_);                         \
-    list_end(list_, first_)                                 \
-        ? NULL                                              \
-        : list_entry(first_, type, member);                 \
+#define list_rcu_first_entry(head, type, member)   \
+MACRO_BEGIN   \
+  \
+  struct list *list_ = (head), *first_ = list_rcu_first (list_);   \
+  list_end (list_, first_) ? NULL : list_entry (first_, type, member);   \
 MACRO_END
 
 /*
@@ -499,14 +433,9 @@ MACRO_END
  */
 #define list_rcu_next_entry(head, entry, member)            \
 MACRO_BEGIN                                                 \
-    struct list *list_;                                     \
-    struct list *next_;                                     \
-                                                            \
-    list_ = (head);                                         \
-    next_ = list_rcu_next(&entry->member);                  \
-    list_end(list_, next_)                                  \
-        ? NULL                                              \
-        : list_entry(next_, typeof(*entry), member);        \
+  struct list *list_ = (head), *next_ = list_rcu_next (&entry->member);   \
+  list_end (list_, next_) ?   \
+    NULL : list_entry (next_, typeof (*entry), member);   \
 MACRO_END
 
 /*
@@ -514,19 +443,19 @@ MACRO_END
  *
  * The node must not be altered during the loop.
  */
-#define list_rcu_for_each(list, node)       \
-for (node = list_rcu_first(list);           \
-     !list_end(list, node);                 \
-     node = list_rcu_next(node))
+#define list_rcu_for_each(list, node)   \
+  for (struct list *node = list_rcu_first (list);   \
+       !list_end (list, node);   \
+       node = list_rcu_next (node))
 
 /*
  * Forge a loop to process all entries of a list.
  *
  * The entry node must not be altered during the loop.
  */
-#define list_rcu_for_each_entry(list, entry, member)                \
-for (entry = list_rcu_first_entry(list, typeof(*entry), member);    \
-     entry != NULL;                                                 \
-     entry = list_rcu_next_entry(list, entry, member))
+#define list_rcu_for_each_entry(list, entry, member)   \
+  for (entry = list_rcu_first_entry (list, typeof (*entry), member);   \
+       entry != NULL;   \
+       entry = list_rcu_next_entry (list, entry, member))
 
-#endif /* KERN_LIST_H */
+#endif

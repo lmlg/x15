@@ -32,16 +32,12 @@
 #include <kern/spinlock.h>
 #include <kern/stream.h>
 
-/*
- * Size of the buffer storing a system counter name.
- */
-#define SYSCNT_NAME_SIZE 32
+// Size of the buffer storing a system counter name.
+#define SYSCNT_NAME_SIZE   32
 
 #include <kern/syscnt_types.h>
 
-/*
- * System counter.
- */
+// System counter.
 struct syscnt;
 
 /*
@@ -49,75 +45,71 @@ struct syscnt;
  *
  * The counter is set to 0.
  */
-void syscnt_register(struct syscnt *syscnt, const char *name);
+void syscnt_register (struct syscnt *syscnt, const char *name);
 
 #ifdef ATOMIC_HAVE_64B_OPS
 
 static inline void
-syscnt_set(struct syscnt *syscnt, uint64_t value)
+syscnt_set (struct syscnt *syscnt, uint64_t value)
 {
-    atomic_store(&syscnt->value, value, ATOMIC_RELAXED);
+  atomic_store (&syscnt->value, value, ATOMIC_RELAXED);
 }
 
 static inline void
-syscnt_add(struct syscnt *syscnt, int64_t delta)
+syscnt_add (struct syscnt *syscnt, int64_t delta)
 {
-    atomic_add(&syscnt->value, delta, ATOMIC_RELAXED);
+  atomic_add (&syscnt->value, delta, ATOMIC_RELAXED);
 }
 
 static inline uint64_t
-syscnt_read(const struct syscnt *syscnt)
+syscnt_read (const struct syscnt *syscnt)
 {
-    return atomic_load((uint64_t *)&syscnt->value, ATOMIC_RELAXED);
+  return (atomic_load ((uint64_t *)&syscnt->value, ATOMIC_RELAXED));
 }
 
-#else /* ATOMIC_HAVE_64B_OPS */
+#else
 
 static inline void
-syscnt_set(struct syscnt *syscnt, uint64_t value)
+syscnt_set (struct syscnt *syscnt, uint64_t value)
 {
-    unsigned long flags;
-
-    spinlock_lock_intr_save(&syscnt->lock, &flags);
-    syscnt->value = value;
-    spinlock_unlock_intr_restore(&syscnt->lock, flags);
+  unsigned long flags;
+  spinlock_lock_intr_save (&syscnt->lock, &flags);
+  syscnt->value = value;
+  spinlock_unlock_intr_restore (&syscnt->lock, flags);
 }
 
 static inline void
-syscnt_add(struct syscnt *syscnt, int64_t delta)
+syscnt_add (struct syscnt *syscnt, int64_t delta)
 {
-    unsigned long flags;
-
-    spinlock_lock_intr_save(&syscnt->lock, &flags);
-    syscnt->value += delta;
-    spinlock_unlock_intr_restore(&syscnt->lock, flags);
+  unsigned long flags;
+  spinlock_lock_intr_save (&syscnt->lock, &flags);
+  syscnt->value += delta;
+  spinlock_unlock_intr_restore (&syscnt->lock, flags);
 }
 
 static inline uint64_t
-syscnt_read(struct syscnt *syscnt)
+syscnt_read (struct syscnt *syscnt)
 {
-    unsigned long flags;
-    uint64_t value;
+  unsigned long flags;
+  spinlock_lock_intr_save (&syscnt->lock, &flags);
 
-    spinlock_lock_intr_save(&syscnt->lock, &flags);
-    value = syscnt->value;
-    spinlock_unlock_intr_restore(&syscnt->lock, flags);
-
-    return value;
+  uint64_t value = syscnt->value;
+  spinlock_unlock_intr_restore (&syscnt->lock, flags);
+  return (value);
 }
 
-#endif /* ATOMIC_HAVE_64B_OPS */
+#endif
 
 static inline void
-syscnt_inc(struct syscnt *syscnt)
+syscnt_inc (struct syscnt *syscnt)
 {
-    syscnt_add(syscnt, 1);
+  syscnt_add (syscnt, 1);
 }
 
 static inline void
-syscnt_dec(struct syscnt *syscnt)
+syscnt_dec (struct syscnt *syscnt)
 {
-    syscnt_add(syscnt, -1);
+  syscnt_add (syscnt, -1);
 }
 
 /*
@@ -126,13 +118,13 @@ syscnt_dec(struct syscnt *syscnt)
  * A prefix can be used to filter the output, where only counters with the
  * given prefix are displayed. If NULL, all counters are reported.
  */
-void syscnt_info(const char *prefix, struct stream *stream);
+void syscnt_info (const char *prefix, struct stream *stream);
 
 /*
  * This init operation provides :
  *  - registration of system counters
  *  - module fully initialized
  */
-INIT_OP_DECLARE(syscnt_setup);
+INIT_OP_DECLARE (syscnt_setup);
 
-#endif /* KERN_SYSCNT_H */
+#endif

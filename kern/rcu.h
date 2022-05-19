@@ -53,9 +53,7 @@
 #include <kern/thread.h>
 #include <kern/work.h>
 
-/*
- * Thread-local RCU data.
- */
+// Thread-local RCU data.
 struct rcu_reader;
 
 /*
@@ -63,14 +61,14 @@ struct rcu_reader;
  *
  * This macro enforces release ordering on the given pointer.
  */
-#define rcu_store_ptr(ptr, value) atomic_store(&(ptr), value, ATOMIC_RELEASE)
+#define rcu_store(ptr, value)   atomic_store ((ptr), (value), ATOMIC_RELEASE)
 
 /*
  * Safely load a pointer.
  *
  * This macro enforces consume ordering on the given pointer.
  */
-#define rcu_load_ptr(ptr) atomic_load(&(ptr), ATOMIC_CONSUME)
+#define rcu_load(ptr)    atomic_load ((ptr), ATOMIC_CONSUME)
 
 /*
  * Read-side critical section functions.
@@ -85,23 +83,21 @@ struct rcu_reader;
  */
 
 static inline void
-rcu_read_enter(void)
+rcu_read_enter (void)
 {
-    rcu_reader_inc(thread_rcu_reader(thread_self()));
-    barrier();
+  rcu_reader_inc (thread_rcu_reader (thread_self ()));
+  barrier ();
 }
 
 static inline void
-rcu_read_leave(void)
+rcu_read_leave (void)
 {
-    barrier();
-    rcu_reader_dec(thread_rcu_reader(thread_self()));
+  barrier ();
+  rcu_reader_dec (thread_rcu_reader (thread_self ()));
 }
 
-/*
- * Initialize a RCU reader.
- */
-void rcu_reader_init(struct rcu_reader *reader);
+// Initialize a RCU reader.
+void rcu_reader_init (struct rcu_reader *reader);
 
 /*
  * Report a context switch on the current processor.
@@ -110,14 +106,14 @@ void rcu_reader_init(struct rcu_reader *reader);
  *
  * Interrupts and preemption must be disabled when calling this function.
  */
-void rcu_report_context_switch(struct rcu_reader *reader);
+void rcu_report_context_switch (struct rcu_reader *reader);
 
 /*
  * Report a periodic event on the current processor.
  *
  * Interrupts and preemption must be disabled when calling this function.
  */
-void rcu_report_periodic_event(void);
+void rcu_report_periodic_event (void);
 
 /*
  * Defer a work until all existing read-side references are dropped,
@@ -126,7 +122,7 @@ void rcu_report_periodic_event(void);
  * The given work is scheduled when all existing read-side references
  * are dropped.
  */
-void rcu_defer(struct work *work);
+void rcu_defer (struct work *work);
 
 /*
  * Wait for all existing read-side references to be dropped.
@@ -134,12 +130,12 @@ void rcu_defer(struct work *work);
  * This function sleeps, and may do so for a moderately long duration,
  * at leat a few system timer ticks, sometimes a lot more.
  */
-void rcu_wait(void);
+void rcu_wait (void);
 
 /*
  * This init operation provides :
  *  - read-side critical sections usable
  */
-INIT_OP_DECLARE(rcu_bootstrap);
+INIT_OP_DECLARE (rcu_bootstrap);
 
-#endif /* KERN_RCU_H */
+#endif

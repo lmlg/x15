@@ -52,11 +52,9 @@
 
 struct semaphore;
 
-/*
- * Initialize a semaphore.
- */
-void semaphore_init(struct semaphore *semaphore, uint16_t value,
-                    uint16_t max_value);
+// Initialize a semaphore.
+void semaphore_init (struct semaphore *semaphore, uint16_t value,
+                     uint16_t max_value);
 
 /*
  * Attempt to decrement a semaphore.
@@ -65,7 +63,7 @@ void semaphore_init(struct semaphore *semaphore, uint16_t value,
  *
  * Return 0 on success, EAGAIN if the semaphore could not be decremented.
  */
-int semaphore_trywait(struct semaphore *semaphore);
+int semaphore_trywait (struct semaphore *semaphore);
 
 /*
  * Wait on a semaphore.
@@ -73,7 +71,7 @@ int semaphore_trywait(struct semaphore *semaphore);
  * If the semaphore value cannot be decremented, the calling thread sleeps
  * until the semaphore value is incremented.
  */
-void semaphore_wait(struct semaphore *semaphore);
+void semaphore_wait (struct semaphore *semaphore);
 
 /*
  * Wait on a semaphore, with a time boundary.
@@ -82,7 +80,7 @@ void semaphore_wait(struct semaphore *semaphore);
  *
  * If successful, the semaphore is decremented, otherwise an error is returned.
  */
-int semaphore_timedwait(struct semaphore *semaphore, uint64_t ticks);
+int semaphore_timedwait (struct semaphore *semaphore, uint64_t ticks);
 
 /*
  * Signal a semaphore.
@@ -96,6 +94,6 @@ int semaphore_timedwait(struct semaphore *semaphore, uint64_t ticks);
  * value is already at its maximum before calling this function, EOVERFLOW
  * is returned.
  */
-int semaphore_post(struct semaphore *semaphore);
+int semaphore_post (struct semaphore *semaphore);
 
-#endif /* KERN_SEMAPHORE_H */
+#endif

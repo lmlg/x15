@@ -20,25 +20,20 @@
 
 #include <stdint.h>
 
-/*
- * Read a byte from an I/O port.
- */
+// Read a byte from an I/O port.
 static inline uint8_t
-io_read_byte(uint16_t port)
+io_read_byte (uint16_t port)
 {
-    uint8_t value;
-
-    asm volatile("inb %%dx, %%al" : "=a" (value) : "d" (port));
-    return value;
+  uint8_t value;
+  asm volatile ("inb %%dx, %%al" : "=a" (value) : "d" (port));
+  return (value);
 }
 
-/*
- * Write a byte to an I/O port.
- */
+// Write a byte to an I/O port.
 static inline void
-io_write_byte(uint16_t port, uint8_t value)
+io_write_byte (uint16_t port, uint8_t value)
 {
-    asm volatile("outb %%al, %%dx" : : "d" (port), "a" (value));
+  asm volatile ("outb %%al, %%dx" : : "d" (port), "a" (value));
 }
 
-#endif /* X86_IO_H */
+#endif

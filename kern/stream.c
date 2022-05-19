@@ -66,7 +66,7 @@ static const struct stream_ops console_stream_ops =
 static void
 string_stream_write (struct stream *strm, const void *data, uint32_t bytes)
 {
-  _Auto ssp = (struct string_stream *)strm;
+  _Auto ssp = (struct string_stream *) strm;
   if (ssp->cur >= ssp->size)
     return;
 
@@ -78,7 +78,7 @@ string_stream_write (struct stream *strm, const void *data, uint32_t bytes)
 static int32_t
 string_stream_read (struct stream *strm, void *out, uint32_t bytes)
 {
-  _Auto ssp = (struct string_stream *)strm;
+  _Auto ssp = (struct string_stream *) strm;
   if (ssp->cur >= ssp->size)
     return (0);
 

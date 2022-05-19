@@ -27,32 +27,23 @@
  * are enabled. Make these variables volatile to work around this issue.
  */
 const volatile size_t symbol_table_size __weak;
-const struct symbol * volatile symbol_table_ptr __weak;
+const struct symbol* volatile symbol_table_ptr __weak;
 
-const struct symbol *
-symbol_lookup(uintptr_t addr)
+const struct symbol*
+symbol_lookup (uintptr_t addr)
 {
-    const struct symbol *table, *symbol;
-    uintptr_t start, end;
-    size_t size;
+  const struct symbol *table = symbol_table_ptr;
+  size_t size = symbol_table_size;
 
-    table = symbol_table_ptr;
-    size = symbol_table_size;
+  for (size_t i = 0; i < size; i++)
+    {
+      const struct symbol *symbol = &table[i];
 
-    for (size_t i = 0; i < size; i++) {
-        symbol = &table[i];
-
-        if (!symbol->name || (symbol->size == 0)) {
-            continue;
-        }
-
-        start = symbol->addr;
-        end = symbol->addr + symbol->size;
-
-        if ((addr >= start) && (addr < end)) {
-            return symbol;
-        }
+      if (!symbol->name || !symbol->size)
+        continue;
+      else if (addr >= symbol->addr && addr < symbol->addr + symbol->size)
+        return (symbol);
     }
 
-    return NULL;
+  return (NULL);
 }

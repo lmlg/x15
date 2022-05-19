@@ -30,62 +30,47 @@ static struct cpumap cpumap_active_cpus __read_mostly = { { 1 } };
 static struct kmem_cache cpumap_cache;
 
 static int __init
-cpumap_setup(void)
+cpumap_setup (void)
 {
-    unsigned int i, nr_cpus;
+  kmem_cache_init (&cpumap_cache, "cpumap", sizeof (struct cpumap), 0, NULL, 0);
+  cpumap_zero (&cpumap_active_cpus);
 
-    kmem_cache_init(&cpumap_cache, "cpumap", sizeof(struct cpumap), 0, NULL, 0);
-    cpumap_zero(&cpumap_active_cpus);
-    nr_cpus = cpu_count();
+  for (unsigned i = 0; i < cpu_count (); i++)
+    cpumap_set (&cpumap_active_cpus, i);
 
-    for (i = 0; i < nr_cpus; i++) {
-        cpumap_set(&cpumap_active_cpus, i);
-    }
-
-    return 0;
+  return (0);
 }
 
-INIT_OP_DEFINE(cpumap_setup,
-               INIT_OP_DEP(kmem_setup, true),
-               INIT_OP_DEP(cpu_mp_probe, true));
+INIT_OP_DEFINE (cpumap_setup,
+                INIT_OP_DEP (kmem_setup, true),
+                INIT_OP_DEP (cpu_mp_probe, true));
 
-const struct cpumap *
-cpumap_all(void)
+const struct cpumap*
+cpumap_all (void)
 {
-    return &cpumap_active_cpus;
+  return (&cpumap_active_cpus);
 }
 
 int
-cpumap_create(struct cpumap **cpumapp)
+cpumap_create (struct cpumap **cpumapp)
 {
-    struct cpumap *cpumap;
+  struct cpumap *cpumap = kmem_cache_alloc (&cpumap_cache);
+  if (! cpumap)
+    return (ENOMEM);
 
-    cpumap = kmem_cache_alloc(&cpumap_cache);
-
-    if (cpumap == NULL) {
-        return ENOMEM;
-    }
-
-    *cpumapp = cpumap;
-    return 0;
+  *cpumapp = cpumap;
+  return (0);
 }
 
 void
-cpumap_destroy(struct cpumap *cpumap)
+cpumap_destroy (struct cpumap *cpumap)
 {
-    kmem_cache_free(&cpumap_cache, cpumap);
+  kmem_cache_free (&cpumap_cache, cpumap);
 }
 
 int
-cpumap_check(const struct cpumap *cpumap)
+cpumap_check (const struct cpumap *cpumap)
 {
-    int index;
-
-    index = bitmap_find_first(cpumap->cpus, cpu_count());
-
-    if (index == -1) {
-        return EINVAL;
-    }
-
-    return 0;
+  int index = bitmap_find_first (cpumap->cpus, cpu_count ());
+  return (index < 0 ? EINVAL : 0);
 }

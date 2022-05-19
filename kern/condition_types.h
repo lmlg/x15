@@ -21,8 +21,9 @@
 #ifndef KERN_CONDITION_TYPES_H
 #define KERN_CONDITION_TYPES_H
 
-struct condition {
-    unsigned int _unused;
+struct condition
+{
+  unsigned int _unused;
 };
 
-#endif /* KERN_CONDITION_TYPES_H */
+#endif

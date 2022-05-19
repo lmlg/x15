@@ -18,9 +18,7 @@
 #ifndef X86_STRING_H
 #define X86_STRING_H
 
-/*
- * Provide architecture-specific string functions.
- */
+// Provide architecture-specific string functions.
 #define STRING_ARCH_MEMCPY
 #define STRING_ARCH_MEMMOVE
 #define STRING_ARCH_MEMSET
@@ -31,4 +29,4 @@
 #define STRING_ARCH_STRNCMP
 #define STRING_ARCH_STRCHR
 
-#endif /* X86_STRING_H */
+#endif

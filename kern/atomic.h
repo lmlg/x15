@@ -1,6 +1,5 @@
 /*
- * Copyright (c) 2018 Richard Braun.
- * Copyright (c) 2017-2018 Agustina Arzille.
+ * Copyright (c) 2022 Agustina Arzille.
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -16,77 +15,16 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  *
- * Type-generic memory-model-aware atomic operations.
- *
- * For portability reasons, this interface restricts atomic operation
- * sizes to 32-bit and 64-bit.
- *
- * Some configurations may not support 64-bit operations. Check if the
- * ATOMIC_HAVE_64B_OPS macro is defined to find out.
- *
- * TODO Replace mentions of "memory barriers" throughout the code with
- * C11 memory model terminology.
+ * Type-generic, memory-model-aware atomic operations.
  */
 
 #ifndef KERN_ATOMIC_H
-#define KERN_ATOMIC_H
-
-#if !defined(CONFIG_SMP) && defined(CONFIG_LATOMIC_REPLACE_ATOMIC_ON_UP)
-#define ATOMIC_USE_LATOMIC
-#endif
-
-#ifdef ATOMIC_USE_LATOMIC
-
-#include <kern/latomic.h>
-
-/*
- * Local atomic operations always provide 64-bit support, by using the
- * generic versions which disable interrupts as a last resort.
- */
-#define ATOMIC_HAVE_64B_OPS
-
-/*
- * Memory orders.
- *
- * XXX Consume ordering is currently aliased to acquire.
- */
-#define ATOMIC_RELAXED          LATOMIC_RELAXED
-#define ATOMIC_CONSUME          LATOMIC_ACQUIRE
-#define ATOMIC_ACQUIRE          LATOMIC_ACQUIRE
-#define ATOMIC_RELEASE          LATOMIC_RELEASE
-#define ATOMIC_ACQ_REL          LATOMIC_ACQ_REL
-#define ATOMIC_SEQ_CST          LATOMIC_SEQ_CST
-
-#define atomic_load             latomic_load
-#define atomic_store            latomic_store
-
-#define atomic_swap             latomic_swap
-#define atomic_cas              latomic_cas
-
-#define atomic_fetch_add        latomic_fetch_add
-#define atomic_fetch_sub        latomic_fetch_sub
-#define atomic_fetch_and        latomic_fetch_and
-#define atomic_fetch_or         latomic_fetch_or
-#define atomic_fetch_xor        latomic_fetch_xor
-
-#define atomic_add              latomic_add
-#define atomic_sub              latomic_sub
-#define atomic_and              latomic_and
-#define atomic_or               latomic_or
-#define atomic_xor              latomic_xor
-
-#define atomic_fence            latomic_fence
-
-#else /* ATOMIC_USE_LATOMIC */
+#define KERN_ATOMIC_H   1
 
 #include <assert.h>
 #include <stdbool.h>
 
-#include <kern/macros.h>
-
-/*
- * Supported memory orders.
- */
+// Supported memory orders.
 #define ATOMIC_RELAXED  __ATOMIC_RELAXED
 #define ATOMIC_CONSUME  __ATOMIC_CONSUME
 #define ATOMIC_ACQUIRE  __ATOMIC_ACQUIRE
@@ -94,104 +32,132 @@
 #define ATOMIC_ACQ_REL  __ATOMIC_ACQ_REL
 #define ATOMIC_SEQ_CST  __ATOMIC_SEQ_CST
 
-#include <kern/atomic_i.h>
+#  ifndef ATOMIC_HAVE_64B_OPS
 
-#define atomic_load(ptr, memorder)                                          \
-MACRO_BEGIN                                                                 \
-    assert(atomic_ptr_aligned(ptr));                                        \
-    ((typeof(*(ptr)))atomic_select(ptr, load)(ptr, memorder));              \
-MACRO_END
+// Undefined so as to cause a link-time error.
+void atomic_link_error (void *ptr, ...);
+  #define atomic_load_64    atomic_link_error
+  #define atomic_store_64   atomic_link_error
+  #define atomic_add_64     atomic_link_error
+  #define atomic_sub_64     atomic_link_error
+  #define atomic_and_64     atomic_link_error
+  #define atomic_or_64      atomic_link_error
+  #define atomic_xor_64     atomic_link_error
+  #define atomic_swap_64    atomic_link_error
+  #define atomic_cas_64     atomic_link_error
+#endif
 
-#define atomic_store(ptr, val, memorder)                                    \
-MACRO_BEGIN                                                                 \
-    assert(atomic_ptr_aligned(ptr));                                        \
-    atomic_select(ptr, store)(ptr, val, memorder);                          \
-MACRO_END
+#define __atomic_cas(place, exp, nval, mo)   \
+  ({   \
+     typeof(*(place)) exp_ = (exp);   \
+     __atomic_compare_exchange_n ((place), &exp_, (nval), true,   \
+                                  (mo), ATOMIC_RELAXED);   \
+     exp_;   \
+   })
 
-/*
- * For compare-and-swap, deviate a little from the standard, and only
- * return the value before the comparison, leaving it up to the user to
- * determine whether the swap was actually performed or not.
- *
- * Also, note that the memory order in case of failure is relaxed. This is
- * because atomic CAS is typically used in a loop. However, if a different
- * code path is taken on failure (rather than retrying), then the user
- * should be aware that a memory fence might be necessary.
- */
-#define atomic_cas(ptr, oval, nval, memorder)                               \
-MACRO_BEGIN                                                                 \
-    assert(atomic_ptr_aligned(ptr));                                        \
-    ((typeof(*(ptr)))atomic_select(ptr, cas)(ptr, oval, nval, memorder));   \
-MACRO_END
+#ifdef __LP64__
+#  define atomic_op(place, op, ...)  __atomic_##op (place, ##__VA_ARGS__)
+#else
+#  define atomic_op(place, op, ...)   \
+    _Generic ((place),   \
+              int64_t *:  atomic_##op##_64,   \
+              uint64_t *: atomic_##op##_64,   \
+              default: __atomic_##op) (place, ##__VA_ARGS__)
+#endif
 
-#define atomic_swap(ptr, val, memorder)                                     \
-MACRO_BEGIN                                                                 \
-    assert(atomic_ptr_aligned(ptr));                                        \
-    ((typeof(*(ptr)))atomic_select(ptr, swap)(ptr, val, memorder));         \
-MACRO_END
+// Needed since we use different names.
+#define __atomic_swap    __atomic_exchange_n
+#define __atomic_read    __atomic_load_n
+#define __atomic_write   __atomic_store_n
 
-#define atomic_fetch_add(ptr, val, memorder)                                \
-MACRO_BEGIN                                                                 \
-    assert(atomic_ptr_aligned(ptr));                                        \
-    ((typeof(*(ptr)))atomic_select(ptr, fetch_add)(ptr, val, memorder));    \
-MACRO_END
+#define atomic_load(place, mo)   atomic_op (place, read, mo)
 
-#define atomic_fetch_sub(ptr, val, memorder)                                \
-MACRO_BEGIN                                                                 \
-    assert(atomic_ptr_aligned(ptr));                                        \
-    ((typeof(*(ptr)))atomic_select(ptr, fetch_sub)(ptr, val, memorder));    \
-MACRO_END
+#define atomic_store(place, val, mo)   atomic_op (place, write, val, mo)
 
-#define atomic_fetch_and(ptr, val, memorder)                                \
-MACRO_BEGIN                                                                 \
-    assert(atomic_ptr_aligned(ptr));                                        \
-    ((typeof(*(ptr)))atomic_select(ptr, fetch_and)(ptr, val, memorder));    \
-MACRO_END
+#define atomic_add(place, val, mo)   atomic_op (place, fetch_add, val, mo)
+#define atomic_sub(place, val, mo)   atomic_op (place, fetch_sub, val, mo)
+#define atomic_and(place, val, mo)   atomic_op (place, fetch_and, val, mo)
+#define atomic_or(place, val, mo)    atomic_op (place, fetch_or, val, mo)
+#define atomic_xor(place, val, mo)   atomic_op (place, fetch_xor, val, mo)
 
-#define atomic_fetch_or(ptr, val, memorder)                                 \
-MACRO_BEGIN                                                                 \
-    assert(atomic_ptr_aligned(ptr));                                        \
-    ((typeof(*(ptr)))atomic_select(ptr, fetch_or)(ptr, val, memorder));     \
-MACRO_END
+#define atomic_swap(place, val, mo)   atomic_op (place, swap, val, mo)
 
-#define atomic_fetch_xor(ptr, val, memorder)                                \
-MACRO_BEGIN                                                                 \
-    assert(atomic_ptr_aligned(ptr));                                        \
-    ((typeof(*(ptr)))atomic_select(ptr, fetch_xor)(ptr, val, memorder));    \
-MACRO_END
+#define atomic_cas(place, exp, val, mo)   atomic_op (place, cas, exp, val, mo)
 
-#define atomic_add(ptr, val, memorder)                                      \
-MACRO_BEGIN                                                                 \
-    assert(atomic_ptr_aligned(ptr));                                        \
-    atomic_select(ptr, add)(ptr, val, memorder);                            \
-MACRO_END
+#define atomic_cas_bool(place, exp, val, mo)   \
+  ({   \
+     typeof(*(place)) exp_ = (exp);   \
+     atomic_cas (place, exp_, val, mo) == exp_;   \
+   })
 
-#define atomic_sub(ptr, val, memorder)                                      \
-MACRO_BEGIN                                                                 \
-    assert(atomic_ptr_aligned(ptr));                                        \
-    atomic_select(ptr, sub)(ptr, val, memorder);                            \
-MACRO_END
+#define atomic_fence(mo)   __atomic_thread_fence (mo)
 
-#define atomic_and(ptr, val, memorder)                                      \
-MACRO_BEGIN                                                                 \
-    assert(atomic_ptr_aligned(ptr));                                        \
-    atomic_select(ptr, and)(ptr, val, memorder);                            \
-MACRO_END
+// Common shortcuts.
 
-#define atomic_or(ptr, val, memorder)                                       \
-MACRO_BEGIN                                                                 \
-    assert(atomic_ptr_aligned(ptr));                                        \
-    atomic_select(ptr, or)(ptr, val, memorder);                             \
-MACRO_END
+#define atomic_load_rlx(place)       atomic_load ((place), ATOMIC_RELAXED)
+#define atomic_load_acq(place)       atomic_load ((place), ATOMIC_ACQUIRE)
+#define atomic_load_seq_cst(place)   atomic_load ((place), ATOMIC_SEQ_CST)
 
-#define atomic_xor(ptr, val, memorder)                                      \
-MACRO_BEGIN                                                                 \
-    assert(atomic_ptr_aligned(ptr));                                        \
-    atomic_select(ptr, xor)(ptr, val, memorder);                            \
-MACRO_END
+#define atomic_store_rlx(place, val)   \
+  atomic_store ((place), (val), ATOMIC_RELAXED)
 
-#define atomic_fence(memorder) __atomic_thread_fence(memorder)
+#define atomic_store_rel(place, val)   \
+  atomic_store ((place), (val), ATOMIC_RELEASE)
 
-#endif /* ATOMIC_USE_LATOMIC */
+#define atomic_store_seq_cst(place, val)   \
+  atomic_store ((place), (val), ATOMIC_SEQ_CST)
 
-#endif /* KERN_ATOMIC_H */
+#define atomic_add_rlx(place, val)   \
+  atomic_add ((place), (val), ATOMIC_RELAXED)
+
+#define atomic_add_rel(place, val)   \
+  atomic_add ((place), (val), ATOMIC_RELEASE)
+
+#define atomic_sub_rlx(place, val)   \
+  atomic_sub ((place), (val), ATOMIC_RELAXED)
+
+#define atomic_sub_rel(place, val)   \
+  atomic_sub ((place), (val), ATOMIC_RELEASE)
+
+#define atomic_and_rlx(place, val)   \
+  atomic_and ((place), (val), ATOMIC_RELAXED)
+
+#define atomic_and_rel(place, val)   \
+  atomic_and ((place), (val), ATOMIC_RELEASE)
+
+#define atomic_or_rlx(place, val)   \
+  atomic_or ((place), (val), ATOMIC_RELAXED)
+
+#define atomic_or_rel(place, val)   \
+  atomic_or ((place), (val), ATOMIC_RELEASE)
+
+#define atomic_xor_rlx(place, val)   \
+  atomic_xor ((place), (val), ATOMIC_RELAXED)
+
+#define atomic_xor_rel(place, val)   \
+  atomic_xor ((place), (val), ATOMIC_RELEASE)
+
+#define atomic_cas_rlx(place, exp, val)   \
+  atomic_cas ((place), (exp), (val), ATOMIC_RELAXED)
+
+#define atomic_cas_acq(place, exp, val)   \
+  atomic_cas ((place), (exp), (val), ATOMIC_ACQUIRE)
+
+#define atomic_cas_rel(place, exp, val)   \
+  atomic_cas ((place), (exp), (val), ATOMIC_RELEASE)
+
+#define atomic_cas_acq_rel(place, exp, val)   \
+  atomic_cas ((place), (exp), (val), ATOMIC_ACQ_REL)
+
+#define atomic_swap_rlx(place, val)   \
+  atomic_swap ((place), (val), ATOMIC_RELAXED)
+
+#define atomic_swap_rel(place, val)   \
+  atomic_swap ((place), (val), ATOMIC_RELEASE)
+
+#define atomic_fence_acq()       atomic_fence (ATOMIC_ACQUIRE)
+#define atomic_fence_rel()       atomic_fence (ATOMIC_RELEASE)
+#define atomic_fence_acq_rel()   atomic_fence (ATOMIC_ACQ_REL)
+#define atomic_fence_seq_cst()   atomic_fence (ATOMIC_SEQ_CST)
+
+#endif

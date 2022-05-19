@@ -28,188 +28,158 @@
 #define KERN_BITMAP_H
 
 #include <limits.h>
+#include <stdbool.h>
 #include <string.h>
 
 #include <kern/atomic.h>
 #include <kern/bitmap_i.h>
 
-#define BITMAP_DECLARE(name, nr_bits) unsigned long name[BITMAP_LONGS(nr_bits)]
+#define BITMAP_DECLARE(name, nr_bits)   \
+  unsigned long name[BITMAP_LONGS (nr_bits)]
 
-int bitmap_cmp(const unsigned long *a, const unsigned long *b, int nr_bits);
+int bitmap_cmp (const unsigned long *a, const unsigned long *b, int nr_bits);
 
 static inline void
-bitmap_zero(unsigned long *bm, int nr_bits)
+bitmap_zero (unsigned long *bm, int nr_bits)
 {
-    int n;
-
-    n = BITMAP_LONGS(nr_bits);
-    memset(bm, 0, n * sizeof(unsigned long));
+  memset (bm, 0, BITMAP_LONGS (nr_bits) * sizeof (*bm));
 }
 
 static inline void
-bitmap_fill(unsigned long *bm, int nr_bits)
+bitmap_fill (unsigned long *bm, int nr_bits)
 {
-    int n;
-
-    n = BITMAP_LONGS(nr_bits);
-    memset(bm, 0xff, n * sizeof(unsigned long));
+  memset (bm, 0xff, BITMAP_LONGS (nr_bits) * sizeof (*bm));
 }
 
 static inline void
-bitmap_copy(unsigned long *dest, const unsigned long *src, int nr_bits)
+bitmap_copy (unsigned long *dest, const unsigned long *src, int nr_bits)
 {
-    int n;
-
-    n = BITMAP_LONGS(nr_bits);
-    memcpy(dest, src, n * sizeof(unsigned long));
+  memcpy (dest, src, BITMAP_LONGS (nr_bits) * sizeof (*dest));
 }
 
 static inline void
-bitmap_set(unsigned long *bm, int bit)
+bitmap_set (unsigned long *bm, int bit)
 {
-    if (bit >= LONG_BIT) {
-        bitmap_lookup(&bm, &bit);
-    }
+  if (bit >= LONG_BIT)
+    bitmap_lookup (&bm, &bit);
 
-    *bm |= bitmap_mask(bit);
+  *bm |= bitmap_mask (bit);
 }
 
 static inline void
-bitmap_set_atomic(unsigned long *bm, int bit)
+bitmap_set_atomic (unsigned long *bm, int bit)
 {
-    if (bit >= LONG_BIT) {
-        bitmap_lookup(&bm, &bit);
-    }
+  if (bit >= LONG_BIT)
+    bitmap_lookup (&bm, &bit);
 
-    atomic_or(bm, bitmap_mask(bit), ATOMIC_RELEASE);
+  atomic_or (bm, bitmap_mask (bit), ATOMIC_RELEASE);
 }
 
 static inline void
-bitmap_clear(unsigned long *bm, int bit)
+bitmap_clear (unsigned long *bm, int bit)
 {
-    if (bit >= LONG_BIT) {
-        bitmap_lookup(&bm, &bit);
-    }
+  if (bit >= LONG_BIT)
+    bitmap_lookup (&bm, &bit);
 
-    *bm &= ~bitmap_mask(bit);
+  *bm &= ~bitmap_mask (bit);
 }
 
 static inline void
-bitmap_clear_atomic(unsigned long *bm, int bit)
+bitmap_clear_atomic (unsigned long *bm, int bit)
 {
-    if (bit >= LONG_BIT) {
-        bitmap_lookup(&bm, &bit);
-    }
+  if (bit >= LONG_BIT)
+    bitmap_lookup (&bm, &bit);
 
-    atomic_and(bm, ~bitmap_mask(bit), ATOMIC_RELEASE);
-}
-
-static inline int
-bitmap_test(const unsigned long *bm, int bit)
-{
-    if (bit >= LONG_BIT) {
-        bitmap_lookup(&bm, &bit);
-    }
-
-    return ((*bm & bitmap_mask(bit)) != 0);
-}
-
-static inline int
-bitmap_test_atomic(const unsigned long *bm, int bit)
-{
-    if (bit >= LONG_BIT) {
-        bitmap_lookup(&bm, &bit);
-    }
-
-    return ((atomic_load(bm, ATOMIC_ACQUIRE) & bitmap_mask(bit)) != 0);
-}
-
-static inline void
-bitmap_and(unsigned long *a, const unsigned long *b, int nr_bits)
-{
-    int i, n;
-
-    n = BITMAP_LONGS(nr_bits);
-
-    for (i = 0; i < n; i++) {
-        a[i] &= b[i];
-    }
-}
-
-static inline void
-bitmap_or(unsigned long *a, const unsigned long *b, int nr_bits)
-{
-    int i, n;
-
-    n = BITMAP_LONGS(nr_bits);
-
-    for (i = 0; i < n; i++) {
-        a[i] |= b[i];
-    }
-}
-
-static inline void
-bitmap_xor(unsigned long *a, const unsigned long *b, int nr_bits)
-{
-    int i, n;
-
-    n = BITMAP_LONGS(nr_bits);
-
-    for (i = 0; i < n; i++) {
-        a[i] ^= b[i];
-    }
-}
-
-static inline int
-bitmap_find_next(const unsigned long *bm, int nr_bits, int bit)
-{
-    return bitmap_find_next_bit(bm, nr_bits, bit, 0);
-}
-
-static inline int
-bitmap_find_first(const unsigned long *bm, int nr_bits)
-{
-    return bitmap_find_next(bm, nr_bits, 0);
-}
-
-static inline int
-bitmap_find_next_zero(const unsigned long *bm, int nr_bits, int bit)
-{
-    return bitmap_find_next_bit(bm, nr_bits, bit, 1);
-}
-
-static inline int
-bitmap_find_first_zero(const unsigned long *bm, int nr_bits)
-{
-    return bitmap_find_next_zero(bm, nr_bits, 0);
+  atomic_and (bm, ~bitmap_mask (bit), ATOMIC_RELEASE);
 }
 
 static inline bool
-bitmap_intersects(const unsigned long *a, const unsigned long *b, int nr_bits)
+bitmap_test (const unsigned long *bm, int bit)
 {
-    int i, n;
+  if (bit >= LONG_BIT)
+    bitmap_lookup (&bm, &bit);
 
-    n = BITMAP_LONGS(nr_bits);
-
-    for (i = 0; i < n; i++) {
-        if (a[i] & b[i]) {
-            return true;
-        }
-    }
-
-    return false;
+  return ((*bm & bitmap_mask (bit) ) != 0);
 }
 
-#define bitmap_for_each(bm, nr_bits, bit)                       \
-for ((bit) = 0;                                                 \
-     ((bit) < nr_bits)                                          \
-     && (((bit) = bitmap_find_next(bm, nr_bits, bit)) != -1);   \
-     (bit)++)
+static inline int
+bitmap_test_atomic (const unsigned long *bm, int bit)
+{
+  if (bit >= LONG_BIT)
+    bitmap_lookup (&bm, &bit);
 
-#define bitmap_for_each_zero(bm, nr_bits, bit)                      \
-for ((bit) = 0;                                                     \
-     ((bit) < nr_bits)                                              \
-     && (((bit) = bitmap_find_next_zero(bm, nr_bits, bit)) != -1);  \
-     (bit)++)
+  return ((atomic_load (bm, ATOMIC_ACQUIRE) & bitmap_mask (bit)) != 0);
+}
 
-#endif /* KERN_BITMAP_H */
+static inline void
+bitmap_and (unsigned long *a, const unsigned long *b, int nr_bits)
+{
+  int n = BITMAP_LONGS (nr_bits);
+  for (int i = 0; i < n; i++)
+    a[i] &= b[i];
+}
+
+static inline void
+bitmap_or (unsigned long *a, const unsigned long *b, int nr_bits)
+{
+  int n = BITMAP_LONGS (nr_bits);
+  for (int i = 0; i < n; i++)
+    a[i] |= b[i];
+}
+
+static inline void
+bitmap_xor (unsigned long *a, const unsigned long *b, int nr_bits)
+{
+  int n = BITMAP_LONGS (nr_bits);
+  for (int i = 0; i < n; i++)
+    a[i] ^= b[i];
+}
+
+static inline int
+bitmap_find_next (const unsigned long *bm, int nr_bits, int bit)
+{
+  return (bitmap_find_next_bit (bm, nr_bits, bit, 0));
+}
+
+static inline int
+bitmap_find_first (const unsigned long *bm, int nr_bits)
+{
+  return (bitmap_find_next (bm, nr_bits, 0));
+}
+
+static inline int
+bitmap_find_next_zero (const unsigned long *bm, int nr_bits, int bit)
+{
+  return (bitmap_find_next_bit (bm, nr_bits, bit, 1));
+}
+
+static inline int
+bitmap_find_first_zero (const unsigned long *bm, int nr_bits)
+{
+  return (bitmap_find_next_zero (bm, nr_bits, 0));
+}
+
+static inline bool
+bitmap_intersects (const unsigned long *a, const unsigned long *b, int nr_bits)
+{
+  int n = BITMAP_LONGS (nr_bits);
+  for (int i = 0; i < n; i++)
+    if (a[i] & b[i])
+      return (true);
+
+  return (false);
+}
+
+#define bitmap_for_each(bm, nr_bits, bit)   \
+  for (int bit = 0;   \
+       bit < nr_bits &&   \
+         (bit = bitmap_find_next (bm, nr_bits, bit)) != -1;   \
+       bit++)
+
+#define bitmap_for_each_zero(bm, nr_bits, bit)   \
+  for (int bit = 0;   \
+       bit < nr_bits &&   \
+         (bit = bitmap_find_next_zero (bm, nr_bits, bit)) != -1;  \
+       bit++)
+
+#endif

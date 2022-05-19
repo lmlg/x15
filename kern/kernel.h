@@ -20,24 +20,22 @@
 
 #include <stdnoreturn.h>
 
-/*
- * Kernel properties.
- */
-#define KERNEL_NAME     "x15"
-#define KERNEL_VERSION  CONFIG_KERNEL_VERSION
+// Kernel properties.
+#define KERNEL_NAME      "x15"
+#define KERNEL_VERSION   CONFIG_KERNEL_VERSION
 
 /*
  * Machine-independent entry point.
  *
  * Interrupts must be disabled when calling this function.
  */
-noreturn void kernel_main(void);
+noreturn void kernel_main (void);
 
 /*
  * Entry point for APs.
  *
  * Interrupts must be disabled when calling this function.
  */
-noreturn void kernel_ap_main(void);
+noreturn void kernel_ap_main (void);
 
-#endif /* KERN_KERNEL_H */
+#endif

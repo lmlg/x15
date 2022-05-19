@@ -34,10 +34,8 @@
 
 struct condition;
 
-/*
- * Initialize a condition variable.
- */
-#define condition_init(c) ((void)(c))
+// Initialize a condition variable.
+#define condition_init(c)   ((void)(c))
 
 /*
  * Wait for a signal on the given condition variable.
@@ -49,9 +47,9 @@ struct condition;
  * time in ticks, and ETIMEDOUT is returned if that time is reached before
  * the sleep queue is signalled.
  */
-void condition_wait(struct condition *condition, struct mutex *mutex);
-int condition_timedwait(struct condition *condition,
-                        struct mutex *mutex, uint64_t ticks);
+void condition_wait (struct condition *condition, struct mutex *mutex);
+int condition_timedwait (struct condition *condition,
+                         struct mutex *mutex, uint64_t ticks);
 
 /*
  * Wake up one (signal) or all (broadcast) threads waiting on a
@@ -62,7 +60,7 @@ int condition_timedwait(struct condition *condition,
  * that a wake-up done when changing the predicate cannot be missed by
  * waiting threads.
  */
-void condition_signal(struct condition *condition);
-void condition_broadcast(struct condition *condition);
+void condition_signal (struct condition *condition);
+void condition_broadcast (struct condition *condition);
 
-#endif /* KERN_CONDITION_H */
+#endif

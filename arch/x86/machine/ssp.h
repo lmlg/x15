@@ -19,14 +19,12 @@
 #define X86_SSP_H
 
 #ifdef __LP64__
-#define SSP_GUARD_WORD 0xdeadd00ddeadd00d
+  #define SSP_GUARD_WORD   0xdeadd00ddeadd00d
 #else
-#define SSP_GUARD_WORD 0xdeadd00d
+  #define SSP_GUARD_WORD   0xdeadd00d
 #endif
 
-/*
- * Offset, in words, of the SSP guard word.
- */
-#define SSP_WORD_TLS_OFFSET 5
+// Offset, in words, of the SSP guard word.
+#define SSP_WORD_TLS_OFFSET   5
 
-#endif /* X86_SSP_H */
+#endif

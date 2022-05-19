@@ -30,41 +30,29 @@
 
 #include <kern/macros.h>
 
-/*
- * Indexes of the left and right nodes in the children array of a node.
- */
+// Indexes of the left and right nodes in the children array of a node.
 #define RBTREE_LEFT     0
 #define RBTREE_RIGHT    1
 
-/*
- * Red-black node.
- */
+// Red-black node.
 struct rbtree_node;
 
-/*
- * Red-black tree.
- */
+// Red-black tree.
 struct rbtree;
 
-/*
- * Insertion point identifier.
- */
+// Insertion point identifier.
 typedef uintptr_t rbtree_slot_t;
 
-/*
- * Static tree initializer.
- */
-#define RBTREE_INITIALIZER { NULL }
+// Static tree initializer.
+#define RBTREE_INITIALIZER   { NULL }
 
 #include <kern/rbtree_i.h>
 
-/*
- * Initialize a tree.
- */
+// Initialize a tree.
 static inline void
-rbtree_init(struct rbtree *tree)
+rbtree_init (struct rbtree *tree)
 {
-    tree->root = NULL;
+  tree->root = NULL;
 }
 
 /*
@@ -73,37 +61,33 @@ rbtree_init(struct rbtree *tree)
  * A node is in no tree when its parent points to itself.
  */
 static inline void
-rbtree_node_init(struct rbtree_node *node)
+rbtree_node_init (struct rbtree_node *node)
 {
-    assert(rbtree_node_check_alignment(node));
+  assert (rbtree_node_check_alignment (node));
 
-    node->parent = (uintptr_t)node | RBTREE_COLOR_RED;
-    node->children[RBTREE_LEFT] = NULL;
-    node->children[RBTREE_RIGHT] = NULL;
+  node->parent = (uintptr_t)node | RBTREE_COLOR_RED;
+  node->children[RBTREE_LEFT] = NULL;
+  node->children[RBTREE_RIGHT] = NULL;
 }
 
-/*
- * Return true if node is in no tree.
- */
+// Return true if node is in no tree.
 static inline int
-rbtree_node_unlinked(const struct rbtree_node *node)
+rbtree_node_unlinked (const struct rbtree_node *node)
 {
-    return rbtree_node_parent(node) == node;
+  return (rbtree_node_parent (node) == node);
 }
 
 /*
  * Macro that evaluates to the address of the structure containing the
  * given node based on the given type and member.
  */
-#define rbtree_entry(node, type, member) structof(node, type, member)
+#define rbtree_entry(node, type, member)   structof (node, type, member)
 
-/*
- * Return true if tree is empty.
- */
+// Return true if tree is empty.
 static inline int
-rbtree_empty(const struct rbtree *tree)
+rbtree_empty (const struct rbtree *tree)
 {
-    return tree->root == NULL;
+  return (tree->root == NULL);
 }
 
 /*
@@ -118,24 +102,21 @@ rbtree_empty(const struct rbtree *tree)
  *
  * See rbtree_insert().
  */
-#define rbtree_lookup(tree, key, cmp_fn)                \
-MACRO_BEGIN                                             \
-    struct rbtree_node *cur_;                           \
-    int diff_;                                          \
-                                                        \
-    cur_ = (tree)->root;                                \
-                                                        \
-    while (cur_ != NULL) {                              \
-        diff_ = cmp_fn(key, cur_);                      \
-                                                        \
-        if (diff_ == 0) {                               \
-            break;                                      \
-        }                                               \
-                                                        \
-        cur_ = cur_->children[rbtree_d2i(diff_)];       \
-    }                                                   \
-                                                        \
-    cur_;                                               \
+#define rbtree_lookup(tree, key, cmp_fn)   \
+MACRO_BEGIN   \
+  \
+  struct rbtree_node *cur_ = (tree)->root;   \
+  \
+  while (cur_ != NULL)   \
+    {   \
+      int diff_ = cmp_fn (key, cur_);   \
+      if (! diff)   \
+        break;   \
+      \
+      cur_ = cur_->children[rbtree_d2i (diff_)];   \
+    }   \
+  \
+  cur_;   \
 MACRO_END
 
 /*
@@ -148,32 +129,27 @@ MACRO_END
  * The constraints that apply to the key parameter are the same as for
  * rbtree_lookup().
  */
-#define rbtree_lookup_nearest(tree, key, cmp_fn, dir)       \
-MACRO_BEGIN                                                 \
-    struct rbtree_node *cur_, *prev_;                       \
-    int diff_, index_;                                      \
-                                                            \
-    prev_ = NULL;                                           \
-    index_ = -1;                                            \
-    cur_ = (tree)->root;                                    \
-                                                            \
-    while (cur_ != NULL) {                                  \
-        diff_ = cmp_fn(key, cur_);                          \
-                                                            \
-        if (diff_ == 0) {                                   \
-            break;                                          \
-        }                                                   \
-                                                            \
-        prev_ = cur_;                                       \
-        index_ = rbtree_d2i(diff_);                         \
-        cur_ = cur_->children[index_];                      \
-    }                                                       \
-                                                            \
-    if (cur_ == NULL) {                                     \
-        cur_ = rbtree_nearest(prev_, index_, dir);          \
-    }                                                       \
-                                                            \
-    cur_;                                                   \
+#define rbtree_lookup_nearest(tree, key, cmp_fn, dir)   \
+MACRO_BEGIN   \
+  \
+  struct rbtree_node *prev_ = NULL, *cur_ = (tree)->root;   \
+  int index_ = -1;   \
+  \
+  while (cur_ != NULL)   \
+    {   \
+      int diff_ = cmp_fn (key, cur_);   \
+      if (! diff_)   \
+        break;   \
+      \
+      prev_ = cur_;   \
+      index_ = rbtree_d2i (diff_);   \
+      cur_ = cur_->children[index_];   \
+    }   \
+  \
+  if (! cur_)   \
+    cur_ = rbtree_nearest (prev_, index_, dir);   \
+  \
+  cur_;   \
 MACRO_END
 
 /*
@@ -192,24 +168,23 @@ MACRO_END
  *
  * See rbtree_lookup().
  */
-#define rbtree_insert(tree, node, cmp_fn)                   \
-MACRO_BEGIN                                                 \
-    struct rbtree_node *cur_, *prev_;                       \
-    int diff_, index_;                                      \
-                                                            \
-    prev_ = NULL;                                           \
-    index_ = -1;                                            \
-    cur_ = (tree)->root;                                    \
-                                                            \
-    while (cur_ != NULL) {                                  \
-        diff_ = cmp_fn(node, cur_);                         \
-        assert(diff_ != 0);                                 \
-        prev_ = cur_;                                       \
-        index_ = rbtree_d2i(diff_);                         \
-        cur_ = cur_->children[index_];                      \
-    }                                                       \
-                                                            \
-    rbtree_insert_rebalance(tree, prev_, index_, node);     \
+#define rbtree_insert(tree, node, cmp_fn)   \
+MACRO_BEGIN   \
+  \
+  struct rbtree_node *prev_ = NULL, *cur_ = (tree)->root;   \
+  int index_ = -1;   \
+  cur_ = (tree)->root;                                    \
+  \
+  while (cur_ != NULL)   \
+    {   \
+      int diff_ = cmp_fn (node, cur_);   \
+      assert (diff_);   \
+      prev_ = cur_;   \
+      index_ = rbtree_d2i (diff_);   \
+      cur_ = cur_->children[index_];   \
+    }   \
+  \
+  rbtree_insert_rebalance (tree, prev_, index_, node);   \
 MACRO_END
 
 /*
@@ -223,29 +198,25 @@ MACRO_END
  * The constraints that apply to the key parameter are the same as for
  * rbtree_lookup().
  */
-#define rbtree_lookup_slot(tree, key, cmp_fn, slot) \
-MACRO_BEGIN                                         \
-    struct rbtree_node *cur_, *prev_;               \
-    int diff_, index_;                              \
-                                                    \
-    prev_ = NULL;                                   \
-    index_ = 0;                                     \
-    cur_ = (tree)->root;                            \
-                                                    \
-    while (cur_ != NULL) {                          \
-        diff_ = cmp_fn(key, cur_);                  \
-                                                    \
-        if (diff_ == 0) {                           \
-            break;                                  \
-        }                                           \
-                                                    \
-        prev_ = cur_;                               \
-        index_ = rbtree_d2i(diff_);                 \
-        cur_ = cur_->children[index_];              \
-    }                                               \
-                                                    \
-    (slot) = rbtree_slot(prev_, index_);            \
-    cur_;                                           \
+#define rbtree_lookup_slot(tree, key, cmp_fn, slot)   \
+MACRO_BEGIN                               \
+  \
+  struct rbtree_node *prev_ = NULL, *cur_ = (tree)->root;   \
+  int index_ = 0;   \
+  \
+  while (cur_ != NULL)   \
+    {   \
+      int diff_ = cmp_fn (key, cur_);   \
+      if (! diff_)   \
+        break;   \
+      \
+      prev_ = cur_;   \
+      index_ = rbtree_d2i (diff_);   \
+      cur_ = cur_->children[index_];   \
+    }   \
+  \
+  (slot) = rbtree_slot(prev_, index_);   \
+  cur_;   \
 MACRO_END
 
 /*
@@ -258,15 +229,12 @@ MACRO_END
  * must denote a NULL node).
  */
 static inline void
-rbtree_insert_slot(struct rbtree *tree, rbtree_slot_t slot,
-                   struct rbtree_node *node)
+rbtree_insert_slot (struct rbtree *tree, rbtree_slot_t slot,
+                    struct rbtree_node *node)
 {
-    struct rbtree_node *parent;
-    int index;
-
-    parent = rbtree_slot_parent(slot);
-    index = rbtree_slot_index(slot);
-    rbtree_insert_rebalance(tree, parent, index, node);
+  struct rbtree_node *parent = rbtree_slot_parent (slot);
+  int index = rbtree_slot_index (slot);
+  rbtree_insert_rebalance (tree, parent, index, node);
 }
 
 /*
@@ -275,7 +243,7 @@ rbtree_insert_slot(struct rbtree *tree, rbtree_slot_t slot,
  * The given node must compare strictly equal to the previous node,
  * which is returned on completion.
  */
-void * rbtree_replace_slot(struct rbtree *tree, rbtree_slot_t slot,
+void* rbtree_replace_slot (struct rbtree *tree, rbtree_slot_t slot,
                            struct rbtree_node *node);
 
 /*
@@ -283,27 +251,19 @@ void * rbtree_replace_slot(struct rbtree *tree, rbtree_slot_t slot,
  *
  * After completion, the node is stale.
  */
-void rbtree_remove(struct rbtree *tree, struct rbtree_node *node);
+void rbtree_remove (struct rbtree *tree, struct rbtree_node *node);
 
-/*
- * Return the first node of a tree.
- */
-#define rbtree_first(tree) rbtree_firstlast(tree, RBTREE_LEFT)
+// Return the first node of a tree.
+#define rbtree_first(tree)   rbtree_firstlast (tree, RBTREE_LEFT)
 
-/*
- * Return the last node of a tree.
- */
-#define rbtree_last(tree) rbtree_firstlast(tree, RBTREE_RIGHT)
+// Return the last node of a tree.
+#define rbtree_last(tree)    rbtree_firstlast (tree, RBTREE_RIGHT)
 
-/*
- * Return the node previous to the given node.
- */
-#define rbtree_prev(node) rbtree_walk(node, RBTREE_LEFT)
+// Return the node previous to the given node.
+#define rbtree_prev(node)   rbtree_walk (node, RBTREE_LEFT)
 
-/*
- * Return the node next to the given node.
- */
-#define rbtree_next(node) rbtree_walk(node, RBTREE_RIGHT)
+// Return the node next to the given node.
+#define rbtree_next(node)   rbtree_walk(node, RBTREE_RIGHT)
 
 /*
  * Forge a loop to process all nodes of a tree, removing them when visited.
@@ -314,10 +274,10 @@ void rbtree_remove(struct rbtree *tree, struct rbtree_node *node);
  *
  * After completion, all nodes and the tree root member are stale.
  */
-#define rbtree_for_each_remove(tree, node, tmp)         \
-for (node = rbtree_postwalk_deepest(tree),              \
-     tmp = rbtree_postwalk_unlink(node);                \
-     node != NULL;                                      \
-     node = tmp, tmp = rbtree_postwalk_unlink(node))
+#define rbtree_for_each_remove(tree, node, tmp)   \
+  for (struct rbtree_node *node = rbtree_postwalk_deepest (tree),   \
+       *tmp = rbtree_postwalk_unlink (node);                \
+       node != NULL;                                      \
+       node = tmp, tmp = rbtree_postwalk_unlink (node))
 
-#endif /* KERN_RBTREE_H */
+#endif

@@ -41,45 +41,41 @@
  * architectures, as long as the nodes aren't embedded in structures with
  * special alignment constraints such as member packing.
  */
-struct rbtree_node {
-    uintptr_t parent;
-    struct rbtree_node *children[2];
+struct rbtree_node
+{
+  uintptr_t parent;
+  struct rbtree_node *children[2];
 };
 
-/*
- * Red-black tree structure.
- */
-struct rbtree {
-    struct rbtree_node *root;
+// Red-black tree structure.
+struct rbtree
+{
+  struct rbtree_node *root;
 };
 
 /*
  * Masks applied on the parent member of a node to obtain either the
  * color or the parent address.
  */
-#define RBTREE_COLOR_MASK   ((uintptr_t)0x1)
-#define RBTREE_PARENT_MASK  (~(uintptr_t)0x3)
+#define RBTREE_COLOR_MASK    ((uintptr_t)0x1)
+#define RBTREE_PARENT_MASK   (~(uintptr_t)0x3)
 
-/*
- * Node colors.
- */
-#define RBTREE_COLOR_RED    0
-#define RBTREE_COLOR_BLACK  1
+// Node colors.
+#define RBTREE_COLOR_RED     0
+#define RBTREE_COLOR_BLACK   1
 
 /*
  * Masks applied on slots to obtain either the child index or the parent
  * address.
  */
-#define RBTREE_SLOT_INDEX_MASK  0x1UL
-#define RBTREE_SLOT_PARENT_MASK (~RBTREE_SLOT_INDEX_MASK)
+#define RBTREE_SLOT_INDEX_MASK    0x1UL
+#define RBTREE_SLOT_PARENT_MASK   (~RBTREE_SLOT_INDEX_MASK)
 
-/*
- * Return true if the given index is a valid child index.
- */
+// Return true if the given index is a valid child index.
 static inline int
-rbtree_check_index(int index)
+rbtree_check_index (int index)
 {
-    return index == (index & 1);
+  return (index == (index & 1));
 }
 
 /*
@@ -89,56 +85,46 @@ rbtree_check_index(int index)
  * This function is mostly used when looking up a node.
  */
 static inline int
-rbtree_d2i(int diff)
+rbtree_d2i (int diff)
 {
-    return !(diff <= 0);
+  return (diff > 0);
 }
 
-/*
- * Return true if the given pointer is suitably aligned.
- */
+// Return true if the given pointer is suitably aligned.
 static inline int
-rbtree_node_check_alignment(const struct rbtree_node *node)
+rbtree_node_check_alignment (const struct rbtree_node *node)
 {
-    return ((uintptr_t)node & (~RBTREE_PARENT_MASK)) == 0;
+  return (((uintptr_t)node & ~RBTREE_PARENT_MASK) == 0);
 }
 
-/*
- * Return the parent of a node.
- */
-static inline struct rbtree_node *
-rbtree_node_parent(const struct rbtree_node *node)
+// Return the parent of a node.
+static inline struct rbtree_node*
+rbtree_node_parent (const struct rbtree_node *node)
 {
-    return (struct rbtree_node *)(node->parent & RBTREE_PARENT_MASK);
+  return ((struct rbtree_node *)(node->parent & RBTREE_PARENT_MASK));
 }
 
-/*
- * Translate an insertion point into a slot.
- */
+// Translate an insertion point into a slot.
 static inline rbtree_slot_t
-rbtree_slot(struct rbtree_node *parent, int index)
+rbtree_slot (struct rbtree_node *parent, int index)
 {
-    assert(rbtree_node_check_alignment(parent));
-    assert(rbtree_check_index(index));
-    return (rbtree_slot_t)parent | index;
+  assert (rbtree_node_check_alignment (parent));
+  assert (rbtree_check_index (index));
+  return ((rbtree_slot_t) parent | index);
 }
 
-/*
- * Extract the parent address from a slot.
- */
-static inline struct rbtree_node *
-rbtree_slot_parent(rbtree_slot_t slot)
+// Extract the parent address from a slot.
+static inline struct rbtree_node*
+rbtree_slot_parent (rbtree_slot_t slot)
 {
-    return (struct rbtree_node *)(slot & RBTREE_SLOT_PARENT_MASK);
+  return ((struct rbtree_node *)(slot & RBTREE_SLOT_PARENT_MASK));
 }
 
-/*
- * Extract the index from a slot.
- */
+// Extract the index from a slot.
 static inline int
-rbtree_slot_index(rbtree_slot_t slot)
+rbtree_slot_index (rbtree_slot_t slot)
 {
-    return slot & RBTREE_SLOT_INDEX_MASK;
+  return (slot & RBTREE_SLOT_INDEX_MASK);
 }
 
 /*
@@ -149,8 +135,8 @@ rbtree_slot_index(rbtree_slot_t slot)
  *
  * This function is intended to be used by the rbtree_insert() macro only.
  */
-void rbtree_insert_rebalance(struct rbtree *tree, struct rbtree_node *parent,
-                             int index, struct rbtree_node *node);
+void rbtree_insert_rebalance (struct rbtree *tree, struct rbtree_node *parent,
+                              int index, struct rbtree_node *node);
 
 /*
  * Return the previous or next node relative to a location in a tree.
@@ -159,8 +145,8 @@ void rbtree_insert_rebalance(struct rbtree *tree, struct rbtree_node *parent,
  * The direction parameter is either RBTREE_LEFT (to obtain the previous
  * node) or RBTREE_RIGHT (to obtain the next one).
  */
-struct rbtree_node * rbtree_nearest(struct rbtree_node *parent, int index,
-                                    int direction);
+struct rbtree_node* rbtree_nearest (struct rbtree_node *parent, int index,
+                                     int direction);
 
 /*
  * Return the first or last node of a tree.
@@ -168,7 +154,7 @@ struct rbtree_node * rbtree_nearest(struct rbtree_node *parent, int index,
  * The direction parameter is either RBTREE_LEFT (to obtain the first node)
  * or RBTREE_RIGHT (to obtain the last one).
  */
-struct rbtree_node * rbtree_firstlast(const struct rbtree *tree, int direction);
+struct rbtree_node* rbtree_firstlast (const struct rbtree *tree, int direction);
 
 /*
  * Return the node next to, or previous to the given node.
@@ -176,17 +162,15 @@ struct rbtree_node * rbtree_firstlast(const struct rbtree *tree, int direction);
  * The direction parameter is either RBTREE_LEFT (to obtain the previous node)
  * or RBTREE_RIGHT (to obtain the next one).
  */
-struct rbtree_node * rbtree_walk(struct rbtree_node *node, int direction);
+struct rbtree_node* rbtree_walk (struct rbtree_node *node, int direction);
 
 /*
  * Return the left-most deepest node of a tree, which is the starting point of
  * the postorder traversal performed by rbtree_for_each_remove().
  */
-struct rbtree_node * rbtree_postwalk_deepest(const struct rbtree *tree);
+struct rbtree_node* rbtree_postwalk_deepest (const struct rbtree *tree);
 
-/*
- * Unlink a node from its tree and return the next (right) node in postorder.
- */
-struct rbtree_node * rbtree_postwalk_unlink(struct rbtree_node *node);
+// Unlink a node from its tree and return the next (right) node in postorder.
+struct rbtree_node* rbtree_postwalk_unlink (struct rbtree_node *node);
 
-#endif /* KERN_RBTREE_I_H */
+#endif

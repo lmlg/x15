@@ -68,9 +68,7 @@
 #define VM_PAGE_SEL_DIRECTMAP   2
 #define VM_PAGE_SEL_HIGHMEM     3
 
-/*
- * Page usage types.
- */
+// Page usage types.
 #define VM_PAGE_FREE        0   /* Page unused */
 #define VM_PAGE_RESERVED    1   /* Page reserved at boot time */
 #define VM_PAGE_TABLE       2   /* Page is part of the page table */
@@ -79,94 +77,90 @@
 #define VM_PAGE_OBJECT      5   /* Page is part of a VM object */
 #define VM_PAGE_KERNEL      6   /* Type for generic kernel allocations */
 
-/*
- * Physical page descriptor.
- */
-struct vm_page {
-    struct list node;
-    unsigned short type;
-    unsigned short zone_index;
-    unsigned short order;
-    phys_addr_t phys_addr;
-    void *priv;
+// Physical page descriptor.
+struct vm_page
+{
+  struct list node;
+  uint16_t type;
+  uint16_t zone_index;
+  uint16_t order;
+  phys_addr_t phys_addr;
+  void *priv;
 
-    unsigned int nr_refs;
+  uint32_t nr_refs;
 
-    /* VM object back reference */
-    struct vm_object *object;
-    uint64_t offset;
+  // VM object back reference.
+  struct vm_object *object;
+  uint64_t offset;
 };
 
-static inline unsigned short
-vm_page_type(const struct vm_page *page)
+static inline uint16_t
+vm_page_type (const struct vm_page *page)
 {
-    return page->type;
+  return (page->type);
 }
 
-void vm_page_set_type(struct vm_page *page, unsigned int order,
-                      unsigned short type);
+void vm_page_set_type (struct vm_page *page, uint32_t order, uint16_t type);
 
-static inline unsigned int
-vm_page_order(size_t size)
+static inline uint32_t
+vm_page_order (size_t size)
 {
-    return log2_order(vm_page_btop(vm_page_round(size)));
+  return (log2_order (vm_page_btop (vm_page_round (size))));
 }
 
 static inline phys_addr_t
-vm_page_to_pa(const struct vm_page *page)
+vm_page_to_pa (const struct vm_page *page)
 {
-    return page->phys_addr;
+  return (page->phys_addr);
 }
 
 static inline uintptr_t
-vm_page_direct_va(phys_addr_t pa)
+vm_page_direct_va (phys_addr_t pa)
 {
-    assert(pa < PMEM_DIRECTMAP_LIMIT);
-    return ((uintptr_t)pa + PMAP_START_DIRECTMAP_ADDRESS);
+  assert (pa < PMEM_DIRECTMAP_LIMIT);
+  return ((uintptr_t)pa + PMAP_START_DIRECTMAP_ADDRESS);
 }
 
 static inline phys_addr_t
-vm_page_direct_pa(uintptr_t va)
+vm_page_direct_pa (uintptr_t va)
 {
-    assert(va >= PMAP_START_DIRECTMAP_ADDRESS);
-    assert(va < PMAP_END_DIRECTMAP_ADDRESS);
-    return (va - PMAP_START_DIRECTMAP_ADDRESS);
+  assert (va >= PMAP_START_DIRECTMAP_ADDRESS);
+  assert (va < PMAP_END_DIRECTMAP_ADDRESS);
+  return (va - PMAP_START_DIRECTMAP_ADDRESS);
 }
 
-static inline void *
-vm_page_direct_ptr(const struct vm_page *page)
+static inline void*
+vm_page_direct_ptr (const struct vm_page *page)
 {
-    return (void *)vm_page_direct_va(vm_page_to_pa(page));
+  return ((void *)vm_page_direct_va (vm_page_to_pa (page)));
 }
 
-/*
- * Associate private data with a page.
- */
+// Associate private data with a page.
 static inline void
-vm_page_set_priv(struct vm_page *page, void *priv)
+vm_page_set_priv (struct vm_page *page, void *priv)
 {
-    page->priv = priv;
+  page->priv = priv;
 }
 
-static inline void *
-vm_page_get_priv(const struct vm_page *page)
+static inline void*
+vm_page_get_priv (const struct vm_page *page)
 {
-    return page->priv;
+  return (page->priv);
 }
 
 static inline void
-vm_page_link(struct vm_page *page, struct vm_object *object, uint64_t offset)
+vm_page_link (struct vm_page *page, struct vm_object *object, uint64_t offset)
 {
-    assert(object != NULL);
-    page->object = object;
-    page->offset = offset;
+  assert (object);
+  page->object = object;
+  page->offset = offset;
 }
 
 static inline void
-vm_page_unlink(struct vm_page *page)
+vm_page_unlink (struct vm_page *page)
 {
-    assert(page->object != NULL);
-    page->object = NULL;
+  assert (page->object);
+  page->object = NULL;
 }
 
 /*
@@ -174,7 +168,7 @@ vm_page_unlink(struct vm_page *page)
  *
  * All addresses must be page-aligned. Zones can be loaded in any order.
  */
-void vm_page_load(unsigned int zone_index, phys_addr_t start, phys_addr_t end);
+void vm_page_load (uint32_t zone_index, phys_addr_t start, phys_addr_t end);
 
 /*
  * Load available physical memory into the vm_page module at boot time.
@@ -182,15 +176,15 @@ void vm_page_load(unsigned int zone_index, phys_addr_t start, phys_addr_t end);
  * The zone referred to must have been loaded with vm_page_load
  * before loading its heap.
  */
-void vm_page_load_heap(unsigned int zone_index, phys_addr_t start,
-                       phys_addr_t end);
+void vm_page_load_heap (uint32_t zone_index, phys_addr_t start,
+                        phys_addr_t end);
 
 /*
  * Return true if the vm_page module is completely initialized, false
  * otherwise, in which case only vm_page_bootalloc() can be used for
  * allocations.
  */
-int vm_page_ready(void);
+int vm_page_ready (void);
 
 /*
  * Make the given page managed by the vm_page module.
@@ -198,12 +192,12 @@ int vm_page_ready(void);
  * If additional memory can be made usable after the VM system is initialized,
  * it should be reported through this function.
  */
-void vm_page_manage(struct vm_page *page);
+void vm_page_manage (struct vm_page *page);
 
 /*
  * Return the page descriptor for the given physical address.
  */
-struct vm_page * vm_page_lookup(phys_addr_t pa);
+struct vm_page* vm_page_lookup (phys_addr_t pa);
 
 /*
  * Allocate a block of 2^order physical pages.
@@ -213,77 +207,67 @@ struct vm_page * vm_page_lookup(phys_addr_t pa);
  *
  * If successful, the returned pages have no references.
  */
-struct vm_page * vm_page_alloc(unsigned int order, unsigned int selector,
-                               unsigned short type);
+struct vm_page* vm_page_alloc (uint32_t order, uint32_t selector,
+                               uint16_t type);
 
 /*
  * Release a block of 2^order physical pages.
  *
  * The pages must have no references.
  */
-void vm_page_free(struct vm_page *page, unsigned int order);
+void vm_page_free (struct vm_page *page, uint32_t order);
 
-/*
- * Return the name of the given zone.
- */
-const char * vm_page_zone_name(unsigned int zone_index);
+// Return the name of the given zone.
+const char* vm_page_zone_name (uint32_t zone_index);
 
-/*
- * Log information about physical pages.
- */
-void vm_page_info(struct stream *stream);
+// Log information about physical pages.
+void vm_page_info (struct stream *stream);
 
 static inline bool
-vm_page_referenced(const struct vm_page *page)
+vm_page_referenced (const struct vm_page *page)
 {
-    return atomic_load(&page->nr_refs, ATOMIC_RELAXED) != 0;
+  return (atomic_load_rlx (&page->nr_refs) != 0);
 }
 
 static inline void
-vm_page_ref(struct vm_page *page)
+vm_page_ref (struct vm_page *page)
 {
-    unsigned int nr_refs;
-
-    nr_refs = atomic_fetch_add(&page->nr_refs, 1, ATOMIC_RELAXED);
-    assert(nr_refs != (unsigned int)-1);
+  uint32_t nr_refs = atomic_add_rlx (&page->nr_refs, 1);
+  assert (nr_refs != (uint32_t)-1);
 }
 
 static inline void
-vm_page_unref(struct vm_page *page)
+vm_page_unref (struct vm_page *page)
 {
-    unsigned int nr_refs;
+  uint32_t nr_refs = atomic_sub (&page->nr_refs, 1, ATOMIC_ACQ_REL);
+  assert (nr_refs != 0);
 
-    nr_refs = atomic_fetch_sub(&page->nr_refs, 1, ATOMIC_ACQ_REL);
-    assert(nr_refs != 0);
-
-    if (nr_refs == 1) {
-        vm_page_free(page, 0);
-    }
+  if (nr_refs == 1)
+    vm_page_free (page, 0);
 }
 
 static inline int
-vm_page_tryref(struct vm_page *page)
+vm_page_tryref (struct vm_page *page)
 {
-    unsigned int nr_refs, prev;
+  uint32_t nr_refs, prev;
 
-    do {
-        nr_refs = atomic_load(&page->nr_refs, ATOMIC_RELAXED);
+  do
+    {
+      nr_refs = atomic_load_rlx (&page->nr_refs);
+      if (! nr_refs)
+        return (EAGAIN);
 
-        if (nr_refs == 0) {
-            return EAGAIN;
-        }
+      prev = atomic_cas_acq (&page->nr_refs, nr_refs, nr_refs + 1);
+    }
+  while (prev != nr_refs);
 
-        prev = atomic_cas(&page->nr_refs, nr_refs,
-                          nr_refs + 1, ATOMIC_ACQUIRE);
-    } while (prev != nr_refs);
-
-    return 0;
+  return (0);
 }
 
 /*
  * This init operation provides :
  *  - module fully initialized
  */
-INIT_OP_DECLARE(vm_page_setup);
+INIT_OP_DECLARE (vm_page_setup);
 
-#endif /* VM_VM_PAGE_H */
+#endif

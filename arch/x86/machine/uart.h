@@ -27,13 +27,13 @@
  * This init operation provides :
  *  - UART output through the console module
  */
-INIT_OP_DECLARE(uart_bootstrap);
+INIT_OP_DECLARE (uart_bootstrap);
 
 /*
  * This init operation provides :
  *  - UART input through the console module
  *  - module fully initialized
  */
-INIT_OP_DECLARE(uart_setup);
+INIT_OP_DECLARE (uart_setup);
 
-#endif /* X86_UART_H */
+#endif

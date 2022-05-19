@@ -35,117 +35,118 @@
 struct vm_object vm_object_kernel_object;
 
 static int __init
-vm_object_setup(void)
+vm_object_setup (void)
 {
-    return 0;
+  return 0;
 }
 
-INIT_OP_DEFINE(vm_object_setup,
-               INIT_OP_DEP(mutex_setup, true),
-               INIT_OP_DEP(rdxtree_setup, true),
-               INIT_OP_DEP(vm_page_setup, true));
+INIT_OP_DEFINE (vm_object_setup,
+                INIT_OP_DEP (mutex_setup, true),
+                INIT_OP_DEP (rdxtree_setup, true),
+                INIT_OP_DEP (vm_page_setup, true));
 
 void __init
-vm_object_init(struct vm_object *object, uint64_t size)
+vm_object_init (struct vm_object *object, uint64_t size)
 {
-    assert(vm_page_aligned(size));
+  assert (vm_page_aligned (size));
 
-    mutex_init(&object->lock);
-    rdxtree_init(&object->pages, 0);
-    object->size = size;
-    object->nr_pages = 0;
+  mutex_init (&object->lock);
+  rdxtree_init (&object->pages, 0);
+  object->size = size;
+  object->nr_pages = 0;
 }
 
 int
-vm_object_insert(struct vm_object *object, struct vm_page *page,
-                 uint64_t offset)
+vm_object_insert (struct vm_object *object, struct vm_page *page,
+                  uint64_t offset)
 {
-    int error;
+  int error;
 
-    assert(vm_page_aligned(offset));
+  assert (vm_page_aligned (offset));
 
-    /*
-     * The page may have no references. Add one before publishing
-     * so that concurrent lookups succeed.
-     */
-    vm_page_ref(page);
+  /*
+   * The page may have no references. Add one before publishing
+   * so that concurrent lookups succeed.
+   */
+  vm_page_ref (page);
 
-    mutex_lock(&object->lock);
+  mutex_lock (&object->lock);
 
-    if (offset >= object->size) {
-        error = EINVAL;
-        goto error;
+  if (offset >= object->size)
+    {
+      error = EINVAL;
+      goto error;
     }
 
-    error = rdxtree_insert(&object->pages, vm_page_btop(offset), page);
+  error = rdxtree_insert (&object->pages, vm_page_btop (offset), page);
 
-    if (error) {
-        goto error;
-    }
+  if (error)
+    goto error;
 
-    vm_page_link(page, object, offset);
-    object->nr_pages++;
-    assert(object->nr_pages != 0);
+  vm_page_link (page, object, offset);
+  object->nr_pages++;
+  assert (object->nr_pages != 0);
 
-    mutex_unlock(&object->lock);
+  mutex_unlock (&object->lock);
 
-    return 0;
+  return 0;
 
 error:
-    mutex_unlock(&object->lock);
+  mutex_unlock (&object->lock);
 
-    vm_page_unref(page);
+  vm_page_unref (page);
 
-    return error;
+  return error;
 }
 
 void
-vm_object_remove(struct vm_object *object, uint64_t start, uint64_t end)
+vm_object_remove (struct vm_object *object, uint64_t start, uint64_t end)
 {
-    struct vm_page *page;
-    uint64_t offset;
+  struct vm_page *page;
+  uint64_t offset;
 
-    assert(vm_page_aligned(start));
-    assert(vm_page_aligned(end));
-    assert(start <= end);
+  assert (vm_page_aligned (start));
+  assert (vm_page_aligned (end));
+  assert (start <= end);
 
-    mutex_lock(&object->lock);
+  mutex_lock (&object->lock);
 
-    for (offset = start; offset < end; offset += PAGE_SIZE) {
-        page = rdxtree_remove(&object->pages, vm_page_btop(offset));
+  for (offset = start; offset < end; offset += PAGE_SIZE)
+    {
+      page = rdxtree_remove (&object->pages, vm_page_btop (offset));
 
-        if (page == NULL) {
-            continue;
-        }
+      if (page == NULL)
+        continue;
 
-        vm_page_unlink(page);
-        vm_page_unref(page);
-        assert(object->nr_pages != 0);
-        object->nr_pages--;
+      vm_page_unlink (page);
+      vm_page_unref (page);
+      assert (object->nr_pages != 0);
+      object->nr_pages--;
     }
 
-    mutex_unlock(&object->lock);
+  mutex_unlock (&object->lock);
 }
 
 struct vm_page *
-vm_object_lookup(struct vm_object *object, uint64_t offset)
+vm_object_lookup (struct vm_object *object, uint64_t offset)
 {
-    struct vm_page *page;
-    int error;
+  struct vm_page *page;
+  int error;
 
-    rcu_read_enter();
+  rcu_read_enter();
 
-    do {
-        page = rdxtree_lookup(&object->pages, vm_page_btop(offset));
+  do
+    {
+      page = rdxtree_lookup (&object->pages, vm_page_btop (offset));
 
-        if (page == NULL) {
-            break;
-        }
+      if (page == NULL)
+        break;
 
-        error = vm_page_tryref(page);
-    } while (error);
+      error = vm_page_tryref (page);
+    }
+  while (error);
 
-    rcu_read_leave();
+  rcu_read_leave();
 
-    return page;
+  return page;
 }

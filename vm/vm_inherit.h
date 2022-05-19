@@ -18,12 +18,10 @@
 #ifndef VM_VM_INHERIT_H
 #define VM_VM_INHERIT_H
 
-/*
- * Inheritance values.
- */
-#define VM_INHERIT_NONE     0
-#define VM_INHERIT_SHARE    1
-#define VM_INHERIT_COPY     2
-#define VM_INHERIT_DEFAULT  VM_INHERIT_COPY
+// Inheritance values.
+#define VM_INHERIT_NONE       0
+#define VM_INHERIT_SHARE      1
+#define VM_INHERIT_COPY       2
+#define VM_INHERIT_DEFAULT    VM_INHERIT_COPY
 
-#endif /* VM_VM_INHERIT_H */
+#endif

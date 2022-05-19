@@ -36,18 +36,18 @@
  *
  * This function must be called before calling the kernel main entry point.
  */
-void arg_set_cmdline(const char *cmdline);
+void arg_set_cmdline (const char *cmdline);
 
 /*
  * Log command line information.
  */
-void arg_log_info(void);
+void arg_log_info (void);
 
 /*
  * Return true if an argument with the given name is present in the
  * command line.
  */
-bool arg_present(const char *name);
+bool arg_present (const char *name);
 
 /*
  * Return the value of the argument with the given name in the command
@@ -56,12 +56,12 @@ bool arg_present(const char *name);
  * If the argument form is "name", the empty string is returned. If the
  * argument isn't present, NULL is returned.
  */
-const char * arg_value(const char *name);
+const char * arg_value (const char *name);
 
 /*
  * This init operation provides :
  *  - command line arguments can be retrieved
  */
-INIT_OP_DECLARE(arg_setup);
+INIT_OP_DECLARE (arg_setup);
 
-#endif /* KERN_ARG_H */
+#endif

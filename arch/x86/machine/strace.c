@@ -27,63 +27,58 @@
 #include <vm/vm_kmem.h>
 
 #ifdef __LP64__
-#define STRACE_ADDR_FORMAT "%#018lx"
-#else /* __LP64__ */
-#define STRACE_ADDR_FORMAT "%#010lx"
-#endif /* __LP64__ */
+  #define STRACE_ADDR_FORMAT   "%#018lx"
+#else
+  #define STRACE_ADDR_FORMAT   "%#010lx"
+#endif
 
 static void
-strace_show_one(unsigned int index, uintptr_t ip)
+strace_show_one (unsigned int index, uintptr_t ip)
 {
-    const struct symbol *symbol;
-    uintptr_t offset;
-
-    symbol = symbol_lookup(ip);
-
-    if (!symbol) {
-        printf("#%02u [" STRACE_ADDR_FORMAT "]\n", index, (unsigned long)ip);
-    } else {
-        offset = ip - symbol->addr;
-        printf("#%02u [" STRACE_ADDR_FORMAT "] %s+%#lx/%#lx\n",
-               index, (unsigned long)ip, symbol->name,
-               (unsigned long)offset, (unsigned long)symbol->size);
+  const struct symbol *symbol = symbol_lookup (ip);
+  if (! symbol)
+    printf ("#%02u [" STRACE_ADDR_FORMAT "]\n", index, (unsigned long) ip);
+  else
+    {
+      uintptr_t offset = ip - symbol->addr;
+      printf ("#%02u [" STRACE_ADDR_FORMAT "] %s+%#lx/%#lx\n",
+              index, (unsigned long) ip, symbol->name,
+              (unsigned long)offset, (unsigned long)symbol->size);
     }
 }
 
 void
-strace_show(uintptr_t ip, uintptr_t bp)
+strace_show (uintptr_t ip, uintptr_t bp)
 {
-    phys_addr_t pa;
-    void **frame;
-    unsigned int i;
-    int error;
+  strace_show_one (0, ip);
 
-    strace_show_one(0, ip);
+  uint32_t i = 1;
+  void **frame = (void **) bp;
 
-    i = 1;
-    frame = (void **)bp;
+  while (1)
+    {
+      if (! frame)
+        break;
 
-    for (;;) {
-        if (frame == NULL) {
-            break;
+      phys_addr_t pa;
+      int error = pmap_kextract ((uintptr_t) &frame[1], &pa);
+
+      if (error)
+        {
+          printf ("strace: unmapped return address at %p\n", &frame[1]);
+          break;
         }
 
-        error = pmap_kextract((uintptr_t)&frame[1], &pa);
+      strace_show_one (i, (uintptr_t)frame[1]);
+      error = pmap_kextract ((uintptr_t) frame, &pa);
 
-        if (error) {
-            printf("strace: unmapped return address at %p\n", &frame[1]);
-            break;
+      if (error)
+        {
+          printf ("strace: unmapped frame address at %p\n", frame);
+          break;
         }
 
-        strace_show_one(i, (uintptr_t)frame[1]);
-        error = pmap_kextract((uintptr_t)frame, &pa);
-
-        if (error) {
-            printf("strace: unmapped frame address at %p\n", frame);
-            break;
-        }
-
-        i++;
-        frame = frame[0];
+      ++i;
+      frame = *frame;
     }
 }

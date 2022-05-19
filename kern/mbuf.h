@@ -38,22 +38,23 @@
  * The order is computed from the maximum message size, and is used to
  * determine a header size that can represent up to 2^order - 1 bytes.
  */
-struct mbuf {
-    struct cbuf cbuf;
-    size_t max_msg_size;
-    unsigned int order;
+struct mbuf
+{
+  struct cbuf cbuf;
+  size_t max_msg_size;
+  unsigned int order;
 };
 
 static inline size_t
-mbuf_start(const struct mbuf *mbuf)
+mbuf_start (const struct mbuf *mbuf)
 {
-    return cbuf_start(&mbuf->cbuf);
+  return (cbuf_start (&mbuf->cbuf));
 }
 
 static inline size_t
-mbuf_end(const struct mbuf *mbuf)
+mbuf_end (const struct mbuf *mbuf)
 {
-    return cbuf_end(&mbuf->cbuf);
+  return (cbuf_end (&mbuf->cbuf));
 }
 
 /*
@@ -62,13 +63,11 @@ mbuf_end(const struct mbuf *mbuf)
  * The descriptor is set to use the given buffer for storage. Capacity
  * must be a power-of-two.
  */
-void mbuf_init(struct mbuf *mbuf, void *buf, size_t capacity,
-               size_t max_msg_size);
+void mbuf_init (struct mbuf *mbuf, void *buf, size_t capacity,
+                size_t max_msg_size);
 
-/*
- * Clear a message buffer.
- */
-void mbuf_clear(struct mbuf *mbuf);
+// Clear a message buffer.
+void mbuf_clear (struct mbuf *mbuf);
 
 /*
  * Push a message to a message buffer.
@@ -79,7 +78,7 @@ void mbuf_clear(struct mbuf *mbuf);
  * for the new message, EMSGSIZE is returned. If the message is larger than
  * the maximum message size, EINVAL is returned.
  */
-int mbuf_push(struct mbuf *mbuf, const void *buf, size_t size, bool erase);
+int mbuf_push (struct mbuf *mbuf, const void *buf, size_t size, bool erase);
 
 /*
  * Pop a message from a message buffer.
@@ -96,7 +95,7 @@ int mbuf_push(struct mbuf *mbuf, const void *buf, size_t size, bool erase);
  * The output buffer may be NULL, in which case this function acts as if
  * it wasn't, but without writing output data.
  */
-int mbuf_pop(struct mbuf *mbuf, void *buf, size_t *sizep);
+int mbuf_pop (struct mbuf *mbuf, void *buf, size_t *sizep);
 
 /*
  * Read a message from a message buffer.
@@ -119,7 +118,7 @@ int mbuf_pop(struct mbuf *mbuf, void *buf, size_t *sizep);
  *
  * The message buffer isn't changed by this operation.
  */
-int mbuf_read(const struct mbuf *mbuf, size_t *indexp,
-              void *buf, size_t *sizep);
+int mbuf_read (const struct mbuf *mbuf, size_t *indexp,
+               void *buf, size_t *sizep);
 
-#endif /* KERN_MBUF_H */
+#endif

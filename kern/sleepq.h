@@ -38,11 +38,9 @@
 
 struct sleepq;
 
-/*
- * Create/destroy a sleep queue.
- */
-struct sleepq * sleepq_create(void);
-void sleepq_destroy(struct sleepq *sleepq);
+// Create/destroy a sleep queue.
+struct sleepq* sleepq_create (void);
+void sleepq_destroy (struct sleepq *sleepq);
 
 /*
  * Acquire/release a sleep queue.
@@ -57,22 +55,22 @@ void sleepq_destroy(struct sleepq *sleepq);
  * the call may also return NULL if internal state shared by unrelated
  * synchronization objects is locked.
  */
-struct sleepq * sleepq_acquire(const void *sync_obj, bool condition);
-struct sleepq * sleepq_tryacquire(const void *sync_obj, bool condition);
-void sleepq_release(struct sleepq *sleepq);
+struct sleepq* sleepq_acquire (const void *sync_obj, bool condition);
+struct sleepq* sleepq_tryacquire (const void *sync_obj, bool condition);
+void sleepq_release (struct sleepq *sleepq);
 
 /*
  * Versions of the sleep queue acquisition functions that also disable
  * interrupts.
  */
-struct sleepq * sleepq_acquire_intr_save(const void *sync_obj,
-                                         bool condition,
-                                         unsigned long *flags);
-struct sleepq * sleepq_tryacquire_intr_save(const void *sync_obj,
-                                            bool condition,
-                                            unsigned long *flags);
-void sleepq_release_intr_restore(struct sleepq *sleepq,
-                                 unsigned long flags);
+struct sleepq* sleepq_acquire_intr_save (const void *sync_obj,
+    bool condition,
+    unsigned long *flags);
+struct sleepq* sleepq_tryacquire_intr_save (const void *sync_obj,
+    bool condition,
+    unsigned long *flags);
+void sleepq_release_intr_restore (struct sleepq *sleepq,
+                                  unsigned long flags);
 
 /*
  * Lend/return a sleep queue.
@@ -92,23 +90,23 @@ void sleepq_release_intr_restore(struct sleepq *sleepq,
  * The condition argument must be true if the synchronization object
  * is a condition variable.
  */
-struct sleepq * sleepq_lend(const void *sync_obj, bool condition);
-void sleepq_return(struct sleepq *sleepq);
+struct sleepq* sleepq_lend (const void *sync_obj, bool condition);
+void sleepq_return (struct sleepq *sleepq);
 
 /*
  * Versions of the sleep queue lending functions that also disable
  * interrupts.
  */
-struct sleepq * sleepq_lend_intr_save(const void *sync_obj, bool condition,
-                                      unsigned long *flags);
-void sleepq_return_intr_restore(struct sleepq *sleepq, unsigned long flags);
+struct sleepq* sleepq_lend_intr_save (const void *sync_obj, bool condition,
+                                       unsigned long *flags);
+void sleepq_return_intr_restore (struct sleepq *sleepq, unsigned long flags);
 
 /*
  * Return true if the given sleep queue has no waiters.
  *
  * The sleep queue must be acquired when calling this function.
  */
-bool sleepq_empty(const struct sleepq *sleepq);
+bool sleepq_empty (const struct sleepq *sleepq);
 
 /*
  * Wait for a wake-up on the given sleep queue.
@@ -126,8 +124,8 @@ bool sleepq_empty(const struct sleepq *sleepq);
  * time in ticks, and ETIMEDOUT is returned if that time is reached before
  * the sleep queue is signalled.
  */
-void sleepq_wait(struct sleepq *sleepq, const char *wchan);
-int sleepq_timedwait(struct sleepq *sleepq, const char *wchan, uint64_t ticks);
+void sleepq_wait (struct sleepq *sleepq, const char *wchan);
+int sleepq_timedwait (struct sleepq *sleepq, const char *wchan, uint64_t ticks);
 
 /*
  * Wake up a thread waiting on the given sleep queue, if any.
@@ -144,14 +142,14 @@ int sleepq_timedwait(struct sleepq *sleepq, const char *wchan, uint64_t ticks);
  *
  * Broadcasting a sleep queue wakes up all waiting threads.
  */
-void sleepq_signal(struct sleepq *sleepq);
-void sleepq_broadcast(struct sleepq *sleepq);
+void sleepq_signal (struct sleepq *sleepq);
+void sleepq_broadcast (struct sleepq *sleepq);
 
 /*
  * This init operation provides :
  *  - sleepq creation
  *  - module fully initialized
  */
-INIT_OP_DECLARE(sleepq_setup);
+INIT_OP_DECLARE (sleepq_setup);
 
-#endif /* KERN_SLEEPQ_H */
+#endif

@@ -24,17 +24,18 @@
 #include <stdint.h>
 
 #ifdef CONFIG_SPINLOCK_DEBUG
-#define SPINLOCK_TRACK_OWNER
+  #define SPINLOCK_TRACK_OWNER
 #endif
 
 struct thread;
 
-struct spinlock {
-    uint32_t value;
+struct spinlock
+{
+  uint32_t value;
 
 #ifdef SPINLOCK_TRACK_OWNER
-    struct thread *owner;
-#endif /* SPINLOCK_TRACK_OWNER */
+  struct thread *owner;
+#endif
 };
 
-#endif /* KERN_SPINLOCK_TYPES_H */
+#endif

@@ -38,87 +38,75 @@
 
 struct turnstile;
 
-/*
- * Turnstile thread data.
- */
+// Turnstile thread data.
 struct turnstile_td;
 
 static inline bool
-turnstile_td_locked(const struct turnstile_td *td)
+turnstile_td_locked (const struct turnstile_td *td)
 {
-    return spinlock_locked(&td->lock);
+  return (spinlock_locked (&td->lock));
 }
 
-/*
- * Initialize turnstile thread data.
- */
+// Initialize turnstile thread data.
 static inline void
-turnstile_td_init(struct turnstile_td *td)
+turnstile_td_init (struct turnstile_td *td)
 {
-    spinlock_init(&td->lock);
-    td->turnstile = NULL;
-    td->waiter = NULL;
-    plist_init(&td->owned_turnstiles);
-    td->top_global_priority = 0;
+  spinlock_init (&td->lock);
+  td->turnstile = NULL;
+  td->waiter = NULL;
+  plist_init (&td->owned_turnstiles);
+  td->top_global_priority = 0;
 }
 
-/*
- * Turnstile thread data locking functions.
- */
+// Turnstile thread data locking functions.
 
 static inline void
-turnstile_td_lock(struct turnstile_td *td)
+turnstile_td_lock (struct turnstile_td *td)
 {
-    spinlock_lock(&td->lock);
+  spinlock_lock (&td->lock);
 }
 
 static inline int
-turnstile_td_trylock(struct turnstile_td *td)
+turnstile_td_trylock (struct turnstile_td *td)
 {
-    return spinlock_trylock(&td->lock);
+  return (spinlock_trylock (&td->lock));
 }
 
 static inline void
-turnstile_td_unlock(struct turnstile_td *td)
+turnstile_td_unlock (struct turnstile_td *td)
 {
-    spinlock_unlock(&td->lock);
+  spinlock_unlock (&td->lock);
 }
 
-/*
- * Functions managing the turnstile a thread is sleeping in.
- */
+// Functions managing the turnstile a thread is sleeping in.
 
 static inline void
-turnstile_td_set_turnstile(struct turnstile_td *td,
-                           struct turnstile *turnstile)
+turnstile_td_set_turnstile (struct turnstile_td *td,
+                            struct turnstile *turnstile)
 {
-    td->turnstile = turnstile;
+  td->turnstile = turnstile;
 }
 
-static inline struct turnstile *
-turnstile_td_get_turnstile(const struct turnstile_td *td)
+static inline struct turnstile*
+turnstile_td_get_turnstile (const struct turnstile_td *td)
 {
-    return td->turnstile;
+  return (td->turnstile);
 }
 
-/*
- * Propagate priority starting at the thread containing the given thread data.
- */
-void turnstile_td_propagate_priority(struct turnstile_td *td);
+// Propagate priority starting at the thread containing the given thread data.
+void turnstile_td_propagate_priority (struct turnstile_td *td);
 
-/*
- * Create/destroy a turnstile.
- */
-struct turnstile * turnstile_create(void);
-void turnstile_destroy(struct turnstile *turnstile);
+//  Create/destroy a turnstile.
+struct turnstile* turnstile_create (void);
+void turnstile_destroy (struct turnstile *turnstile);
 
 /*
  * Acquire/release a turnstile.
  *
  * Acquiring a turnstile serializes all access and disables preemption.
  */
-struct turnstile * turnstile_acquire(const void *sync_obj);
-void turnstile_release(struct turnstile *turnstile);
+struct turnstile* turnstile_acquire (const void *sync_obj);
+void turnstile_release (struct turnstile *turnstile);
 
 /*
  * Lend/return a turnstile.
@@ -136,15 +124,15 @@ void turnstile_release(struct turnstile *turnstile);
  *
  * The turnstile obtained when lending is automatically acquired.
  */
-struct turnstile * turnstile_lend(const void *sync_obj);
-void turnstile_return(struct turnstile *turnstile);
+struct turnstile* turnstile_lend (const void *sync_obj);
+void turnstile_return (struct turnstile *turnstile);
 
 /*
  * Return true if the given turnstile has no waiters.
  *
  * The turnstile must be acquired when calling this function.
  */
-bool turnstile_empty(const struct turnstile *turnstile);
+bool turnstile_empty (const struct turnstile *turnstile);
 
 /*
  * Wait for a wake up on the given turnstile.
@@ -170,10 +158,10 @@ bool turnstile_empty(const struct turnstile *turnstile);
  * acquire the turnstile and consider it empty, despite the fact that threads
  * may not have returned from this function yet.
  */
-void turnstile_wait(struct turnstile *turnstile, const char *wchan,
-                    struct thread *owner);
-int turnstile_timedwait(struct turnstile *turnstile, const char *wchan,
-                        struct thread *owner, uint64_t ticks);
+void turnstile_wait (struct turnstile *turnstile, const char *wchan,
+                     struct thread *owner);
+int turnstile_timedwait (struct turnstile *turnstile, const char *wchan,
+                         struct thread *owner, uint64_t ticks);
 
 /*
  * Wake up a thread waiting on the given turnstile, if any.
@@ -183,7 +171,7 @@ int turnstile_timedwait(struct turnstile *turnstile, const char *wchan,
  * acquired) when waiting, and acquired in order to signal it,
  * wake-ups are serialized and cannot be missed.
  */
-void turnstile_signal(struct turnstile *turnstile);
+void turnstile_signal (struct turnstile *turnstile);
 
 /*
  * Own/disown a turnstile.
@@ -194,14 +182,14 @@ void turnstile_signal(struct turnstile *turnstile);
  * Ownership must be updated atomically with regard to the ownership
  * of the associated synchronization object.
  */
-void turnstile_own(struct turnstile *turnstile);
-void turnstile_disown(struct turnstile *turnstile);
+void turnstile_own (struct turnstile *turnstile);
+void turnstile_disown (struct turnstile *turnstile);
 
 /*
  * This init operation provides :
  *  - turnstile creation
  *  - module fully initialized
  */
-INIT_OP_DECLARE(turnstile_setup);
+INIT_OP_DECLARE (turnstile_setup);
 
-#endif /* KERN_TURNSTILE_H */
+#endif

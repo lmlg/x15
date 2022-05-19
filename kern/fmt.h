@@ -45,34 +45,34 @@
 
 #include <kern/stream.h>
 
-int fmt_xprintf(struct stream *stream, const char *format, ...)
-    __attribute__((format(printf, 2, 3)));
+int fmt_xprintf (struct stream *stream, const char *format, ...)
+  __attribute__ ((format (printf, 2, 3)));
 
-int fmt_vxprintf(struct stream *stream, const char *format, va_list ap)
-    __attribute__((format(printf, 2, 0)));
+int fmt_vxprintf (struct stream *stream, const char *format, va_list ap)
+  __attribute__ ((format (printf, 2, 0)));
 
-int fmt_sprintf(char *str, const char *format, ...)
-    __attribute__((format(printf, 2, 3)));
+int fmt_sprintf (char *str, const char *format, ...)
+  __attribute__ ((format (printf, 2, 3)));
 
-int fmt_vsprintf(char *str, const char *format, va_list ap)
-    __attribute__((format(printf, 2, 0)));
+int fmt_vsprintf (char *str, const char *format, va_list ap)
+  __attribute__ ((format (printf, 2, 0)));
 
-int fmt_snprintf(char *str, size_t size, const char *format, ...)
-    __attribute__((format(printf, 3, 4)));
+int fmt_snprintf (char *str, size_t size, const char *format, ...)
+  __attribute__ ((format (printf, 3, 4)));
 
-int fmt_vsnprintf(char *str, size_t size, const char *format, va_list ap)
-    __attribute__((format(printf, 3, 0)));
+int fmt_vsnprintf (char *str, size_t size, const char *format, va_list ap)
+  __attribute__ ((format (printf, 3, 0)));
 
-int fmt_xscanf(struct stream *stream, const char *format, ...)
-    __attribute__((format(printf, 2, 3)));
+int fmt_xscanf (struct stream *stream, const char *format, ...)
+  __attribute__ ((format (printf, 2, 3)));
 
-int fmt_vxscanf(struct stream *stream, const char *format, va_list ap)
-    __attribute__((format(printf, 2, 0)));
+int fmt_vxscanf (struct stream *stream, const char *format, va_list ap)
+  __attribute__ ((format (printf, 2, 0)));
 
-int fmt_sscanf(const char *str, const char *format, ...)
-    __attribute__((format(scanf, 2, 3)));
+int fmt_sscanf (const char *str, const char *format, ...)
+  __attribute__ ((format (scanf, 2, 3)));
 
-int fmt_vsscanf(const char *str, const char *format, va_list ap)
-    __attribute__((format(scanf, 2, 0)));
+int fmt_vsscanf (const char *str, const char *format, va_list ap)
+  __attribute__ ((format (scanf, 2, 0)));
 
-#endif /* KERN_FMT_H */
+#endif

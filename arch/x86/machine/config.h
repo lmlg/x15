@@ -18,9 +18,7 @@
  * Architecture specific additions to the build system config.h header.
  */
 
-/*
- * Avoid obscure bugs due to this historical built-in macro.
- */
+// Avoid obscure bugs due to this historical built-in macro.
 #ifdef i386
-#undef i386
+  #undef i386
 #endif

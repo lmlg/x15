@@ -40,61 +40,52 @@
 #ifdef SPINLOCK_TRACK_OWNER
 
 static inline void
-spinlock_own(struct spinlock *lock)
+spinlock_own (struct spinlock *lock)
 {
-    assert(!lock->owner);
-    lock->owner = thread_self();
+  assert (!lock->owner);
+  lock->owner = thread_self ();
 }
 
 static inline void
-spinlock_disown(struct spinlock *lock)
+spinlock_disown (struct spinlock *lock)
 {
-    assert(lock->owner == thread_self());
-    lock->owner = NULL;
+  assert (lock->owner == thread_self ());
+  lock->owner = NULL;
 }
 
-#else /* SPINLOCK_TRACK_OWNER */
-
-#define spinlock_own(lock)
-#define spinlock_disown(lock)
-
-#endif /* SPINLOCK_TRACK_OWNER */
+#else
+  #define spinlock_own(lock)
+  #define spinlock_disown(lock)
+#endif
 
 static inline int
-spinlock_lock_fast(struct spinlock *lock)
+spinlock_lock_fast (struct spinlock *lock)
 {
-    uint32_t prev;
+  uint32_t prev = atomic_cas (&lock->value, SPINLOCK_UNLOCKED,
+                              SPINLOCK_LOCKED, ATOMIC_ACQUIRE);
 
-    prev = atomic_cas(&lock->value, SPINLOCK_UNLOCKED,
-                      SPINLOCK_LOCKED, ATOMIC_ACQUIRE);
+  if (unlikely (prev != SPINLOCK_UNLOCKED))
+    return (EBUSY);
 
-    if (unlikely(prev != SPINLOCK_UNLOCKED)) {
-        return EBUSY;
-    }
-
-    spinlock_own(lock);
-    return 0;
+  spinlock_own (lock);
+  return (0);
 }
 
-void spinlock_lock_slow(struct spinlock *lock);
+void spinlock_lock_slow (struct spinlock *lock);
 
 static inline void
-spinlock_lock_common(struct spinlock *lock)
+spinlock_lock_common (struct spinlock *lock)
 {
-    int error;
-
-    error = spinlock_lock_fast(lock);
-
-    if (unlikely(error)) {
-        spinlock_lock_slow(lock);
-    }
+  int error = spinlock_lock_fast (lock);
+  if (unlikely (error))
+    spinlock_lock_slow (lock);
 }
 
 static inline void
-spinlock_unlock_common(struct spinlock *lock)
+spinlock_unlock_common (struct spinlock *lock)
 {
-    spinlock_disown(lock);
-    atomic_and(&lock->value, ~SPINLOCK_LOCKED, ATOMIC_RELEASE);
+  spinlock_disown (lock);
+  atomic_and (&lock->value, ~SPINLOCK_LOCKED, ATOMIC_RELEASE);
 }
 
-#endif /* KERN_SPINLOCK_I_H */
+#endif

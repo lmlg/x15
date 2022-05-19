@@ -19,24 +19,24 @@
 #define X86_ASM_H
 
 #ifndef __ASSEMBLER__
-#warning "asm.h included from a C file"
-#endif /* __ASSEMBLER__ */
+  #warning "asm.h included from a C file"
+#endif
 
 #include <machine/cpu.h>
 
-#define ASM_ENTRY(x)    \
-.align CPU_TEXT_ALIGN;  \
-.global x;              \
-.type x, STT_FUNC;      \
+#define ASM_ENTRY(x)   \
+.align CPU_TEXT_ALIGN;   \
+.global x;   \
+.type x, STT_FUNC;   \
 x:
 
-#define ASM_DATA(x)     \
-.align CPU_DATA_ALIGN;  \
-.global x;              \
-.type x, STT_OBJECT;    \
+#define ASM_DATA(x)   \
+.align CPU_DATA_ALIGN;   \
+.global x;   \
+.type x, STT_OBJECT;   \
 x:
 
-#define ASM_END(x)  \
+#define ASM_END(x)   \
 .size x, . - x
 
-#endif /* X86_ASM_H */
+#endif

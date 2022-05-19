@@ -28,10 +28,8 @@
 
 #include <kern/init.h>
 
-/*
- * Type for cross-call functions.
- */
-typedef void (*xcall_fn_t)(void *arg);
+// Type for cross-call functions.
+typedef void (*xcall_fn_t) (void *arg);
 
 /*
  * Run the given cross-call function on a specific processor.
@@ -45,20 +43,20 @@ typedef void (*xcall_fn_t)(void *arg);
  * The callback function runs in interrupt context. Interrupts must be enabled
  * when calling this function.
  */
-void xcall_call(xcall_fn_t fn, void *arg, unsigned int cpu);
+void xcall_call (xcall_fn_t fn, void *arg, uint32_t cpu);
 
 /*
  * Handle a cross-call interrupt from a remote processor.
  *
  * Called from interrupt context.
  */
-void xcall_intr(void);
+void xcall_intr (void);
 
 /*
  * This init operation provides :
  *  - cross-calls are usable
  *  - module fully initialized
  */
-INIT_OP_DECLARE(xcall_setup);
+INIT_OP_DECLARE (xcall_setup);
 
-#endif /* KERN_XCALL_H */
+#endif

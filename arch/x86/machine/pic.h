@@ -18,20 +18,14 @@
 #ifndef X86_PIC_H
 #define X86_PIC_H
 
-/*
- * Interrupts per PIC.
- */
+// Interrupts per PIC.
 #define PIC_NR_INTRS    8
 
-/*
- * Maximum global interrupt number.
- */
+// Maximum global interrupt number.
 #define PIC_MAX_INTR    ((PIC_NR_INTRS * 2) - 1)
 
-/*
- * Initialize the pic module.
- */
-void pic_setup(void);
+// Initialize the pic module.
+void pic_setup (void);
 
 /*
  * Initialize the pic module in an APIC system.
@@ -42,6 +36,6 @@ void pic_setup(void);
  * Since it doesn't register the legacy PIC as an interrupt controller, the
  * acpi module must have registered I/O APICs before calling this function.
  */
-void pic_setup_disabled(void);
+void pic_setup_disabled (void);
 
-#endif /* X86_PIC_H */
+#endif

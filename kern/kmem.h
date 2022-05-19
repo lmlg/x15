@@ -41,16 +41,14 @@ struct kmem_cache;
  * performs dynamic resource allocation, which removes the need for
  * destructors.
  */
-typedef void (*kmem_ctor_fn_t)(void *);
+typedef void (*kmem_ctor_fn_t) (void *);
 
 #include <kern/kmem_i.h>
 
-/*
- * Cache creation flags.
- */
-#define KMEM_CACHE_NOOFFSLAB    0x1 /* Don't allocate external slab data */
-#define KMEM_CACHE_PAGE_ONLY    0x2 /* Allocate slabs from the page allocator */
-#define KMEM_CACHE_VERIFY       0x4 /* Use debugging facilities */
+// Cache creation flags.
+#define KMEM_CACHE_NOOFFSLAB    0x1   // Don't allocate external slab data.
+#define KMEM_CACHE_PAGE_ONLY    0x2   // Allocate slabs from the page allocator.
+#define KMEM_CACHE_VERIFY       0x4   // Use debugging facilities.
 
 /*
  * Initialize a cache.
@@ -58,59 +56,49 @@ typedef void (*kmem_ctor_fn_t)(void *);
  * Slabs may be allocated either from the page allocator or from kernel
  * virtual memory, unless KMEM_CACHE_PAGE_ONLY is set.
  */
-void kmem_cache_init(struct kmem_cache *cache, const char *name,
-                     size_t obj_size, size_t align, kmem_ctor_fn_t ctor,
-                     int flags);
+void kmem_cache_init (struct kmem_cache *cache, const char *name,
+                      size_t obj_size, size_t align, kmem_ctor_fn_t ctor,
+                      int flags);
 
-/*
- * Allocate an object from a cache.
- */
-void * kmem_cache_alloc(struct kmem_cache *cache);
+// Allocate an object from a cache.
+void* kmem_cache_alloc (struct kmem_cache *cache);
 
-/*
- * Release an object to its cache.
- */
-void kmem_cache_free(struct kmem_cache *cache, void *obj);
+// Release an object to its cache.
+void kmem_cache_free (struct kmem_cache *cache, void *obj);
 
 /*
  * Display internal cache information.
  *
  * If cache is NULL, this function displays all managed caches.
  */
-void kmem_cache_info(struct kmem_cache *cache, struct stream *stream);
+void kmem_cache_info (struct kmem_cache *cache, struct stream *stream);
 
-/*
- * Allocate size bytes of uninitialized memory.
- */
-void * kmem_alloc(size_t size);
+// Allocate size bytes of uninitialized memory.
+void * kmem_alloc (size_t size);
 
-/*
- * Allocate size bytes of zeroed memory.
- */
-void * kmem_zalloc(size_t size);
+// Allocate size bytes of zeroed memory.
+void * kmem_zalloc (size_t size);
 
 /*
  * Release memory obtained with kmem_alloc() or kmem_zalloc().
  *
  * The size argument must strictly match the value given at allocation time.
  */
-void kmem_free(void *ptr, size_t size);
+void kmem_free (void *ptr, size_t size);
 
-/*
- * Display global kernel memory information.
- */
-void kmem_info(struct stream *stream);
+// Display global kernel memory information.
+void kmem_info (struct stream *stream);
 
 /*
  * This init operation provides :
  *  - allocation from caches backed by the page allocator
  */
-INIT_OP_DECLARE(kmem_bootstrap);
+INIT_OP_DECLARE (kmem_bootstrap);
 
 /*
  * This init operation provides :
  *  - allocation from all caches
  */
-INIT_OP_DECLARE(kmem_setup);
+INIT_OP_DECLARE (kmem_setup);
 
-#endif /* KERN_KMEM_H */
+#endif

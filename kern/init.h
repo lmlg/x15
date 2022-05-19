@@ -49,23 +49,17 @@
 #define __init __section(QUOTE(INIT_SECTION))
 #define __initdata __section(QUOTE(INIT_DATA_SECTION))
 
-/*
- * Boundaries of the .init section.
- */
+// Boundaries of the .init section.
 extern char _init;
 extern char _init_end;
 
-/*
- * Type for initialization operation functions.
- */
-typedef int (*init_op_fn_t)(void);
+// Type for initialization operation functions.
+typedef int (*init_op_fn_t) (void);
 
 #include <kern/init_i.h>
 
-/*
- * Forge an init operation declaration.
- */
-#define INIT_OP_DECLARE(fn) extern struct init_op INIT_OP(fn)
+// Forge an init operation declaration.
+#define INIT_OP_DECLARE(fn)   extern struct init_op INIT_OP (fn)
 
 /*
  * Foge an entry suitable as an init operation dependency.
@@ -74,7 +68,7 @@ typedef int (*init_op_fn_t)(void);
  * order, but its result is ignored, and the operation depending on it
  * behaves as if that dependency succeeded.
  */
-#define INIT_OP_DEP(fn, required) { &INIT_OP(fn), required }
+#define INIT_OP_DEP(fn, required)   { &INIT_OP (fn), required }
 
 /*
  * Init operation definition macro.
@@ -86,19 +80,21 @@ typedef int (*init_op_fn_t)(void);
  * them all from their section. Dependencies are given as a variable-length
  * argument list of entries built with the INIT_OP_DEP() macro.
  */
-#define INIT_OP_DEFINE(_fn, ...)                                    \
-    static struct init_op_dep INIT_OP_DEPS(_fn)[] __initdata = {    \
-        __VA_ARGS__                                                 \
-    };                                                              \
-                                                                    \
-    struct init_op INIT_OP(_fn) __initop __used = {                 \
-        .name = QUOTE(_fn),                                         \
-        .fn = _fn,                                                  \
-        .deps = INIT_OP_DEPS(_fn),                                  \
-        .error = EAGAIN,                                            \
-        .state = INIT_OP_STATE_UNLINKED,                            \
-        .nr_deps = ARRAY_SIZE(INIT_OP_DEPS(_fn)),                   \
-        .nr_parents = 0,                                            \
+#define INIT_OP_DEFINE(_fn, ...)   \
+  static struct init_op_dep INIT_OP_DEPS(_fn)[] __initdata =   \
+    {   \
+      __VA_ARGS__   \
+    };   \
+   \
+  struct init_op INIT_OP(_fn) __initop __used =   \
+    {   \
+      .name = QUOTE (_fn),   \
+      .fn = _fn,   \
+      .deps = INIT_OP_DEPS (_fn),   \
+      .error = EAGAIN,   \
+      .state = INIT_OP_STATE_UNLINKED,   \
+      .nr_deps = ARRAY_SIZE (INIT_OP_DEPS (_fn)),   \
+      .nr_parents = 0,   \
     }
 
 /*
@@ -107,8 +103,8 @@ typedef int (*init_op_fn_t)(void);
  * Scan the section containing init operations, resolve all dependencies,
  * and run operations in an appropriate order.
  */
-void init_setup(void);
+void init_setup (void);
 
 #endif /* __ASSEMBLER__ */
 
-#endif /* KERN_INIT_H */
+#endif

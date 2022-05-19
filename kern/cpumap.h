@@ -29,117 +29,118 @@
 #include <kern/bitmap.h>
 #include <kern/init.h>
 
-struct cpumap {
-    BITMAP_DECLARE(cpus, CONFIG_MAX_CPUS);
+struct cpumap
+{
+  BITMAP_DECLARE (cpus, CONFIG_MAX_CPUS);
 };
 
 static inline void
-cpumap_zero(struct cpumap *cpumap)
+cpumap_zero (struct cpumap *cpumap)
 {
-    bitmap_zero(cpumap->cpus, CONFIG_MAX_CPUS);
+  bitmap_zero (cpumap->cpus, CONFIG_MAX_CPUS);
 }
 
 static inline void
-cpumap_fill(struct cpumap *cpumap)
+cpumap_fill (struct cpumap *cpumap)
 {
-    bitmap_fill(cpumap->cpus, CONFIG_MAX_CPUS);
+  bitmap_fill (cpumap->cpus, CONFIG_MAX_CPUS);
 }
 
 static inline void
-cpumap_copy(struct cpumap *dest, const struct cpumap *src)
+cpumap_copy (struct cpumap *dest, const struct cpumap *src)
 {
-    bitmap_copy(dest->cpus, src->cpus, CONFIG_MAX_CPUS);
+  bitmap_copy (dest->cpus, src->cpus, CONFIG_MAX_CPUS);
 }
 
 static inline int
-cpumap_cmp(const struct cpumap *a, const struct cpumap *b)
+cpumap_cmp (const struct cpumap *a, const struct cpumap *b)
 {
-    return bitmap_cmp(a->cpus, b->cpus, CONFIG_MAX_CPUS);
+  return (bitmap_cmp (a->cpus, b->cpus, CONFIG_MAX_CPUS));
 }
 
 static inline void
-cpumap_set(struct cpumap *cpumap, int index)
+cpumap_set (struct cpumap *cpumap, int index)
 {
-    bitmap_set(cpumap->cpus, index);
+  bitmap_set (cpumap->cpus, index);
 }
 
 static inline void
-cpumap_set_atomic(struct cpumap *cpumap, int index)
+cpumap_set_atomic (struct cpumap *cpumap, int index)
 {
-    bitmap_set_atomic(cpumap->cpus, index);
+  bitmap_set_atomic (cpumap->cpus, index);
 }
 
 static inline void
-cpumap_clear(struct cpumap *cpumap, int index)
+cpumap_clear (struct cpumap *cpumap, int index)
 {
-    bitmap_clear(cpumap->cpus, index);
+  bitmap_clear (cpumap->cpus, index);
 }
 
 static inline void
-cpumap_clear_atomic(struct cpumap *cpumap, int index)
+cpumap_clear_atomic (struct cpumap *cpumap, int index)
 {
-    bitmap_clear_atomic(cpumap->cpus, index);
+  bitmap_clear_atomic (cpumap->cpus, index);
 }
 
 static inline int
-cpumap_test(const struct cpumap *cpumap, int index)
+cpumap_test (const struct cpumap *cpumap, int index)
 {
-    return bitmap_test(cpumap->cpus, index);
+  return bitmap_test (cpumap->cpus, index);
 }
 
 static inline void
-cpumap_and(struct cpumap *a, const struct cpumap *b)
+cpumap_and (struct cpumap *a, const struct cpumap *b)
 {
-    bitmap_and(a->cpus, b->cpus, CONFIG_MAX_CPUS);
+  bitmap_and (a->cpus, b->cpus, CONFIG_MAX_CPUS);
 }
 
 static inline void
-cpumap_or(struct cpumap *a, const struct cpumap *b)
+cpumap_or (struct cpumap *a, const struct cpumap *b)
 {
-    bitmap_or(a->cpus, b->cpus, CONFIG_MAX_CPUS);
+  bitmap_or (a->cpus, b->cpus, CONFIG_MAX_CPUS);
 }
 
 static inline void
-cpumap_xor(struct cpumap *a, const struct cpumap *b)
+cpumap_xor (struct cpumap *a, const struct cpumap *b)
 {
-    bitmap_xor(a->cpus, b->cpus, CONFIG_MAX_CPUS);
+  bitmap_xor (a->cpus, b->cpus, CONFIG_MAX_CPUS);
 }
 
 static inline int
-cpumap_find_next(const struct cpumap *cpumap, int index)
+cpumap_find_next (const struct cpumap *cpumap, int index)
 {
-    return bitmap_find_next(cpumap->cpus, CONFIG_MAX_CPUS, index);
+  return (bitmap_find_next (cpumap->cpus, CONFIG_MAX_CPUS, index));
 }
 
 static inline int
-cpumap_find_first(const struct cpumap *cpumap)
+cpumap_find_first (const struct cpumap *cpumap)
 {
-    return bitmap_find_first(cpumap->cpus, CONFIG_MAX_CPUS);
+  return (bitmap_find_first (cpumap->cpus, CONFIG_MAX_CPUS));
 }
 
 static inline int
-cpumap_find_next_zero(const struct cpumap *cpumap, int index)
+cpumap_find_next_zero (const struct cpumap *cpumap, int index)
 {
-    return bitmap_find_next_zero(cpumap->cpus, CONFIG_MAX_CPUS, index);
+  return (bitmap_find_next_zero (cpumap->cpus, CONFIG_MAX_CPUS, index));
 }
 
 static inline int
-cpumap_find_first_zero(const struct cpumap *cpumap)
+cpumap_find_first_zero (const struct cpumap *cpumap)
 {
-    return bitmap_find_first_zero(cpumap->cpus, CONFIG_MAX_CPUS);
+  return (bitmap_find_first_zero (cpumap->cpus, CONFIG_MAX_CPUS));
 }
 
 static inline bool
-cpumap_intersects(const struct cpumap *a, const struct cpumap *b)
+cpumap_intersects (const struct cpumap *a, const struct cpumap *b)
 {
-    return bitmap_intersects(a->cpus, b->cpus, CONFIG_MAX_CPUS);
+  return (bitmap_intersects (a->cpus, b->cpus, CONFIG_MAX_CPUS));
 }
 
-#define cpumap_for_each(cpumap, index) \
-    bitmap_for_each((cpumap)->cpus, CONFIG_MAX_CPUS, index)
+#define cpumap_for_each(cpumap, index)   \
+  bitmap_for_each ((cpumap)->cpus, CONFIG_MAX_CPUS, index)
 
-#define cpumap_for_each_zero(cpumap, index) \
-    bitmap_for_each_zero((cpumap)->cpus, CONFIG_MAX_CPUS, index)
+#define cpumap_for_each_zero(cpumap, index)   \
+  bitmap_for_each_zero ((cpumap)->cpus, CONFIG_MAX_CPUS, index)
 
 /*
  * Return a cpumap representing all active processors.
@@ -147,19 +148,19 @@ cpumap_intersects(const struct cpumap *a, const struct cpumap *b)
  * Until the cpumap module is initialized, the cpumap returned by this
  * function describes the BSP only.
  */
-const struct cpumap * cpumap_all(void);
+const struct cpumap* cpumap_all (void);
 
 /*
  * Allocate a CPU map.
  *
  * The new map is uninitialized.
  */
-int cpumap_create(struct cpumap **cpumapp);
+int cpumap_create (struct cpumap **cpumapp);
 
 /*
  * Release a CPU map.
  */
-void cpumap_destroy(struct cpumap *cpumap);
+void cpumap_destroy (struct cpumap *cpumap);
 
 /*
  * Check the validity of a CPU map.
@@ -167,13 +168,13 @@ void cpumap_destroy(struct cpumap *cpumap);
  * If the map doesn't identify at least one managed processor, return
  * EINVAL.
  */
-int cpumap_check(const struct cpumap *cpumap);
+int cpumap_check (const struct cpumap *cpumap);
 
 /*
  * This init operation provides :
  *  - cpumap creation
  *  - module fully initialized
  */
-INIT_OP_DECLARE(cpumap_setup);
+INIT_OP_DECLARE (cpumap_setup);
 
-#endif /* KERN_CPUMAP_H */
+#endif

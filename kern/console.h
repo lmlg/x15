@@ -27,13 +27,14 @@
 #include <kern/spinlock.h>
 #include <kern/thread.h>
 
-#define CONSOLE_SCROLL_UP   0x12    /* DC2 */
-#define CONSOLE_SCROLL_DOWN 0x14    /* DC4 */
+#define CONSOLE_SCROLL_UP     0x12    // DC2
+#define CONSOLE_SCROLL_DOWN   0x14    // DC4
 
 struct console;
 
-struct console_ops {
-    void (*puts)(struct console *console, const char *s, size_t size);
+struct console_ops
+{
+  void (*puts) (struct console *, const char *, size_t);
 };
 
 #define CONSOLE_BUF_SIZE    64
@@ -46,21 +47,20 @@ struct console_ops {
  * objects. Calls to console operations are all serialized by this module
  * for each device. Interrupts are disabled when calling operations.
  */
-struct console {
-    struct spinlock lock;
-    const struct console_ops *ops;
-    char buffer[CONSOLE_BUF_SIZE];
-    struct cbuf recvbuf;
-    struct list waiters;
-    struct list node;
-    char name[CONSOLE_NAME_SIZE];
+struct console
+{
+  struct spinlock lock;
+  const struct console_ops *ops;
+  char buffer[CONSOLE_BUF_SIZE];
+  struct cbuf recvbuf;
+  struct list waiters;
+  struct list node;
+  char name[CONSOLE_NAME_SIZE];
 };
 
-/*
- * Console initialization.
- */
-void console_init(struct console *console, const char *name,
-                  const struct console_ops *ops);
+// Console initialization.
+void console_init (struct console *console, const char *name,
+                   const struct console_ops *ops);
 
 /*
  * Register a console device.
@@ -70,7 +70,7 @@ void console_init(struct console *console, const char *name,
  * This function isn't thread-safe and can only be called during system
  * initialization.
  */
-void console_register(struct console *console);
+void console_register (struct console *console);
 
 /*
  * Console interrupt handler.
@@ -80,7 +80,7 @@ void console_register(struct console *console);
  *
  * Interrupts must be disabled when calling this function.
  */
-void console_intr(struct console *console, const char *s);
+void console_intr (struct console *console, const char *s);
 
 /*
  * Write/read a single character to all registered console devices.
@@ -88,41 +88,37 @@ void console_intr(struct console *console, const char *s);
  * Writing may not block in order to allow printf functions to be used in any
  * context. Reading may block waiting for input.
  */
-void console_putchar(char c);
-char console_getchar(void);
+void console_putchar (char c);
+char console_getchar (void);
 
 /*
  * Write/read a block of characters. These functions come in 2 versions: Those
  * that acquire the lock before and release it after, and those that don't.
  */
 
-void console_puts(const char *s, size_t size);
-size_t console_gets(char *s, size_t size);
+void console_puts (const char *s, size_t size);
+size_t console_gets (char *s, size_t size);
 
-void console_puts_nolock(const char *s, size_t size);
-size_t console_gets_nolock(char *s, size_t size);
+void console_puts_nolock (const char *s, size_t size);
+size_t console_gets_nolock (char *s, size_t size);
 
-/*
- * Acquire an exclusive lock on the console device.
- */
-void console_lock(unsigned long *flags);
+// Acquire an exclusive lock on the console device.
+void console_lock (unsigned long *flags);
 
-/*
- * Release the lock on the console.
- */
-void console_unlock(unsigned long flags);
+// Release the lock on the console.
+void console_unlock (unsigned long flags);
 
 /*
  * This init operation provides :
  *  - registration of consoles
  */
-INIT_OP_DECLARE(console_bootstrap);
+INIT_OP_DECLARE (console_bootstrap);
 
 /*
  * This init operation provides :
  *  - all consoles have been registered
  *  - module fully initialized
  */
-INIT_OP_DECLARE(console_setup);
+INIT_OP_DECLARE (console_setup);
 
-#endif /* KERN_CONSOLE_H */
+#endif

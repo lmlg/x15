@@ -49,290 +49,258 @@
 
 #define IOAPIC_MAX_ENTRIES 24
 
-struct ioapic_map {
-    uint8_t regsel;
-    uint8_t _reserved0;
-    uint8_t _reserved1;
-    uint8_t _reserved2;
-    uint32_t _reserved3;
-    uint32_t _reserved4;
-    uint32_t _reserved5;
-    uint32_t win;
+struct ioapic_map
+{
+  uint8_t regsel;
+  uint8_t reserved_0_2[3];
+  uint32_t reserved_3_5[3];
+  uint32_t win;
 };
 
-/*
- * Interrupt source override descriptor.
- */
-struct ioapic_iso {
-    uint32_t gsi;
-    uint8_t source;
-    bool active_high;
-    bool edge_triggered;
+// Interrupt source override descriptor.
+struct ioapic_iso
+{
+  uint32_t gsi;
+  uint8_t source;
+  bool active_high;
+  bool edge_triggered;
 };
 
-struct ioapic {
-    struct spinlock lock;
-    unsigned int id;
-    unsigned int apic_id;
-    unsigned int version;
-    volatile struct ioapic_map *map;
-    unsigned int first_gsi;
-    unsigned int last_gsi;
+struct ioapic
+{
+  struct spinlock lock;
+  uint32_t id;
+  uint32_t apic_id;
+  uint32_t version;
+  volatile struct ioapic_map *map;
+  uint32_t first_gsi;
+  uint32_t last_gsi;
 };
 
-static unsigned int ioapic_nr_devs;
+static uint32_t ioapic_nr_devs;
 
 static struct ioapic_iso ioapic_isos[PIC_MAX_INTR + 1];
-static unsigned int ioapic_nr_isos;
+static uint32_t ioapic_nr_isos;
 
 static void
-ioapic_iso_init(struct ioapic_iso *iso, uint8_t source, uint32_t gsi,
-                bool active_high, bool edge_triggered)
+ioapic_iso_init (struct ioapic_iso *iso, uint8_t source, uint32_t gsi,
+                 bool active_high, bool edge_triggered)
 {
-    iso->source = source;
-    iso->gsi = gsi;
-    iso->active_high = active_high;
-    iso->edge_triggered = edge_triggered;
+  iso->source = source;
+  iso->gsi = gsi;
+  iso->active_high = active_high;
+  iso->edge_triggered = edge_triggered;
 }
 
-static struct ioapic_iso * __init
-ioapic_alloc_iso(void)
+static struct ioapic_iso* __init
+ioapic_alloc_iso (void)
 {
-    struct ioapic_iso *iso;
-
-    if (ioapic_nr_isos >= ARRAY_SIZE(ioapic_isos)) {
-        log_err("ioapic: too many interrupt overrides");
-        return NULL;
+  if (ioapic_nr_isos >= ARRAY_SIZE (ioapic_isos))
+    {
+      log_err ("ioapic: too many interrupt overrides");
+      return (NULL);
     }
 
-    iso = &ioapic_isos[ioapic_nr_isos];
-    ioapic_nr_isos++;
-    return iso;
+  _Auto iso = &ioapic_isos[ioapic_nr_isos++];
+  return (iso);
 }
 
-static struct ioapic_iso *
-ioapic_lookup_iso(unsigned int intr)
+static struct ioapic_iso*
+ioapic_lookup_iso (uint32_t intr)
 {
-    struct ioapic_iso *iso;
-    unsigned int i;
-
-    for (i = 0; i < ioapic_nr_isos; i++) {
-        iso = &ioapic_isos[i];
-
-        if (intr == iso->source) {
-            return iso;
-        }
+  for (uint32_t i = 0; i < ioapic_nr_isos; i++)
+    {
+      _Auto iso = &ioapic_isos[i];
+      if (intr == iso->source)
+        return (iso);
     }
 
-    return NULL;
+  return (NULL);
 }
 
 static uint32_t
-ioapic_read(struct ioapic *ioapic, uint8_t reg)
+ioapic_read (struct ioapic *ioapic, uint8_t reg)
 {
-    ioapic->map->regsel = reg;
-    return ioapic->map->win;
+  ioapic->map->regsel = reg;
+  return ioapic->map->win;
 }
 
 static void
-ioapic_write(struct ioapic *ioapic, uint8_t reg, uint32_t value)
+ioapic_write (struct ioapic *ioapic, uint8_t reg, uint32_t value)
 {
-    ioapic->map->regsel = reg;
-    ioapic->map->win = value;
+  ioapic->map->regsel = reg;
+  ioapic->map->win = value;
 }
 
 static void
-ioapic_write_entry_low(struct ioapic *ioapic, unsigned int id, uint32_t value)
+ioapic_write_entry_low (struct ioapic *ioapic, unsigned int id, uint32_t value)
 {
-    assert(id < IOAPIC_MAX_ENTRIES);
-    ioapic_write(ioapic, IOAPIC_REG_IOREDTBL + (id * 2), value);
+  assert (id < IOAPIC_MAX_ENTRIES);
+  ioapic_write (ioapic, IOAPIC_REG_IOREDTBL + id * 2, value);
 }
 
 static void
-ioapic_write_entry_high(struct ioapic *ioapic, unsigned int id, uint32_t value)
+ioapic_write_entry_high (struct ioapic *ioapic, unsigned int id, uint32_t value)
 {
-    assert(id < IOAPIC_MAX_ENTRIES);
-    ioapic_write(ioapic, IOAPIC_REG_IOREDTBL + (id * 2) + 1, value);
+  assert (id < IOAPIC_MAX_ENTRIES);
+  ioapic_write (ioapic, IOAPIC_REG_IOREDTBL + id * 2 + 1, value);
 }
 
 static void
-ioapic_intr(unsigned int vector)
+ioapic_intr (unsigned int vector)
 {
-    intr_handle(vector - CPU_EXC_INTR_FIRST);
+  intr_handle (vector - CPU_EXC_INTR_FIRST);
 }
 
-static struct ioapic * __init
-ioapic_create(unsigned int apic_id, uintptr_t addr, unsigned int gsi_base)
+static struct ioapic* __init
+ioapic_create (uint32_t apic_id, uintptr_t addr, uint32_t gsi_base)
 {
-    struct ioapic *ioapic;
-    unsigned int i, nr_gsis;
-    uint32_t value;
+  struct ioapic *ioapic = kmem_alloc (sizeof (*ioapic) );
+  if (! ioapic)
+    panic ("ioapic: unable to allocate memory for controller");
 
-    ioapic = kmem_alloc(sizeof(*ioapic));
+  spinlock_init (&ioapic->lock);
+  ioapic->id = ioapic_nr_devs;
+  ioapic->apic_id = apic_id;
+  ioapic->first_gsi = gsi_base;
 
-    if (ioapic == NULL) {
-        panic("ioapic: unable to allocate memory for controller");
-    }
+  ioapic->map = vm_kmem_map_pa (addr, sizeof (*ioapic->map), NULL, NULL);
+  if (!ioapic->map)
+    panic ("ioapic: unable to map register window in kernel map");
 
-    spinlock_init(&ioapic->lock);
-    ioapic->id = ioapic_nr_devs;
-    ioapic->apic_id = apic_id;
-    ioapic->first_gsi = gsi_base;
+  uint32_t value = ioapic_read (ioapic, IOAPIC_REG_VERSION);
+  ioapic->version = (value & IOAPIC_VERSION_VERSION_MASK) >>
+                    IOAPIC_VERSION_VERSION_SHIFT;
+  uint32_t nr_gsis = ((value & IOAPIC_VERSION_MAXREDIR_MASK) >>
+                      IOAPIC_VERSION_MAXREDIR_SHIFT) + 1;
+  ioapic->last_gsi = ioapic->first_gsi + nr_gsis - 1;
 
-    ioapic->map = vm_kmem_map_pa(addr, sizeof(*ioapic->map), NULL, NULL);
+  // XXX This assumes that interrupts are mapped 1:1 to traps.
+  if (ioapic->last_gsi > CPU_EXC_INTR_LAST - CPU_EXC_INTR_FIRST)
+    panic ("ioapic: invalid interrupt range");
 
-    if (ioapic->map == NULL) {
-        panic("ioapic: unable to map register window in kernel map");
-    }
+  for (uint32_t i = ioapic->first_gsi; i < ioapic->last_gsi; i++)
+    cpu_register_intr (CPU_EXC_INTR_FIRST + i, ioapic_intr);
 
-    value = ioapic_read(ioapic, IOAPIC_REG_VERSION);
-    ioapic->version = (value & IOAPIC_VERSION_VERSION_MASK)
-                      >> IOAPIC_VERSION_VERSION_SHIFT;
-    nr_gsis = ((value & IOAPIC_VERSION_MAXREDIR_MASK)
-               >> IOAPIC_VERSION_MAXREDIR_SHIFT) + 1;
-    ioapic->last_gsi = ioapic->first_gsi + nr_gsis - 1;
+  log_info ("ioapic%u: version:%#x gsis:%u-%u", ioapic->id,
+            ioapic->version, ioapic->first_gsi, ioapic->last_gsi);
 
-    /* XXX This assumes that interrupts are mapped 1:1 to traps */
-    if (ioapic->last_gsi > (CPU_EXC_INTR_LAST - CPU_EXC_INTR_FIRST)) {
-        panic("ioapic: invalid interrupt range");
-    }
-
-    for (i = ioapic->first_gsi; i < ioapic->last_gsi; i++) {
-        cpu_register_intr(CPU_EXC_INTR_FIRST + i, ioapic_intr);
-    }
-
-    log_info("ioapic%u: version:%#x gsis:%u-%u", ioapic->id,
-             ioapic->version, ioapic->first_gsi, ioapic->last_gsi);
-
-    ioapic_nr_devs++;
-    return ioapic;
+  ++ioapic_nr_devs;
+  return (ioapic);
 }
 
 static bool
-ioapic_has_gsi(const struct ioapic *ioapic, unsigned int gsi)
+ioapic_has_gsi (const struct ioapic *ioapic, unsigned int gsi)
 {
-    return ((gsi >= ioapic->first_gsi) && (gsi <= ioapic->last_gsi));
+  return (gsi >= ioapic->first_gsi && gsi <= ioapic->last_gsi);
 }
 
 static unsigned int
-ioapic_compute_id(const struct ioapic *ioapic, unsigned int gsi)
+ioapic_compute_id (const struct ioapic *ioapic, uint32_t gsi)
 {
-    assert(ioapic_has_gsi(ioapic, gsi));
-    return gsi - ioapic->first_gsi;
+  assert (ioapic_has_gsi (ioapic, gsi));
+  return (gsi - ioapic->first_gsi);
 }
 
 static void
-ioapic_compute_entry(uint32_t *highp, uint32_t *lowp,
-                     unsigned int apic_id, unsigned int intr,
-                     bool active_high, bool edge_triggered)
+ioapic_compute_entry (uint32_t *highp, uint32_t *lowp,
+                      uint32_t apic_id, uint32_t intr,
+                      bool active_high, bool edge_triggered)
 {
-    assert(apic_id < 16);
-    assert(intr < (CPU_NR_EXC_VECTORS - CPU_EXC_INTR_FIRST));
+  assert (apic_id < 16);
+  assert (intr < (CPU_NR_EXC_VECTORS - CPU_EXC_INTR_FIRST) );
 
-    *highp = apic_id << 24;
-    *lowp = (!edge_triggered ? IOAPIC_ENTLOW_LEVEL : 0)
-            | (!active_high ? IOAPIC_ENTLOW_ACTIVE_LOW : 0)
-            | IOAPIC_ENTLOW_PHYS_DELIVERY
-            | IOAPIC_ENTLOW_FIXED_DEST
-            | (CPU_EXC_INTR_FIRST + intr);
+  *highp = apic_id << 24;
+  *lowp = (!edge_triggered ? IOAPIC_ENTLOW_LEVEL : 0) |
+          (!active_high ? IOAPIC_ENTLOW_ACTIVE_LOW : 0) |
+          IOAPIC_ENTLOW_PHYS_DELIVERY | IOAPIC_ENTLOW_FIXED_DEST |
+          (CPU_EXC_INTR_FIRST + intr);
 }
 
 static void
-ioapic_enable(void *priv, unsigned int intr, unsigned int cpu)
+ioapic_enable (void *priv, uint32_t intr, uint32_t cpu)
 {
-    bool active_high, edge_triggered;
-    const struct ioapic_iso *iso;
-    uint32_t high, low, gsi;
-    struct ioapic *ioapic;
-    unsigned long flags;
-    unsigned int id;
+  struct ioapic_iso *iso = ioapic_lookup_iso (intr);
+  bool active_high, edge_triggered;
+  uint32_t gsi;
 
-    iso = ioapic_lookup_iso(intr);
-
-    /* XXX These are defaults that should work with architectural devices */
-    if (iso == NULL) {
-        active_high = true;
-        edge_triggered = true;
-        gsi = intr;
-    } else {
-        active_high = iso->active_high;
-        edge_triggered = iso->edge_triggered;
-        gsi = iso->gsi;
+  // XXX These are defaults that should work with architectural devices.
+  if (! iso)
+    {
+      active_high = true;
+      edge_triggered = true;
+      gsi = intr;
+    }
+  else
+    {
+      active_high = iso->active_high;
+      edge_triggered = iso->edge_triggered;
+      gsi = iso->gsi;
     }
 
-    ioapic = priv;
-    id = ioapic_compute_id(ioapic, gsi);
-    ioapic_compute_entry(&high, &low, cpu_apic_id(cpu), intr,
-                         active_high, edge_triggered);
+  struct ioapic *ioapic = priv;
+  uint32_t high, low, id = ioapic_compute_id (ioapic, gsi);
+  ioapic_compute_entry (&high, &low, cpu_apic_id (cpu), intr,
+                        active_high, edge_triggered);
 
-    spinlock_lock_intr_save(&ioapic->lock, &flags);
-    ioapic_write_entry_high(ioapic, id, high);
-    ioapic_write_entry_low(ioapic, id, low);
-    spinlock_unlock_intr_restore(&ioapic->lock, flags);
+  unsigned long flags;
+  spinlock_lock_intr_save (&ioapic->lock, &flags);
+  ioapic_write_entry_high (ioapic, id, high);
+  ioapic_write_entry_low (ioapic, id, low);
+  spinlock_unlock_intr_restore (&ioapic->lock, flags);
 }
 
 static void
-ioapic_disable(void *priv, unsigned int intr)
+ioapic_disable (void *priv, unsigned int intr)
 {
-    struct ioapic *ioapic;
-    unsigned long flags;
-    unsigned int id;
+  struct ioapic *ioapic = priv;
+  uint32_t id = ioapic_compute_id (ioapic, intr);
 
-    ioapic = priv;
-    id = ioapic_compute_id(ioapic, intr);
-
-    spinlock_lock_intr_save(&ioapic->lock, &flags);
-    ioapic_write_entry_low(ioapic, id, IOAPIC_ENTLOW_INTRMASK);
-    spinlock_unlock_intr_restore(&ioapic->lock, flags);
+  unsigned long flags;
+  spinlock_lock_intr_save (&ioapic->lock, &flags);
+  ioapic_write_entry_low (ioapic, id, IOAPIC_ENTLOW_INTRMASK);
+  spinlock_unlock_intr_restore (&ioapic->lock, flags);
 }
 
 static void
-ioapic_eoi(void *priv, unsigned int intr)
+ioapic_eoi (void *priv, unsigned int intr)
 {
-    (void)priv;
-    (void)intr;
-
-    lapic_eoi();
+  (void)priv;
+  (void)intr;
+  lapic_eoi ();
 }
 
-static const struct intr_ops ioapic_ops = {
-    .enable = ioapic_enable,
-    .disable = ioapic_disable,
-    .eoi = ioapic_eoi,
+static const struct intr_ops ioapic_ops =
+{
+  .enable = ioapic_enable,
+  .disable = ioapic_disable,
+  .eoi = ioapic_eoi,
 };
 
 void __init
-ioapic_setup(void)
+ioapic_setup (void)
 {
-    ioapic_nr_devs = 0;
-    ioapic_nr_isos = 0;
+  ioapic_nr_devs = 0;
+  ioapic_nr_isos = 0;
 }
 
 void __init
-ioapic_register(unsigned int apic_id, uintptr_t addr, unsigned int gsi_base)
+ioapic_register (unsigned int apic_id, uintptr_t addr, unsigned int gsi_base)
 {
-    struct ioapic *ioapic;
+  struct ioapic *ioapic = ioapic_create (apic_id, addr, gsi_base);
 
-    ioapic = ioapic_create(apic_id, addr, gsi_base);
-
-    /*
-     * XXX This assumes that any interrupt override source is included
-     * in the GSI range.
-     */
-    intr_register_ctl(&ioapic_ops, ioapic, ioapic->first_gsi, ioapic->last_gsi);
+  /*
+   * XXX This assumes that any interrupt override source is included
+   * in the GSI range.
+   */
+  intr_register_ctl (&ioapic_ops, ioapic, ioapic->first_gsi, ioapic->last_gsi);
 }
 
 void __init
-ioapic_override(uint8_t source, uint32_t gsi,
-                bool active_high, bool edge_triggered)
+ioapic_override (uint8_t source, uint32_t gsi,
+                 bool active_high, bool edge_triggered)
 {
-    struct ioapic_iso *iso;
-
-    iso = ioapic_alloc_iso();
-
-    if (iso == NULL) {
-        return;
-    }
-
-    ioapic_iso_init(iso, source, gsi, active_high, edge_triggered);
+  struct ioapic_iso *iso = ioapic_alloc_iso ();
+  if (iso)
+    ioapic_iso_init (iso, source, gsi, active_high, edge_triggered);
 }

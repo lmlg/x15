@@ -26,31 +26,24 @@
 static unsigned int panic_done;
 
 void
-panic(const char *format, ...)
+panic (const char *format, ...)
 {
-    va_list list;
-    unsigned long already_done;
+  unsigned int already_done = atomic_swap (&panic_done, 1, ATOMIC_SEQ_CST);
 
-    already_done = atomic_swap(&panic_done, 1, ATOMIC_SEQ_CST);
+  if (already_done)
+    while (1)
+      cpu_idle ();
 
-    if (already_done) {
-        for (;;) {
-            cpu_idle();
-        }
-    }
+  cpu_intr_disable ();
+  cpu_halt_broadcast ();
 
-    cpu_intr_disable();
-    cpu_halt_broadcast();
+  va_list list;
+  printf ("\npanic: ");
+  va_start (list, format);
+  vprintf (format, list);
+  printf ("\n");
+  strace_dump ();
 
-    printf("\npanic: ");
-    va_start(list, format);
-    vprintf(format, list);
-    printf("\n");
-    strace_dump();
-
-    cpu_halt();
-
-    /*
-     * Never reached.
-     */
+  cpu_halt ();
+  __builtin_unreachable ();
 }

@@ -35,73 +35,58 @@ struct slist;
 
 struct slist_node;
 
-/*
- * Static list initializer.
- */
-#define SLIST_INITIALIZER(list) { NULL, NULL }
+// Static list initializer.
+#define SLIST_INITIALIZER(list)   { NULL, NULL }
 
-/*
- * Initialize a list.
- */
+// Initialize a list.
 static inline void
-slist_init(struct slist *list)
+slist_init (struct slist *list)
 {
-    list->first = NULL;
-    list->last = NULL;
+  list->first = list->last = NULL;
 }
 
-/*
- * Return the first node of a list.
- */
-static inline struct slist_node *
-slist_first(const struct slist *list)
+// Return the first node of a list.
+static inline struct slist_node*
+slist_first (const struct slist *list)
 {
-    return list->first;
+  return (list->first);
 }
 
-/*
- * Return the last node of a list.
- */
-static inline struct slist_node *
-slist_last(const struct slist *list)
+// Return the last node of a list.
+static inline struct slist_node*
+slist_last (const struct slist *list)
 {
-    return list->last;
+  return (list->last);
 }
 
-/*
- * Return the node next to the given node.
- */
-static inline struct slist_node *
-slist_next(const struct slist_node *node)
+// Return the node next to the given node.
+static inline struct slist_node*
+slist_next (const struct slist_node *node)
 {
-    return node->next;
+  return (node->next);
 }
 
-/*
- * Return true if node is invalid and denotes one of the ends of the list.
- */
+// Return true if node is invalid and denotes one of the ends of the list.
 static inline bool
-slist_end(const struct slist_node *node)
+slist_end (const struct slist_node *node)
 {
-    return node == NULL;
+  return (node == NULL);
 }
 
 /*
  * Return true if list is empty.
  */
 static inline bool
-slist_empty(const struct slist *list)
+slist_empty (const struct slist *list)
 {
-    return list->first == NULL;
+  return (list->first == NULL);
 }
 
-/*
- * Return true if list contains exactly one node.
- */
+// Return true if list contains exactly one node.
 static inline bool
-slist_singular(const struct slist *list)
+slist_singular (const struct slist *list)
 {
-    return !slist_empty(list) && (list->first == list->last);
+  return (!slist_empty (list) && list->first == list->last);
 }
 
 /*
@@ -110,19 +95,16 @@ slist_singular(const struct slist *list)
  * After completion, list2 is stale.
  */
 static inline void
-slist_concat(struct slist *list1, const struct slist *list2)
+slist_concat (struct slist *list1, const struct slist *list2)
 {
-    if (slist_empty(list2)) {
-        return;
-    }
+  if (slist_empty (list2))
+    return;
+  else if (slist_empty (list1))
+    list1->first = list2->first;
+  else
+    list1->last->next = list2->first;
 
-    if (slist_empty(list1)) {
-        list1->first = list2->first;
-    } else {
-        list1->last->next = list2->first;
-    }
-
-    list1->last = list2->last;
+  list1->last = list2->last;
 }
 
 /*
@@ -133,40 +115,34 @@ slist_concat(struct slist *list1, const struct slist *list2)
  * list_concat(&new_list, &old_list);
  */
 static inline void
-slist_set_head(struct slist *new_head, const struct slist *old_head)
+slist_set_head (struct slist *new_head, const struct slist *old_head)
 {
-    *new_head = *old_head;
+  *new_head = *old_head;
 }
 
-/*
- * Insert a node at the head of a list.
- */
+// Insert a node at the head of a list.
 static inline void
-slist_insert_head(struct slist *list, struct slist_node *node)
+slist_insert_head (struct slist *list, struct slist_node *node)
 {
-    if (slist_empty(list)) {
-        list->last = node;
-    }
-
-    node->next = list->first;
-    list->first = node;
-}
-
-/*
- * Insert a node at the tail of a list.
- */
-static inline void
-slist_insert_tail(struct slist *list, struct slist_node *node)
-{
-    node->next = NULL;
-
-    if (slist_empty(list)) {
-        list->first = node;
-    } else {
-        list->last->next = node;
-    }
-
+  if (slist_empty (list))
     list->last = node;
+
+  node->next = list->first;
+  list->first = node;
+}
+
+// Insert a node at the tail of a list.
+static inline void
+slist_insert_tail (struct slist *list, struct slist_node *node)
+{
+  node->next = NULL;
+
+  if (slist_empty (list))
+    list->first = node;
+  else
+    list->last->next = node;
+
+  list->last = node;
 }
 
 /*
@@ -175,15 +151,14 @@ slist_insert_tail(struct slist *list, struct slist_node *node)
  * The prev node must be valid.
  */
 static inline void
-slist_insert_after(struct slist *list, struct slist_node *node,
-                   struct slist_node *prev)
+slist_insert_after (struct slist *list, struct slist_node *node,
+                    struct slist_node *prev)
 {
-    node->next = prev->next;
-    prev->next = node;
+  node->next = prev->next;
+  prev->next = node;
 
-    if (list->last == prev) {
-        list->last = node;
-    }
+  if (list->last == prev)
+    list->last = node;
 }
 
 /*
@@ -194,24 +169,25 @@ slist_insert_after(struct slist *list, struct slist_node *node,
  * the first node is removed.
  */
 static inline void
-slist_remove(struct slist *list, struct slist_node *prev)
+slist_remove (struct slist *list, struct slist_node *prev)
 {
-    struct slist_node *node;
+  struct slist_node *node;
 
-    if (slist_end(prev)) {
-        node = list->first;
-        list->first = node->next;
+  if (slist_end (prev))
+    {
+      node = list->first;
+      list->first = node->next;
 
-        if (list->last == node) {
-            list->last = NULL;
-        }
-    } else {
-        node = prev->next;
-        prev->next = node->next;
+      if (list->last == node)
+        list->last = NULL;
+    }
+  else
+    {
+      node = prev->next;
+      prev->next = node->next;
 
-        if (list->last == node) {
-            list->last = prev;
-        }
+      if (list->last == node)
+        list->last = prev;
     }
 }
 
@@ -219,41 +195,28 @@ slist_remove(struct slist *list, struct slist_node *prev)
  * Macro that evaluates to the address of the structure containing the
  * given node based on the given type and member.
  */
-#define slist_entry(node, type, member) structof(node, type, member)
+#define slist_entry(node, type, member)   structof(node, type, member)
 
-/*
- * Get the first entry of a list.
- */
-#define slist_first_entry(list, type, member)                           \
-MACRO_BEGIN                                                             \
-    struct slist_node *first_;                                          \
-                                                                        \
-    first_ = (list)->first;                                             \
-    slist_end(first_) ? NULL : slist_entry(first_, type, member);       \
+// Get the first entry of a list.
+#define slist_first_entry(list, type, member)   \
+MACRO_BEGIN   \
+  struct slist_node *first_ = (list)->first;   \
+  slist_end (first_) ? NULL : slist_entry (first_, type, member);   \
 MACRO_END
 
-/*
- * Get the last entry of a list.
- */
-#define slist_last_entry(list, type, member)                            \
-MACRO_BEGIN                                                             \
-    struct slist_node *last_;                                           \
-                                                                        \
-    last_ = (list)->last;                                               \
-    slist_end(last_) ? NULL : slist_entry(last_, type, member);         \
+// Get the last entry of a list.
+#define slist_last_entry(list, type, member)   \
+MACRO_BEGIN   \
+  struct slist_node *last_ = (list)->last;   \
+  slist_end (last_) ? NULL : slist_entry(last_, type, member);   \
 MACRO_END
 
-/*
- * Get the entry next to the given entry.
- */
-#define slist_next_entry(entry, member)                                 \
-MACRO_BEGIN                                                             \
-    struct slist_node *next_;                                           \
-                                                                        \
-    next_ = (entry)->member.next;                                       \
-    slist_end(next_)                                                    \
-        ? NULL                                                          \
-        : slist_entry(next_, typeof(*entry), member);                   \
+// Get the entry next to the given entry.
+#define slist_next_entry(entry, member)   \
+MACRO_BEGIN   \
+  struct slist_node *next_ = (entry)->member.next;   \
+  slist_end (next_) ?   \
+    NULL : slist_entry(next_, typeof(*entry), member);   \
 MACRO_END
 
 /*
@@ -261,40 +224,36 @@ MACRO_END
  *
  * The node must not be altered during the loop.
  */
-#define slist_for_each(list, node)  \
-for (node = slist_first(list);      \
-     !slist_end(node);              \
-     node = slist_next(node))
+#define slist_for_each(list, node)   \
+  for (_Auto node = slist_first (list);   \
+       !slist_end (node);   \
+       node = slist_next (node))
 
-/*
- * Forge a loop to process all nodes of a list.
- */
-#define slist_for_each_safe(list, node, tmp)            \
-for (node = slist_first(list),                          \
-     tmp = slist_end(node) ? NULL : slist_next(node);   \
-     !slist_end(node);                                  \
-     node = tmp,                                        \
-     tmp = slist_end(node) ? NULL : slist_next(node))
+// Forge a loop to process all nodes of a list.
+#define slist_for_each_safe(list, node, tmp)   \
+  for (node = slist_first (list),   \
+       tmp = slist_end (node) ? NULL : slist_next (node);   \
+       !slist_end (node);   \
+       node = tmp,   \
+       tmp = slist_end (node) ? NULL : slist_next (node))
 
 /*
  * Forge a loop to process all entries of a list.
  *
  * The entry node must not be altered during the loop.
  */
-#define slist_for_each_entry(list, entry, member)               \
-for (entry = slist_first_entry(list, typeof(*entry), member);   \
-     entry != NULL;                                             \
-     entry = slist_next_entry(entry, member))
+#define slist_for_each_entry(list, entry, member)   \
+  for (entry = slist_first_entry (list, typeof (*entry), member);   \
+       entry != NULL;   \
+       entry = slist_next_entry (entry, member))
 
-/*
- * Forge a loop to process all entries of a list.
- */
-#define slist_for_each_entry_safe(list, entry, tmp, member)             \
-for (entry = slist_first_entry(list, typeof(*entry), member),           \
-     tmp = (entry == NULL) ? NULL : slist_next_entry(entry, member);    \
-     entry != NULL;                                                     \
-     entry = tmp,                                                       \
-     tmp = (entry == NULL) ? NULL : slist_next_entry(entry, member))    \
+// Forge a loop to process all entries of a list.
+#define slist_for_each_entry_safe(list, entry, tmp, member)   \
+  for (entry = slist_first_entry(list, typeof(*entry), member),   \
+       tmp = entry ? slist_next_entry (entry, member) : NULL;   \
+       entry != NULL;   \
+       entry = tmp,   \
+       tmp = entry ? slist_next_entry (entry, member) : NULL)
 
 /*
  * Lockless variants
@@ -305,50 +264,41 @@ for (entry = slist_first_entry(list, typeof(*entry), member),           \
 /*
  * Return the first node of a list.
  */
-static inline struct slist_node *
-slist_rcu_first(const struct slist *list)
+static inline struct slist_node*
+slist_rcu_first (const struct slist *list)
 {
-    return rcu_load_ptr(list->first);
+  return (rcu_load (&list->first));
 }
 
 /*
  * Return the node next to the given node.
  */
-static inline struct slist_node *
-slist_rcu_next(const struct slist_node *node)
+static inline struct slist_node*
+slist_rcu_next (const struct slist_node *node)
 {
-    return rcu_load_ptr(node->next);
+  return (rcu_load (&node->next));
 }
 
 /*
  * Insert a node at the head of a list.
  */
 static inline void
-slist_rcu_insert_head(struct slist *list, struct slist_node *node)
+slist_rcu_insert_head (struct slist *list, struct slist_node *node)
 {
-    if (slist_empty(list)) {
-        list->last = node;
-    }
+  if (slist_empty (list))
+    list->last = node;
 
-    node->next = list->first;
-    rcu_store_ptr(list->first, node);
+  node->next = list->first;
+  rcu_store (&list->first, node);
 }
 
-/*
- * Insert a node at the tail of a list.
- */
+// Insert a node at the tail of a list.
 static inline void
-slist_rcu_insert_tail(struct slist *list, struct slist_node *node)
+slist_rcu_insert_tail (struct slist *list, struct slist_node *node)
 {
-    node->next = NULL;
-
-    if (slist_empty(list)) {
-        rcu_store_ptr(list->first, node);
-    } else {
-        rcu_store_ptr(list->last->next, node);
-    }
-
-    list->last = node;
+  node->next = NULL;
+  rcu_store (slist_empty (list) ? &list->first : &list->last->next, node);
+  list->last = node;
 }
 
 /*
@@ -357,15 +307,14 @@ slist_rcu_insert_tail(struct slist *list, struct slist_node *node)
  * The prev node must be valid.
  */
 static inline void
-slist_rcu_insert_after(struct slist *list, struct slist_node *node,
-                          struct slist_node *prev)
+slist_rcu_insert_after (struct slist *list, struct slist_node *node,
+                        struct slist_node *prev)
 {
-    node->next = prev->next;
-    rcu_store_ptr(prev->next, node);
+  node->next = prev->next;
+  rcu_store (&prev->next, node);
 
-    if (list->last == prev) {
-        list->last = node;
-    }
+  if (list->last == prev)
+    list->last = node;
 }
 
 /*
@@ -376,24 +325,23 @@ slist_rcu_insert_after(struct slist *list, struct slist_node *node,
  * first node is removed.
  */
 static inline void
-slist_rcu_remove(struct slist *list, struct slist_node *prev)
+slist_rcu_remove (struct slist *list, struct slist_node *prev)
 {
-    struct slist_node *node;
+  if (slist_end (prev))
+    {
+      _Auto node = list->first;
+      rcu_store (&list->first, node->next);
 
-    if (slist_end(prev)) {
-        node = list->first;
-        rcu_store_ptr(list->first, node->next);
+      if (list->last == node)
+        list->last = NULL;
+    }
+  else
+    {
+      _Auto node = prev->next;
+      rcu_store (&prev->next, node->next);
 
-        if (list->last == node) {
-            list->last = NULL;
-        }
-    } else {
-        node = prev->next;
-        rcu_store_ptr(prev->next, node->next);
-
-        if (list->last == node) {
-            list->last = prev;
-        }
+      if (list->last == node)
+        list->last = prev;
     }
 }
 
@@ -401,47 +349,34 @@ slist_rcu_remove(struct slist *list, struct slist_node *prev)
  * Macro that evaluates to the address of the structure containing the
  * given node based on the given type and member.
  */
-#define slist_rcu_entry(node, type, member) \
-    structof(rcu_load_ptr(node), type, member)
+#define slist_rcu_entry(node, type, member)   \
+  structof(rcu_load (&(node)), type, member)
 
-/*
- * Get the first entry of a list.
- */
-#define slist_rcu_first_entry(list, type, member)                       \
-MACRO_BEGIN                                                             \
-    struct slist_node *first_;                                          \
-                                                                        \
-    first_ = slist_rcu_first(list);                                     \
-    slist_end(first_) ? NULL : slist_entry(first_, type, member);       \
+// Get the first entry of a list.
+#define slist_rcu_first_entry(list, type, member)   \
+MACRO_BEGIN   \
+  struct slist_node *first_ = slist_rcu_first (list);   \
+  slist_end (first_) ? NULL : slist_entry (first_, type, member);   \
 MACRO_END
 
-/*
- * Get the entry next to the given entry.
- */
-#define slist_rcu_next_entry(entry, member)                             \
-MACRO_BEGIN                                                             \
-    struct slist_node *next_;                                           \
-                                                                        \
-    next_ = slist_rcu_next(&entry->member);                             \
-    slist_end(next_)                                                    \
-        ? NULL                                                          \
-        : slist_entry(next_, typeof(*entry), member);                   \
+// Get the entry next to the given entry.
+#define slist_rcu_next_entry(entry, member)   \
+MACRO_BEGIN   \
+  struct slist_node *next_ = slist_rcu_next (&entry->member);   \
+  slist_end (next_) ?   \
+    NULL : slist_entry (next_, typeof (*entry), member);   \
 MACRO_END
 
-/*
- * Forge a loop to process all nodes of a list.
- */
-#define slist_rcu_for_each(list, node)      \
-for (node = slist_rcu_first(list);          \
-     !slist_end(node);                      \
-     node = slist_rcu_next(node))
+// Forge a loop to process all nodes of a list.
+#define slist_rcu_for_each(list, node)   \
+  for (_Auto node = slist_rcu_first (list);          \
+       !slist_end (node);                      \
+       node = slist_rcu_next (node))
 
-/*
- * Forge a loop to process all entries of a list.
- */
-#define slist_rcu_for_each_entry(list, entry, member)                   \
-for (entry = slist_rcu_first_entry(list, typeof(*entry), member);       \
-     entry != NULL;                                                     \
-     entry = slist_rcu_next_entry(entry, member))
+// Forge a loop to process all entries of a list.
+#define slist_rcu_for_each_entry(list, entry, member)   \
+  for (entry = slist_rcu_first_entry (list, typeof (*entry), member);   \
+       entry != NULL;   \
+       entry = slist_rcu_next_entry (entry, member))
 
-#endif /* KERN_SLIST_H */
+#endif

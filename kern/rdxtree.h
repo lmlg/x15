@@ -38,39 +38,29 @@
 
 typedef uint64_t rdxtree_key_t;
 
-/*
- * Radix tree initialization flags.
- */
-#define RDXTREE_KEY_ALLOC 0x1 /* Enable key allocation */
+// Radix tree initialization flags.
+#define RDXTREE_KEY_ALLOC 0x1   // Enable key allocation.
 
-/*
- * Radix tree.
- */
+// Radix tree.
 struct rdxtree;
 
-/*
- * Radix tree iterator.
- */
+// Radix tree iterator.
 struct rdxtree_iter;
 
-/*
- * Static tree initializer.
- */
-#define RDXTREE_INITIALIZER { 0, NULL }
+// Static tree initializer.
+#define RDXTREE_INITIALIZER   { 0, NULL }
 
 #include <kern/rdxtree_i.h>
 
-/*
- * Initialize a tree.
- */
+// Initialize a tree.
 static inline void
-rdxtree_init(struct rdxtree *tree, unsigned short flags)
+rdxtree_init (struct rdxtree *tree, unsigned short flags)
 {
-    assert((flags & ~RDXTREE_KEY_ALLOC) == 0);
+  assert ((flags & ~RDXTREE_KEY_ALLOC) == 0);
 
-    tree->height = 0;
-    tree->flags = flags;
-    tree->root = NULL;
+  tree->height = 0;
+  tree->flags = flags;
+  tree->root = NULL;
 }
 
 /*
@@ -79,9 +69,9 @@ rdxtree_init(struct rdxtree *tree, unsigned short flags)
  * The ptr parameter must not be NULL.
  */
 static inline int
-rdxtree_insert(struct rdxtree *tree, rdxtree_key_t key, void *ptr)
+rdxtree_insert (struct rdxtree *tree, rdxtree_key_t key, void *ptr)
 {
-    return rdxtree_insert_common(tree, key, ptr, NULL);
+  return (rdxtree_insert_common (tree, key, ptr, NULL));
 }
 
 /*
@@ -92,10 +82,10 @@ rdxtree_insert(struct rdxtree *tree, rdxtree_key_t key, void *ptr)
  * parameter.
  */
 static inline int
-rdxtree_insert_slot(struct rdxtree *tree, rdxtree_key_t key,
-                    void *ptr, void ***slotp)
+rdxtree_insert_slot (struct rdxtree *tree, rdxtree_key_t key,
+                     void *ptr, void ***slotp)
 {
-    return rdxtree_insert_common(tree, key, ptr, slotp);
+  return (rdxtree_insert_common (tree, key, ptr, slotp));
 }
 
 /*
@@ -105,9 +95,9 @@ rdxtree_insert_slot(struct rdxtree *tree, rdxtree_key_t key,
  * stored at the address pointed to by the keyp parameter.
  */
 static inline int
-rdxtree_insert_alloc(struct rdxtree *tree, void *ptr, rdxtree_key_t *keyp)
+rdxtree_insert_alloc (struct rdxtree *tree, void *ptr, rdxtree_key_t *keyp)
 {
-    return rdxtree_insert_alloc_common(tree, ptr, keyp, NULL);
+  return (rdxtree_insert_alloc_common (tree, ptr, keyp, NULL));
 }
 
 /*
@@ -120,10 +110,10 @@ rdxtree_insert_alloc(struct rdxtree *tree, void *ptr, rdxtree_key_t *keyp)
  * slotp parameter.
  */
 static inline int
-rdxtree_insert_alloc_slot(struct rdxtree *tree, void *ptr,
-                          rdxtree_key_t *keyp, void ***slotp)
+rdxtree_insert_alloc_slot (struct rdxtree *tree, void *ptr,
+                           rdxtree_key_t *keyp, void ***slotp)
 {
-    return rdxtree_insert_alloc_common(tree, ptr, keyp, slotp);
+  return (rdxtree_insert_alloc_common (tree, ptr, keyp, slotp));
 }
 
 /*
@@ -131,17 +121,17 @@ rdxtree_insert_alloc_slot(struct rdxtree *tree, void *ptr,
  *
  * The matching pointer is returned if successful, NULL otherwise.
  */
-void * rdxtree_remove(struct rdxtree *tree, rdxtree_key_t key);
+void* rdxtree_remove (struct rdxtree *tree, rdxtree_key_t key);
 
 /*
  * Look up a pointer in a tree.
  *
  * The matching pointer is returned if successful, NULL otherwise.
  */
-static inline void *
-rdxtree_lookup(const struct rdxtree *tree, rdxtree_key_t key)
+static inline void*
+rdxtree_lookup (const struct rdxtree *tree, rdxtree_key_t key)
 {
-    return rdxtree_lookup_common(tree, key, false);
+  return (rdxtree_lookup_common (tree, key, false));
 }
 
 /*
@@ -155,16 +145,16 @@ rdxtree_lookup(const struct rdxtree *tree, rdxtree_key_t key)
  *
  * See rdxtree_replace_slot().
  */
-static inline void **
-rdxtree_lookup_slot(const struct rdxtree *tree, rdxtree_key_t key)
+static inline void**
+rdxtree_lookup_slot (const struct rdxtree *tree, rdxtree_key_t key)
 {
-    return rdxtree_lookup_common(tree, key, true);
+  return (rdxtree_lookup_common (tree, key, true));
 }
 
-static inline void *
-rdxtree_load_slot(void **slot)
+static inline void*
+rdxtree_load_slot (void **slot)
 {
-    return rcu_load_ptr(*slot);
+  return (rcu_load (slot));
 }
 
 /*
@@ -174,25 +164,22 @@ rdxtree_load_slot(void **slot)
  *
  * See rdxtree_lookup_slot().
  */
-void * rdxtree_replace_slot(void **slot, void *ptr);
+void* rdxtree_replace_slot (void **slot, void *ptr);
 
 /*
  * Forge a loop to process all pointers of a tree.
  *
  * It is not safe to modify a tree from such a loop.
  */
-#define rdxtree_for_each(tree, iter, ptr)                       \
-for (rdxtree_iter_init(iter), ptr = rdxtree_walk(tree, iter);   \
-     ptr != NULL;                                               \
-     ptr = rdxtree_walk(tree, iter))
+#define rdxtree_for_each(tree, iter, ptr)   \
+  for (rdxtree_iter_init (iter), ptr = rdxtree_walk(tree, iter);   \
+       ptr; ptr = rdxtree_walk (tree, iter))
 
-/*
- * Return the key of the current pointer from an iterator.
- */
+// Return the key of the current pointer from an iterator.
 static inline rdxtree_key_t
-rdxtree_iter_key(const struct rdxtree_iter *iter)
+rdxtree_iter_key (const struct rdxtree_iter *iter)
 {
-    return iter->key;
+  return (iter->key);
 }
 
 /*
@@ -202,12 +189,12 @@ rdxtree_iter_key(const struct rdxtree_iter *iter)
  * the pointers using rdxtree_for_each(), freeing them, then call this
  * function.
  */
-void rdxtree_remove_all(struct rdxtree *tree);
+void rdxtree_remove_all (struct rdxtree *tree);
 
 /*
  * This init operation provides :
  *  - module fully initialized
  */
-INIT_OP_DECLARE(rdxtree_setup);
+INIT_OP_DECLARE (rdxtree_setup);
 
-#endif /* KERN_RDXTREE_H */
+#endif

@@ -49,34 +49,29 @@
 #include <machine/cpu.h>
 #include <machine/tcb.h>
 
-/*
- * Thread structure.
- */
+// Thread structure.
 struct thread;
 
 /*
  * The global priority of a thread is meant to be compared against
  * another global priority to determine which thread has higher priority.
  */
-struct thread_sched_data {
-    unsigned char sched_policy;
-    unsigned char sched_class;
-    unsigned short priority;
-    unsigned int global_priority;
+struct thread_sched_data
+{
+  uint8_t sched_policy;
+  uint8_t sched_class;
+  uint16_t priority;
+  uint32_t global_priority;
 };
 
-/*
- * Thread name buffer size.
- */
-#define THREAD_NAME_SIZE 32
+// Thread name buffer size.
+#define THREAD_NAME_SIZE   32
 
 #include <kern/thread_i.h>
 
-#define THREAD_KERNEL_PREFIX KERNEL_NAME "_"
+#define THREAD_KERNEL_PREFIX   KERNEL_NAME "_"
 
-/*
- * Thread states.
- */
+// Thread states.
 #define THREAD_RUNNING      0
 #define THREAD_SLEEPING     1
 #define THREAD_DEAD         2
@@ -93,29 +88,24 @@ struct thread_sched_data {
 #define THREAD_SCHED_POLICY_IDLE    3
 #define THREAD_NR_SCHED_POLICIES    4
 
-/*
- * Real-time priority properties.
- */
+// Real-time priority properties.
 #define THREAD_SCHED_RT_PRIO_MIN        0
 #define THREAD_SCHED_RT_PRIO_MAX        31
 
-/*
- * Fair-scheduling priority properties.
- */
+// Fair-scheduling priority properties.
 #define THREAD_SCHED_FS_PRIO_MIN        0
 #define THREAD_SCHED_FS_PRIO_DEFAULT    20
 #define THREAD_SCHED_FS_PRIO_MAX        39
 
-/*
- * Thread creation attributes.
- */
-struct thread_attr {
-    const char *name;
-    unsigned long flags;
-    struct cpumap *cpumap;
-    struct task *task;
-    unsigned char policy;
-    unsigned short priority;
+// Thread creation attributes.
+struct thread_attr
+{
+  const char *name;
+  size_t flags;
+  struct cpumap *cpumap;
+  struct task *task;
+  uint8_t policy;
+  uint16_t priority;
 };
 
 /*
@@ -132,44 +122,44 @@ struct thread_attr {
  * as well.
  */
 static inline void
-thread_attr_init(struct thread_attr *attr, const char *name)
+thread_attr_init (struct thread_attr *attr, const char *name)
 {
-    attr->name = name;
-    attr->flags = 0;
-    attr->cpumap = NULL;
-    attr->task = NULL;
-    attr->policy = THREAD_SCHED_POLICY_FS;
-    attr->priority = THREAD_SCHED_FS_PRIO_DEFAULT;
+  attr->name = name;
+  attr->flags = 0;
+  attr->cpumap = NULL;
+  attr->task = NULL;
+  attr->policy = THREAD_SCHED_POLICY_FS;
+  attr->priority = THREAD_SCHED_FS_PRIO_DEFAULT;
 }
 
 static inline void
-thread_attr_set_detached(struct thread_attr *attr)
+thread_attr_set_detached (struct thread_attr *attr)
 {
-    attr->flags |= THREAD_ATTR_DETACHED;
+  attr->flags |= THREAD_ATTR_DETACHED;
 }
 
 static inline void
-thread_attr_set_cpumap(struct thread_attr *attr, struct cpumap *cpumap)
+thread_attr_set_cpumap (struct thread_attr *attr, struct cpumap *cpumap)
 {
-    attr->cpumap = cpumap;
+  attr->cpumap = cpumap;
 }
 
 static inline void
-thread_attr_set_task(struct thread_attr *attr, struct task *task)
+thread_attr_set_task (struct thread_attr *attr, struct task *task)
 {
-    attr->task = task;
+  attr->task = task;
 }
 
 static inline void
-thread_attr_set_policy(struct thread_attr *attr, unsigned char policy)
+thread_attr_set_policy (struct thread_attr *attr, unsigned char policy)
 {
-    attr->policy = policy;
+  attr->policy = policy;
 }
 
 static inline void
-thread_attr_set_priority(struct thread_attr *attr, unsigned short priority)
+thread_attr_set_priority (struct thread_attr *attr, unsigned short priority)
 {
-    attr->priority = priority;
+  attr->priority = priority;
 }
 
 /*
@@ -177,12 +167,12 @@ thread_attr_set_priority(struct thread_attr *attr, unsigned short priority)
  *
  * Loaded TCBs are expected to call this function with interrupts disabled.
  */
-void thread_main(void (*fn)(void *), void *arg);
+void thread_main (void (*fn) (void *), void *arg);
 
 /*
  * Initialization of the thread module on APs.
  */
-void thread_ap_setup(void);
+void thread_ap_setup (void);
 
 /*
  * Create a thread.
@@ -194,18 +184,18 @@ void thread_ap_setup(void);
  * If successful, and if the caller passed a non-NULL thread pointer, it is
  * filled with the address of the newly created thread.
  */
-int thread_create(struct thread **threadp, const struct thread_attr *attr,
-                  void (*fn)(void *), void *arg);
+int thread_create (struct thread **threadp, const struct thread_attr *attr,
+                   void (*fn) (void *), void *arg);
 
 /*
  * Terminate the calling thread.
  */
-noreturn void thread_exit(void);
+noreturn void thread_exit (void);
 
 /*
  * Wait for the given thread to terminate and release its resources.
  */
-void thread_join(struct thread *thread);
+void thread_join (struct thread *thread);
 
 /*
  * Make the current thread sleep while waiting for an event.
@@ -229,10 +219,10 @@ void thread_join(struct thread *thread);
  *
  * Implies a memory barrier.
  */
-void thread_sleep(struct spinlock *interlock, const void *wchan_addr,
-                  const char *wchan_desc);
-int thread_timedsleep(struct spinlock *interlock, const void *wchan_addr,
-                      const char *wchan_desc, uint64_t ticks);
+void thread_sleep (struct spinlock *interlock, const void *wchan_addr,
+                   const char *wchan_desc);
+int thread_timedsleep (struct spinlock *interlock, const void *wchan_addr,
+                       const char *wchan_desc, uint64_t ticks);
 
 /*
  * Schedule a thread for execution on a processor.
@@ -243,7 +233,7 @@ int thread_timedsleep(struct spinlock *interlock, const void *wchan_addr,
  *
  * TODO Describe memory ordering with regard to thread_sleep().
  */
-int thread_wakeup(struct thread *thread);
+int thread_wakeup (struct thread *thread);
 
 /*
  * Suspend a thread.
@@ -258,7 +248,7 @@ int thread_wakeup(struct thread *thread);
  * returned. If the target thread is already suspended, the call turns into
  * a no-op and merely returns success.
  */
-int thread_suspend(struct thread *thread);
+int thread_suspend (struct thread *thread);
 
 /*
  * Resume a thread.
@@ -266,19 +256,17 @@ int thread_suspend(struct thread *thread);
  * This call is equivalent to thread_wakeup(), with the exception that
  * it may also wake up suspended threads.
  */
-int thread_resume(struct thread *thread);
+int thread_resume (struct thread *thread);
 
-/*
- * Suspend execution of the calling thread.
- */
-void thread_delay(uint64_t ticks, bool absolute);
+// Suspend execution of the calling thread.
+void thread_delay (uint64_t ticks, bool absolute);
 
 /*
  * Start running threads on the local processor.
  *
  * Interrupts must be disabled when calling this function.
  */
-noreturn void thread_run_scheduler(void);
+noreturn void thread_run_scheduler (void);
 
 /*
  * Make the calling thread release the processor.
@@ -289,25 +277,21 @@ noreturn void thread_run_scheduler(void);
  *
  * Implies a full memory barrier if a context switch occurred.
  */
-void thread_yield(void);
+void thread_yield (void);
 
-/*
- * Report a scheduling interrupt from a remote processor.
- */
-void thread_schedule_intr(void);
+// Report a scheduling interrupt from a remote processor.
+void thread_schedule_intr (void);
 
 /*
  * Report a periodic event on the current processor.
  *
  * Interrupts and preemption must be disabled when calling this function.
  */
-void thread_report_periodic_event(void);
+void thread_report_periodic_event (void);
 
-/*
- * Set thread scheduling parameters.
- */
-void thread_setscheduler(struct thread *thread, unsigned char policy,
-                         unsigned short priority);
+// Set thread scheduling parameters.
+void thread_setscheduler (struct thread *thread, unsigned char policy,
+                          unsigned short priority);
 
 /*
  * Variant used for priority inheritance.
@@ -315,58 +299,51 @@ void thread_setscheduler(struct thread *thread, unsigned char policy,
  * The caller must hold the turnstile thread data lock and no turnstile
  * locks when calling this function.
  */
-void thread_pi_setscheduler(struct thread *thread, unsigned char policy,
-                            unsigned short priority);
+void thread_pi_setscheduler (struct thread *thread, unsigned char policy,
+                             unsigned short priority);
 
 static inline void
-thread_ref(struct thread *thread)
+thread_ref (struct thread *thread)
 {
-    unsigned long nr_refs;
-
-    nr_refs = atomic_fetch_add(&thread->nr_refs, 1UL, ATOMIC_RELAXED);
-    assert(nr_refs != (unsigned long)-1);
+  size_t nr_refs = atomic_add_rlx (&thread->nr_refs, 1);
+  assert (nr_refs != (size_t)-1);
 }
 
 static inline void
-thread_unref(struct thread *thread)
+thread_unref (struct thread *thread)
 {
-    unsigned long nr_refs;
+  size_t nr_refs = atomic_sub (&thread->nr_refs, 1, ATOMIC_ACQ_REL);
+  assert (nr_refs);
 
-    nr_refs = atomic_fetch_sub(&thread->nr_refs, 1UL, ATOMIC_ACQ_REL);
-    assert(nr_refs != 0);
-
-    if (nr_refs == 1) {
-        thread_terminate(thread);
-    }
+  if (nr_refs == 1)
+    thread_terminate (thread);
 }
 
-static inline const void *
-thread_wchan_addr(const struct thread *thread)
+static inline const void*
+thread_wchan_addr (const struct thread *thread)
 {
-    return thread->wchan_addr;
+  return (thread->wchan_addr);
 }
 
-static inline const char *
-thread_wchan_desc(const struct thread *thread)
+static inline const char*
+thread_wchan_desc (const struct thread *thread)
 {
-    return thread->wchan_desc;
+  return (thread->wchan_desc);
 }
 
-/*
- * Return a character representation of the state of a thread.
- */
-char thread_state_to_chr(unsigned int state);
+// Return a character representation of the state of a thread.
+char thread_state_to_chr (unsigned int state);
 
-static inline const struct thread_sched_data *
-thread_get_user_sched_data(const struct thread *thread)
+static inline const struct thread_sched_data*
+thread_get_user_sched_data (const struct thread *thread)
 {
-    return &thread->user_sched_data;
+  return (&thread->user_sched_data);
 }
 
-static inline const struct thread_sched_data *
-thread_get_real_sched_data(const struct thread *thread)
+static inline const struct thread_sched_data*
+thread_get_real_sched_data (const struct thread *thread)
 {
-    return &thread->real_sched_data;
+  return (&thread->real_sched_data);
 }
 
 /*
@@ -378,75 +355,73 @@ thread_get_real_sched_data(const struct thread *thread)
  * Both are locked when scheduling data are updated.
  */
 
-static inline unsigned char
-thread_user_sched_policy(const struct thread *thread)
+static inline uint8_t
+thread_user_sched_policy (const struct thread *thread)
 {
-    return thread_get_user_sched_data(thread)->sched_policy;
+  return (thread_get_user_sched_data(thread)->sched_policy);
 }
 
-static inline unsigned char
-thread_user_sched_class(const struct thread *thread)
+static inline uint8_t
+thread_user_sched_class (const struct thread *thread)
 {
-    return thread_get_user_sched_data(thread)->sched_class;
+  return (thread_get_user_sched_data(thread)->sched_class);
 }
 
-static inline unsigned short
-thread_user_priority(const struct thread *thread)
+static inline uint16_t
+thread_user_priority (const struct thread *thread)
 {
-    return thread_get_user_sched_data(thread)->priority;
+  return (thread_get_user_sched_data(thread)->priority);
 }
 
-static inline unsigned int
-thread_user_global_priority(const struct thread *thread)
+static inline uint32_t
+thread_user_global_priority (const struct thread *thread)
 {
-    return thread_get_user_sched_data(thread)->global_priority;
+  return (thread_get_user_sched_data(thread)->global_priority);
 }
 
-static inline unsigned char
-thread_real_sched_policy(const struct thread *thread)
+static inline uint8_t
+thread_real_sched_policy (const struct thread *thread)
 {
-    return thread_get_real_sched_data(thread)->sched_policy;
+  return (thread_get_real_sched_data(thread)->sched_policy);
 }
 
-static inline unsigned char
-thread_real_sched_class(const struct thread *thread)
+static inline uint8_t
+thread_real_sched_class (const struct thread *thread)
 {
-    return thread_get_real_sched_data(thread)->sched_class;
+  return (thread_get_real_sched_data(thread)->sched_class);
 }
 
-static inline unsigned short
-thread_real_priority(const struct thread *thread)
+static inline uint16_t
+thread_real_priority (const struct thread *thread)
 {
-    return thread_get_real_sched_data(thread)->priority;
+  return (thread_get_real_sched_data(thread)->priority);
 }
 
-static inline unsigned int
-thread_real_global_priority(const struct thread *thread)
+static inline uint32_t
+thread_real_global_priority (const struct thread *thread)
 {
-    return thread_get_real_sched_data(thread)->global_priority;
+  return (thread_get_real_sched_data(thread)->global_priority);
 }
 
-/*
- * Return a string representation of the scheduling class of a thread.
- */
-const char * thread_sched_class_to_str(unsigned char sched_class);
+// Return a string representation of the scheduling class of a thread.
+const char* thread_sched_class_to_str (uint8_t sched_class);
 
-static inline struct tcb *
-thread_get_tcb(struct thread *thread)
+static inline struct tcb*
+thread_get_tcb (struct thread *thread)
 {
-    return &thread->tcb;
+  return (&thread->tcb);
 }
 
-static inline struct thread *
-thread_from_tcb(struct tcb *tcb)
+static inline struct thread*
+thread_from_tcb (struct tcb *tcb)
 {
-    return structof(tcb, struct thread, tcb);
+  return (structof (tcb, struct thread, tcb));
 }
 
-static inline struct thread *
-thread_self(void)
+static inline struct thread*
+thread_self (void)
 {
-    return thread_from_tcb(tcb_current());
+  return (thread_from_tcb (tcb_current ()));
 }
 
 /*
@@ -454,77 +429,67 @@ thread_self(void)
  *
  * Called on return from interrupt or when reenabling preemption.
  */
-void thread_schedule(void);
+void thread_schedule (void);
 
-/*
- * Sleep queue lending functions.
- */
+// Sleep queue lending functions.
 
-static inline struct sleepq *
-thread_sleepq_lend(void)
+static inline struct sleepq*
+thread_sleepq_lend (void)
 {
-    struct sleepq *sleepq;
-
-    sleepq = thread_self()->priv_sleepq;
-    assert(sleepq != NULL);
-    thread_self()->priv_sleepq = NULL;
-    return sleepq;
+  struct sleepq *sleepq = thread_self()->priv_sleepq;
+  assert (sleepq);
+  thread_self()->priv_sleepq = NULL;
+  return (sleepq);
 }
 
 static inline void
-thread_sleepq_return(struct sleepq *sleepq)
+thread_sleepq_return (struct sleepq *sleepq)
 {
-    assert(sleepq != NULL);
-    assert(thread_self()->priv_sleepq == NULL);
-    thread_self()->priv_sleepq = sleepq;
+  assert (sleepq);
+  assert (!thread_self()->priv_sleepq);
+  thread_self()->priv_sleepq = sleepq;
 }
 
-/*
- * Turnstile lending functions.
- */
+// Turnstile lending functions.
 
-static inline struct turnstile *
-thread_turnstile_lend(void)
+static inline struct turnstile*
+thread_turnstile_lend (void)
 {
-    struct turnstile *turnstile;
-
-    turnstile = thread_self()->priv_turnstile;
-    assert(turnstile != NULL);
-    thread_self()->priv_turnstile = NULL;
-    return turnstile;
+  struct turnstile *turnstile = thread_self()->priv_turnstile;
+  assert (turnstile);
+  thread_self()->priv_turnstile = NULL;
+  return (turnstile);
 }
 
 static inline void
-thread_turnstile_return(struct turnstile *turnstile)
+thread_turnstile_return (struct turnstile *turnstile)
 {
-    assert(turnstile != NULL);
-    assert(thread_self()->priv_turnstile == NULL);
-    thread_self()->priv_turnstile = turnstile;
+  assert (turnstile);
+  assert (!thread_self()->priv_turnstile);
+  thread_self()->priv_turnstile = turnstile;
 }
 
-static inline struct turnstile_td *
-thread_turnstile_td(struct thread *thread)
+static inline struct turnstile_td*
+thread_turnstile_td (struct thread *thread)
 {
-    return &thread->turnstile_td;
+  return (&thread->turnstile_td);
 }
 
-/*
- * Priority propagation functions.
- */
+// Priority propagation functions.
 
 static inline bool
-thread_priority_propagation_needed(void)
+thread_priority_propagation_needed (void)
 {
-    return thread_self()->propagate_priority;
+  return (thread_self()->propagate_priority);
 }
 
 static inline void
-thread_set_priority_propagation_needed(void)
+thread_set_priority_propagation_needed (void)
 {
-    thread_self()->propagate_priority = true;
+  thread_self()->propagate_priority = true;
 }
 
-void thread_propagate_priority(void);
+void thread_propagate_priority (void);
 
 /*
  * Migration control functions.
@@ -533,31 +498,27 @@ void thread_propagate_priority(void);
  */
 
 static inline int
-thread_pinned(void)
+thread_pinned (void)
 {
-    return thread_self()->pin_level != 0;
+  return (thread_self()->pin_level != 0);
 }
 
 static inline void
-thread_pin(void)
+thread_pin (void)
 {
-    struct thread *thread;
-
-    thread = thread_self();
-    thread->pin_level++;
-    assert(thread->pin_level != 0);
-    barrier();
+  struct thread *thread = thread_self ();
+  ++thread->pin_level;
+  assert (thread->pin_level);
+  barrier ();
 }
 
 static inline void
-thread_unpin(void)
+thread_unpin (void)
 {
-    struct thread *thread;
-
-    barrier();
-    thread = thread_self();
-    assert(thread->pin_level != 0);
-    thread->pin_level--;
+  barrier ();
+  struct thread *thread = thread_self();
+  assert (thread->pin_level);
+  --thread->pin_level;
 }
 
 /*
@@ -567,64 +528,59 @@ thread_unpin(void)
  */
 
 static inline int
-thread_preempt_enabled(void)
+thread_preempt_enabled (void)
 {
-    return thread_self()->preempt_level == 0;
+  return (thread_self()->preempt_level == 0);
 }
 
 static inline void
-thread_preempt_disable(void)
+thread_preempt_disable (void)
 {
-    struct thread *thread;
-
-    thread = thread_self();
-    thread->preempt_level++;
-    assert(thread->preempt_level != 0);
-    barrier();
+  struct thread *thread = thread_self ();
+  ++thread->preempt_level;
+  assert (thread->preempt_level);
+  barrier ();
 }
 
 static inline void
-thread_preempt_enable_no_resched(void)
+thread_preempt_enable_no_resched (void)
 {
-    struct thread *thread;
+  barrier ();
+  struct thread *thread = thread_self ();
+  assert (thread->preempt_level);
+  --thread->preempt_level;
 
-    barrier();
-    thread = thread_self();
-    assert(thread->preempt_level != 0);
-    thread->preempt_level--;
-
-    /*
-     * Don't perform priority propagation here, because this function is
-     * called on return from interrupt, where the transient state may
-     * incorrectly trigger it.
-     */
+  /*
+   * Don't perform priority propagation here, because this function is
+   * called on return from interrupt, where the transient state may
+   * incorrectly trigger it.
+   */
 }
 
 static inline void
-thread_preempt_enable(void)
+thread_preempt_enable (void)
 {
-    thread_preempt_enable_no_resched();
+  thread_preempt_enable_no_resched ();
 
-    if (thread_priority_propagation_needed()
-        && thread_preempt_enabled()) {
-        thread_propagate_priority();
-    }
+  if (thread_priority_propagation_needed () &&
+      thread_preempt_enabled ())
+    thread_propagate_priority ();
 
-    thread_schedule();
+  thread_schedule ();
 }
 
 static inline void
-thread_preempt_disable_intr_save(unsigned long *flags)
+thread_preempt_disable_intr_save (unsigned long *flags)
 {
-    thread_preempt_disable();
-    cpu_intr_save(flags);
+  thread_preempt_disable ();
+  cpu_intr_save (flags);
 }
 
 static inline void
-thread_preempt_enable_intr_restore(unsigned long flags)
+thread_preempt_enable_intr_restore (unsigned long flags)
 {
-    cpu_intr_restore(flags);
-    thread_preempt_enable();
+  cpu_intr_restore (flags);
+  thread_preempt_enable ();
 }
 
 /*
@@ -634,180 +590,110 @@ thread_preempt_enable_intr_restore(unsigned long flags)
  */
 
 static inline bool
-thread_interrupted(void)
+thread_interrupted (void)
 {
-    return thread_self()->intr_level != 0;
+  return (thread_self()->intr_level != 0);
 }
 
 static inline bool
-thread_check_intr_context(void)
+thread_check_intr_context (void)
 {
-    return thread_interrupted()
-           && !cpu_intr_enabled()
-           && !thread_preempt_enabled();
+  return (thread_interrupted () && !cpu_intr_enabled () &&
+          !thread_preempt_enabled ());
 }
 
 static inline void
-thread_intr_enter(void)
+thread_intr_enter (void)
 {
-    struct thread *thread;
+  struct thread *thread = thread_self ();
 
-    thread = thread_self();
+  if (++thread->intr_level == 1)
+    thread_preempt_disable ();
 
-    if (thread->intr_level == 0) {
-        thread_preempt_disable();
-    }
-
-    thread->intr_level++;
-    assert(thread->intr_level != 0);
-    barrier();
+  assert (thread->intr_level);
+  barrier ();
 }
 
 static inline void
-thread_intr_leave(void)
+thread_intr_leave (void)
 {
-    struct thread *thread;
+  barrier ();
+  struct thread *thread = thread_self ();
+  assert (thread->intr_level);
 
-    barrier();
-    thread = thread_self();
-    assert(thread->intr_level != 0);
-    thread->intr_level--;
-
-    if (thread->intr_level == 0) {
-        thread_preempt_enable_no_resched();
-    }
+  if (--thread->intr_level == 0)
+    thread_preempt_enable_no_resched ();
 }
 
-/*
- * RCU functions.
- */
+// RCU functions.
 
-static inline struct rcu_reader *
-thread_rcu_reader(struct thread *thread)
+static inline struct rcu_reader*
+thread_rcu_reader (struct thread *thread)
 {
-    return &thread->rcu_reader;
+  return (&thread->rcu_reader);
 }
 
-/*
- * Thread-specific data functions.
- */
-
-#if CONFIG_THREAD_MAX_TSD_KEYS != 0
-
-/*
- * Type for thread-specific data destructor.
- */
-typedef void (*thread_tsd_dtor_fn_t)(void *);
-
-/*
- * Allocate a TSD key.
- *
- * If not NULL, the destructor is called on thread destruction on the pointer
- * associated with the allocated key.
- */
-void thread_key_create(unsigned int *keyp, thread_tsd_dtor_fn_t dtor);
-
-/*
- * Set the pointer associated with a key for the given thread.
- */
-static inline void
-thread_tsd_set(struct thread *thread, unsigned int key, void *ptr)
+static inline const char*
+thread_name (const struct thread *thread)
 {
-    thread->tsd[key] = ptr;
-}
-
-/*
- * Return the pointer associated with a key for the given thread.
- */
-static inline void *
-thread_tsd_get(struct thread *thread, unsigned int key)
-{
-    return thread->tsd[key];
-}
-
-/*
- * Set the pointer associated with a key for the calling thread.
- */
-static inline void
-thread_set_specific(unsigned int key, void *ptr)
-{
-    thread_tsd_set(thread_self(), key, ptr);
-}
-
-/*
- * Return the pointer associated with a key for the calling thread.
- */
-static inline void *
-thread_get_specific(unsigned int key)
-{
-    return thread_tsd_get(thread_self(), key);
-}
-
-#endif /* CONFIG_THREAD_MAX_TSD_KEYS != 0 */
-
-static inline const char *
-thread_name(const struct thread *thread)
-{
-    return thread->name;
+  return (thread->name);
 }
 
 #ifdef CONFIG_PERFMON
-static inline struct perfmon_td *
-thread_get_perfmon_td(struct thread *thread)
+
+static inline struct perfmon_td*
+thread_get_perfmon_td (struct thread *thread)
 {
-    return &thread->perfmon_td;
+  return (&thread->perfmon_td);
 }
-#endif /* CONFIG_PERFMON */
+
+#endif
 
 /*
  * Return the last CPU on which the thread has been scheduled.
  *
  * This call isn't synchronized, and the caller may obtain an outdated value.
  */
-unsigned int thread_cpu(const struct thread *thread);
+unsigned int thread_cpu (const struct thread *thread);
 
 /*
  * Return the current state of the given thread.
  *
  * This call isn't synchronized, and the caller may obtain an outdated value.
  */
-unsigned int thread_state(const struct thread *thread);
+unsigned int thread_state (const struct thread *thread);
 
 /*
  * Return true if the given thread is running.
  *
  * This call isn't synchronized, and the caller may obtain an outdated value.
  */
-bool thread_is_running(const struct thread *thread);
+bool thread_is_running (const struct thread *thread);
 
-/*
- * Get the CPU affinity mask of the specified thread.
- */
-int thread_get_affinity(const struct thread *thread, struct cpumap *cpumap);
+// Get the CPU affinity mask of the specified thread.
+int thread_get_affinity (const struct thread *thread, struct cpumap *cpumap);
 
-/*
- * Set the CPU affinity mask for the specified thread.
- */
-int thread_set_affinity(struct thread *thread, const struct cpumap *cpumap);
+// Set the CPU affinity mask for the specified thread.
+int thread_set_affinity (struct thread *thread, const struct cpumap *cpumap);
 
 /*
  * This init operation provides :
  *  - a dummy thread context for the BSP, allowing the use of thread_self()
  */
-INIT_OP_DECLARE(thread_setup_booter);
+INIT_OP_DECLARE (thread_setup_booter);
 
 /*
  * This init operation provides :
  *  - same as thread_setup_booter
  *  - BSP run queue initialization
  */
-INIT_OP_DECLARE(thread_bootstrap);
+INIT_OP_DECLARE (thread_bootstrap);
 
 /*
  * This init operation provides :
  *  - thread creation
  *  - module fully initialized
  */
-INIT_OP_DECLARE(thread_setup);
+INIT_OP_DECLARE (thread_setup);
 
-#endif /* KERN_THREAD_H */
+#endif

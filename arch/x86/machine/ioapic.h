@@ -21,21 +21,14 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-/*
- * Initialize the ioapic module.
- */
-void ioapic_setup(void);
+// Initialize the ioapic module.
+void ioapic_setup (void);
 
-/*
- * Register an I/O APIC controller.
- */
-void ioapic_register(unsigned int apic_id, uintptr_t addr,
-                     unsigned int gsi_base);
+// Register an I/O APIC controller.
+void ioapic_register (uint32_t apic_id, uintptr_t addr, uint32_t gsi_base);
 
-/*
- * Report an interrupt source override.
- */
-void ioapic_override(uint8_t source, uint32_t gsi,
-                     bool active_high, bool edge_triggered);
+// Report an interrupt source override.
+void ioapic_override (uint8_t source, uint32_t gsi,
+                      bool active_high, bool edge_triggered);
 
-#endif /* KERN_IOAPIC_H */
+#endif

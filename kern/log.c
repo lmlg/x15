@@ -38,15 +38,15 @@
 #include <machine/boot.h>
 #include <machine/cpu.h>
 
-#define LOG_BUFFER_SIZE 16384
+#define LOG_BUFFER_SIZE   16384
 
 #if !ISP2(LOG_BUFFER_SIZE)
-#error "log buffer size must be a power-of-two"
+  #error "log buffer size must be a power-of-two"
 #endif
 
-#define LOG_MSG_SIZE 128
+#define LOG_MSG_SIZE   128
 
-#define LOG_PRINT_LEVEL LOG_INFO
+#define LOG_PRINT_LEVEL   LOG_INFO
 
 static struct thread *log_thread;
 
@@ -64,216 +64,207 @@ static struct bulletin log_bulletin;
  */
 static struct spinlock log_lock;
 
-struct log_record {
-    uint8_t level;
-    char msg[LOG_MSG_SIZE];
+struct log_record
+{
+  uint8_t level;
+  char msg[LOG_MSG_SIZE];
 };
 
-struct log_consumer {
-    struct mbuf *mbuf;
-    size_t index;
+struct log_consumer
+{
+  struct mbuf *mbuf;
+  size_t index;
 };
 
 static void
-log_consumer_init(struct log_consumer *ctx, struct mbuf *mbuf)
+log_consumer_init (struct log_consumer *ctx, struct mbuf *mbuf)
 {
-    ctx->mbuf = mbuf;
-    ctx->index = mbuf_start(mbuf);
+  ctx->mbuf = mbuf;
+  ctx->index = mbuf_start (mbuf);
 }
 
 static int
-log_consumer_pop(struct log_consumer *ctx, struct log_record *record)
+log_consumer_pop (struct log_consumer *ctx, struct log_record *record)
 {
-    size_t size;
-    int error;
+  while (1)
+    {
+      size_t size = sizeof (*record);
+      int error = mbuf_read (ctx->mbuf, &ctx->index, record, &size);
 
-    for (;;) {
-        size = sizeof(*record);
-        error = mbuf_read(ctx->mbuf, &ctx->index, record, &size);
+      if (error != EINVAL)
+        return (error);
 
-        if (error != EINVAL) {
+      ctx->index = mbuf_start (ctx->mbuf);
+    }
+}
+
+static const char*
+log_level2str (unsigned int level)
+{
+  switch (level)
+    {
+      case LOG_EMERG:
+        return ("emerg");
+      case LOG_ALERT:
+        return ("alert");
+      case LOG_CRIT:
+        return ("crit");
+      case LOG_ERR:
+        return ("error");
+      case LOG_WARNING:
+        return ("warning");
+      case LOG_NOTICE:
+        return ("notice");
+      case LOG_INFO:
+        return ("info");
+      case LOG_DEBUG:
+        return ("debug");
+      default:
+        return (NULL);
+    }
+}
+
+static void
+log_print_record (const struct log_record *record, unsigned int level)
+{
+  if (record->level > level)
+    return;
+
+  if (record->level <= LOG_WARNING)
+    printf ("%7s %s\n", log_level2str (record->level), record->msg);
+  else
+    printf ("%s\n", record->msg);
+}
+
+static void
+log_run (void *arg)
+{
+  (void)arg;
+
+  bool published = false;
+  unsigned long flags;
+
+  spinlock_lock_intr_save (&log_lock, &flags);
+
+  struct log_consumer ctx;
+  log_consumer_init (&ctx, &log_mbuf);
+
+  while (1)
+    {
+      struct log_record record;
+
+      for (;;)
+        {
+          int error = log_consumer_pop (&ctx, &record);
+
+          if (! error)
             break;
-        } else {
-            ctx->index = mbuf_start(ctx->mbuf);
-        }
-    }
-
-    return error;
-}
-
-static const char *
-log_level2str(unsigned int level)
-{
-    switch (level) {
-    case LOG_EMERG:
-        return "emerg";
-    case LOG_ALERT:
-        return "alert";
-    case LOG_CRIT:
-        return "crit";
-    case LOG_ERR:
-        return "error";
-    case LOG_WARNING:
-        return "warning";
-    case LOG_NOTICE:
-        return "notice";
-    case LOG_INFO:
-        return "info";
-    case LOG_DEBUG:
-        return "debug";
-    default:
-        return NULL;
-    }
-}
-
-static void
-log_print_record(const struct log_record *record, unsigned int level)
-{
-    if (record->level > level) {
-        return;
-    }
-
-    if (record->level <= LOG_WARNING) {
-        printf("%7s %s\n", log_level2str(record->level), record->msg);
-    } else {
-        printf("%s\n", record->msg);
-    }
-}
-
-static void
-log_run(void *arg)
-{
-    struct log_consumer ctx;
-    unsigned long flags;
-    bool published;
-
-    (void)arg;
-
-    published = false;
-
-    spinlock_lock_intr_save(&log_lock, &flags);
-
-    log_consumer_init(&ctx, &log_mbuf);
-
-    for (;;) {
-        struct log_record record;
-
-        for (;;) {
-            int error;
-
-            error = log_consumer_pop(&ctx, &record);
-
-            if (!error) {
-                break;
-            } else if (log_nr_overruns != 0) {
-                record.level = LOG_ERR;
-                snprintf(record.msg, sizeof(record.msg),
-                         "log: buffer overruns, %u messages dropped",
-                         log_nr_overruns);
-                log_nr_overruns = 0;
-                break;
+          else if (log_nr_overruns != 0)
+            {
+              record.level = LOG_ERR;
+              snprintf (record.msg, sizeof (record.msg),
+                        "log: buffer overruns, %u messages dropped",
+                        log_nr_overruns);
+              log_nr_overruns = 0;
+              break;
             }
 
-            if (!published) {
-                spinlock_unlock_intr_restore(&log_lock, flags);
-                bulletin_publish(&log_bulletin, 0);
-                spinlock_lock_intr_save(&log_lock, &flags);
-
-                published = true;
+          if (!published)
+            {
+              spinlock_unlock_intr_restore (&log_lock, flags);
+              bulletin_publish (&log_bulletin, 0);
+              spinlock_lock_intr_save (&log_lock, &flags);
+              published = true;
             }
 
-            thread_sleep(&log_lock, &log_mbuf, "log_mbuf");
+          thread_sleep (&log_lock, &log_mbuf, "log_mbuf");
         }
 
-        spinlock_unlock_intr_restore(&log_lock, flags);
-
-        log_print_record(&record, LOG_PRINT_LEVEL);
-
-        spinlock_lock_intr_save(&log_lock, &flags);
+      spinlock_unlock_intr_restore (&log_lock, flags);
+      log_print_record (&record, LOG_PRINT_LEVEL);
+      spinlock_lock_intr_save (&log_lock, &flags);
     }
 }
 
 #ifdef CONFIG_SHELL
 
 static void
-log_dump(unsigned int level)
+log_dump (unsigned int level)
 {
-    struct log_consumer ctx;
-    struct log_record record;
-    unsigned long flags;
-    int error;
+  unsigned long flags;
+  spinlock_lock_intr_save (&log_lock, &flags);
 
-    spinlock_lock_intr_save(&log_lock, &flags);
+  struct log_consumer ctx;
+  log_consumer_init (&ctx, &log_mbuf);
 
-    log_consumer_init(&ctx, &log_mbuf);
+  for (;;)
+    {
+      struct log_record record;
+      int error = log_consumer_pop (&ctx, &record);
 
-    for (;;) {
-        error = log_consumer_pop(&ctx, &record);
+      if (error)
+        break;
 
-        if (error) {
-            break;
-        }
-
-        spinlock_unlock_intr_restore(&log_lock, flags);
-
-        log_print_record(&record, level);
-
-        spinlock_lock_intr_save(&log_lock, &flags);
+      spinlock_unlock_intr_restore (&log_lock, flags);
+      log_print_record (&record, level);
+      spinlock_lock_intr_save (&log_lock, &flags);
     }
 
-    spinlock_unlock_intr_restore(&log_lock, flags);
+  spinlock_unlock_intr_restore (&log_lock, flags);
 }
 
 static void
-log_shell_dump(struct shell *shell, int argc, char **argv)
+log_shell_dump (struct shell *shell, int argc, char **argv)
 {
-    unsigned int level;
-    int ret;
+  (void)shell;
 
-    (void)shell;
+  unsigned int level;
 
-    if (argc != 2) {
-        level = LOG_PRINT_LEVEL;
-    } else {
-        ret = sscanf(argv[1], "%u", &level);
+  if (argc != 2)
+    level = LOG_PRINT_LEVEL;
+  else
+    {
+      int ret = sscanf (argv[1], "%u", &level);
 
-        if ((ret != 1) || (level >= LOG_NR_LEVELS)) {
-            printf("log: dump: invalid arguments\n");
-            return;
+      if (ret != 1 || level >= LOG_NR_LEVELS)
+        {
+          printf ("log: dump: invalid arguments\n");
+          return;
         }
     }
 
-    log_dump(level);
+  log_dump (level);
 }
 
-static struct shell_cmd log_shell_cmds[] = {
-    SHELL_CMD_INITIALIZER2("log_dump", log_shell_dump,
-        "log_dump [<level>]",
-        "dump the log buffer",
-        "Only records of level less than or equal to the given level"
-        " are printed. Level may be one of :\n"
-        " 0: emergency\n"
-        " 1: alert\n"
-        " 2: critical\n"
-        " 3: error\n"
-        " 4: warning\n"
-        " 5: notice\n"
-        " 6: info\n"
-        " 7: debug"),
+static struct shell_cmd log_shell_cmds[] =
+{
+  SHELL_CMD_INITIALIZER2 ("log_dump", log_shell_dump,
+                          "log_dump [<level>]",
+                          "dump the log buffer",
+                          "Only records of level less than or equal to the given level"
+                          " are printed. Level may be one of :\n"
+                          " 0: emergency\n"
+                          " 1: alert\n"
+                          " 2: critical\n"
+                          " 3: error\n"
+                          " 4: warning\n"
+                          " 5: notice\n"
+                          " 6: info\n"
+                          " 7: debug"),
 };
 
 static int __init
-log_setup_shell(void)
+log_setup_shell (void)
 {
-    SHELL_REGISTER_CMDS(log_shell_cmds, shell_get_main_cmd_set());
-    return 0;
+  SHELL_REGISTER_CMDS (log_shell_cmds, shell_get_main_cmd_set ());
+  return (0);
 }
 
-INIT_OP_DEFINE(log_setup_shell,
-               INIT_OP_DEP(log_setup, true),
-               INIT_OP_DEP(shell_setup, true));
+INIT_OP_DEFINE (log_setup_shell,
+                INIT_OP_DEP (log_setup, true),
+                INIT_OP_DEP (shell_setup, true));
 
-#endif /* CONFIG_SHELL */
+#endif   // CONFIG_SHELL
 
 typedef struct
 {
@@ -303,9 +294,9 @@ static int log_puts (const struct log_record *, int);
 static void
 logger_stream_write (struct stream *stream, const void *data, uint32_t bytes)
 {
-  _Auto logstr = (logger_stream_t *)stream;
+  _Auto logstr = (logger_stream_t *) stream;
   size_t cap = logger_stream_cap (logstr);
-  const char *newl = memchr ((const char *)data, '\n', bytes);
+  const char *newl = memchr ( (const char *) data, '\n', bytes);
 
   if (bytes < cap && !newl)
     {
@@ -315,13 +306,13 @@ logger_stream_write (struct stream *stream, const void *data, uint32_t bytes)
     }
 
   if (newl)
-    bytes = newl - (const char *)data;
+    bytes = newl - (const char *) data;
 
   bytes = MIN (bytes, cap);
   memcpy (logstr->record.msg + logstr->off, data, bytes);
   logstr->off += bytes;
   logstr->record.msg[logstr->off] = 0;
-  log_puts (&logstr->record, (int)logstr->off);
+  log_puts (&logstr->record, (int) logstr->off);
   logstr->off = 0;
 }
 
@@ -347,108 +338,104 @@ log_stream (unsigned int level)
 }
 
 static int __init
-log_setup(void)
+log_setup (void)
 {
-    mbuf_init(&log_mbuf, log_buffer, sizeof(log_buffer),
-              sizeof(struct log_record));
-    spinlock_init(&log_lock);
-    bulletin_init(&log_bulletin);
+  mbuf_init (&log_mbuf, log_buffer, sizeof (log_buffer),
+             sizeof (struct log_record));
+  spinlock_init (&log_lock);
+  bulletin_init (&log_bulletin);
 
-    for (size_t i = 0; i < ARRAY_SIZE(logger_streams); ++i)
-      logger_stream_init (&logger_streams[i]);
+  for (size_t i = 0; i < ARRAY_SIZE (logger_streams); ++i)
+    logger_stream_init (&logger_streams[i]);
 
-    boot_log_info();
-    arg_log_info();
-    cpu_log_info(cpu_current());
+  boot_log_info ();
+  arg_log_info ();
+  cpu_log_info (cpu_current ());
 
-    return 0;
+  return 0;
 }
 
-INIT_OP_DEFINE(log_setup,
-               INIT_OP_DEP(arg_setup, true),
-               INIT_OP_DEP(cpu_setup, true),
-               INIT_OP_DEP(spinlock_setup, true));
+INIT_OP_DEFINE (log_setup,
+                INIT_OP_DEP (arg_setup, true),
+                INIT_OP_DEP (cpu_setup, true),
+                INIT_OP_DEP (spinlock_setup, true));
 
 static int __init
-log_start(void)
+log_start (void)
 {
-    struct thread_attr attr;
-    int error;
+  struct thread_attr attr;
+  thread_attr_init (&attr, THREAD_KERNEL_PREFIX "log_run");
+  thread_attr_set_detached (&attr);
+  int error = thread_create (&log_thread, &attr, log_run, NULL);
 
-    thread_attr_init(&attr, THREAD_KERNEL_PREFIX "log_run");
-    thread_attr_set_detached(&attr);
-    error = thread_create(&log_thread, &attr, log_run, NULL);
+  if (error)
+    panic ("log: unable to create thread");
 
-    if (error) {
-        panic("log: unable to create thread");
-    }
-
-    return 0;
+  return (0);
 }
 
-INIT_OP_DEFINE(log_start,
-               INIT_OP_DEP(log_setup, true),
-               INIT_OP_DEP(thread_setup, true));
+INIT_OP_DEFINE (log_start,
+                INIT_OP_DEP (log_setup, true),
+                INIT_OP_DEP (thread_setup, true));
 
 int
-log_msg(unsigned int level, const char *format, ...)
+log_msg (unsigned int level, const char *format, ...)
 {
-    va_list ap;
-    int ret;
+  va_list ap;
+  va_start (ap, format);
 
-    va_start(ap, format);
-    ret = log_vmsg(level, format, ap);
-    va_end(ap);
+  int ret = log_vmsg (level, format, ap);
+  va_end (ap);
 
-    return ret;
+  return (ret);
 }
 
 static int
 log_puts (const struct log_record *record, int nr_chars)
 {
-    if ((unsigned int)nr_chars >= sizeof(record->msg)) {
-        log_msg(LOG_ERR, "log: message too large");
-        goto out;
+  if ((unsigned int)nr_chars >= sizeof (record->msg))
+    {
+      log_msg (LOG_ERR, "log: message too large");
+      goto out;
     }
 
-    char *ptr = strchr(record->msg, '\n');
+  char *ptr = strchr (record->msg, '\n');
 
-    if (ptr != NULL) {
-        *ptr = '\0';
-        nr_chars = ptr - record->msg;
+  if (ptr != NULL)
+    {
+      *ptr = '\0';
+      nr_chars = ptr - record->msg;
     }
 
-    assert(nr_chars >= 0);
-    size_t size = offsetof(struct log_record, msg) + nr_chars + 1;
+  assert (nr_chars >= 0);
+  size_t size = offsetof (struct log_record, msg) + nr_chars + 1;
 
-    unsigned long flags;
-    spinlock_lock_intr_save(&log_lock, &flags);
+  unsigned long flags;
+  spinlock_lock_intr_save (&log_lock, &flags);
 
-    int error = mbuf_push(&log_mbuf, record, size, true);
+  int error = mbuf_push (&log_mbuf, record, size, true);
 
-    if (error) {
-        log_nr_overruns++;
-    }
+  if (error)
+    log_nr_overruns++;
 
-    thread_wakeup(log_thread);
-
-    spinlock_unlock_intr_restore(&log_lock, flags);
+  thread_wakeup (log_thread);
+  spinlock_unlock_intr_restore (&log_lock, flags);
 
 out:
-    return nr_chars;
+  return (nr_chars);
 }
 
 int
-log_vmsg(unsigned int level, const char *format, va_list ap)
+log_vmsg (unsigned int level, const char *format, va_list ap)
 {
-    assert(level < LOG_NR_LEVELS);
-    struct log_record record = { .level = level };
-    int nr_chars = vsnprintf(record.msg, sizeof(record.msg), format, ap);
-    return (log_puts (&record, nr_chars));
+  assert (level < LOG_NR_LEVELS);
+  struct log_record record = { .level = level };
+  int nr_chars = vsnprintf (record.msg, sizeof (record.msg), format, ap);
+  return (log_puts (&record, nr_chars));
 }
 
-struct bulletin *
-log_get_bulletin(void)
+struct bulletin*
+log_get_bulletin (void)
 {
-    return &log_bulletin;
+  return (&log_bulletin);
 }
