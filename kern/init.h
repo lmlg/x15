@@ -43,11 +43,15 @@
 #ifndef __ASSEMBLER__
 
 #include <errno.h>
+#include <stdalign.h>
+#include <stdbool.h>
+#include <stddef.h>
 
 #include <kern/macros.h>
+#include <kern/slist_types.h>
 
-#define __init __section(QUOTE(INIT_SECTION))
-#define __initdata __section(QUOTE(INIT_DATA_SECTION))
+#define __init       __section (QUOTE (INIT_SECTION))
+#define __initdata   __section (QUOTE (INIT_DATA_SECTION))
 
 // Boundaries of the .init section.
 extern char _init;
@@ -56,7 +60,36 @@ extern char _init_end;
 // Type for initialization operation functions.
 typedef int (*init_op_fn_t) (void);
 
-#include <kern/init_i.h>
+#define __initop __section(QUOTE(INIT_OPS_SECTION))
+
+#define INIT_OP_STATE_UNLINKED      0
+#define INIT_OP_STATE_PENDING       1
+#define INIT_OP_STATE_COMPLETE      2
+
+struct init_op
+{
+  alignas (INIT_OP_ALIGN) struct slist_node list_node;
+  struct slist_node stack_node;
+  const char *name;
+  init_op_fn_t fn;
+  struct init_op_dep *deps;
+  int error;
+  unsigned char state;
+  unsigned char nr_deps;
+  unsigned char nr_parents;
+};
+
+struct init_op_dep
+{
+  struct init_op *op;
+  bool required;
+};
+
+#define __INIT_OP_DEPS(fn)  fn ## _init_op_deps
+#define INIT_OP_DEPS(fn)    __INIT_OP_DEPS(fn)
+
+#define __INIT_OP(fn)       fn ## _init_op
+#define INIT_OP(fn)         __INIT_OP(fn)
 
 // Forge an init operation declaration.
 #define INIT_OP_DECLARE(fn)   extern struct init_op INIT_OP (fn)

@@ -50,7 +50,6 @@
 #include <kern/slist.h>
 #include <kern/spinlock.h>
 #include <kern/sref.h>
-#include <kern/sref_i.h>
 #include <kern/syscnt.h>
 #include <kern/thread.h>
 #include <machine/cpu.h>

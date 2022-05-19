@@ -32,10 +32,60 @@
 #include <kern/atomic.h>
 #include <kern/init.h>
 #include <kern/macros.h>
-#include <kern/rtmutex_i.h>
 #include <kern/rtmutex_types.h>
+#include <kern/thread.h>
 
-struct rtmutex;
+/*
+ * Real-time mutex flags.
+ *
+ * The "contended" flag indicates that threads are waiting for the mutex
+ * to be unlocked. It forces threads trying to lock the mutex as well as
+ * the owner to take the slow path.
+ *
+ * The "force-wait" flag prevents "stealing" a mutex. When a contended
+ * mutex is unlocked, a thread may concurrently try to lock it. Without
+ * this flag, it may succeed, and in doing so, it would prevent a
+ * potentially higher priority thread from locking the mutex. The flag
+ * forces all threads to not only take the slow path, but to also call
+ * the turnstile wait function so that only the highest priority thread
+ * may lock the mutex.
+ */
+#define RTMUTEX_CONTENDED    ((uintptr_t)0x1)
+#define RTMUTEX_FORCE_WAIT   ((uintptr_t)0x2)
+
+#define RTMUTEX_OWNER_MASK   \
+  (~((uintptr_t)(RTMUTEX_FORCE_WAIT | RTMUTEX_CONTENDED)))
+
+static inline bool
+rtmutex_owner_aligned (uintptr_t owner)
+{
+  return ((owner & ~RTMUTEX_OWNER_MASK) == 0);
+}
+
+static inline uintptr_t
+rtmutex_lock_fast (struct rtmutex *rtmutex)
+{
+  uintptr_t owner = (uintptr_t)thread_self ();
+  assert (rtmutex_owner_aligned (owner));
+  return (atomic_cas (&rtmutex->owner, 0, owner, ATOMIC_ACQUIRE));
+}
+
+static inline uintptr_t
+rtmutex_unlock_fast (struct rtmutex *rtmutex)
+{
+  uintptr_t owner = (uintptr_t)thread_self ();
+  assert (rtmutex_owner_aligned (owner));
+  uintptr_t prev_owner = atomic_cas (&rtmutex->owner, owner, 0,
+                                     ATOMIC_RELEASE);
+  assert ((prev_owner & RTMUTEX_OWNER_MASK) == owner);
+  return (prev_owner);
+}
+
+void rtmutex_lock_slow (struct rtmutex *rtmutex);
+
+int rtmutex_timedlock_slow (struct rtmutex *rtmutex, uint64_t ticks);
+
+void rtmutex_unlock_slow (struct rtmutex *rtmutex);
 
 static inline bool
 rtmutex_locked (const struct rtmutex *rtmutex)

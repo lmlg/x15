@@ -23,7 +23,9 @@
 
 #include <stdint.h>
 
+#include <kern/hlist.h>
 #include <kern/init.h>
+#include <kern/work.h>
 
 // Scheduling flags.
 #define TIMER_DETACHED      0x1   // Timer completion isn't synchronized.
@@ -35,7 +37,31 @@ struct timer;
 // Type for timer functions.
 typedef void (*timer_fn_t) (struct timer *);
 
-#include <kern/timer_i.h>
+/*
+ * Locking keys :
+ * (c) cpu_data
+ * (a) atomic
+ *
+ * (*) The cpu member is used to determine which lock serializes access to
+ * the structure. It must be accessed atomically, but updated while the
+ * timer is locked.
+ */
+struct timer
+{
+  union
+    {
+      struct hlist_node node;   // (c)
+      struct work work;
+    };
+
+  uint64_t ticks;             // (c)
+  timer_fn_t fn;
+  unsigned int cpu;           // (c,a,*)
+  unsigned short state;       // (c)
+  unsigned short flags;       // (c)
+  struct thread *joiner;      // (c)
+};
+
 
 /*
  * Return the absolute expiration time of the timer, in ticks.

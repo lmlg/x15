@@ -24,7 +24,6 @@
 
 #include <kern/macros.h>
 #include <kern/rbtree.h>
-#include <kern/rbtree_i.h>
 
 /*
  * Return the index of a node in the children array of its parent.

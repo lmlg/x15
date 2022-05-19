@@ -24,12 +24,11 @@
 #include <stddef.h>
 
 #include <kern/init.h>
+#include <kern/list.h>
+#include <kern/mutex.h>
 #include <kern/stream.h>
 
-/*
- * Object cache.
- */
-struct kmem_cache;
+#include <machine/cpu.h>
 
 /*
  * Type for constructor functions.
@@ -43,7 +42,185 @@ struct kmem_cache;
  */
 typedef void (*kmem_ctor_fn_t) (void *);
 
-#include <kern/kmem_i.h>
+#if defined (CONFIG_SMP) && !defined (CONFIG_KMEM_NO_CPU_LAYER)
+  #define KMEM_USE_CPU_LAYER
+#endif
+
+#ifdef KMEM_USE_CPU_LAYER
+
+/*
+ * Per-processor cache of pre-constructed objects.
+ *
+ * The flags member is a read-only CPU-local copy of the parent cache flags.
+ */
+struct kmem_cpu_pool
+{
+  alignas (CPU_L1_SIZE) struct mutex lock;
+  int flags;
+  int size;
+  int transfer_size;
+  int nr_objs;
+  void **array;
+};
+
+/*
+ * When a cache is created, its CPU pool type is determined from the buffer
+ * size. For small buffer sizes, many objects can be cached in a CPU pool.
+ * Conversely, for large buffer sizes, this would incur much overhead, so only
+ * a few objects are stored in a CPU pool.
+ */
+struct kmem_cpu_pool_type
+{
+  size_t buf_size;
+  int array_size;
+  size_t array_align;
+  struct kmem_cache *array_cache;
+};
+
+#endif   // KMEM_USE_CPU_LAYER
+
+/*
+ * Buffer descriptor.
+ *
+ * For normal caches (i.e. without KMEM_CF_VERIFY), bufctls are located at the
+ * end of (but inside) each buffer. If KMEM_CF_VERIFY is set, bufctls are
+ * located after each buffer.
+ *
+ * When an object is allocated to a client, its bufctl isn't used. This memory
+ * is instead used for redzoning if cache debugging is in effect.
+ */
+union kmem_bufctl
+{
+  union kmem_bufctl *next;
+  uintptr_t redzone;
+};
+
+// Redzone guard word.
+#ifdef __LP64__
+  #if __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
+    #define KMEM_REDZONE_WORD 0xfeedfacefeedfaceUL
+  #else
+    #define KMEM_REDZONE_WORD 0xcefaedfecefaedfeUL
+  #endif
+#else
+  #if __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
+    #define KMEM_REDZONE_WORD 0xfeedfaceUL
+  #else
+    #define KMEM_REDZONE_WORD 0xcefaedfeUL
+  #endif
+#endif
+
+// Redzone byte for padding.
+#define KMEM_REDZONE_BYTE   0xbb
+
+/*
+ * Buffer tag.
+ *
+ * This structure is only used for KMEM_CF_VERIFY caches. It is located after
+ * the bufctl and includes information about the state of the buffer it
+ * describes (allocated or not). It should be thought of as a debugging
+ * extension of the bufctl.
+ */
+struct kmem_buftag
+{
+  uintptr_t state;
+};
+
+// Values the buftag state member can take.
+#ifdef __LP64__
+  #if __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
+    #define KMEM_BUFTAG_ALLOC   0xa110c8eda110c8edUL
+    #define KMEM_BUFTAG_FREE    0xf4eeb10cf4eeb10cUL
+  #else
+    #define KMEM_BUFTAG_ALLOC   0xedc810a1edc810a1UL
+    #define KMEM_BUFTAG_FREE    0x0cb1eef40cb1eef4UL
+  #endif
+#else
+  #if __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
+    #define KMEM_BUFTAG_ALLOC   0xa110c8edUL
+    #define KMEM_BUFTAG_FREE    0xf4eeb10cUL
+  #else
+    #define KMEM_BUFTAG_ALLOC   0xedc810a1UL
+    #define KMEM_BUFTAG_FREE    0x0cb1eef4UL
+  #endif
+#endif
+
+/*
+ * Free and uninitialized patterns.
+ *
+ * These values are unconditionally 64-bit wide since buffers are at least
+ * 8-byte aligned.
+ */
+#if __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
+  #define KMEM_FREE_PATTERN     0xdeadbeefdeadbeefULL
+  #define KMEM_UNINIT_PATTERN   0xbaddcafebaddcafeULL
+#else
+  #define KMEM_FREE_PATTERN     0xefbeaddeefbeaddeULL
+  #define KMEM_UNINIT_PATTERN   0xfecaddbafecaddbaULL
+#endif
+
+/*
+ * Page-aligned collection of unconstructed buffers.
+ *
+ * This structure is either allocated from the slab cache, or, when internal
+ * fragmentation allows it, or if forced by the cache creator, from the slab
+ * it describes.
+ */
+struct kmem_slab
+{
+  struct list node;
+  size_t nr_refs;
+  union kmem_bufctl *first_free;
+  void *addr;
+};
+
+// Cache name buffer size.
+#define KMEM_NAME_SIZE   32
+
+/*
+ * Cache flags.
+ *
+ * The flags don't change once set and can be tested without locking.
+ */
+#define KMEM_CF_SLAB_EXTERNAL   0x1   // Slab data is off slab.
+#define KMEM_CF_VERIFY          0x2   // Debugging facilities enabled.
+
+/*
+ * Cache of objects.
+ *
+ * Locking order : cpu_pool -> cache. CPU pools locking is ordered by CPU ID.
+ */
+struct kmem_cache
+{
+#ifdef KMEM_USE_CPU_LAYER
+  // CPU pool layer.
+  struct kmem_cpu_pool cpu_pools[CONFIG_MAX_CPUS];
+  struct kmem_cpu_pool_type *cpu_pool_type;
+#endif
+
+  // Slab layer.
+  struct mutex lock;    // TODO: Use adaptive mutex.
+  struct list node;     // Cache list linkage.
+  struct list partial_slabs;
+  struct list free_slabs;
+  int flags;
+  size_t obj_size;      // User-provided size.
+  size_t align;
+  size_t buf_size;      // Aligned object size.
+  size_t bufctl_dist;   // Distance from buffer to bufctl.
+  size_t slab_size;
+  size_t color;
+  size_t color_max;
+  size_t bufs_per_slab;
+  size_t nr_objs;       // Number of allocated objects.
+  size_t nr_bufs;       // Total number of buffers.
+  size_t nr_slabs;
+  size_t nr_free_slabs;
+  kmem_ctor_fn_t ctor;
+  char name[KMEM_NAME_SIZE];
+  size_t buftag_dist;   // Distance from buffer to buftag.
+  size_t redzone_pad;   // Bytes from end of object to redzone word.
+};
 
 // Cache creation flags.
 #define KMEM_CACHE_NOOFFSLAB    0x1   // Don't allocate external slab data.

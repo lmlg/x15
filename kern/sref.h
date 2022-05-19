@@ -31,18 +31,80 @@
 #ifndef KERN_SREF_H
 #define KERN_SREF_H
 
+#include <stdint.h>
+
 #include <kern/init.h>
+#include <kern/slist.h>
+#include <kern/spinlock.h>
+#include <kern/work.h>
 
-// Scalable reference counter.
 struct sref_counter;
-
-// Weak reference.
-struct sref_weakref;
 
 // Type for no-reference functions.
 typedef void (*sref_noref_fn_t) (struct sref_counter *);
 
-#include <kern/sref_i.h>
+#ifdef CONFIG_SREF_DEBUG
+  #define SREF_VERIFY
+#endif
+
+#define SREF_WEAKREF_DYING  ((uintptr_t)1)
+#define SREF_WEAKREF_MASK   (~SREF_WEAKREF_DYING)
+
+/*
+ * Weak reference.
+ *
+ * A weak reference is a pointer to a reference counter in which the
+ * least-significant bit is used to indicate whether the counter is
+ * "dying", i.e. about to be destroyed.
+ *
+ * It must be accessed with atomic instructions. There is no need to
+ * enforce memory order on access since the only data that depends on
+ * the weak reference are cpu-local deltas.
+ */
+struct sref_weakref
+{
+  uintptr_t addr;
+};
+
+// Counter flags.
+#define SREF_CNTF_QUEUED  0x1     // Queued for review
+#define SREF_CNTF_DIRTY   0x2     // Dirty zero seen
+#define SREF_CNTF_UNREF   0x4     // Unreferenced, for debugging only
+
+/*
+ * Scalable reference counter.
+ *
+ * It's tempting to merge the flags into the node member, but since they're
+ * not protected by the same lock, store them separately.
+ *
+ * Locking keys :
+ * (c) sref_counter
+ * (g) sref_data
+ *
+ * Interrupts must be disabled when accessing a global counter.
+ */
+struct sref_counter
+{
+  sref_noref_fn_t noref_fn;
+
+#ifdef SREF_VERIFY
+  struct
+#else
+  union
+#endif
+    {
+      struct
+        {
+          struct slist_node node;         // (g)
+          struct spinlock lock;
+          int flags;                      // (c)
+          unsigned long value;            // (c)
+          struct sref_weakref *weakref;
+        };
+
+      struct work work;
+    };
+};
 
 /*
  * Report a periodic event (normally the periodic timer interrupt) on the

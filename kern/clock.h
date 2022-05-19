@@ -21,13 +21,34 @@
 #ifndef KERN_CLOCK_H
 #define KERN_CLOCK_H
 
+#include <stdalign.h>
 #include <stdbool.h>
 #include <stdint.h>
 
 #include <kern/atomic.h>
-#include <kern/clock_i.h>
 #include <kern/init.h>
 #include <kern/macros.h>
+
+#include <machine/cpu.h>
+
+union clock_global_time
+{
+  alignas (CPU_L1_SIZE) uint64_t ticks;
+
+#ifndef ATOMIC_HAVE_64B_OPS
+  struct
+    {
+#if __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
+      uint32_t high1;
+      uint32_t low;
+#else
+      uint32_t low;
+      uint32_t high1;
+#endif
+      uint32_t high2;
+    };
+#endif
+};
 
 // Clock frequency.
 #define CLOCK_FREQ CONFIG_CLOCK_FREQ

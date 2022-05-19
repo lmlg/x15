@@ -66,7 +66,6 @@
 #include <kern/macros.h>
 #include <kern/percpu.h>
 #include <kern/spinlock.h>
-#include <kern/spinlock_i.h>
 #include <kern/spinlock_types.h>
 #include <kern/thread.h>
 #include <machine/cpu.h>

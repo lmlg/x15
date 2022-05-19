@@ -31,6 +31,11 @@
 // Work scheduling flags.
 #define WORK_HIGHPRIO   0x1   // Use a high priority worker thread.
 
+struct work;
+
+// Type for work functions.
+typedef void (*work_fn_t) (struct work *);
+
 /*
  * Deferred work.
  *
@@ -38,19 +43,18 @@
  * stores the work function and is passed to it as its only parameter.
  * The function can then find the containing object with the structof macro.
  */
-struct work;
+struct work
+{
+  struct work *next;
+  work_fn_t fn;
+};
 
-/*
- * Queue of deferred works for batch scheduling.
- */
-struct work_queue;
-
-/*
- * Type for work functions.
- */
-typedef void (*work_fn_t) (struct work *);
-
-#include <kern/work_i.h>
+struct work_queue
+{
+  struct work *first;
+  struct work *last;
+  unsigned int nr_works;
+};
 
 static inline void
 work_queue_init (struct work_queue *queue)

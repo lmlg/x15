@@ -23,7 +23,9 @@
 
 #include <stdint.h>
 
+#include <kern/list.h>
 #include <kern/macros.h>
+#include <kern/spinlock.h>
 #include <kern/work.h>
 
 /*
@@ -35,12 +37,19 @@
  */
 typedef void (*bulletin_notif_fn_t) (uintptr_t, void *);
 
-#include <kern/bulletin_i.h>
-
-struct bulletin;
-
 // Bulletin subscriber.
-struct bulletin_sub;
+struct bulletin_sub
+{
+  struct list node;
+  bulletin_notif_fn_t notif_fn;
+  void *arg;
+};
+
+struct bulletin
+{
+  struct spinlock lock;
+  struct list subs;
+};
 
 void bulletin_init (struct bulletin *bulletin);
 

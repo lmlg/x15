@@ -41,16 +41,48 @@ typedef uint64_t rdxtree_key_t;
 // Radix tree initialization flags.
 #define RDXTREE_KEY_ALLOC 0x1   // Enable key allocation.
 
-// Radix tree.
-struct rdxtree;
-
-// Radix tree iterator.
-struct rdxtree_iter;
-
 // Static tree initializer.
 #define RDXTREE_INITIALIZER   { 0, NULL }
 
-#include <kern/rdxtree_i.h>
+// Radix tree.
+struct rdxtree
+{
+  uint16_t height;
+  uint16_t flags;
+  void *root;
+};
+
+/*
+ * Radix tree iterator.
+ *
+ * The node member refers to the node containing the current pointer, if any.
+ * The key member refers to the current pointer, and is valid if and only if
+ * rdxtree_walk() has been called at least once on the iterator.
+ */
+struct rdxtree_iter
+{
+  void *node;
+  rdxtree_key_t key;
+};
+
+// Initialize an iterator.
+static inline void
+rdxtree_iter_init (struct rdxtree_iter *iter)
+{
+  iter->node = NULL;
+  iter->key = (rdxtree_key_t)-1;
+}
+
+int rdxtree_insert_common (struct rdxtree *tree, rdxtree_key_t key,
+                           void *ptr, void ***slotp);
+
+int rdxtree_insert_alloc_common (struct rdxtree *tree, void *ptr,
+                                 rdxtree_key_t *keyp, void ***slotp);
+
+void* rdxtree_lookup_common (const struct rdxtree *tree, rdxtree_key_t key,
+                             bool get_slot);
+
+void* rdxtree_walk (struct rdxtree *tree, struct rdxtree_iter *iter);
 
 // Initialize a tree.
 static inline void

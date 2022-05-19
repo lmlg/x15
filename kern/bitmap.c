@@ -22,7 +22,6 @@
 #include <string.h>
 
 #include <kern/bitmap.h>
-#include <kern/bitmap_i.h>
 
 int
 bitmap_cmp (const unsigned long *a, const unsigned long *b, int nr_bits)

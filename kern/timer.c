@@ -39,7 +39,6 @@
 #include <kern/spinlock.h>
 #include <kern/thread.h>
 #include <kern/timer.h>
-#include <kern/timer_i.h>
 #include <kern/work.h>
 #include <machine/boot.h>
 #include <machine/cpu.h>

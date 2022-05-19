@@ -46,15 +46,47 @@
 #ifndef KERN_RCU_H
 #define KERN_RCU_H
 
+#include <assert.h>
+#include <stdbool.h>
+
 #include <kern/atomic.h>
 #include <kern/init.h>
-#include <kern/rcu_i.h>
+#include <kern/macros.h>
 #include <kern/rcu_types.h>
 #include <kern/thread.h>
 #include <kern/work.h>
 
-// Thread-local RCU data.
-struct rcu_reader;
+void rcu_reader_leave (struct rcu_reader *reader);
+
+static inline bool
+rcu_reader_in_cs (const struct rcu_reader *reader)
+{
+  return (reader->level != 0);
+}
+
+static inline bool
+rcu_reader_linked (const struct rcu_reader *reader)
+{
+  assert (reader == thread_rcu_reader (thread_self ()));
+  return (reader->linked);
+}
+
+static inline void
+rcu_reader_inc (struct rcu_reader *reader)
+{
+  ++reader->level;
+  assert (reader->level != 0);
+}
+
+static inline void
+rcu_reader_dec (struct rcu_reader *reader)
+{
+  assert (reader->level != 0);
+  --reader->level;
+
+  if (unlikely (!rcu_reader_in_cs (reader) && rcu_reader_linked (reader)))
+    rcu_reader_leave (reader);
+}
 
 /*
  * Safely store a pointer.

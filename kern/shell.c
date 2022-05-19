@@ -34,7 +34,6 @@
 #include <kern/mutex.h>
 #include <kern/printf.h>
 #include <kern/shell.h>
-#include <kern/shell_i.h>
 #include <kern/thread.h>
 
 #define SHELL_COMPLETION_MATCH_FMT              "-16s"

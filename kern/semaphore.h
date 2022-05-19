@@ -48,9 +48,11 @@
 #include <errno.h>
 #include <stdint.h>
 
-#include <kern/semaphore_i.h>
-
-struct semaphore;
+struct semaphore
+{
+  uint16_t value;
+  uint16_t max_value;
+};
 
 // Initialize a semaphore.
 void semaphore_init (struct semaphore *semaphore, uint16_t value,

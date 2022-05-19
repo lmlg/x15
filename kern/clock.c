@@ -20,7 +20,6 @@
 
 #include <kern/atomic.h>
 #include <kern/clock.h>
-#include <kern/clock_i.h>
 #include <kern/init.h>
 #include <kern/percpu.h>
 #include <kern/rcu.h>

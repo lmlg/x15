@@ -21,7 +21,6 @@
 #include <stdint.h>
 
 #include <kern/semaphore.h>
-#include <kern/semaphore_i.h>
 #include <kern/sleepq.h>
 
 void

@@ -31,7 +31,6 @@
 #include <kern/macros.h>
 #include <kern/rcu.h>
 #include <kern/rdxtree.h>
-#include <kern/rdxtree_i.h>
 #include <kern/work.h>
 
 // Mask applied on an entry to obtain its address.

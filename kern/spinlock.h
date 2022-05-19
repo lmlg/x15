@@ -27,17 +27,76 @@
 #define KERN_SPINLOCK_H
 
 #include <assert.h>
+#include <errno.h>
 #include <stdbool.h>
 #include <stdint.h>
 
 #include <kern/atomic.h>
 #include <kern/init.h>
 #include <kern/macros.h>
-#include <kern/spinlock_i.h>
 #include <kern/spinlock_types.h>
 #include <kern/thread.h>
 
-struct spinlock;
+#include <machine/cpu.h>
+
+/*
+ * Uncontended lock values.
+ *
+ * Any other value implies a contended lock.
+ */
+#define SPINLOCK_UNLOCKED   0x0
+#define SPINLOCK_LOCKED     0x1
+
+#ifdef SPINLOCK_TRACK_OWNER
+
+static inline void
+spinlock_own (struct spinlock *lock)
+{
+  assert (!lock->owner);
+  lock->owner = thread_self ();
+}
+
+static inline void
+spinlock_disown (struct spinlock *lock)
+{
+  assert (lock->owner == thread_self ());
+  lock->owner = NULL;
+}
+
+#else
+  #define spinlock_own(lock)
+  #define spinlock_disown(lock)
+#endif
+
+static inline int
+spinlock_lock_fast (struct spinlock *lock)
+{
+  uint32_t prev = atomic_cas (&lock->value, SPINLOCK_UNLOCKED,
+                              SPINLOCK_LOCKED, ATOMIC_ACQUIRE);
+
+  if (unlikely (prev != SPINLOCK_UNLOCKED))
+    return (EBUSY);
+
+  spinlock_own (lock);
+  return (0);
+}
+
+void spinlock_lock_slow (struct spinlock *lock);
+
+static inline void
+spinlock_lock_common (struct spinlock *lock)
+{
+  int error = spinlock_lock_fast (lock);
+  if (unlikely (error))
+    spinlock_lock_slow (lock);
+}
+
+static inline void
+spinlock_unlock_common (struct spinlock *lock)
+{
+  spinlock_disown (lock);
+  atomic_and (&lock->value, ~SPINLOCK_LOCKED, ATOMIC_RELEASE);
+}
 
 static inline bool
 spinlock_locked (const struct spinlock *lock)
