@@ -73,7 +73,7 @@
 #include <machine/pmu_intel.h>
 #include <machine/uart.h>
 
-#include <vm/vm_kmem.h>
+#include <vm/kmem.h>
 
 alignas (CPU_DATA_ALIGN) char boot_stack[BOOT_STACK_SIZE] __bootdata;
 alignas (CPU_DATA_ALIGN) char boot_ap_stack[BOOT_STACK_SIZE] __bootdata;

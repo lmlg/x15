@@ -25,13 +25,12 @@
 #include <machine/page.h>
 #include <machine/pmap.h>
 #include <machine/types.h>
-#include <vm/vm_adv.h>
-#include <vm/vm_inherit.h>
-#include <vm/vm_kmem.h>
-#include <vm/vm_map.h>
-#include <vm/vm_object.h>
-#include <vm/vm_page.h>
-#include <vm/vm_prot.h>
+
+#include <vm/defs.h>
+#include <vm/kmem.h>
+#include <vm/map.h>
+#include <vm/object.h>
+#include <vm/page.h>
 
 static uint64_t
 vm_kmem_offset (uintptr_t va)

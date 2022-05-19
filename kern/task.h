@@ -25,7 +25,8 @@
 #include <kern/spinlock.h>
 #include <kern/stream.h>
 #include <kern/thread.h>
-#include <vm/vm_map.h>
+
+#include <vm/map.h>
 
 // Task name buffer size.
 #define TASK_NAME_SIZE   32

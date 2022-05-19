@@ -27,9 +27,11 @@
 #include <kern/panic.h>
 #include <kern/percpu.h>
 #include <kern/slist.h>
+
 #include <machine/cpu.h>
-#include <vm/vm_kmem.h>
-#include <vm/vm_page.h>
+
+#include <vm/kmem.h>
+#include <vm/page.h>
 
 void *percpu_areas[CONFIG_MAX_CPUS] __read_mostly;
 

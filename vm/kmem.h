@@ -21,6 +21,7 @@
 #include <stdint.h>
 
 #include <kern/init.h>
+
 #include <machine/pmap.h>
 #include <machine/types.h>
 

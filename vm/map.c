@@ -36,14 +36,14 @@
 #include <kern/rbtree.h>
 #include <kern/shell.h>
 #include <kern/task.h>
+
 #include <machine/page.h>
 #include <machine/pmap.h>
-#include <vm/vm_adv.h>
-#include <vm/vm_inherit.h>
-#include <vm/vm_map.h>
-#include <vm/vm_kmem.h>
-#include <vm/vm_page.h>
-#include <vm/vm_prot.h>
+
+#include <vm/defs.h>
+#include <vm/map.h>
+#include <vm/kmem.h>
+#include <vm/page.h>
 
 /*
  * Special threshold which disables the use of the free area cache address.

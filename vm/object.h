@@ -28,22 +28,20 @@
 
 #include <kern/init.h>
 #include <kern/rdxtree.h>
-#include <vm/vm_object_types.h>
-#include <vm/vm_page.h>
+
+#include <vm/object_types.h>
+#include <vm/page.h>
 
 struct vm_object;
 
-static inline struct vm_object *
+static inline struct vm_object*
 vm_object_get_kernel_object (void)
 {
   extern struct vm_object vm_object_kernel_object;
-
-  return &vm_object_kernel_object;
+  return (&vm_object_kernel_object);
 }
 
-/*
- * Initialize a VM object.
- */
+// Initialize a VM object.
 void vm_object_init (struct vm_object *object, uint64_t size);
 
 /*
@@ -85,4 +83,4 @@ struct vm_page * vm_object_lookup (struct vm_object *object, uint64_t offset);
  */
 INIT_OP_DECLARE (vm_object_setup);
 
-#endif /* VM_OBJECT_H */
+#endif

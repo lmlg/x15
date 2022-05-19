@@ -26,10 +26,12 @@
 #include <kern/macros.h>
 #include <kern/panic.h>
 #include <kern/perfmon.h>
+
 #include <machine/cpu.h>
 #include <machine/lapic.h>
 #include <machine/pmap.h>
-#include <vm/vm_kmem.h>
+
+#include <vm/kmem.h>
 
 // Mask used to check that local APICS are internal.
 #define LAPIC_VERSION_MASK   0x10

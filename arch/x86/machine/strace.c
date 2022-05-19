@@ -24,7 +24,8 @@
 #include <machine/pmap.h>
 #include <machine/strace.h>
 #include <machine/types.h>
-#include <vm/vm_kmem.h>
+
+#include <vm/kmem.h>
 
 #ifdef __LP64__
   #define STRACE_ADDR_FORMAT   "%#018lx"

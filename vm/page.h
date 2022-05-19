@@ -36,23 +36,25 @@
 #include <kern/log2.h>
 #include <kern/macros.h>
 #include <kern/stream.h>
+
 #include <machine/page.h>
 #include <machine/pmap.h>
 #include <machine/pmem.h>
 #include <machine/types.h>
-#include <vm/vm_object_types.h>
+
+#include <vm/object_types.h>
 
 /*
  * Byte/page conversion and rounding macros (not inline functions to
  * be easily usable on both virtual and physical addresses, which may not
  * have the same type size).
  */
-#define vm_page_btop(bytes)     ((bytes) >> PAGE_SHIFT)
-#define vm_page_ptob(pages)     ((pages) << PAGE_SHIFT)
-#define vm_page_trunc(bytes)    P2ALIGN(bytes, PAGE_SIZE)
-#define vm_page_round(bytes)    P2ROUND(bytes, PAGE_SIZE)
-#define vm_page_end(bytes)      P2END(bytes, PAGE_SIZE)
-#define vm_page_aligned(bytes)  P2ALIGNED(bytes, PAGE_SIZE)
+#define vm_page_btop(bytes)      ((bytes) >> PAGE_SHIFT)
+#define vm_page_ptob(pages)      ((pages) << PAGE_SHIFT)
+#define vm_page_trunc(bytes)     P2ALIGN(bytes, PAGE_SIZE)
+#define vm_page_round(bytes)     P2ROUND(bytes, PAGE_SIZE)
+#define vm_page_end(bytes)       P2END(bytes, PAGE_SIZE)
+#define vm_page_aligned(bytes)   P2ALIGNED(bytes, PAGE_SIZE)
 
 /*
  * Zone selectors.
@@ -69,13 +71,13 @@
 #define VM_PAGE_SEL_HIGHMEM     3
 
 // Page usage types.
-#define VM_PAGE_FREE        0   /* Page unused */
-#define VM_PAGE_RESERVED    1   /* Page reserved at boot time */
-#define VM_PAGE_TABLE       2   /* Page is part of the page table */
-#define VM_PAGE_PMAP        3   /* Page stores pmap-specific data */
-#define VM_PAGE_KMEM        4   /* Page is a direct-mapped kmem slab */
-#define VM_PAGE_OBJECT      5   /* Page is part of a VM object */
-#define VM_PAGE_KERNEL      6   /* Type for generic kernel allocations */
+#define VM_PAGE_FREE        0   // Page unused.
+#define VM_PAGE_RESERVED    1   // Page reserved at boot time.
+#define VM_PAGE_TABLE       2   // Page is part of the page table.
+#define VM_PAGE_PMAP        3   // Page stores pmap-specific data.
+#define VM_PAGE_KMEM        4   // Page is a direct-mapped kmem slab.
+#define VM_PAGE_OBJECT      5   // Page is part of a VM object.
+#define VM_PAGE_KERNEL      6   // Type for generic kernel allocations.
 
 // Physical page descriptor.
 struct vm_page

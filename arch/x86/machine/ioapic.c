@@ -27,11 +27,13 @@
 #include <kern/macros.h>
 #include <kern/panic.h>
 #include <kern/spinlock.h>
+
 #include <machine/cpu.h>
 #include <machine/ioapic.h>
 #include <machine/lapic.h>
 #include <machine/pic.h>
-#include <vm/vm_kmem.h>
+
+#include <vm/kmem.h>
 
 #define IOAPIC_REG_VERSION              0x01
 #define IOAPIC_REG_IOREDTBL             0x10

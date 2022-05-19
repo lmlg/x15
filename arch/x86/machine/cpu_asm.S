@@ -18,7 +18,6 @@
 #include <kern/init.h>
 #include <machine/asm.h>
 #include <machine/cpu.h>
-#include <machine/cpu_i.h>
 
 #define CPU_RED_ZONE_SIZE 128
 

@@ -62,8 +62,8 @@
 #include <machine/cpu.h>
 #include <machine/page.h>
 #include <machine/pmap.h>
-#include <vm/vm_kmem.h>
-#include <vm/vm_page.h>
+#include <vm/kmem.h>
+#include <vm/page.h>
 
 // Minimum required alignment.
 #define KMEM_ALIGN_MIN   8

@@ -46,12 +46,14 @@
 #include <kern/printf.h>
 #include <kern/shell.h>
 #include <kern/thread.h>
+
 #include <machine/boot.h>
 #include <machine/cpu.h>
 #include <machine/page.h>
 #include <machine/pmem.h>
 #include <machine/types.h>
-#include <vm/vm_page.h>
+
+#include <vm/page.h>
 
 // Number of free block lists per zone.
 #define VM_PAGE_NR_FREE_LISTS   11

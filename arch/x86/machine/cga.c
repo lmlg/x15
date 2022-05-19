@@ -25,9 +25,11 @@
 #include <kern/init.h>
 #include <kern/cbuf.h>
 #include <kern/macros.h>
+
 #include <machine/io.h>
 #include <machine/cga.h>
-#include <vm/vm_page.h>
+
+#include <vm/page.h>
 
 // Screen dimensions.
 #define CGA_COLUMNS   80

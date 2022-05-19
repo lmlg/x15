@@ -47,7 +47,7 @@
 #include <machine/ssp.h>
 #include <machine/strace.h>
 
-#include <vm/vm_page.h>
+#include <vm/page.h>
 
 // Delay used for frequency measurement, in microseconds.
 #define CPU_FREQ_CAL_DELAY    1000000

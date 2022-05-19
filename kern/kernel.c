@@ -20,8 +20,10 @@
 #include <kern/log.h>
 #include <kern/thread.h>
 #include <machine/cpu.h>
+
 #include <test/test.h>
-#include <vm/vm_page.h>
+
+#include <vm/page.h>
 
 void __init
 kernel_main (void)

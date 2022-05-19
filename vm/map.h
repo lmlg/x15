@@ -28,18 +28,18 @@
 #include <kern/mutex.h>
 #include <kern/rbtree.h>
 #include <kern/stream.h>
+
 #include <machine/pmap.h>
-#include <vm/vm_adv.h>
-#include <vm/vm_inherit.h>
-#include <vm/vm_prot.h>
+
+#include <vm/defs.h>
 
 /*
  * Mapping flags.
  *
  * Unless otherwise mentioned, these can also be used as map entry flags.
  */
-#define VM_MAP_NOMERGE  0x10000
-#define VM_MAP_FIXED    0x20000   // Not an entry flag.
+#define VM_MAP_NOMERGE   0x10000
+#define VM_MAP_FIXED     0x20000   // Not an entry flag.
 
 // Macro used to forge "packed" flags.
 #define VM_MAP_FLAGS(prot, maxprot, inherit, advice, mapflags)   \

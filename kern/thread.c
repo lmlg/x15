@@ -111,12 +111,14 @@
 #include <kern/turnstile.h>
 #include <kern/types.h>
 #include <kern/work.h>
+
 #include <machine/cpu.h>
 #include <machine/page.h>
 #include <machine/pmap.h>
 #include <machine/tcb.h>
-#include <vm/vm_kmem.h>
-#include <vm/vm_map.h>
+
+#include <vm/kmem.h>
+#include <vm/map.h>
 
 /*
  * Preemption level of a suspended thread.
@@ -1700,8 +1702,8 @@ thread_unlock_runq (struct thread_runq *runq, unsigned long flags)
 #ifdef CONFIG_THREAD_STACK_GUARD
 
 #include <machine/pmap.h>
-#include <vm/vm_kmem.h>
-#include <vm/vm_page.h>
+#include <vm/kmem.h>
+#include <vm/page.h>
 
 static void*
 thread_alloc_stack (void)

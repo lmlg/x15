@@ -25,6 +25,7 @@
 #include <kern/log.h>
 #include <kern/macros.h>
 #include <kern/panic.h>
+
 #include <machine/biosmem.h>
 #include <machine/boot.h>
 #include <machine/cpu.h>
@@ -33,7 +34,8 @@
 #include <machine/pmap.h>
 #include <machine/pmem.h>
 #include <machine/types.h>
-#include <vm/vm_page.h>
+
+#include <vm/page.h>
 
 #define BIOSMEM_MAX_BOOT_DATA   64
 

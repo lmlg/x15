@@ -29,6 +29,7 @@
 #include <kern/panic.h>
 #include <kern/percpu.h>
 #include <kern/shutdown.h>
+
 #include <machine/acpi.h>
 #include <machine/biosmem.h>
 #include <machine/cpu.h>
@@ -38,7 +39,8 @@
 #include <machine/pic.h>
 #include <machine/pit.h>
 #include <machine/types.h>
-#include <vm/vm_kmem.h>
+
+#include <vm/kmem.h>
 
 /*
  * Priority of the shutdown operations.

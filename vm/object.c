@@ -28,8 +28,10 @@
 #include <kern/mutex.h>
 #include <kern/rcu.h>
 #include <kern/rdxtree.h>
-#include <vm/vm_object.h>
-#include <vm/vm_page.h>
+
+#include <vm/object.h>
+#include <vm/page.h>
+
 #include <machine/page.h>
 
 struct vm_object vm_object_kernel_object;
@@ -37,7 +39,7 @@ struct vm_object vm_object_kernel_object;
 static int __init
 vm_object_setup (void)
 {
-  return 0;
+  return (0);
 }
 
 INIT_OP_DEFINE (vm_object_setup,
@@ -60,8 +62,6 @@ int
 vm_object_insert (struct vm_object *object, struct vm_page *page,
                   uint64_t offset)
 {
-  int error;
-
   assert (vm_page_aligned (offset));
 
   /*
@@ -69,9 +69,9 @@ vm_object_insert (struct vm_object *object, struct vm_page *page,
    * so that concurrent lookups succeed.
    */
   vm_page_ref (page);
-
   mutex_lock (&object->lock);
 
+  int error;
   if (offset >= object->size)
     {
       error = EINVAL;
@@ -84,69 +84,61 @@ vm_object_insert (struct vm_object *object, struct vm_page *page,
     goto error;
 
   vm_page_link (page, object, offset);
-  object->nr_pages++;
+  ++object->nr_pages;
   assert (object->nr_pages != 0);
 
   mutex_unlock (&object->lock);
-
-  return 0;
+  return (0);
 
 error:
   mutex_unlock (&object->lock);
-
   vm_page_unref (page);
-
-  return error;
+  return (error);
 }
 
 void
 vm_object_remove (struct vm_object *object, uint64_t start, uint64_t end)
 {
-  struct vm_page *page;
-  uint64_t offset;
-
   assert (vm_page_aligned (start));
   assert (vm_page_aligned (end));
   assert (start <= end);
 
   mutex_lock (&object->lock);
 
-  for (offset = start; offset < end; offset += PAGE_SIZE)
+  for (uint64_t offset = start; offset < end; offset += PAGE_SIZE)
     {
-      page = rdxtree_remove (&object->pages, vm_page_btop (offset));
+      struct vm_page *page = rdxtree_remove (&object->pages,
+                                             vm_page_btop (offset));
 
-      if (page == NULL)
+      if (! page)
         continue;
 
       vm_page_unlink (page);
       vm_page_unref (page);
       assert (object->nr_pages != 0);
-      object->nr_pages--;
+      --object->nr_pages;
     }
 
   mutex_unlock (&object->lock);
 }
 
-struct vm_page *
+struct vm_page*
 vm_object_lookup (struct vm_object *object, uint64_t offset)
 {
-  struct vm_page *page;
+  rcu_read_enter ();
   int error;
-
-  rcu_read_enter();
+  struct vm_page *page;
 
   do
     {
       page = rdxtree_lookup (&object->pages, vm_page_btop (offset));
-
-      if (page == NULL)
+      if (! page)
         break;
 
       error = vm_page_tryref (page);
     }
   while (error);
 
-  rcu_read_leave();
-
-  return page;
+  rcu_read_leave ();
+  return (page);
 }

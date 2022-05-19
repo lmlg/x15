@@ -39,6 +39,7 @@
 #include <kern/spinlock.h>
 #include <kern/syscnt.h>
 #include <kern/thread.h>
+
 #include <machine/biosmem.h>
 #include <machine/boot.h>
 #include <machine/cpu.h>
@@ -46,9 +47,10 @@
 #include <machine/pmap.h>
 #include <machine/tcb.h>
 #include <machine/types.h>
-#include <vm/vm_kmem.h>
-#include <vm/vm_page.h>
-#include <vm/vm_prot.h>
+
+#include <vm/defs.h>
+#include <vm/kmem.h>
+#include <vm/page.h>
 
 // Properties of a page translation level.
 struct pmap_pt_level

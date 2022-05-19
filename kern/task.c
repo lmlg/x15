@@ -29,7 +29,8 @@
 #include <kern/spinlock.h>
 #include <kern/task.h>
 #include <kern/thread.h>
-#include <vm/vm_map.h>
+
+#include <vm/map.h>
 
 #ifdef __LP64__
   #define TASK_INFO_ADDR_FMT "%016lx"
