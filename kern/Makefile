@@ -1,4 +1,5 @@
 x15_SOURCES-y += \
+        kern/adaptive_lock.c \
         kern/arg.c \
         kern/bitmap.c \
         kern/bulletin.c \
