@@ -22,6 +22,7 @@
 #define KERN_STREAM_H   1
 
 #include <stdint.h>
+#include <string.h>
 
 #include <kern/init.h>
 #include <kern/macros.h>
@@ -117,6 +118,12 @@ stream_getc (struct stream *strm)
 {
   char c;
   return (stream_read (strm, &c, 1) == 1 ? (int)c : -1);
+}
+
+static inline void
+stream_puts (struct stream *strm, const char *s)
+{
+  return (stream_write (strm, s, strlen (s)));
 }
 
 // String streams.

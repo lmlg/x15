@@ -1976,7 +1976,7 @@ thread_shell_trace (struct shell *shell, int argc, char *argv[])
 {
   if (argc != 3)
     {
-      fmt_xprintf (shell->stream, "wrong number of arguments (expected 3)\n");
+      stream_puts (shell->stream, "usage: thread_trace task thread\n");
       return;
     }
 
@@ -1985,7 +1985,8 @@ thread_shell_trace (struct shell *shell, int argc, char *argv[])
 
   if (task == NULL)
     {
-      fmt_xprintf (shell->stream, "task not found: %s\n", task_name);
+      fmt_xprintf (shell->stream, "thread_trace: task not found: %s\n",
+                   task_name);
       return;
     }
 
@@ -1994,7 +1995,8 @@ thread_shell_trace (struct shell *shell, int argc, char *argv[])
 
   if (! thread)
     {
-      fmt_xprintf (shell->stream, "thread not found: %s\n", thread_name);
+      fmt_xprintf (shell->stream, "thread_trace: thread not found: %s\n",
+                   thread_name);
       return;
     }
 
@@ -2002,7 +2004,7 @@ thread_shell_trace (struct shell *shell, int argc, char *argv[])
   _Auto runq = thread_lock_runq (thread, &flags);
 
   if (thread == runq->current)
-    fmt_xprintf (shell->stream, "thread: trace: thread is running\n");
+    fmt_xprintf (shell->stream, "threa_trace: thread is running\n");
   else
     tcb_trace (&thread->tcb);
 

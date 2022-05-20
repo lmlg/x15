@@ -596,11 +596,14 @@ vm_map_shell_info (struct shell *shell, int argc, char **argv)
   (void)shell;
 
   if (argc < 2)
-    return;
+    {
+      stream_puts (shell->stream, "usage: vm_map_info task\n");
+      return;
+    }
   
   const _Auto task = task_lookup (argv[1]);
   if (! task)
-    fmt_xprintf (shell->stream, "task not found\n");
+    fmt_xprintf (shell->stream, "vm_map_info: task not found\n");
   else
     vm_map_info (task_get_vm_map (task), shell->stream);
 }
