@@ -23,9 +23,9 @@
 
 #include <stddef.h>
 
+#include <kern/adaptive_lock.h>
 #include <kern/init.h>
 #include <kern/list.h>
-#include <kern/mutex.h>
 #include <kern/stream.h>
 
 #include <machine/cpu.h>
@@ -55,7 +55,7 @@ typedef void (*kmem_ctor_fn_t) (void *);
  */
 struct kmem_cpu_pool
 {
-  alignas (CPU_L1_SIZE) struct mutex lock;
+  alignas (CPU_L1_SIZE) struct adaptive_lock lock;
   int flags;
   int size;
   int transfer_size;
@@ -199,7 +199,7 @@ struct kmem_cache
 #endif
 
   // Slab layer.
-  struct mutex lock;    // TODO: Use adaptive mutex.
+  struct adaptive_lock lock;
   struct list node;     // Cache list linkage.
   struct list partial_slabs;
   struct list free_slabs;
