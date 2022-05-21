@@ -77,7 +77,7 @@ struct vm_map
   struct mutex lock;
   struct list entry_list;
   struct rbtree entry_tree;
-  unsigned int nr_entries;
+  uint32_t nr_entries;
   uintptr_t start;
   uintptr_t end;
   size_t size;

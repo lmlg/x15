@@ -23,12 +23,12 @@
 #include <machine/cpu.h>
 #include <machine/strace.h>
 
-static unsigned int panic_done;
+static int panic_done;
 
 void
 panic (const char *format, ...)
 {
-  unsigned int already_done = atomic_swap (&panic_done, 1, ATOMIC_SEQ_CST);
+  int already_done = atomic_swap (&panic_done, 1, ATOMIC_SEQ_CST);
 
   if (already_done)
     while (1)

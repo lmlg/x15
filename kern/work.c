@@ -502,27 +502,25 @@ INIT_OP_DEFINE (work_setup,
 void
 work_schedule (struct work *work, int flags)
 {
-  thread_pin ();
+  THREAD_PIN_GUARD ();
   struct work_pool *pool = work_pool_cpu_select (flags);
 
   unsigned long cpu_flags;
   work_pool_acquire (pool, &cpu_flags);
   work_pool_push_work (pool, work);
   work_pool_release (pool, cpu_flags);
-  thread_unpin ();
 }
 
 void
 work_queue_schedule (struct work_queue *queue, int flags)
 {
-  thread_pin ();
+  THREAD_PIN_GUARD ();
   struct work_pool *pool = work_pool_cpu_select (flags);
 
   unsigned long cpu_flags;
   work_pool_acquire (pool, &cpu_flags);
   work_pool_concat_queue (pool, queue);
   work_pool_release (pool, cpu_flags);
-  thread_unpin ();
 }
 
 void
@@ -537,15 +535,13 @@ work_report_periodic_event (void)
 
   if (work_queue_nr_works (&queue))
     {
-      spinlock_lock (&work_pool_main.lock);
+      SPINLOCK_GUARD (&work_pool_main.lock, false);
       work_pool_concat_queue (&work_pool_main, &queue);
-      spinlock_unlock (&work_pool_main.lock);
     }
 
   if (work_queue_nr_works (&highprio_queue))
     {
-      spinlock_lock (&work_pool_highprio.lock);
+      SPINLOCK_GUARD (&work_pool_highprio.lock, false);
       work_pool_concat_queue (&work_pool_highprio, &highprio_queue);
-      spinlock_unlock (&work_pool_highprio.lock);
     }
 }

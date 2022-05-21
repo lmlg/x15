@@ -1527,8 +1527,8 @@ thread_reset_real_priority (struct thread *thread)
 {
   thread->real_sched_data = thread->user_sched_data;
 
-  _Auto user = &thread->user_sched_data,
-        real = &thread->real_sched_data;
+  _Auto user = &thread->user_sched_data;
+  _Auto real = &thread->real_sched_data;
   *real = *user;
   thread->boosted = false;
 

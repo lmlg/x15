@@ -231,48 +231,36 @@ intr_entry_lookup_handler (const struct intr_entry *entry, intr_handler_fn_t fn)
 static int
 intr_entry_add (struct intr_entry *entry, struct intr_handler *handler)
 {
-  unsigned long flags;
-  spinlock_lock_intr_save (&entry->lock, &flags);
+  SPINLOCK_GUARD (&entry->lock, true);
 
-  int error;
-  if (intr_entry_empty (entry) )
+  if (intr_entry_empty (entry))
     {
       _Auto ctl = intr_lookup_ctl (intr_entry_get_intr (entry));
       if (! ctl)
-        {
-          error = ENODEV;
-          goto out;
-        }
+        return (ENODEV);
 
       uint32_t cpu = intr_select_cpu ();
       intr_entry_enable (entry, ctl, cpu);
     }
 
   list_insert_tail (&entry->handlers, &handler->node);
-  error = 0;
-
-out:
-  spinlock_unlock_intr_restore (&entry->lock, flags);
-  return (error);
+  return (0);
 }
 
 static struct intr_handler*
 intr_entry_remove (struct intr_entry *entry, intr_handler_fn_t fn)
 {
-  unsigned long flags;
-  spinlock_lock_intr_save (&entry->lock, &flags);
+  SPINLOCK_GUARD (&entry->lock, true);
 
   _Auto handler = intr_entry_lookup_handler (entry, fn);
   if (! handler)
-    goto out;
+    return (NULL);
 
   list_remove (&handler->node);
 
   if (intr_entry_empty (entry))
     intr_entry_disable (entry);
 
-out:
-  spinlock_unlock_intr_restore (&entry->lock, flags);
   return (handler);
 }
 
@@ -372,27 +360,21 @@ intr_unregister (uint32_t intr, intr_handler_fn_t fn)
 void
 intr_handle (uint32_t intr)
 {
-  assert (thread_check_intr_context());
+  assert (thread_check_intr_context ());
 
   _Auto entry = intr_get_entry (intr);
-  spinlock_lock (&entry->lock);
+  SPINLOCK_GUARD (&entry->lock, false);
 
   if (intr_entry_empty (entry))
     {
       log_warning ("intr: spurious interrupt %u", intr);
-      goto out;
+      return;
     }
 
   struct intr_handler *handler;
   list_for_each_entry (&entry->handlers, handler, node)
-    {
-      int error = intr_handler_run (handler);
-      if (!error)
-        break;
-    }
+    if (intr_handler_run (handler) == 0)
+      break;
 
   intr_entry_eoi (entry, intr);
-
-out:
-  spinlock_unlock (&entry->lock);
 }

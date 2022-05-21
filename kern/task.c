@@ -149,48 +149,40 @@ error_map:
 struct task*
 task_lookup (const char *name)
 {
-  spinlock_lock (&task_list_lock);
+  SPINLOCK_GUARD (&task_list_lock, false);
 
   struct task *task;
   list_for_each_entry (&task_list, task, node)
     {
-      spinlock_lock (&task->lock);
-
+      SPINLOCK_GUARD (&task->lock, false);
       if (strcmp (task->name, name) == 0)
         {
           task_ref (task);
-          spinlock_unlock (&task->lock);
-          spinlock_unlock (&task_list_lock);
           return (task);
         }
-
-      spinlock_unlock (&task->lock);
     }
 
-  spinlock_unlock (&task_list_lock);
   return (NULL);
 }
 
 void
 task_add_thread (struct task *task, struct thread *thread)
 {
-  spinlock_lock (&task->lock);
+  SPINLOCK_GUARD (&task->lock, false);
   list_insert_tail (&task->threads, &thread->task_node);
-  spinlock_unlock (&task->lock);
 }
 
 void
 task_remove_thread (struct task *task, struct thread *thread)
 {
-  spinlock_lock (&task->lock);
+  SPINLOCK_GUARD (&task->lock, false);
   list_remove (&thread->task_node);
-  spinlock_unlock (&task->lock);
 }
 
 struct thread*
 task_lookup_thread (struct task *task, const char *name)
 {
-  spinlock_lock (&task->lock);
+  SPINLOCK_GUARD (&task->lock, false);
 
   struct thread *thread;
   list_for_each_entry (&task->threads, thread, task_node)
@@ -198,12 +190,10 @@ task_lookup_thread (struct task *task, const char *name)
       if (strcmp (thread_name (thread), name) == 0)
         {
           thread_ref (thread);
-          spinlock_unlock (&task->lock);
           return (thread);
         }
     }
 
-  spinlock_unlock (&task->lock);
   return (NULL);
 }
 
@@ -212,16 +202,15 @@ task_info (struct task *task, struct stream *stream)
 {
   if (! task)
     {
-      spinlock_lock (&task_list_lock);
+      SPINLOCK_GUARD (&task_list_lock, false);
       list_for_each_entry (&task_list, task, node)
         task_info (task, stream);
 
-      spinlock_unlock (&task_list_lock);
       return;
     }
 
-  spinlock_lock (&task->lock);
-  fmt_xprintf (stream, "task: name: %s, threads:", task->name);
+  SPINLOCK_GUARD (&task->lock, false);
+  fmt_xprintf (stream, "task: name: %s, threads:\n", task->name);
 
   /*
    * Don't grab any lock when accessing threads, so that the function
@@ -244,6 +233,4 @@ task_info (struct task *task, struct stream *stream)
                  thread_user_priority (thread),
                  thread_real_global_priority (thread),
                  thread_name (thread));
-
-  spinlock_unlock (&task->lock);
 }

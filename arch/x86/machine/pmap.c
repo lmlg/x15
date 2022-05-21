@@ -808,7 +808,6 @@ pmap_bootstrap (void)
 
 INIT_OP_DEFINE (pmap_bootstrap,
                 INIT_OP_DEP (cpu_setup, true),
-                INIT_OP_DEP (mutex_setup, true),
                 INIT_OP_DEP (spinlock_setup, true),
                 INIT_OP_DEP (syscnt_setup, true),
                 INIT_OP_DEP (thread_bootstrap, true));
@@ -1384,25 +1383,22 @@ pmap_update (struct pmap *pmap)
       request->done = 0;
       request->error = 0;
 
-      spinlock_lock (&queue->lock);
+      SPINLOCK_GUARD (&queue->lock, false);
       list_insert_tail (&queue->requests, &request->node);
       thread_wakeup (syncer->thread);
-      spinlock_unlock (&queue->lock);
   }
 
   // TODO Improve scalability.
   cpumap_for_each (&oplist->cpumap, cpu)
     {
       struct pmap_update_request *request = &array->requests[cpu];
-      spinlock_lock (&request->lock);
+      SPINLOCK_GUARD (&request->lock, false);
 
       while (!request->done)
         thread_sleep (&request->lock, request, "pmaprq");
 
       if (!error && request->error)
         error = request->error;
-
-      spinlock_unlock (&request->lock);
     }
 
   pmap_update_request_array_release (array);

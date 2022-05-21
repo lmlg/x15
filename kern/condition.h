@@ -30,7 +30,7 @@
 #include <stdint.h>
 
 #include <kern/condition_types.h>
-#include <kern/mutex_types.h>
+#include <kern/mutex.h>
 
 struct condition;
 

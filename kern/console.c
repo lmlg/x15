@@ -88,7 +88,7 @@ console_read_nolock (struct console *console, char *s, size_t size)
   struct console_waiter waiter = { .thread = thread_self () };
   list_insert_tail (&console->waiters, &waiter.node);
 
-  for (;;)
+  while (1)
     {
       int error = cbuf_pop (&console->recvbuf, s, &size);
 
@@ -104,7 +104,7 @@ console_read_nolock (struct console *console, char *s, size_t size)
             break;
         }
 
-      thread_sleep (&console->lock, console, "consgetc");
+      thread_timedsleep (&console->lock, console, "consgetc", 1000);
     }
 
   list_remove (&waiter.node);
@@ -155,12 +155,12 @@ console_intr (struct console *console, const char *s)
   if (*s == '\0')
     return;
 
-  spinlock_lock (&console->lock);
+  SPINLOCK_GUARD (&console->lock, false);
 
   for (; *s; ++s)
     {
-      if (cbuf_size (&console->recvbuf) == cbuf_capacity (&console->recvbuf) )
-        goto out;
+      if (cbuf_size (&console->recvbuf) == cbuf_capacity (&console->recvbuf))
+        return;
 
       cbuf_pushb (&console->recvbuf, *s, false);
     }
@@ -168,9 +168,6 @@ console_intr (struct console *console, const char *s)
   struct list *node = list_first (&console->waiters);
   if (node)
     thread_wakeup (list_entry(node, struct console_waiter, node)->thread);
-
-out:
-  spinlock_unlock (&console->lock);
 }
 
 void

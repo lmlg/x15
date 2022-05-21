@@ -243,7 +243,7 @@ rbtree_replace_slot (struct rbtree *tree, rbtree_slot_t slot,
 void
 rbtree_remove (struct rbtree *tree, struct rbtree_node *node)
 {
-  struct rbtree_node *child;
+  struct rbtree_node *child, *parent;
   int color;
 
   if (!node->children[RBTREE_LEFT])
@@ -259,7 +259,7 @@ rbtree_remove (struct rbtree *tree, struct rbtree_node *node)
 
       color = rbtree_node_color (successor);
       child = successor->children[RBTREE_RIGHT];
-      struct rbtree_node *parent = rbtree_node_parent (node);
+      parent = rbtree_node_parent (node);
 
       if (unlikely (! parent))
         tree->root = successor;
@@ -291,7 +291,7 @@ rbtree_remove (struct rbtree *tree, struct rbtree_node *node)
 
   // Node has at most one child.
   color = rbtree_node_color (node);
-  struct rbtree_node *parent = rbtree_node_parent (node);
+  parent = rbtree_node_parent (node);
 
   if (child)
     rbtree_node_set_parent (child, parent);

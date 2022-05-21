@@ -232,6 +232,46 @@ spinlock_unlock_intr_restore (struct spinlock *lock, unsigned long flags)
   thread_preempt_enable_intr_restore (flags);
 }
 
+// Spinlock guards.
+
+struct spinlock_guard
+{
+  struct spinlock *spinlock;
+  unsigned long flags;
+  bool saved_flags;
+};
+
+static inline struct spinlock_guard
+spinlock_guard_make (struct spinlock *spinlock, bool save_flags)
+{
+  struct spinlock_guard ret =
+    {
+      .spinlock = spinlock,
+      .saved_flags = save_flags
+    };
+
+  if (save_flags)
+    spinlock_lock_intr_save (spinlock, &ret.flags);
+  else
+    spinlock_lock (spinlock);
+
+  return (ret);
+}
+
+static inline void
+spinlock_guard_fini (void *ptr)
+{
+  struct spinlock_guard *guard = ptr;
+  if (guard->saved_flags)
+    spinlock_unlock_intr_restore (guard->spinlock, guard->flags);
+  else
+    spinlock_unlock (guard->spinlock);
+}
+
+#define SPINLOCK_GUARD(spinlock, save_flags)   \
+  CLEANUP (spinlock_guard_fini) _Auto __unused UNIQ (sg) =   \
+    spinlock_guard_make ((spinlock), (save_flags))
+
 /*
  * This init operation provides :
  *  - uncontended spinlock locking

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2013-2017 Richard Braun.
+ * Copyright (c) 2017 Richard Braun.
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -15,25 +15,91 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+#include <assert.h>
+#include <stdbool.h>
+#include <stddef.h>
+#include <stdint.h>
+
+#include <kern/atomic.h>
 #include <kern/init.h>
 #include <kern/mutex.h>
-#include <kern/thread.h>
+#include <kern/sleepq.h>
+#include <kern/syscnt.h>
 
-static int __init
-mutex_bootstrap(void)
+static int
+mutex_lock_slow_common (struct mutex *mutex, bool timed, uint64_t ticks)
 {
-    return 0;
+  int error = 0;
+  struct sleepq *sleepq = sleepq_lend (mutex, false);
+
+  while (1)
+    {
+      uint32_t state = atomic_swap_rel (&mutex->state, MUTEX_CONTENDED);
+
+      if (state == MUTEX_UNLOCKED)
+        break;
+      else if (!timed)
+        sleepq_wait (sleepq, "mutex");
+      else
+        {
+          error = sleepq_timedwait (sleepq, "mutex", ticks);
+          if (error)
+            break;
+        }
+    }
+
+  if (error)
+    {
+      if (sleepq_empty (sleepq))
+        atomic_cas_rlx (&mutex->state, MUTEX_CONTENDED, MUTEX_LOCKED);
+
+      goto out;
+    }
+  else if (sleepq_empty (sleepq))
+    atomic_store_rlx (&mutex->state, MUTEX_LOCKED);
+
+out:
+  sleepq_return (sleepq);
+  return (error);
 }
 
-INIT_OP_DEFINE(mutex_bootstrap,
-               INIT_OP_DEP(mutex_impl_bootstrap, true),
-               INIT_OP_DEP(thread_setup_booter, true));
-
-static int __init
-mutex_setup(void)
+void
+mutex_lock_slow (struct mutex *mutex)
 {
-    return 0;
+  int error = mutex_lock_slow_common (mutex, false, 0);
+  assert (! error);
 }
 
-INIT_OP_DEFINE(mutex_setup,
-               INIT_OP_DEP(mutex_impl_setup, true));
+int
+mutex_timedlock_slow (struct mutex *mutex, uint64_t ticks)
+{
+  return (mutex_lock_slow_common (mutex, true, ticks));
+}
+
+void
+mutex_unlock_slow (struct mutex *mutex)
+{
+  struct sleepq *sleepq = sleepq_acquire (mutex, false);
+  if (! sleepq)
+    return;
+
+  sleepq_signal (sleepq);
+  sleepq_release (sleepq);
+}
+
+static int __init
+mutex_bootstrap (void)
+{
+  return (0);
+}
+
+INIT_OP_DEFINE (mutex_bootstrap,
+                INIT_OP_DEP (thread_setup_booter, true));
+
+static int __init
+mutex_setup (void)
+{
+  return (0);
+}
+
+INIT_OP_DEFINE (mutex_setup);

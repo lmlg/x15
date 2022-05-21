@@ -682,6 +682,15 @@ thread_unpin (void)
   --thread->pin_level;
 }
 
+static inline void
+thread_pin_guard_fini (void *ptr __unused)
+{
+  thread_unpin ();
+}
+
+#define THREAD_PIN_GUARD()   \
+  CLEANUP (thread_pin_guard_fini) int __unused UNIQ (tpg) = (thread_pin (), 0)
+
 /*
  * Preemption control functions.
  *
@@ -786,6 +795,16 @@ thread_intr_leave (void)
     thread_preempt_enable_no_resched ();
 }
 
+static inline void
+thread_intr_guard_fini (void *ptr __unused)
+{
+  thread_intr_leave ();
+}
+
+#define THREAD_INTR_GUARD()   \
+  CLEANUP (thread_intr_guard_fini) int __unused UNIQ (tig) =   \
+    (thread_intr_enter (), 0)
+
 // RCU functions.
 
 static inline struct rcu_reader*
@@ -815,14 +834,14 @@ thread_get_perfmon_td (struct thread *thread)
  *
  * This call isn't synchronized, and the caller may obtain an outdated value.
  */
-unsigned int thread_cpu (const struct thread *thread);
+uint32_t thread_cpu (const struct thread *thread);
 
 /*
  * Return the current state of the given thread.
  *
  * This call isn't synchronized, and the caller may obtain an outdated value.
  */
-unsigned int thread_state (const struct thread *thread);
+uint32_t thread_state (const struct thread *thread);
 
 /*
  * Return true if the given thread is running.

@@ -50,31 +50,28 @@ bulletin_subscribe (struct bulletin *bulletin, struct bulletin_sub *sub,
                     bulletin_notif_fn_t notif_fn, void *arg)
 {
   bulletin_sub_init (sub, notif_fn, arg);
-  spinlock_lock (&bulletin->lock);
+  SPINLOCK_GUARD (&bulletin->lock, false);
   list_rcu_insert_tail (&bulletin->subs, &sub->node);
-  spinlock_unlock (&bulletin->lock);
 }
 
 void
 bulletin_unsubscribe (struct bulletin *bulletin, struct bulletin_sub *sub)
 {
-  spinlock_lock (&bulletin->lock);
-  list_rcu_remove (&sub->node);
-  spinlock_unlock (&bulletin->lock);
+  {
+    SPINLOCK_GUARD (&bulletin->lock, false);
+    list_rcu_remove (&sub->node);
+  }
+
   rcu_wait ();
 }
 
 void
 bulletin_publish (struct bulletin *bulletin, uintptr_t value)
 {
-  struct bulletin_sub *sub;
-
   assert (!thread_interrupted ());
+  RCU_GUARD ();
 
-  rcu_read_enter ();
-
+  struct bulletin_sub *sub;
   list_rcu_for_each_entry (&bulletin->subs, sub, node)
     bulletin_sub_notify (sub, value);
-
-  rcu_read_leave ();
 }

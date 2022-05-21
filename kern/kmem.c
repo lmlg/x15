@@ -356,7 +356,7 @@ kmem_cpu_pool_fill (struct kmem_cpu_pool *cpu_pool, struct kmem_cache *cache)
   kmem_ctor_fn_t ctor = (cpu_pool->flags & KMEM_CF_VERIFY) ?
                         NULL : cache->ctor;
 
-  adaptive_lock_acquire (&cache->lock);
+  ADAPTIVE_LOCK_GUARD (&cache->lock);
 
   int i;
   for (i = 0; i < cpu_pool->transfer_size; i++)
@@ -370,23 +370,18 @@ kmem_cpu_pool_fill (struct kmem_cpu_pool *cpu_pool, struct kmem_cache *cache)
       kmem_cpu_pool_push (cpu_pool, buf);
     }
 
-  adaptive_lock_release (&cache->lock);
-
   return (i);
 }
 
 static void
 kmem_cpu_pool_drain (struct kmem_cpu_pool *cpu_pool, struct kmem_cache *cache)
 {
-  adaptive_lock_acquire (&cache->lock);
-
+  ADAPTIVE_LOCK_GUARD (&cache->lock);
   for (int i = cpu_pool->transfer_size; i > 0; i--)
     {
       void *obj = kmem_cpu_pool_pop (cpu_pool);
       kmem_cache_free_to_slab (cache, obj);
     }
-
-  adaptive_lock_release (&cache->lock);
 }
 
 #endif // KMEM_USE_CPU_LAYER
@@ -550,9 +545,8 @@ kmem_cache_init (struct kmem_cache *cache, const char *name, size_t obj_size,
     kmem_cpu_pool_init (&cache->cpu_pools[i], cache);
 #endif
 
-  adaptive_lock_acquire (&kmem_cache_list_lock);
+  ADAPTIVE_LOCK_GUARD (&kmem_cache_list_lock);
   list_insert_tail (&kmem_cache_list, &cache->node);
-  adaptive_lock_release (&kmem_cache_list_lock);
 }
 
 static inline int
@@ -986,30 +980,28 @@ kmem_cache_info (struct kmem_cache *cache, struct stream *stream)
             (cache->flags & KMEM_CF_SLAB_EXTERNAL) ? " SLAB_EXTERNAL" : "",
             (cache->flags & KMEM_CF_VERIFY) ? " VERIFY" : "");
 
-  adaptive_lock_acquire (&cache->lock);
+  ADAPTIVE_LOCK_GUARD (&cache->lock);
 
   fmt_xprintf (stream, "kmem:         flags: 0x%x%s\n",
                cache->flags, flags_str);
-  fmt_xprintf (stream, "kmem:      obj_size: %zu", cache->obj_size);
-  fmt_xprintf (stream, "kmem:         align: %zu", cache->align);
-  fmt_xprintf (stream, "kmem:      buf_size: %zu", cache->buf_size);
-  fmt_xprintf (stream, "kmem:   bufctl_dist: %zu", cache->bufctl_dist);
-  fmt_xprintf (stream, "kmem:     slab_size: %zu", cache->slab_size);
-  fmt_xprintf (stream, "kmem:     color_max: %zu", cache->color_max);
-  fmt_xprintf (stream, "kmem: bufs_per_slab: %lu", cache->bufs_per_slab);
-  fmt_xprintf (stream, "kmem:       nr_objs: %lu", cache->nr_objs);
-  fmt_xprintf (stream, "kmem:       nr_bufs: %lu", cache->nr_bufs);
-  fmt_xprintf (stream, "kmem:      nr_slabs: %lu", cache->nr_slabs);
-  fmt_xprintf (stream, "kmem: nr_free_slabs: %lu", cache->nr_free_slabs);
-  fmt_xprintf (stream, "kmem:   buftag_dist: %zu", cache->buftag_dist);
-  fmt_xprintf (stream, "kmem:   redzone_pad: %zu", cache->redzone_pad);
+  fmt_xprintf (stream, "kmem:      obj_size: %zu\n", cache->obj_size);
+  fmt_xprintf (stream, "kmem:         align: %zu\n", cache->align);
+  fmt_xprintf (stream, "kmem:      buf_size: %zu\n", cache->buf_size);
+  fmt_xprintf (stream, "kmem:   bufctl_dist: %zu\n", cache->bufctl_dist);
+  fmt_xprintf (stream, "kmem:     slab_size: %zu\n", cache->slab_size);
+  fmt_xprintf (stream, "kmem:     color_max: %zu\n", cache->color_max);
+  fmt_xprintf (stream, "kmem: bufs_per_slab: %lu\n", cache->bufs_per_slab);
+  fmt_xprintf (stream, "kmem:       nr_objs: %lu\n", cache->nr_objs);
+  fmt_xprintf (stream, "kmem:       nr_bufs: %lu\n", cache->nr_bufs);
+  fmt_xprintf (stream, "kmem:      nr_slabs: %lu\n", cache->nr_slabs);
+  fmt_xprintf (stream, "kmem: nr_free_slabs: %lu\n", cache->nr_free_slabs);
+  fmt_xprintf (stream, "kmem:   buftag_dist: %zu\n", cache->buftag_dist);
+  fmt_xprintf (stream, "kmem:   redzone_pad: %zu\n", cache->redzone_pad);
 
 #ifdef KMEM_USE_CPU_LAYER
-  fmt_xprintf (stream, "kmem: cpu_pool_size: %d",
+  fmt_xprintf (stream, "kmem: cpu_pool_size: %d\n",
                cache->cpu_pool_type->array_size);
 #endif
-
-  adaptive_lock_release (&cache->lock);
 }
 
 #ifdef CONFIG_SHELL
@@ -1017,18 +1009,14 @@ kmem_cache_info (struct kmem_cache *cache, struct stream *stream)
 static struct kmem_cache*
 kmem_lookup_cache (const char *name)
 {
-  adaptive_lock_acquire (&kmem_cache_list_lock);
+  ADAPTIVE_LOCK_GUARD (&kmem_cache_list_lock);
 
   struct kmem_cache *cache;
   list_for_each_entry (&kmem_cache_list, cache, node)
     if (strcmp (cache->name, name) == 0)
-      goto out;
+      return (cache);
 
-  cache = NULL;
-
-out:
-  adaptive_lock_release (&kmem_cache_list_lock);
-  return (cache);
+  return (NULL);
 }
 
 static void

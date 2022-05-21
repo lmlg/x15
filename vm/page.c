@@ -301,7 +301,7 @@ vm_page_cpu_pool_fill (struct vm_page_cpu_pool *cpu_pool,
                        struct vm_page_zone *zone)
 {
   assert (cpu_pool->nr_pages == 0);
-  mutex_lock (&zone->lock);
+  MUTEX_GUARD (&zone->lock);
 
   int i;
   for (i = 0; i < cpu_pool->transfer_size; i++)
@@ -313,7 +313,6 @@ vm_page_cpu_pool_fill (struct vm_page_cpu_pool *cpu_pool,
       vm_page_cpu_pool_push (cpu_pool, page);
     }
 
-  mutex_unlock (&zone->lock);
   return (i);
 }
 
@@ -322,15 +321,13 @@ vm_page_cpu_pool_drain (struct vm_page_cpu_pool *cpu_pool,
                         struct vm_page_zone *zone)
 {
   assert (cpu_pool->nr_pages == cpu_pool->size);
-  mutex_lock (&zone->lock);
+  MUTEX_GUARD (&zone->lock);
 
   for (int i = cpu_pool->transfer_size; i > 0; i--)
     {
       _Auto page = vm_page_cpu_pool_pop (cpu_pool);
       vm_page_zone_free_to_buddy (zone, page, 0);
     }
-
-  mutex_unlock (&zone->lock);
 }
 
 static phys_addr_t __init
@@ -382,9 +379,9 @@ vm_page_zone_alloc (struct vm_page_zone *zone, uint32_t order,
 
   if (! order)
     {
-      thread_pin ();
+      THREAD_PIN_GUARD ();
       _Auto cpu_pool = vm_page_cpu_pool_get (zone);
-      mutex_lock (&cpu_pool->lock);
+      MUTEX_GUARD (&cpu_pool->lock);
 
       if (!cpu_pool->nr_pages &&
           !vm_page_cpu_pool_fill (cpu_pool, zone))
@@ -395,15 +392,11 @@ vm_page_zone_alloc (struct vm_page_zone *zone, uint32_t order,
         }
 
       page = vm_page_cpu_pool_pop (cpu_pool);
-      mutex_unlock (&cpu_pool->lock);
-      thread_unpin ();
     }
   else
     {
-      mutex_lock (&zone->lock);
+      MUTEX_GUARD (&zone->lock);
       page = vm_page_zone_alloc_from_buddy (zone, order);
-      mutex_unlock (&zone->lock);
-
       if (! page)
         return (NULL);
     }
@@ -424,22 +417,19 @@ vm_page_zone_free (struct vm_page_zone *zone, struct vm_page *page,
 
   if (! order)
     {
-      thread_pin ();
+      THREAD_PIN_GUARD ();
       _Auto cpu_pool = vm_page_cpu_pool_get (zone);
-      mutex_lock (&cpu_pool->lock);
+      MUTEX_GUARD (&cpu_pool->lock);
 
       if (cpu_pool->nr_pages == cpu_pool->size)
         vm_page_cpu_pool_drain (cpu_pool, zone);
 
       vm_page_cpu_pool_push (cpu_pool, page);
-      mutex_unlock (&cpu_pool->lock);
-      thread_unpin ();
     }
   else
     {
-      mutex_lock (&zone->lock);
+      MUTEX_GUARD (&zone->lock);
       vm_page_zone_free_to_buddy (zone, page, order);
-      mutex_unlock (&zone->lock);
     }
 }
 

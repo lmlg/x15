@@ -539,10 +539,10 @@ vm_map_remove (struct vm_map *map, uintptr_t start, uintptr_t end)
   assert (end <= map->end);
   assert (start < end);
 
-  mutex_lock (&map->lock);
+  MUTEX_GUARD (&map->lock);
   _Auto entry = vm_map_lookup_nearest (map, start);
   if (! entry)
-    goto out;
+    return;
 
   vm_map_clip_start (map, entry, start);
 
@@ -563,9 +563,6 @@ vm_map_remove (struct vm_map *map, uintptr_t start, uintptr_t end)
     }
 
   vm_map_reset_find_cache (map);
-
-out:
-  mutex_unlock (&map->lock);
 }
 
 static void
@@ -623,7 +620,6 @@ vm_map_setup_shell (void)
 }
 
 INIT_OP_DEFINE (vm_map_setup_shell,
-                INIT_OP_DEP (mutex_setup, true),
                 INIT_OP_DEP (printf_setup, true),
                 INIT_OP_DEP (shell_setup, true),
                 INIT_OP_DEP (task_setup, true),
@@ -643,6 +639,7 @@ vm_map_bootstrap (void)
 }
 
 INIT_OP_DEFINE (vm_map_bootstrap,
+                INIT_OP_DEP (mutex_setup, true),
                 INIT_OP_DEP (kmem_bootstrap, true),
                 INIT_OP_DEP (thread_bootstrap, true));
 
@@ -684,7 +681,7 @@ void
 vm_map_info (struct vm_map *map, struct stream *stream)
 {
   const char *name = map == vm_map_get_kernel_map () ? "kernel map" : "map";
-  mutex_lock (&map->lock);
+  MUTEX_GUARD (&map->lock);
 
   fmt_xprintf (stream, "vm_map: %s: %016lx-%016lx\n", name,
                (unsigned long) map->start, (unsigned long) map->end);
@@ -702,5 +699,4 @@ vm_map_info (struct vm_map *map, struct stream *stream)
     }
 
   fmt_xprintf (stream, "vm_map: total: %zuk\n", map->size >> 10);
-  mutex_unlock (&map->lock);
 }

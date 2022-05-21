@@ -130,4 +130,7 @@
 // Unique identifiers.
 #define UNIQ(prefix)   CONCAT (prefix, __COUNTER__)
 
+// Cleanup functions.
+#define CLEANUP(fct)   __attribute__ ((cleanup (fct)))
+
 #endif

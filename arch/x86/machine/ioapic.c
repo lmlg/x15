@@ -245,11 +245,9 @@ ioapic_enable (void *priv, uint32_t intr, uint32_t cpu)
   ioapic_compute_entry (&high, &low, cpu_apic_id (cpu), intr,
                         active_high, edge_triggered);
 
-  unsigned long flags;
-  spinlock_lock_intr_save (&ioapic->lock, &flags);
+  SPINLOCK_GUARD (&ioapic->lock, true);
   ioapic_write_entry_high (ioapic, id, high);
   ioapic_write_entry_low (ioapic, id, low);
-  spinlock_unlock_intr_restore (&ioapic->lock, flags);
 }
 
 static void
@@ -258,10 +256,8 @@ ioapic_disable (void *priv, unsigned int intr)
   struct ioapic *ioapic = priv;
   uint32_t id = ioapic_compute_id (ioapic, intr);
 
-  unsigned long flags;
-  spinlock_lock_intr_save (&ioapic->lock, &flags);
+  SPINLOCK_GUARD (&ioapic->lock, true);
   ioapic_write_entry_low (ioapic, id, IOAPIC_ENTLOW_INTRMASK);
-  spinlock_unlock_intr_restore (&ioapic->lock, flags);
 }
 
 static void

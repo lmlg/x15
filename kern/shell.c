@@ -386,7 +386,7 @@ shell_cmd_set_complete (struct shell_cmd_set *cmd_set, const char *str,
    * 2/ There are several matches, in which case the common length is
    *    computed.
    */
-  _Auto next = cmd->ls_next;
+  const struct shell_cmd *next = cmd->ls_next;
   if (!next || strncmp (cmd->name, next->name, size))
     {
       *sizep = strlen (cmd->name);

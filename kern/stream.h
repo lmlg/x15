@@ -133,7 +133,7 @@ int string_stream_init (struct string_stream *strm, char *ptr, size_t size);
   ({   \
     struct string_stream *s_ = __builtin_alloca (sizeof (*s_));   \
     string_stream_init (s_, (ptr), (size)) == 0 ?   \
-    (struct stream *)s_ : (struct stream *)NULL;   \
+      (struct stream *)s_ : (struct stream *)NULL;   \
   })
 
 // Standard console stream.

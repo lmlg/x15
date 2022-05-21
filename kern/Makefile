@@ -42,8 +42,4 @@ x15_SOURCES-y += \
         kern/xcall.c
 
 x15_SOURCES-$(CONFIG_SHELL) += kern/shell.c
-
-x15_SOURCES-$(CONFIG_MUTEX_ADAPTIVE) += kern/mutex/mutex_adaptive.c
-x15_SOURCES-$(CONFIG_MUTEX_PLAIN) += kern/mutex/mutex_plain.c
-
 x15_SOURCES-$(CONFIG_PERFMON) += kern/perfmon.c

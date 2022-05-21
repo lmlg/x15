@@ -19,11 +19,11 @@
 #include <stdio.h>
 #include <string.h>
 
+#include <kern/adaptive_lock.h>
 #include <kern/atomic.h>
 #include <kern/init.h>
 #include <kern/list.h>
 #include <kern/log.h>
-#include <kern/mutex.h>
 #include <kern/shell.h>
 #include <kern/spinlock.h>
 #include <kern/syscnt.h>
@@ -31,7 +31,7 @@
 
 // Global list of all registered counters.
 static struct list syscnt_list;
-static struct mutex syscnt_lock;
+static struct adaptive_lock syscnt_lock;
 
 #ifdef CONFIG_SHELL
 
@@ -67,14 +67,10 @@ static int __init
 syscnt_setup (void)
 {
   list_init (&syscnt_list);
-  mutex_init (&syscnt_lock);
+  adaptive_lock_init (&syscnt_lock);
   return (0);
 }
 
-/*
- * Do not make initialization depend on mutex_setup, since mutex
- * modules may use system counters for debugging.
- */
 INIT_OP_DEFINE (syscnt_setup,
                 INIT_OP_DEP (mutex_bootstrap, true),
                 INIT_OP_DEP (spinlock_setup, true));
@@ -88,16 +84,15 @@ syscnt_register (struct syscnt *syscnt, const char *name)
   syscnt->value = 0;
   strlcpy (syscnt->name, name, sizeof (syscnt->name));
 
-  mutex_lock (&syscnt_lock);
+  ADAPTIVE_LOCK_GUARD (&syscnt_lock);
   list_insert_tail (&syscnt_list, &syscnt->node);
-  mutex_unlock (&syscnt_lock);
 }
 
 void
 syscnt_info (const char *prefix, struct stream *stream)
 {
   size_t prefix_length = prefix ? strlen (prefix) : 0;
-  mutex_lock (&syscnt_lock);
+  ADAPTIVE_LOCK_GUARD (&syscnt_lock);
 
   struct syscnt *syscnt;
   list_for_each_entry (&syscnt_list, syscnt, node)
@@ -107,12 +102,10 @@ syscnt_info (const char *prefix, struct stream *stream)
           size_t length = strlen (syscnt->name);
           if (length < prefix_length ||
               memcmp (syscnt->name, prefix, prefix_length) != 0)
-          continue;
-      }
+            continue;
+        }
       
-      fmt_xprintf (stream, "syscnt: %40s %20llu", syscnt->name,
+      fmt_xprintf (stream, "syscnt: %40s %20llu\n", syscnt->name,
                    (unsigned long long)syscnt_read (syscnt));
     }
-
-  mutex_unlock (&syscnt_lock);
 }

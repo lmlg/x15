@@ -227,13 +227,13 @@ static void __boot
 biosmem_map_build (const struct multiboot_raw_info *mbi)
 {
   uintptr_t addr = mbi->mmap_addr;
-  _Auto mb_entry = (struct multiboot_raw_mmap_entry *) addr,
-        mb_end = (struct multiboot_raw_mmap_entry *) (addr + mbi->mmap_length);
+  _Auto mb_entry = (struct multiboot_raw_mmap_entry *) addr;
+  _Auto mb_end = (struct multiboot_raw_mmap_entry *) (addr + mbi->mmap_length);
   struct biosmem_map_entry *start = biosmem_map,
                            *entry = start,
                            *end = entry + BIOSMEM_MAX_MAP_SIZE;
 
-  for (;mb_entry < mb_end && entry < end; ++entry)
+  for (; mb_entry < mb_end && entry < end; ++entry)
     {
       entry->base_addr = mb_entry->base_addr;
       entry->length = mb_entry->length;
@@ -710,9 +710,10 @@ static void __init
 biosmem_map_show (void)
 {
   log_debug ("biosmem: physical memory map:");
+  _Auto entry = biosmem_map;
+  _Auto end = entry + biosmem_map_size;
 
-  for (_Auto entry = biosmem_map, end = entry + biosmem_map_size;
-       entry < end; ++entry)
+  for (; entry < end; ++entry)
     log_debug ("biosmem: %018llx:%018llx, %s",
                (unsigned long long)entry->base_addr,
                (unsigned long long)(entry->base_addr + entry->length),

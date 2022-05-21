@@ -455,7 +455,7 @@ sref_counter_add (struct sref_counter *counter, unsigned long delta,
 {
   assert (!cpu_intr_enabled ());
 
-  spinlock_lock (&counter->lock);
+  SPINLOCK_GUARD (&counter->lock, false);
   counter->value += delta;
 
   if (counter->value)
@@ -464,8 +464,6 @@ sref_counter_add (struct sref_counter *counter, unsigned long delta,
     sref_counter_mark_dirty (counter);
   else
     sref_cache_schedule_review (cache, counter);
-
-  spinlock_unlock (&counter->lock);
 }
 
 static void

@@ -164,6 +164,17 @@ void rcu_defer (struct work *work);
  */
 void rcu_wait (void);
 
+// RCU guards.
+
+static inline void
+rcu_guard_fini (void *ptr __unused)
+{
+  rcu_read_leave ();
+}
+
+#define RCU_GUARD()   \
+  CLEANUP (rcu_guard_fini) int __unused UNIQ (rg) = (rcu_read_enter (), 0)
+
 /*
  * This init operation provides :
  *  - read-side critical sections usable
