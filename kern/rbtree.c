@@ -364,7 +364,7 @@ update_color:
        * rotate left at parent and leave.
        */
       assert (brother->children[right]);
-      rbtree_node_set_color (brother, rbtree_node_color (parent) );
+      rbtree_node_set_color (brother, rbtree_node_color (parent));
       rbtree_node_set_black (parent);
       rbtree_node_set_black (brother->children[right]);
       rbtree_rotate (tree, parent, left);

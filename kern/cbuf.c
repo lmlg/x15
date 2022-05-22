@@ -119,12 +119,12 @@ cbuf_popb (struct cbuf *cbuf, void *bytep)
 int
 cbuf_write (struct cbuf *cbuf, size_t index, const void *buf, size_t size)
 {
-  if (!cbuf_index_valid (cbuf, index) )
+  if (!cbuf_index_valid (cbuf, index))
     return EINVAL;
 
   size_t new_end = index + size;
 
-  if (!cbuf_index_valid (cbuf, new_end) )
+  if (!cbuf_index_valid (cbuf, new_end))
     {
       cbuf->end = new_end;
       cbuf_update_start (cbuf);
@@ -158,7 +158,7 @@ cbuf_write (struct cbuf *cbuf, size_t index, const void *buf, size_t size)
 int
 cbuf_read (const struct cbuf *cbuf, size_t index, void *buf, size_t *sizep)
 {
-  if (!cbuf_index_valid (cbuf, index) )
+  if (!cbuf_index_valid (cbuf, index))
     return (EINVAL);
 
   size_t size = cbuf->end - index;

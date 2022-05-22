@@ -385,11 +385,7 @@ vm_page_zone_alloc (struct vm_page_zone *zone, uint32_t order,
 
       if (!cpu_pool->nr_pages &&
           !vm_page_cpu_pool_fill (cpu_pool, zone))
-        {
-          mutex_unlock (&cpu_pool->lock);
-          thread_unpin ();
-          return (NULL);
-        }
+        return (NULL);
 
       page = vm_page_cpu_pool_pop (cpu_pool);
     }

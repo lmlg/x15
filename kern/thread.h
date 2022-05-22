@@ -132,7 +132,7 @@ struct thread
   const void *wchan_addr;     // (r)
   const char *wchan_desc;     // (r)
   int wakeup_error;           // (r)
-  unsigned int state;         // (a,r)
+  uint32_t state;             // (a,r)
 
   // Sleep queue available for lending.
   struct sleepq *priv_sleepq;   // (-)
@@ -493,7 +493,7 @@ thread_wchan_desc (const struct thread *thread)
 }
 
 // Return a character representation of the state of a thread.
-char thread_state_to_chr (unsigned int state);
+char thread_state_to_chr (uint32_t state);
 
 static inline const struct thread_sched_data*
 thread_get_user_sched_data (const struct thread *thread)

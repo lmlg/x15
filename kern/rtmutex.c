@@ -235,5 +235,4 @@ rtmutex_setup (void)
 
 INIT_OP_DEFINE (rtmutex_setup,
                 INIT_OP_DEP (rtmutex_bootstrap, true),
-                RTMUTEX_DEBUG_INIT_OPS
-               );
+                RTMUTEX_DEBUG_INIT_OPS);

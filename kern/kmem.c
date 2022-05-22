@@ -230,7 +230,7 @@ kmem_pagealloc (size_t size)
 static void
 kmem_pagefree (void *ptr, size_t size)
 {
-  if (kmem_pagealloc_is_virtual (size) )
+  if (kmem_pagealloc_is_virtual (size))
     vm_kmem_free (ptr, size);
   else
     {
@@ -501,7 +501,7 @@ kmem_cache_init (struct kmem_cache *cache, const char *name, size_t obj_size,
     align = KMEM_ALIGN_MIN;
 
   assert (obj_size > 0);
-  assert (ISP2 (align) );
+  assert (ISP2 (align));
   assert (align < PAGE_SIZE);
 
   size_t buf_size = P2ROUND (obj_size, align);
@@ -520,7 +520,7 @@ kmem_cache_init (struct kmem_cache *cache, const char *name, size_t obj_size,
   cache->nr_slabs = 0;
   cache->nr_free_slabs = 0;
   cache->ctor = ctor;
-  strlcpy (cache->name, name, sizeof (cache->name) );
+  strlcpy (cache->name, name, sizeof (cache->name));
   cache->buftag_dist = 0;
   cache->redzone_pad = 0;
 
@@ -597,7 +597,7 @@ kmem_cache_register (struct kmem_cache *cache, struct kmem_slab *slab)
       _Auto page = vm_page_lookup (pa);
       assert (page);
       assert ((virtual && vm_page_type (page) == VM_PAGE_KERNEL) ||
-              (!virtual && vm_page_type (page) == VM_PAGE_KMEM) );
+              (!virtual && vm_page_type (page) == VM_PAGE_KMEM));
       assert (!vm_page_get_priv (page));
       vm_page_set_priv (page, slab);
     }
@@ -798,7 +798,7 @@ kmem_cache_alloc (struct kmem_cache *cache)
   adaptive_lock_acquire (&cpu_pool->lock);
 
 fast_alloc:
-  if (likely (cpu_pool->nr_objs > 0) )
+  if (likely (cpu_pool->nr_objs > 0))
     {
       void *buf = kmem_cpu_pool_pop (cpu_pool);
       bool verify = (cpu_pool->flags & KMEM_CF_VERIFY);
@@ -811,7 +811,7 @@ fast_alloc:
       return (buf);
     }
 
-  if (cpu_pool->array != NULL)
+  if (cpu_pool->array)
     {
       if (!kmem_cpu_pool_fill (cpu_pool, cache))
         {
@@ -1120,7 +1120,7 @@ kmem_setup (void)
 
 INIT_OP_DEFINE (kmem_setup,
                 INIT_OP_DEP (kmem_bootstrap, true),
-                INIT_OP_DEP (vm_kmem_setup, true) );
+                INIT_OP_DEP (vm_kmem_setup, true));
 
 static inline size_t
 kmem_get_index (size_t size)
@@ -1135,7 +1135,7 @@ kmem_alloc_verify (struct kmem_cache *cache, void *buf, size_t size)
   memset ((char *)buf + size, KMEM_REDZONE_BYTE, cache->obj_size - size);
 }
 
-void *
+void*
 kmem_alloc (size_t size)
 {
   if (! size)
@@ -1216,7 +1216,7 @@ kmem_info (struct stream *stream)
   struct kmem_cache *cache;
   list_for_each_entry (&kmem_cache_list, cache, node)
     {
-      adaptive_lock_acquire (&cache->lock);
+      ADAPTIVE_LOCK_GUARD (&cache->lock);
 
       size_t mem_usage = (cache->nr_slabs * cache->slab_size) >> 10,
              mem_reclaim = (cache->nr_free_slabs * cache->slab_size) >> 10;
@@ -1239,8 +1239,6 @@ kmem_info (struct stream *stream)
                    cache->name, cache->obj_size, cache->slab_size >> 10,
                    cache->bufs_per_slab, cache->nr_objs, cache->nr_bufs,
                    mem_usage, mem_reclaim);
-
-      adaptive_lock_release (&cache->lock);
     }
 
   adaptive_lock_release (&kmem_cache_list_lock);

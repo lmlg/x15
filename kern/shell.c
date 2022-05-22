@@ -614,7 +614,7 @@ static void
 shell_restore (struct shell *shell)
 {
   _Auto current_line = shell_history_get_newest (&shell->history);
-  shell_printf (shell, "%s", shell_line_str (current_line) );
+  shell_printf (shell, "%s", shell_line_str (current_line));
   shell->cursor = shell_line_size (current_line);
 }
 
@@ -920,7 +920,7 @@ shell_process_args (struct shell *shell)
               shell->argv[j] = &shell->tmp_line[i];
               j++;
 
-              if (j == ARRAY_SIZE (shell->argv) )
+              if (j == ARRAY_SIZE (shell->argv))
                 {
                   shell_printf (shell, "shell: too many arguments\n");
                   return (EINVAL);

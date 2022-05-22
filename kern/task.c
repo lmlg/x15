@@ -99,18 +99,18 @@ INIT_OP_DEFINE (task_setup_shell,
                 INIT_OP_DEP (printf_setup, true),
                 INIT_OP_DEP (shell_setup, true),
                 INIT_OP_DEP (task_setup, true),
-                INIT_OP_DEP (thread_setup, true) );
+                INIT_OP_DEP (thread_setup, true));
 
 #endif
 
 static int __init
 task_setup (void)
 {
-  struct task *kernel_task = task_get_kernel_task();
+  struct task *kernel_task = task_get_kernel_task ();
   kmem_cache_init (&task_cache, "task", sizeof (struct task), 0, NULL, 0);
   list_init (&task_list);
   spinlock_init (&task_list_lock);
-  task_init (kernel_task, "x15", vm_map_get_kernel_map() );
+  task_init (kernel_task, "x15", vm_map_get_kernel_map ());
   list_insert_head (&task_list, &kernel_task->node);
   return (0);
 }

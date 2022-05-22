@@ -755,7 +755,7 @@ fmt_sprintf (char *str, const char *format, ...)
 int
 fmt_vsprintf (char *str, const char *format, va_list ap)
 {
-  return (fmt_vsnprintf (str, SIZE_MAX, format, ap) );
+  return (fmt_vsnprintf (str, SIZE_MAX, format, ap));
 }
 
 int
@@ -789,7 +789,7 @@ fmt_atoi (char c)
 {
   assert (fmt_isxdigit (c));
 
-  if (fmt_isdigit (c) )
+  if (fmt_isdigit (c))
     return (c - '0');
   else if (c >= 'a' && c <= 'f')
     return (10 + (c - 'a'));

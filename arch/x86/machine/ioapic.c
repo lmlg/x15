@@ -157,7 +157,7 @@ ioapic_intr (unsigned int vector)
 static struct ioapic* __init
 ioapic_create (uint32_t apic_id, uintptr_t addr, uint32_t gsi_base)
 {
-  struct ioapic *ioapic = kmem_alloc (sizeof (*ioapic) );
+  struct ioapic *ioapic = kmem_alloc (sizeof (*ioapic));
   if (! ioapic)
     panic ("ioapic: unable to allocate memory for controller");
 
@@ -210,7 +210,7 @@ ioapic_compute_entry (uint32_t *highp, uint32_t *lowp,
                       bool active_high, bool edge_triggered)
 {
   assert (apic_id < 16);
-  assert (intr < (CPU_NR_EXC_VECTORS - CPU_EXC_INTR_FIRST) );
+  assert (intr < CPU_NR_EXC_VECTORS - CPU_EXC_INTR_FIRST);
 
   *highp = apic_id << 24;
   *lowp = (!edge_triggered ? IOAPIC_ENTLOW_LEVEL : 0) |
@@ -251,7 +251,7 @@ ioapic_enable (void *priv, uint32_t intr, uint32_t cpu)
 }
 
 static void
-ioapic_disable (void *priv, unsigned int intr)
+ioapic_disable (void *priv, uint32_t intr)
 {
   struct ioapic *ioapic = priv;
   uint32_t id = ioapic_compute_id (ioapic, intr);
@@ -261,7 +261,7 @@ ioapic_disable (void *priv, unsigned int intr)
 }
 
 static void
-ioapic_eoi (void *priv, unsigned int intr)
+ioapic_eoi (void *priv, uint32_t intr)
 {
   (void)priv;
   (void)intr;
@@ -283,7 +283,7 @@ ioapic_setup (void)
 }
 
 void __init
-ioapic_register (unsigned int apic_id, uintptr_t addr, unsigned int gsi_base)
+ioapic_register (uint32_t apic_id, uintptr_t addr, uint32_t gsi_base)
 {
   struct ioapic *ioapic = ioapic_create (apic_id, addr, gsi_base);
 

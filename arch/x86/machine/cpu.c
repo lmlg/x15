@@ -891,7 +891,7 @@ cpu_set_percpu_area (const struct cpu *cpu, void *area)
   uintptr_t va = (uintptr_t)area;
   cpu_set_msr (CPU_MSR_FSBASE, (uint32_t) (va >> 32), (uint32_t) va);
 #else
-  asm volatile ("mov %0, %%fs" : : "r" (CPU_GDT_SEL_PERCPU) );
+  asm volatile ("mov %0, %%fs" : : "r" (CPU_GDT_SEL_PERCPU));
 #endif
 
   percpu_var(cpu_local_area, cpu->id) = area;
@@ -1246,7 +1246,7 @@ cpu_mp_setup (void)
   /* Set up the warm reset vector */
   uint16_t reset_vector[] = { 0, BOOT_MP_TRAMPOLINE_ADDR >> 4 };
   ptr = (void *)vm_page_direct_va (CPU_MP_CMOS_RESET_VECTOR);
-  memcpy (ptr, reset_vector, sizeof (reset_vector) );
+  memcpy (ptr, reset_vector, sizeof (reset_vector));
 
   io_write_byte (CPU_MP_CMOS_PORT_REG, CPU_MP_CMOS_REG_RESET);
   io_write_byte (CPU_MP_CMOS_PORT_DATA, CPU_MP_CMOS_DATA_RESET_WARM);

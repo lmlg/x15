@@ -37,7 +37,7 @@ static const char *arg_cmdline_end __initdata;
 void __init
 arg_set_cmdline (const char *cmdline)
 {
-  strlcpy (arg_cmdline, cmdline, sizeof (arg_cmdline) );
+  strlcpy (arg_cmdline, cmdline, sizeof (arg_cmdline));
 }
 
 static int __init

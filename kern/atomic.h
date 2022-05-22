@@ -34,28 +34,6 @@
 #define ATOMIC_ACQ_REL  __ATOMIC_ACQ_REL
 #define ATOMIC_SEQ_CST  __ATOMIC_SEQ_CST
 
-#ifndef ATOMIC_HAVE_64B_OPS
-// Undefined so as to cause a link-time error.
-void atomic_link_error (void *ptr, ...);
-  #define atomic_read_64          atomic_link_error
-  #define atomic_write_64         atomic_link_error
-  #define atomic_fetch_add_64     atomic_link_error
-  #define atomic_fetch_sub_64     atomic_link_error
-  #define atomic_fetch_and_64     atomic_link_error
-  #define atomic_fetch_or_64      atomic_link_error
-  #define atomic_fetch_xor_64     atomic_link_error
-  #define atomic_swap_64          atomic_link_error
-  #define atomic_cas_64           atomic_link_error
-#elif !defined (__LP64__)
-  #define atomic_fetch_or_64    __atomic_fetch_or
-  #define atomic_fetch_and_64   __atomic_fetch_and
-  #define atomic_fetch_xor_64   __atomic_fetch_xor
-  #define atomic_fetch_add_64   __atomic_fetch_add
-  #define atomic_fetch_sub_64   __atomic_fetch_sub
-  #define atomic_swap_64        __atomic_exchange_n
-  #define atomic_cas_64         __atomic_cas
-#endif
-
 #define __atomic_cas(place, exp, nval, mo)   \
   ({   \
      typeof(*(place)) exp_ = (exp);   \
@@ -64,7 +42,7 @@ void atomic_link_error (void *ptr, ...);
      exp_;   \
    })
 
-#ifndef __LP64__
+#if !defined (__LP64__) && defined (ATOMIC_HAVE_64B_OPS)
 
   #define atomic_load(place, mo)   \
     __builtin_choose_expr (sizeof (*(place)) == sizeof (uint64_t),   \
@@ -122,7 +100,7 @@ void atomic_link_error (void *ptr, ...);
 
 #define atomic_load_rlx(place)       atomic_load ((place), ATOMIC_RELAXED)
 #define atomic_load_acq(place)       atomic_load ((place), ATOMIC_ACQUIRE)
-#define atomic_load_seq_cst(place)   atomic_load ((place), ATOMIC_SEQ_CST)
+#define atomic_load_seq(place)   atomic_load ((place), ATOMIC_SEQ_CST)
 
 #define atomic_store_rlx(place, val)   \
   atomic_store ((place), (val), ATOMIC_RELAXED)
@@ -130,7 +108,7 @@ void atomic_link_error (void *ptr, ...);
 #define atomic_store_rel(place, val)   \
   atomic_store ((place), (val), ATOMIC_RELEASE)
 
-#define atomic_store_seq_cst(place, val)   \
+#define atomic_store_seq(place, val)   \
   atomic_store ((place), (val), ATOMIC_SEQ_CST)
 
 #define atomic_add_rlx(place, val)   \
@@ -184,6 +162,6 @@ void atomic_link_error (void *ptr, ...);
 #define atomic_fence_acq()       atomic_fence (ATOMIC_ACQUIRE)
 #define atomic_fence_rel()       atomic_fence (ATOMIC_RELEASE)
 #define atomic_fence_acq_rel()   atomic_fence (ATOMIC_ACQ_REL)
-#define atomic_fence_seq_cst()   atomic_fence (ATOMIC_SEQ_CST)
+#define atomic_fence_seq()   atomic_fence (ATOMIC_SEQ_CST)
 
 #endif

@@ -53,7 +53,7 @@ static struct shell_cmd syscnt_shell_cmds[] =
 static int __init
 syscnt_setup_shell (void)
 {
-  SHELL_REGISTER_CMDS (syscnt_shell_cmds, shell_get_main_cmd_set() );
+  SHELL_REGISTER_CMDS (syscnt_shell_cmds, shell_get_main_cmd_set ());
   return (0);
 }
 

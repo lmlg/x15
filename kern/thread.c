@@ -188,7 +188,7 @@ struct thread_rt_runq
 #define THREAD_FS_INITIAL_ROUND   ((unsigned long)-10)
 
 // Round slice base unit for fair-scheduling threads.
-#define THREAD_FS_ROUND_SLICE_BASE (CLOCK_FREQ / 10)
+#define THREAD_FS_ROUND_SLICE_BASE   (CLOCK_FREQ / 10)
 
 // Group of threads sharing the same weight.
 struct thread_fs_group
@@ -384,11 +384,9 @@ thread_get_real_sched_ops (const struct thread *thread)
 static void __init
 thread_runq_init_rt (struct thread_runq *runq)
 {
-  _Auto rt_runq = &runq->rt_runq;
-  rt_runq->bitmap = 0;
-
-  for (size_t i = 0; i < ARRAY_SIZE (rt_runq->threads); i++)
-    list_init (&rt_runq->threads[i]);
+  runq->rt_runq.bitmap = 0;
+  for (size_t i = 0; i < ARRAY_SIZE (runq->rt_runq.threads); i++)
+    list_init (&runq->rt_runq.threads[i]);
 }
 
 static void __init
@@ -474,7 +472,7 @@ thread_runq_add (struct thread_runq *runq, struct thread *thread)
       thread_real_sched_class (runq->current))
     thread_set_flag (runq->current, THREAD_YIELD);
 
-  atomic_store (&thread->runq, runq, ATOMIC_RELAXED);
+  atomic_store_rlx (&thread->runq, runq);
   thread->in_runq = true;
 }
 
@@ -516,7 +514,7 @@ thread_runq_get_next (struct thread_runq *runq)
 
       if (thread)
         {
-          atomic_store (&runq->current, thread, ATOMIC_RELAXED);
+          atomic_store_rlx (&runq->current, thread);
           return (thread);
         }
     }
@@ -532,7 +530,7 @@ thread_runq_set_next (struct thread_runq *runq, struct thread *thread)
   if (ops->set_next)
     ops->set_next (runq, thread);
 
-  atomic_store (&runq->current, thread, ATOMIC_RELAXED);
+  atomic_store_rlx (&runq->current, thread);
 }
 
 static void
@@ -556,7 +554,7 @@ thread_runq_wakeup_balancer (struct thread_runq *runq)
     return;
 
   thread_clear_wchan (runq->balancer);
-  atomic_store (&runq->balancer->state, THREAD_RUNNING, ATOMIC_RELAXED);
+  atomic_store_rlx (&runq->balancer->state, THREAD_RUNNING);
   thread_runq_wakeup (runq, runq->balancer);
 }
 
@@ -756,10 +754,8 @@ static void
 thread_sched_rt_tick (struct thread_runq *runq, struct thread *thread)
 {
   (void) runq;
-  if (thread_real_sched_policy (thread) != THREAD_SCHED_POLICY_RR)
-    return;
-
-  if (--thread->rt_data.time_slice > 0)
+  if (thread_real_sched_policy (thread) != THREAD_SCHED_POLICY_RR ||
+      --thread->rt_data.time_slice > 0)
     return;
 
   thread->rt_data.time_slice = THREAD_DEFAULT_RR_TIME_SLICE;
@@ -1140,7 +1136,7 @@ thread_sched_fs_start_next_round (struct thread_runq *runq)
   runq->fs_runq_expired = runq->fs_runq_active;
   runq->fs_runq_active = tmp;
 
-  if (runq->fs_runq_active->nr_threads != 0)
+  if (runq->fs_runq_active->nr_threads)
     {
       ++runq->fs_round;
       ssize_t delta = (ssize_t)(runq->fs_round - thread_fs_highest_round);
@@ -1683,10 +1679,10 @@ thread_lock_runq (struct thread *thread, unsigned long *flags)
 {
   while (1)
     {
-      _Auto runq = atomic_load (&thread->runq, ATOMIC_RELAXED);
+      _Auto runq = atomic_load_rlx (&thread->runq);
       spinlock_lock_intr_save (&runq->lock, flags);
 
-      if (runq == atomic_load (&thread->runq, ATOMIC_RELAXED))
+      if (runq == atomic_load_rlx (&thread->runq))
         return (runq);
 
       spinlock_unlock_intr_restore (&runq->lock, *flags);
@@ -1724,19 +1720,19 @@ thread_alloc_stack (void)
 
   phys_addr_t first_pa, last_pa;
   int error = pmap_kextract (va, &first_pa);
-  assert (!error);
+  assert (! error);
 
   error = pmap_kextract (va + PAGE_SIZE + stack_size, &last_pa);
-  assert (!error);
+  assert (! error);
 
   _Auto first_page = vm_page_lookup (first_pa);
-  assert (first_page != NULL);
+  assert (first_page);
 
   _Auto last_page = vm_page_lookup (last_pa);
-  assert (last_page != NULL);
+  assert (last_page);
 
-  pmap_remove (kernel_pmap, va, cpumap_all() );
-  pmap_remove (kernel_pmap, va + PAGE_SIZE + stack_size, cpumap_all() );
+  pmap_remove (kernel_pmap, va, cpumap_all ());
+  pmap_remove (kernel_pmap, va + PAGE_SIZE + stack_size, cpumap_all ());
   pmap_update (kernel_pmap);
 
   return ((char *)va + PAGE_SIZE);
@@ -1828,9 +1824,8 @@ thread_balance_idle_tick (struct thread_runq *runq)
    * Interrupts can occur early, at a time the balancer thread hasn't been
    * created yet.
    */
-  if (runq->balancer == NULL)
-    return;
-  else if (--runq->idle_balance_ticks == 0)
+  if (runq->balancer &&
+      --runq->idle_balance_ticks == 0)
     thread_runq_wakeup_balancer (runq);
 }
 
@@ -1850,7 +1845,7 @@ thread_balance (void *arg)
     {
       runq->idle_balance_ticks = THREAD_IDLE_BALANCE_TICKS;
       thread_set_wchan (self, runq, "runq");
-      atomic_store (&self->state, THREAD_SLEEPING, ATOMIC_RELAXED);
+      atomic_store_rlx (&self->state, THREAD_SLEEPING);
       runq = thread_runq_schedule (runq);
       assert (runq == arg);
 
@@ -1906,7 +1901,7 @@ thread_idle (void *arg)
         {
           cpu_intr_disable ();
 
-          if (thread_test_flag (self, THREAD_YIELD) )
+          if (thread_test_flag (self, THREAD_YIELD))
             {
               cpu_intr_enable ();
               break;
@@ -2004,7 +1999,7 @@ thread_shell_trace (struct shell *shell, int argc, char *argv[])
   _Auto runq = thread_lock_runq (thread, &flags);
 
   if (thread == runq->current)
-    fmt_xprintf (shell->stream, "threa_trace: thread is running\n");
+    stream_puts (shell->stream, "thread_trace: thread is running\n");
   else
     tcb_trace (&thread->tcb);
 
@@ -2022,7 +2017,7 @@ static struct shell_cmd thread_shell_cmds[] =
 static int __init
 thread_setup_shell (void)
 {
-  SHELL_REGISTER_CMDS (thread_shell_cmds, shell_get_main_cmd_set() );
+  SHELL_REGISTER_CMDS (thread_shell_cmds, shell_get_main_cmd_set ());
   return (0);
 }
 
@@ -2086,8 +2081,7 @@ INIT_OP_DEFINE (thread_setup,
                 INIT_OP_DEP (thread_bootstrap, true),
                 INIT_OP_DEP (turnstile_setup, true),
                 THREAD_STACK_GUARD_INIT_OP_DEPS
-                THREAD_PERFMON_INIT_OP_DEPS
-               );
+                THREAD_PERFMON_INIT_OP_DEPS);
 
 void __init
 thread_ap_setup (void)
@@ -2101,7 +2095,7 @@ thread_create (struct thread **threadp, const struct thread_attr *attr,
 
 {
   int error;
-  if (attr->cpumap != NULL)
+  if (attr->cpumap)
     {
       error = cpumap_check (attr->cpumap);
       if (error)
@@ -2178,7 +2172,7 @@ thread_exit (void)
 
   unsigned long flags;
   spinlock_lock_intr_save (&runq->lock, &flags);
-  atomic_store (&thread->state, THREAD_DEAD, ATOMIC_RELAXED);
+  atomic_store_rlx (&thread->state, THREAD_DEAD);
   thread_runq_schedule (runq);
 
   panic ("thread: dead thread walking");
@@ -2223,7 +2217,7 @@ thread_wakeup_common (struct thread *thread, int error, bool resume)
         }
 
       thread_clear_wchan (thread);
-      atomic_store (&thread->state, THREAD_RUNNING, ATOMIC_RELAXED);
+      atomic_store_rlx (&thread->state, THREAD_RUNNING);
       thread_unlock_runq (runq, flags);
     }
 
@@ -2294,7 +2288,7 @@ thread_sleep_common (struct spinlock *interlock, const void *wchan_addr,
     }
 
   thread_set_wchan (thread, wchan_addr, wchan_desc);
-  atomic_store (&thread->state, THREAD_SLEEPING, ATOMIC_RELAXED);
+  atomic_store_rlx (&thread->state, THREAD_SLEEPING);
 
   runq = thread_runq_schedule (runq);
   assert (thread->state == THREAD_RUNNING);
@@ -2307,7 +2301,7 @@ thread_sleep_common (struct spinlock *interlock, const void *wchan_addr,
   if (interlock)
     {
       spinlock_lock (interlock);
-      thread_preempt_enable_no_resched();
+      thread_preempt_enable_no_resched ();
     }
 
   return (thread->wakeup_error);
@@ -2404,11 +2398,11 @@ static void __init
 thread_boot_barrier_wait (void)
 {
   assert (!cpu_intr_enabled ());
-  atomic_add (&thread_nr_boot_cpus, 1, ATOMIC_RELAXED);
+  atomic_add_rlx (&thread_nr_boot_cpus, 1);
 
   while (1)
     {
-      if (atomic_load (&thread_nr_boot_cpus, ATOMIC_SEQ_CST) == cpu_count ())
+      if (atomic_load_seq (&thread_nr_boot_cpus) == cpu_count ())
         break;
 
       cpu_pause ();
@@ -2489,7 +2483,7 @@ thread_report_periodic_event (void)
 }
 
 char
-thread_state_to_chr (unsigned int state)
+thread_state_to_chr (uint32_t state)
 {
   switch (state)
     {
@@ -2678,24 +2672,24 @@ thread_propagate_priority (void)
   turnstile_td_propagate_priority (thread_turnstile_td (thread));
 }
 
-unsigned int
+uint32_t
 thread_cpu (const struct thread *thread)
 {
-  const _Auto runq = atomic_load (&thread->runq, ATOMIC_RELAXED);
+  const _Auto runq = atomic_load_rlx (&thread->runq);
   return (runq->cpu);
 }
 
-unsigned int
+uint32_t
 thread_state (const struct thread *thread)
 {
-  return (atomic_load (&thread->state, ATOMIC_RELAXED));
+  return (atomic_load_rlx (&thread->state));
 }
 
 bool
 thread_is_running (const struct thread *thread)
 {
-  const _Auto runq = atomic_load (&thread->runq, ATOMIC_RELAXED);
-  return (runq && atomic_load (&runq->current, ATOMIC_RELAXED) == thread);
+  const _Auto runq = atomic_load_rlx (&thread->runq);
+  return (runq && atomic_load_rlx (&runq->current) == thread);
 }
 
 int
@@ -2759,6 +2753,5 @@ thread_set_affinity (struct thread *thread, const struct cpumap *cpumap)
 
   thread_unlock_runq (runq, flags);
   thread_preempt_enable ();
-
   return (error);
 }

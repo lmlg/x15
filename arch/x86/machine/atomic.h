@@ -66,14 +66,6 @@ atomic_load_64 (const void *ptr, int memorder)
 }
 
 static inline void
-atomic_load_64_ (const void *ptr, void *out, int memorder)
-{
-  *(uint64_t *)out = 0;
-  __atomic_compare_exchange_n ((uint64_t *) ptr, (uint64_t *)out, 0, false,
-                               memorder, __ATOMIC_RELAXED);
-}
-
-static inline void
 atomic_write_64 (void *ptr, void *valp, int memorder)
 {
   uint64_t prev = *(uint64_t *)ptr, val = *(uint64_t *)valp;

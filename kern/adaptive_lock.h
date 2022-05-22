@@ -71,7 +71,7 @@ void adaptive_lock_release_slow (struct adaptive_lock *lock);
 static inline void
 adaptive_lock_acquire (struct adaptive_lock *lock)
 {
-  if (unlikely (adaptive_lock_acquire_fast (lock)))
+  if (unlikely (adaptive_lock_acquire_fast (lock) != 0))
     adaptive_lock_acquire_slow (lock);
 }
 
@@ -87,7 +87,7 @@ adaptive_lock_release (struct adaptive_lock *lock)
 static inline void
 adaptive_lock_guard_fini (void *ptr)
 {
-  adaptive_lock_release (*(struct adaptive_lock **)ptr);
+  adaptive_lock_release (*(struct adaptive_lock **) ptr);
 }
 
 #define ADAPTIVE_LOCK_GUARD(lock)   \

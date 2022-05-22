@@ -294,7 +294,7 @@ pmu_intel_setup (void)
       return (ENODEV);
     }
 
-  pmu->pmc_bm = (1U << pmu->nr_pmcs ) - 1;
+  pmu->pmc_bm = (1U << pmu->nr_pmcs) - 1;
   pmu->pmc_width = (eax & PMU_INTEL_ID_PMC_WIDTH_MASK)
                    >> PMU_INTEL_ID_PMC_WIDTH_OFFSET;
   ev_len = (eax & PMU_INTEL_ID_EVLEN_MASK) >> PMU_INTEL_ID_EVLEN_OFFSET;

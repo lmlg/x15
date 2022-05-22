@@ -712,7 +712,7 @@ cpu_cpuid (uint32_t *eax, uint32_t *ebx, uint32_t *ecx, uint32_t *edx)
 static inline void
 cpu_get_msr (uint32_t msr, uint32_t *high, uint32_t *low)
 {
-  asm ("rdmsr" : "=a" (*low), "=d" (*high) : "c" (msr) );
+  asm ("rdmsr" : "=a" (*low), "=d" (*high) : "c" (msr));
 }
 
 static inline uint64_t

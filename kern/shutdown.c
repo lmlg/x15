@@ -59,7 +59,7 @@ static struct shell_cmd shutdown_shell_cmds[] =
 static int __init
 shutdown_setup_shell (void)
 {
-  SHELL_REGISTER_CMDS (shutdown_shell_cmds, shell_get_main_cmd_set() );
+  SHELL_REGISTER_CMDS (shutdown_shell_cmds, shell_get_main_cmd_set ());
   return (0);
 }
 

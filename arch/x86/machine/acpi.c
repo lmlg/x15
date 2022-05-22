@@ -203,7 +203,7 @@ static uint8_t acpi_reset_value;
 static void __init
 acpi_table_sig (const struct acpi_sdth *table, char *sig)
 {
-  memcpy (sig, table->signature, sizeof (table->signature) );
+  memcpy (sig, table->signature, sizeof (table->signature));
   sig[4] = '\0';
 }
 
@@ -300,7 +300,7 @@ static int __init
 acpi_get_rsdp (phys_addr_t start, size_t size, struct acpi_rsdp *rsdp)
 {
   assert (size > 0);
-  assert (P2ALIGNED (size, ACPI_RSDP_ALIGN) );
+  assert (P2ALIGNED (size, ACPI_RSDP_ALIGN));
 
   if (!P2ALIGNED (start, ACPI_RSDP_ALIGN))
     return (-1);

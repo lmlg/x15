@@ -323,7 +323,7 @@ biosmem_map_adjust (void)
       _Auto a = &biosmem_map[i];
       uint64_t a_end = a->base_addr + a->length;
 
-      for (uint32_t j = i + 1; j < biosmem_map_size; )
+      for (uint32_t j = i + 1; j < biosmem_map_size;)
         {
           _Auto b = &biosmem_map[j];
           uint64_t b_end = b->base_addr + b->length;
@@ -736,7 +736,7 @@ biosmem_load_zone (struct biosmem_zone *zone, uint64_t max_phys_end)
       if (max_phys_end <= phys_start)
         {
           log_warning ("biosmem: zone %s physically unreachable, "
-                       "not loaded", vm_page_zone_name (zone_index) );
+                       "not loaded", vm_page_zone_name (zone_index));
           return;
         }
 

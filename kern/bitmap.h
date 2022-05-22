@@ -129,7 +129,7 @@ bitmap_test (const unsigned long *bm, int bit)
   if (bit >= LONG_BIT)
     bitmap_lookup (&bm, &bit);
 
-  return ((*bm & bitmap_mask (bit) ) != 0);
+  return ((*bm & bitmap_mask (bit)) != 0);
 }
 
 static inline int

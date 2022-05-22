@@ -52,10 +52,10 @@ clock_cpu_data_init (struct clock_cpu_data *cpu_data, unsigned int cpu)
 static int __init
 clock_setup (void)
 {
-  for (unsigned int cpu = 0; cpu < cpu_count (); cpu++)
+  for (uint32_t cpu = 0; cpu < cpu_count (); ++cpu)
     clock_cpu_data_init (percpu_ptr (clock_cpu_data, cpu), cpu);
 
-  return 0;
+  return (0);
 }
 
 INIT_OP_DEFINE (clock_setup,
@@ -68,19 +68,17 @@ void clock_tick_intr (void)
 
   assert (thread_check_intr_context ());
 
-  if (cpu_id() == 0)
+  if (cpu_id () == 0)
     {
 #ifdef __LP64__
-      atomic_add (&clock_global_time.ticks, 1ULL, ATOMIC_RELAXED);
+      atomic_add_rlx (&clock_global_time.ticks, 1);
 #else
-      union clock_global_time t;
+      union clock_global_time t = { .ticks = clock_global_time.ticks };
+      ++t.ticks;
 
-      t.ticks = clock_global_time.ticks;
-      t.ticks++;
-
-      atomic_store (&clock_global_time.high2, t.high1, ATOMIC_RELAXED);
-      atomic_store (&clock_global_time.low, t.low, ATOMIC_RELEASE);
-      atomic_store (&clock_global_time.high1, t.high1, ATOMIC_RELEASE);
+      atomic_store_rlx (&clock_global_time.high2, t.high1);
+      atomic_store_rel (&clock_global_time.low, t.low);
+      atomic_store_rel (&clock_global_time.high1, t.high1);
 #endif
     }
 

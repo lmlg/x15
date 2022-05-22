@@ -303,7 +303,7 @@ uart_init_args (const struct uart *uart, const char *arg_str,
 
 set_defaults:
   log_warning ("uart%zu: invalid serial configuration, using defaults",
-               uart_get_id (uart) );
+               uart_get_id (uart));
   uart_init_default (speed, parity, data_bits);
 }
 
