@@ -990,11 +990,11 @@ kmem_cache_info (struct kmem_cache *cache, struct stream *stream)
   fmt_xprintf (stream, "kmem:   bufctl_dist: %zu\n", cache->bufctl_dist);
   fmt_xprintf (stream, "kmem:     slab_size: %zu\n", cache->slab_size);
   fmt_xprintf (stream, "kmem:     color_max: %zu\n", cache->color_max);
-  fmt_xprintf (stream, "kmem: bufs_per_slab: %lu\n", cache->bufs_per_slab);
-  fmt_xprintf (stream, "kmem:       nr_objs: %lu\n", cache->nr_objs);
-  fmt_xprintf (stream, "kmem:       nr_bufs: %lu\n", cache->nr_bufs);
-  fmt_xprintf (stream, "kmem:      nr_slabs: %lu\n", cache->nr_slabs);
-  fmt_xprintf (stream, "kmem: nr_free_slabs: %lu\n", cache->nr_free_slabs);
+  fmt_xprintf (stream, "kmem: bufs_per_slab: %zu\n", cache->bufs_per_slab);
+  fmt_xprintf (stream, "kmem:       nr_objs: %zu\n", cache->nr_objs);
+  fmt_xprintf (stream, "kmem:       nr_bufs: %zu\n", cache->nr_bufs);
+  fmt_xprintf (stream, "kmem:      nr_slabs: %zu\n", cache->nr_slabs);
+  fmt_xprintf (stream, "kmem: nr_free_slabs: %zu\n", cache->nr_free_slabs);
   fmt_xprintf (stream, "kmem:   buftag_dist: %zu\n", cache->buftag_dist);
   fmt_xprintf (stream, "kmem:   redzone_pad: %zu\n", cache->redzone_pad);
 
@@ -1235,7 +1235,7 @@ kmem_info (struct stream *stream)
         }
 
       fmt_xprintf (stream,
-                   "kmem: %-19s %6zu %3zuk  %4lu %6lu %6lu %7zuk %10zuk\n",
+                   "kmem: %-19s %6zu %3zuk  %4zu %6zu %6zu %7zuk %10zuk\n",
                    cache->name, cache->obj_size, cache->slab_size >> 10,
                    cache->bufs_per_slab, cache->nr_objs, cache->nr_bufs,
                    mem_usage, mem_reclaim);

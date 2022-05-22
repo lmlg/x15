@@ -23,27 +23,25 @@
 #define X86_ATOMIC_H
 
 #ifndef KERN_ATOMIC_H
-#error "don't include <machine/atomic.h> directly, use <kern/atomic.h> instead"
+  #error "don't include <machine/atomic.h> directly, use <kern/atomic.h> instead"
 #endif
 
 #include <stdbool.h>
+#include <stdint.h>
 
-#include <kern/atomic_types.h>
 #include <kern/macros.h>
 
 #ifdef __LP64__
 
-/* Report that 64-bits operations are supported */
+// Report that 64-bits operations are supported.
 #define ATOMIC_HAVE_64B_OPS
 
-#else /* __LP64__ */
+#else
 
-/*
- * XXX Clang doesn't provide any __atomic_xxx_8 functions on i386.
- */
+// XXX Clang doesn't provide any __atomic_xxx_8 functions on i386.
 #ifndef __clang__
 
-/* Report that 64-bits operations are supported */
+// Report that 64-bits operations are supported.
 #define ATOMIC_HAVE_64B_OPS
 
 /*
@@ -58,36 +56,37 @@
  * Also note that this assumes the processor is at least an i586.
  */
 
-static inline unsigned long long
-atomic_i386_load_64(union atomic_constptr_64 ptr, int memorder)
+static inline uint64_t
+atomic_load_64 (const void *ptr, int memorder)
 {
-    unsigned long long prev;
-
-    prev = 0;
-    __atomic_compare_exchange_n((unsigned long long *)(ptr.ull_ptr),
-                                &prev, 0, false, memorder, __ATOMIC_RELAXED);
-    return prev;
+  uint64_t prev = 0;
+  __atomic_compare_exchange_n ((uint64_t *)ptr, &prev, 0, false,
+                               memorder, __ATOMIC_RELAXED);
+  return (prev);
 }
-#define atomic_load_64 atomic_i386_load_64
 
 static inline void
-atomic_i386_store_64(union atomic_ptr_64 ptr, union atomic_val_64 val,
-                     int memorder)
+atomic_load_64_ (const void *ptr, void *out, int memorder)
 {
-    unsigned long long prev;
-    bool done;
-
-    prev = *ptr.ull_ptr;
-
-    do {
-        done = __atomic_compare_exchange_n(ptr.ull_ptr, &prev, val.ull,
-                                           false, memorder, __ATOMIC_RELAXED);
-    } while (!done);
+  *(uint64_t *)out = 0;
+  __atomic_compare_exchange_n ((uint64_t *) ptr, (uint64_t *)out, 0, false,
+                               memorder, __ATOMIC_RELAXED);
 }
-#define atomic_store_64 atomic_i386_store_64
 
-#endif /* __clang__ */
+static inline void
+atomic_write_64 (void *ptr, void *valp, int memorder)
+{
+  uint64_t prev = *(uint64_t *)ptr, val = *(uint64_t *)valp;
+  bool done;
 
-#endif /* __LP64__ */
+  do
+    done = __atomic_compare_exchange_n ((uint64_t *)ptr, &prev, val, false,
+                                        memorder, __ATOMIC_RELAXED);
+  while (!done);
+}
 
-#endif /* X86_ATOMIC_H */
+#endif   // __clang__
+
+#endif   // __LP64__
+
+#endif

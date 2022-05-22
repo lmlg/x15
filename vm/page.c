@@ -734,7 +734,7 @@ vm_page_info (struct stream *stream)
       _Auto zone = &vm_page_zones[i];
       unsigned long pages = (unsigned long) (zone->pages_end - zone->pages);
       fmt_xprintf (stream, "vm_page: %s: pages: %lu (%luM), "
-                   "free: %lu (%luM)\n",
+                   "free: %zu (%zuM)\n",
                    vm_page_zone_name (i), pages, pages >> (20 - PAGE_SHIFT),
                    zone->nr_free_pages,
                    zone->nr_free_pages >> (20 - PAGE_SHIFT));

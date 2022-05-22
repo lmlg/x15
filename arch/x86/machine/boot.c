@@ -247,7 +247,7 @@ boot_register_data (const struct multiboot_raw_info *mbi)
 }
 
 pmap_pte_t* __boot
-boot_setup_paging (struct multiboot_raw_info *mbi, unsigned long eax)
+boot_setup_paging (struct multiboot_raw_info *mbi, uintptr_t eax)
 {
   if (eax != MULTIBOOT_LOADER_MAGIC)
     boot_panic (boot_panic_loader_msg);

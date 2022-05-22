@@ -24,6 +24,8 @@
 #include <assert.h>
 #include <stdbool.h>
 
+#include <machine/atomic.h>
+
 // Supported memory orders.
 #define ATOMIC_RELAXED  __ATOMIC_RELAXED
 #define ATOMIC_CONSUME  __ATOMIC_CONSUME
@@ -32,19 +34,26 @@
 #define ATOMIC_ACQ_REL  __ATOMIC_ACQ_REL
 #define ATOMIC_SEQ_CST  __ATOMIC_SEQ_CST
 
-#  ifndef ATOMIC_HAVE_64B_OPS
-
+#ifndef ATOMIC_HAVE_64B_OPS
 // Undefined so as to cause a link-time error.
 void atomic_link_error (void *ptr, ...);
-  #define atomic_load_64    atomic_link_error
-  #define atomic_store_64   atomic_link_error
-  #define atomic_add_64     atomic_link_error
-  #define atomic_sub_64     atomic_link_error
-  #define atomic_and_64     atomic_link_error
-  #define atomic_or_64      atomic_link_error
-  #define atomic_xor_64     atomic_link_error
-  #define atomic_swap_64    atomic_link_error
-  #define atomic_cas_64     atomic_link_error
+  #define atomic_read_64          atomic_link_error
+  #define atomic_write_64         atomic_link_error
+  #define atomic_fetch_add_64     atomic_link_error
+  #define atomic_fetch_sub_64     atomic_link_error
+  #define atomic_fetch_and_64     atomic_link_error
+  #define atomic_fetch_or_64      atomic_link_error
+  #define atomic_fetch_xor_64     atomic_link_error
+  #define atomic_swap_64          atomic_link_error
+  #define atomic_cas_64           atomic_link_error
+#elif !defined (__LP64__)
+  #define atomic_fetch_or_64    __atomic_fetch_or
+  #define atomic_fetch_and_64   __atomic_fetch_and
+  #define atomic_fetch_xor_64   __atomic_fetch_xor
+  #define atomic_fetch_add_64   __atomic_fetch_add
+  #define atomic_fetch_sub_64   __atomic_fetch_sub
+  #define atomic_swap_64        __atomic_exchange_n
+  #define atomic_cas_64         __atomic_cas
 #endif
 
 #define __atomic_cas(place, exp, nval, mo)   \
@@ -55,24 +64,41 @@ void atomic_link_error (void *ptr, ...);
      exp_;   \
    })
 
-#ifdef __LP64__
-#  define atomic_op(place, op, ...)  __atomic_##op (place, ##__VA_ARGS__)
-#else
-#  define atomic_op(place, op, ...)   \
-    _Generic ((place),   \
-              int64_t *:  atomic_##op##_64,   \
-              uint64_t *: atomic_##op##_64,   \
-              default: __atomic_##op) (place, ##__VA_ARGS__)
+#ifndef __LP64__
+
+  #define atomic_load(place, mo)   \
+    __builtin_choose_expr (sizeof (*(place)) == sizeof (uint64_t),   \
+                           atomic_load_64 ((place), (mo)),   \
+                           __atomic_load_n ((place), (mo)))
+
+  #define atomic_store(place, val, mo)   \
+    do   \
+      {   \
+        typeof (val) val_ = (val);   \
+        if (sizeof (*(place)) == sizeof (uint64_t))   \
+          atomic_write_64 ((place), &val_, (mo));   \
+        else   \
+          __atomic_store_n ((place), val_, (mo));   \
+      }   \
+    while (0)
+
 #endif
+
+
+#define atomic_op(place, op, ...)  __atomic_##op (place, ##__VA_ARGS__)
 
 // Needed since we use different names.
 #define __atomic_swap    __atomic_exchange_n
 #define __atomic_read    __atomic_load_n
 #define __atomic_write   __atomic_store_n
 
-#define atomic_load(place, mo)   atomic_op (place, read, mo)
+#ifndef atomic_load
+  #define atomic_load(place, mo)   atomic_op (place, read, mo)
+#endif
 
-#define atomic_store(place, val, mo)   atomic_op (place, write, val, mo)
+#ifndef atomic_store
+  #define atomic_store(place, val, mo)   atomic_op (place, write, val, mo)
+#endif
 
 #define atomic_add(place, val, mo)   atomic_op (place, fetch_add, val, mo)
 #define atomic_sub(place, val, mo)   atomic_op (place, fetch_sub, val, mo)

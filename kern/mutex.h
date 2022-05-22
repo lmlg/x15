@@ -70,22 +70,22 @@ void mutex_unlock_slow (struct mutex *mutex);
 static inline void
 mutex_lock (struct mutex *mutex)
 {
-  if (unlikely (mutex_trylock (mutex) != 0))
+  if (unlikely (mutex_trylock (mutex) != 0) )
     mutex_lock_slow (mutex);
 }
 
 static inline int
 mutex_timedlock (struct mutex *mutex, uint64_t ticks)
 {
-  if (likely (mutex_trylock (mutex) == 0))
+  if (likely (mutex_trylock (mutex) == 0) )
     return (0);
-  return (mutex_timedlock_slow (mutex, ticks));
+  return (mutex_timedlock_slow (mutex, ticks) );
 }
 
 static inline void
 mutex_unlock (struct mutex *mutex)
 {
-  if (unlikely (mutex_unlock_fast (mutex) != 0))
+  if (unlikely (mutex_unlock_fast (mutex) != 0) )
     mutex_unlock_slow (mutex);
 }
 
@@ -94,16 +94,16 @@ mutex_unlock (struct mutex *mutex)
 static inline void
 mutex_guard_fini (void *ptr)
 {
-  mutex_unlock (*(struct mutex **)ptr);
+  mutex_unlock (* (struct mutex **) ptr);
 }
 
 #define MUTEX_GUARD(mtx)   \
   CLEANUP (mutex_guard_fini) __unused void *UNIQ(mg) =   \
-    ({   \
-       struct mutex *mutex_ = (mtx);   \
-       mutex_lock (mutex_);   \
-       mutex_;   \
-     })
+  ({   \
+    struct mutex *mutex_ = (mtx);   \
+    mutex_lock (mutex_);   \
+    mutex_;   \
+  })
 
 /*
  * Special init operation for syscnt_setup.

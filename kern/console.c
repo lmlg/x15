@@ -92,10 +92,10 @@ console_read_nolock (struct console *console, char *s, size_t size)
     {
       int error = cbuf_pop (&console->recvbuf, s, &size);
 
-      if (!error)
+      if (! error)
         {
-          size_t nc;
-          for (size_t i = (nc = 0); i < size; ++i)
+          size_t nc = 0;
+          for (size_t i = 0; i < size; ++i)
             if (console_process_ctrl_char (console, s[i]) == 0)
               nc++;
 

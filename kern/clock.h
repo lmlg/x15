@@ -35,7 +35,7 @@ union clock_global_time
 {
   alignas (CPU_L1_SIZE) uint64_t ticks;
 
-#ifndef ATOMIC_HAVE_64B_OPS
+#ifndef __LP64__
   struct
     {
 #if __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
@@ -79,16 +79,16 @@ clock_get_time (void)
 {
   extern union clock_global_time clock_global_time;
 
-#ifdef ATOMIC_HAVE_64B_OPS
+#ifdef __LP64__
 
   /*
    * Don't enforce a stronger memory order, since :
    *  1/ it's useless as long as the reader remains on the same processor
    *  2/ thread migration enforces sequential consistency
    */
-  return (atomic_load (&clock_global_time.ticks, ATOMIC_RELAXED));
+  return (atomic_load_rlx (&clock_global_time.ticks));
 
-#else /* ATOMIC_HAVE_64B_OPS */
+#else   // ATOMIC_HAVE_64B_OPS.
 
   uint32_t high1, low, high2;
 
@@ -100,9 +100,9 @@ clock_get_time (void)
 
   do
     {
-      high1 = atomic_load (&clock_global_time.high1, ATOMIC_ACQUIRE);
-      low = atomic_load (&clock_global_time.low, ATOMIC_ACQUIRE);
-      high2 = atomic_load (&clock_global_time.high2, ATOMIC_RELAXED);
+      high1 = atomic_load_acq (&clock_global_time.high1);
+      low = atomic_load_acq (&clock_global_time.low);
+      high2 = atomic_load_rlx (&clock_global_time.high2);
     }
   while (high1 != high2);
 

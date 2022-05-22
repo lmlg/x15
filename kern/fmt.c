@@ -1222,7 +1222,7 @@ fmt_istate_produce_int (struct fmt_istate *state)
       uint32_t ln = 0, lm = 1, ltmp = 0;
       for (; &buf[i] >= buf; --i)
         {
-          ltmp += fmt_atoi (buf[i]) * m;
+          ltmp += fmt_atoi (buf[i]) * lm;
 
           if (ltmp < ln)
             {

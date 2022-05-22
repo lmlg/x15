@@ -126,7 +126,7 @@ struct cpu_pseudo_desc
 
 struct cpu_exc_frame
 {
-  uintptr_t words[CPU_EXC_FRAME_SIZE];
+  unsigned long words[CPU_EXC_FRAME_SIZE];
 } cpu_exc_frame_attrs;
 
 /*
@@ -435,7 +435,7 @@ cpu_show_frame (const struct cpu_exc_frame *frame)
 static void
 cpu_show_frame (const struct cpu_exc_frame *frame)
 {
-  uintptr_t esp, ss;
+  unsigned long esp, ss;
 
   if ((frame->words[CPU_EXC_FRAME_CS] & CPU_PL_USER) ||
       frame->words[CPU_EXC_FRAME_VECTOR] == CPU_EXC_DF)
