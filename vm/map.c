@@ -45,10 +45,8 @@
 #include <vm/kmem.h>
 #include <vm/page.h>
 
-/*
- * Special threshold which disables the use of the free area cache address.
- */
-#define VM_MAP_NO_FIND_CACHE (~(size_t)0)
+// Special threshold which disables the use of the free area cache address.
+#define VM_MAP_NO_FIND_CACHE   (~(size_t)0)
 
 /*
  * Mapping request.
@@ -87,7 +85,7 @@ vm_map_entry_create (void)
   struct vm_map_entry *entry = kmem_cache_alloc (&vm_map_entry_cache);
 
   // TODO Handle error.
-  if (entry == NULL)
+  if (! entry)
     panic ("vm_map: can't create map entry");
 
   return (entry);
@@ -138,7 +136,7 @@ vm_map_request_valid (const struct vm_map_request *request)
  * such that addr < entry->end (i.e. either containing or after the requested
  * address), or NULL if there is no such entry.
  */
-static struct vm_map_entry *
+static struct vm_map_entry*
 vm_map_lookup_nearest (struct vm_map *map, uintptr_t addr)
 {
   assert (vm_page_aligned (addr));
@@ -555,7 +553,6 @@ vm_map_remove (struct vm_map *map, uintptr_t start, uintptr_t end)
 
       // TODO Defer destruction to shorten critical section.
       vm_map_entry_destroy (entry);
-
       if (list_end (&map->entry_list, node))
         break;
 
@@ -600,7 +597,7 @@ vm_map_shell_info (struct shell *shell, int argc, char **argv)
   
   const _Auto task = task_lookup (argv[1]);
   if (! task)
-    fmt_xprintf (shell->stream, "vm_map_info: task not found\n");
+    stream_puts (shell->stream, "vm_map_info: task not found\n");
   else
     vm_map_info (task_get_vm_map (task), shell->stream);
 }
@@ -615,7 +612,7 @@ static struct shell_cmd vm_map_shell_cmds[] =
 static int __init
 vm_map_setup_shell (void)
 {
-  SHELL_REGISTER_CMDS (vm_map_shell_cmds, shell_get_main_cmd_set() );
+  SHELL_REGISTER_CMDS (vm_map_shell_cmds, shell_get_main_cmd_set ());
   return (0);
 }
 

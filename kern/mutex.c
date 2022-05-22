@@ -48,17 +48,14 @@ mutex_lock_slow_common (struct mutex *mutex, bool timed, uint64_t ticks)
         }
     }
 
-  if (error)
+  if (sleepq_empty (sleepq))
     {
-      if (sleepq_empty (sleepq))
+      if (error)
         atomic_cas_rlx (&mutex->state, MUTEX_CONTENDED, MUTEX_LOCKED);
-
-      goto out;
+      else
+        atomic_store_rlx (&mutex->state, MUTEX_LOCKED);
     }
-  else if (sleepq_empty (sleepq))
-    atomic_store_rlx (&mutex->state, MUTEX_LOCKED);
 
-out:
   sleepq_return (sleepq);
   return (error);
 }
