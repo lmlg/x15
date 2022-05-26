@@ -96,7 +96,7 @@ test_run (void *arg __unused)
       cpumap_set (cpumap, cpu);
 
       char name[THREAD_NAME_SIZE];
-      snprintf (name, sizeof (name), THREAD_KERNEL_PREFIX "test_run/%u", cpu);
+      snprintf (name, sizeof (name), THREAD_KERNEL_PREFIX "test_xcall/%u", cpu);
 
       struct thread_attr attr;
       thread_attr_init (&attr, name);

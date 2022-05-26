@@ -128,7 +128,7 @@ test_run (void *arg __unused)
 TEST_ENTRY_INIT (thread_suspend)
 {
   struct thread_attr attr;
-  thread_attr_init (&attr, THREAD_KERNEL_PREFIX "test_run");
+  thread_attr_init (&attr, THREAD_KERNEL_PREFIX "test_suspend");
   thread_attr_set_detached (&attr);
 
   int error = thread_create (NULL, &attr, test_run, NULL);

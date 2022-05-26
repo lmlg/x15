@@ -91,7 +91,7 @@ test_run (void *arg __unused)
   cpumap_set (cpumap, 1);
 
   struct thread_attr attr;
-  thread_attr_init (&attr, "test_affinity");
+  thread_attr_init (&attr, "test_affinity/0");
   thread_attr_set_cpumap (&attr, cpumap);
 
   struct thread *thread;
@@ -102,7 +102,7 @@ test_run (void *arg __unused)
   cpumap_zero (cpumap);
   cpumap_set (cpumap, 1);
 
-  thread_attr_init (&attr, "test_affinity(2)");
+  thread_attr_init (&attr, "test_affinity/1");
   thread_attr_set_cpumap (&attr, cpumap);
   error = thread_create (&thread, &attr, test_affinity_suspended, cpumap);
   error_check (error, "thread_create(2)");

@@ -93,8 +93,8 @@ test_run (void *arg)
   panic ("test: invalid counter value (%u)", test->counter);
 }
 
-static struct test *
-test_create (unsigned int nr_threads)
+static struct test*
+test_create (uint32_t nr_threads)
 {
   assert (nr_threads);
 
@@ -151,7 +151,7 @@ test_report_syscnt (struct timer *timer)
 
 TEST_ENTRY_INIT (mutex)
 {
-  if (cpu_count() < TEST_MIN_CPUS)
+  if (cpu_count () < TEST_MIN_CPUS)
     {
       log_err ("test: at least %u processors are required", TEST_MIN_CPUS);
       return (TEST_SKIPPED);

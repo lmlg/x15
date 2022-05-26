@@ -86,14 +86,14 @@ TEST_ENTRY_INIT (semaphore)
   for (size_t i = 0; i < ARRAY_SIZE (test_waiters); i++)
     {
       char name[THREAD_NAME_SIZE];
-      snprintf (name, sizeof (name), THREAD_KERNEL_PREFIX "test_wait:%zu", i);
+      snprintf (name, sizeof (name), THREAD_KERNEL_PREFIX "test_semwait:%zu", i);
       thread_attr_init (&attr, name);
       thread_attr_set_cpumap (&attr, cpumap);
       error = thread_create (&test_waiters[i], &attr, test_wait, NULL);
       error_check (error, "thread_create");
     }
 
-  thread_attr_init (&attr, THREAD_KERNEL_PREFIX "test_post");
+  thread_attr_init (&attr, THREAD_KERNEL_PREFIX "test_sempost");
   thread_attr_set_detached (&attr);
   thread_attr_set_cpumap (&attr, cpumap);
   error = thread_create (NULL, &attr, test_post, NULL);

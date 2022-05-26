@@ -163,19 +163,19 @@ TEST_ENTRY (rcu_defer)
                    sizeof (struct test_pdsc), 0, NULL, 0);
 
   struct thread_attr attr;
-  thread_attr_init (&attr, THREAD_KERNEL_PREFIX "test_alloc");
+  thread_attr_init (&attr, THREAD_KERNEL_PREFIX "test_rcu_alloc");
   thread_attr_set_detached (&attr);
 
   struct thread *thread;
   int error = thread_create (&thread, &attr, test_alloc, NULL);
   error_check (error, "thread_create");
 
-  thread_attr_init (&attr, THREAD_KERNEL_PREFIX "test_free");
+  thread_attr_init (&attr, THREAD_KERNEL_PREFIX "test_rcu_free");
   thread_attr_set_detached (&attr);
   error = thread_create (&thread, &attr, test_free, NULL);
   error_check (error, "thread_create");
 
-  thread_attr_init (&attr, THREAD_KERNEL_PREFIX "test_read");
+  thread_attr_init (&attr, THREAD_KERNEL_PREFIX "test_rcu_read");
   thread_attr_set_detached (&attr);
   error = thread_create (&thread, &attr, test_read, NULL);
   error_check (error, "thread_create");

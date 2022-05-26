@@ -117,7 +117,7 @@ test_run (void *arg __unused)
   for (uint32_t i = 0; i < nr_threads; i++)
     {
       char name[THREAD_NAME_SIZE];
-      snprintf (name, sizeof (name), THREAD_KERNEL_PREFIX "test_ref/%u", i);
+      snprintf (name, sizeof (name), THREAD_KERNEL_PREFIX "test_sref_ref/%u", i);
 
       struct thread_attr attr;
       thread_attr_init (&attr, name);
@@ -132,7 +132,6 @@ test_run (void *arg __unused)
     panic ("vm_kmem_alloc: %s", strerror (ENOMEM));
 
   sref_counter_init (&obj->ref_counter, 1, NULL, test_obj_noref);
-
   printf ("page allocated, 1 reference, publishing\n");
 
   mutex_lock (&test_lock);
@@ -161,7 +160,7 @@ TEST_ENTRY_INIT (sref_noref)
   mutex_init (&test_lock);
 
   struct thread_attr attr;
-  thread_attr_init (&attr, THREAD_KERNEL_PREFIX "test_run");
+  thread_attr_init (&attr, THREAD_KERNEL_PREFIX "test_sref_noref");
   thread_attr_set_detached (&attr);
   int error = thread_create (NULL, &attr, test_run, NULL);
   error_check (error, "thread_create");

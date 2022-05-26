@@ -142,7 +142,7 @@ test_thread_start (struct test_thread *thread)
 
   char name[THREAD_NAME_SIZE];
   snprintf (name, sizeof (name),
-            THREAD_KERNEL_PREFIX "test_run:%u", thread->id);
+            THREAD_KERNEL_PREFIX "test_perfom_torture:%u", thread->id);
 
   struct thread_attr attr;
   thread_attr_init (&attr, name);
@@ -314,7 +314,7 @@ test_controller_create (void)
   controller->nr_total_threads = controller->nr_threads;
 
   struct thread_attr attr;
-  thread_attr_init (&attr, THREAD_KERNEL_PREFIX "test_control");
+  thread_attr_init (&attr, THREAD_KERNEL_PREFIX "test_perfmon_control");
   thread_attr_set_detached (&attr);
   int error = thread_create (NULL, &attr, test_control, controller);
   error_check (error, "thread_create");

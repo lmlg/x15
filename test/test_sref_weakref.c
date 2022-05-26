@@ -95,13 +95,13 @@ test_ref (void *arg __unused)
 TEST_ENTRY_INIT (sref_weakref)
 {
   struct thread_attr attr;
-  thread_attr_init (&attr, THREAD_KERNEL_PREFIX "test_run");
+  thread_attr_init (&attr, THREAD_KERNEL_PREFIX "test_sref_weakref");
   thread_attr_set_detached (&attr);
 
   int error = thread_create (NULL, &attr, test_run, NULL);
   error_check (error, "thread_create");
 
-  thread_attr_init (&attr, THREAD_KERNEL_PREFIX "test_ref");
+  thread_attr_init (&attr, THREAD_KERNEL_PREFIX "test_sref_weakref");
   thread_attr_set_detached (&attr);
   error = thread_create (NULL, &attr, test_ref, NULL);
   error_check (error, "thread_create");
