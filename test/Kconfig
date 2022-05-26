@@ -1,87 +1,98 @@
-menuconfig TEST_MODULE
-	bool "Test module"
+menu "Test options"
+
+config TEST_ATOMIC
+	bool "atomic ops"
 	default n
-	---help---
-	  Run a test module instead of booting the system.
+	select SYMTAB
 
-if TEST_MODULE
-
-choice
-	prompt "Select test module"
-
-config TEST_MODULE_ATOMIC
-	bool "atomic"
-
-if TEST_MODULE_ATOMIC
-
-config TEST_MODULE_ATOMIC_64
-	bool "Force 64-bit atomic operations"
+config TEST_BULLETIN
+	bool "bulletin API"
 	default n
-	---help---
-	  Force atomic operations to apply to 64-bit integers, even on 32-bit
-	  targets. Some targets may not support 64-bit atomic operations
-	  at all.
+	select SYMTAB
 
-endif
+config TEST_FMT
+	bool "formatted I/O"
+	default n
+	select SYMTAB
 
-config TEST_MODULE_BULLETIN
-	bool "bulletin"
+config TEST_MUTEX
+	bool "mutex API"
+	default n
+	select SYMTAB
 
-config TEST_MODULE_FMT
-	bool "fmt"
+config TEST_MUTEX_PI
+	bool "rtmutex API"
+	default n
+	select SYMTAB
 
-config TEST_MODULE_MUTEX
-	bool "mutex"
-	select MUTEX_DEBUG
+config TEST_PERFMON_CPU
+	bool "CPU performance counters"
+	default n
+	select SYMTAB
 
-config TEST_MODULE_MUTEX_PI
-	bool "mutex_pi"
+config TEST_PERFMON_THREAD
+	bool "thread performance counters"
+	default n
+	select SYMTAB
 
-config TEST_MODULE_PERFMON_CPU
-	bool "perfmon_cpu"
-	depends on PERFMON
+config TEST_PERFMON_TORTURE
+	bool "stress performance counters"
+	default n
+	select SYMTAB
 
-config TEST_MODULE_PERFMON_THREAD
-	bool "perfmon_thread"
-	depends on PERFMON
+config TEST_PMAP_UPDATE
+	bool "pmap update"
+	default n
+	select SYMTAB
 
-config TEST_MODULE_PERFMON_TORTURE
-	bool "perfmon_torture"
-	depends on PERFMON
+config TEST_RCU_DEFER
+	bool "rcu defer"
+	default n
+	select SYMTAB
 
-config TEST_MODULE_PMAP_UPDATE_MP
-	bool "pmap_update_mp"
-
-config TEST_MODULE_RCU_DEFER
-	bool "rcu_defer"
-
-config TEST_MODULE_SEMAPHORE
+config TEST_SEMAPHORE
 	bool "semaphore"
+	default n
+	select SYMTAB
 
-config TEST_MODULE_SLEEPQ_BROADCAST
-	bool "sleepq_broadcast"
+config TEST_SLEEPQ_BROADCAST
+	bool "sleepq broadcast"
+	default n
+	select SYMTAB
 
-config TEST_MODULE_SREF_DIRTY_ZEROES
-	bool "sref_dirty_zeroes"
+config TEST_SREF_DIRTY_ZEROES
+	bool "sref dirty zeroes"
+	default n
+	select SYMTAB
 
-config TEST_MODULE_SREF_NOREF
-	bool "sref_noref"
+config TEST_SREF_NOREF
+	bool "sref no refs"
+	default n
+	select SYMTAB
 
-config TEST_MODULE_SREF_WEAKREF
-	bool "sref_weakref"
+config TEST_SREF_WEAKREF
+	bool "sref weak references"
+	default n
+	select SYMTAB
 
-config TEST_MODULE_THREAD_AFFINITY
-	bool "thread_affinity"
+config TEST_THREAD_AFFINITY
+	bool "thread CPU affinity"
+	default n
+	select SYMTAB
 
-config TEST_MODULE_THREAD_SUSPEND
-	bool "thread_suspend"
+config TEST_THREAD_SUSPEND
+	bool "thread suspend/resume"
+	default n
+	select SYMTAB
 
-config TEST_MODULE_VM_PAGE_FILL
-	bool "vm_page_fill"
+config TEST_VM_PAGE_FILL
+	bool "vm page filling"
+	default n
+	select SYMTAB
 
-config TEST_MODULE_XCALL
+config TEST_XCALL
 	bool "xcall"
+	default n
+	select SYMTAB
 
-endchoice
-
-endif
+endmenu

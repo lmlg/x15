@@ -127,7 +127,11 @@ struct cpu_pseudo_desc
 struct cpu_exc_frame
 {
   unsigned long words[CPU_EXC_FRAME_SIZE];
-} cpu_exc_frame_attrs;
+}
+#ifndef __LP64__
+__packed
+#endif
+;
 
 /*
  * Type for low level exception handlers.
@@ -282,7 +286,7 @@ cpu_register_intr (uint32_t vector, cpu_intr_handler_fn_t fn)
 
 static void __init
 cpu_gate_desc_init_intr (struct cpu_gate_desc *desc, cpu_ll_exc_fn_t fn,
-                         uint32_t ist_index)
+                         uint32_t ist_index __unused)
 {
   uintptr_t addr = (uintptr_t)fn;
   desc->word1 = (CPU_GDT_SEL_CODE << 16) |
@@ -295,7 +299,6 @@ cpu_gate_desc_init_intr (struct cpu_gate_desc *desc, cpu_ll_exc_fn_t fn,
   desc->word3 = addr >> 32;
   desc->word4 = 0;
 #endif
-  (void)ist_index;
 }
 
 #ifndef __LP64__
@@ -573,25 +576,22 @@ cpu_intr_default (uint32_t vector)
 }
 
 static void
-cpu_xcall_intr (uint32_t vector)
+cpu_xcall_intr (uint32_t vector __unused)
 {
-  (void)vector;
   lapic_eoi ();
   xcall_intr ();
 }
 
 static void
-cpu_thread_schedule_intr (uint32_t vector)
+cpu_thread_schedule_intr (uint32_t vector __unused)
 {
-  (void)vector;
   lapic_eoi ();
   thread_schedule_intr ();
 }
 
 static void
-cpu_halt_intr (uint32_t vector)
+cpu_halt_intr (uint32_t vector __unused)
 {
-  (void)vector;
   lapic_eoi ();
   cpu_halt ();
 }
@@ -662,10 +662,9 @@ cpu_seg_desc_init_code (struct cpu_seg_desc *desc)
 }
 
 static void __init
-cpu_seg_desc_init_data (struct cpu_seg_desc *desc, uintptr_t base)
+cpu_seg_desc_init_data (struct cpu_seg_desc *desc, uintptr_t base __unused)
 {
 #ifdef __LP64__
-  (void) base;
   desc->high = CPU_DESC_DB | CPU_DESC_PRESENT |
                CPU_DESC_S | CPU_DESC_TYPE_DATA;
   desc->low = 0;
@@ -738,17 +737,14 @@ cpu_gdt_set_tss (struct cpu_gdt *gdt, unsigned int selector,
 
 static void __init
 cpu_gdt_init (struct cpu_gdt *gdt, const struct cpu_tss *tss,
-              const struct cpu_tss *df_tss, void *pcpu_area)
+              const struct cpu_tss *df_tss __unused, void *pcpu_area __unused)
 {
   cpu_gdt_set_null (gdt, CPU_GDT_SEL_NULL);
   cpu_gdt_set_code (gdt, CPU_GDT_SEL_CODE);
   cpu_gdt_set_data (gdt, CPU_GDT_SEL_DATA, 0);
   cpu_gdt_set_tss (gdt, CPU_GDT_SEL_TSS, tss);
 
-#ifdef __LP64__
-  (void)df_tss;
-  (void)pcpu_area;
-#else
+#ifndef __LP64__
   cpu_gdt_set_tss (gdt, CPU_GDT_SEL_DF_TSS, df_tss);
   cpu_gdt_set_data (gdt, CPU_GDT_SEL_PERCPU, pcpu_area);
   cpu_gdt_set_data (gdt, CPU_GDT_SEL_TLS, &cpu_tls_seg);
@@ -768,17 +764,14 @@ cpu_gdt_load (const struct cpu_gdt *gdt)
 }
 
 static void __init
-cpu_tss_init (struct cpu_tss *tss, const void *intr_stack_top,
-              const void *df_stack_top)
+cpu_tss_init (struct cpu_tss *tss, const void *intr_stack_top __unused,
+              const void *df_stack_top __unused)
 {
   memset (tss, 0, sizeof (*tss));
 
 #ifdef __LP64__
   tss->ist[CPU_TSS_IST_INTR] = (uintptr_t)intr_stack_top;
   tss->ist[CPU_TSS_IST_DF] = (uintptr_t)df_stack_top;
-#else
-  (void) intr_stack_top;
-  (void) df_stack_top;
 #endif
 }
 
@@ -848,10 +841,9 @@ cpu_get_intr_stack_top (struct cpu *cpu)
 }
 
 static struct cpu_tss* __init
-cpu_get_df_tss (struct cpu *cpu)
+cpu_get_df_tss (struct cpu *cpu __unused)
 {
 #ifdef __LP64__
-  (void) cpu;
   return (NULL);
 #else
   return (&cpu->df_tss);
@@ -1120,7 +1112,7 @@ cpu_log_info (const struct cpu *cpu)
             cpu->id, cpu->vendor_str, cpu->type, cpu->family, cpu->model,
             cpu->stepping);
 
-  if (strlen (cpu->model_name) > 0)
+  if (*cpu->model_name)
     log_info ("cpu%u: %s", cpu->id, cpu->model_name);
 
   if (cpu->phys_addr_width && cpu->virt_addr_width)
@@ -1161,7 +1153,7 @@ cpu_log_info (const struct cpu *cpu)
 }
 
 void __init
-cpu_mp_register_lapic (unsigned int apic_id, bool is_bsp)
+cpu_mp_register_lapic (uint32_t apic_id, bool is_bsp)
 {
   if (is_bsp)
     {
@@ -1173,8 +1165,7 @@ cpu_mp_register_lapic (unsigned int apic_id, bool is_bsp)
       cpu->apic_id = apic_id;
       return;
     }
-
-  if (percpu_add (cpu_nr_active) != 0)
+  else if (percpu_add (cpu_nr_active) != 0)
     return;
 
   struct cpu *cpu = percpu_ptr (cpu_desc, cpu_nr_active);

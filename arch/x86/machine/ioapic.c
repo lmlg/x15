@@ -135,21 +135,21 @@ ioapic_write (struct ioapic *ioapic, uint8_t reg, uint32_t value)
 }
 
 static void
-ioapic_write_entry_low (struct ioapic *ioapic, unsigned int id, uint32_t value)
+ioapic_write_entry_low (struct ioapic *ioapic, uint32_t id, uint32_t value)
 {
   assert (id < IOAPIC_MAX_ENTRIES);
   ioapic_write (ioapic, IOAPIC_REG_IOREDTBL + id * 2, value);
 }
 
 static void
-ioapic_write_entry_high (struct ioapic *ioapic, unsigned int id, uint32_t value)
+ioapic_write_entry_high (struct ioapic *ioapic, uint32_t id, uint32_t value)
 {
   assert (id < IOAPIC_MAX_ENTRIES);
   ioapic_write (ioapic, IOAPIC_REG_IOREDTBL + id * 2 + 1, value);
 }
 
 static void
-ioapic_intr (unsigned int vector)
+ioapic_intr (uint32_t vector)
 {
   intr_handle (vector - CPU_EXC_INTR_FIRST);
 }
@@ -192,7 +192,7 @@ ioapic_create (uint32_t apic_id, uintptr_t addr, uint32_t gsi_base)
 }
 
 static bool
-ioapic_has_gsi (const struct ioapic *ioapic, unsigned int gsi)
+ioapic_has_gsi (const struct ioapic *ioapic, uint32_t gsi)
 {
   return (gsi >= ioapic->first_gsi && gsi <= ioapic->last_gsi);
 }
@@ -261,10 +261,8 @@ ioapic_disable (void *priv, uint32_t intr)
 }
 
 static void
-ioapic_eoi (void *priv, uint32_t intr)
+ioapic_eoi (void *priv __unused, uint32_t intr __unused)
 {
-  (void)priv;
-  (void)intr;
   lapic_eoi ();
 }
 

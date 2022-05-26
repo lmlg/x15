@@ -48,13 +48,16 @@
 #include <kern/sref.h>
 #include <kern/syscnt.h>
 #include <kern/thread.h>
+
 #include <test/test.h>
-#include <vm/vm_kmem.h>
 
-#define TEST_NR_LOOPS (10UL * 1000 * 1000)
+#include <vm/kmem.h>
 
-struct test_obj {
-    struct sref_counter ref_counter;
+#define TEST_NR_LOOPS   (10UL * 1000 * 1000)
+
+struct test_obj
+{
+  struct sref_counter ref_counter;
 };
 
 static struct condition test_condition;
@@ -63,127 +66,105 @@ static struct test_obj *test_obj;
 static volatile int test_stop;
 
 static void
-test_manipulate_counter(struct test_obj *obj)
+test_manipulate_counter (struct test_obj *obj)
 {
-    sref_counter_inc(&obj->ref_counter);
-    thread_yield();
-    sref_counter_dec(&obj->ref_counter);
-    thread_yield();
+  sref_counter_inc (&obj->ref_counter);
+  thread_yield ();
+  sref_counter_dec (&obj->ref_counter);
+  thread_yield ();
 }
 
 static void
-test_ref(void *arg)
+test_ref (void *arg __unused)
 {
-    struct test_obj *obj;
+  mutex_lock (&test_lock);
+  printf ("waiting for page\n");
 
-    (void)arg;
+  while (! test_obj)
+    condition_wait (&test_condition, &test_lock);
 
-    mutex_lock(&test_lock);
+  struct test_obj *obj = test_obj;
+  mutex_unlock (&test_lock);
+  printf ("page received, manipulate reference counter\n");
 
-    printf("waiting for page\n");
+  while (! test_stop)
+    test_manipulate_counter (obj);
 
-    while (test_obj == NULL) {
-        condition_wait(&test_condition, &test_lock);
-    }
-
-    obj = test_obj;
-
-    mutex_unlock(&test_lock);
-
-    printf("page received, manipulate reference counter\n");
-
-    while (!test_stop) {
-        test_manipulate_counter(obj);
-    }
-
-    printf("thread exiting\n");
+  printf ("thread exiting\n");
 }
 
 static void
-test_obj_noref(struct sref_counter *counter)
+test_obj_noref (struct sref_counter *counter)
 {
-    struct test_obj *obj;
-
-    obj = structof(counter, struct test_obj, ref_counter);
-    vm_kmem_free(obj, sizeof(*obj));
-    printf("0 references, page released\n");
-    syscnt_info("sref_epoch", log_info);
-    syscnt_info("sref_dirty_zero", log_info);
-    syscnt_info("sref_true_zero", log_info);
+  struct test_obj *obj = structof (counter, struct test_obj, ref_counter);
+  vm_kmem_free (obj, sizeof (*obj));
+  printf ("0 references, page released\n");
+  syscnt_info ("sref_epoch", log_stream_info ());
+  syscnt_info ("sref_dirty_zero", log_stream_info ());
+  syscnt_info ("sref_true_zero", log_stream_info ());
 }
 
 static void
-test_run(void *arg)
+test_run (void *arg __unused)
 {
-    char name[THREAD_NAME_SIZE];
-    struct thread_attr attr;
-    struct thread **threads;
-    struct test_obj *obj;
-    volatile unsigned long loop;
-    unsigned int i, nr_threads;
-    int error;
+  int error;
+  uint32_t nr_threads = cpu_count () + 1;
+  struct thread **threads = kmem_alloc (sizeof (*threads) * nr_threads);
 
-    (void)arg;
+  if (! threads)
+    panic ("kmem_alloc: %s", strerror (ENOMEM));
 
-    nr_threads = cpu_count() + 1;
-    threads = kmem_alloc(sizeof(*threads) * nr_threads);
+  for (uint32_t i = 0; i < nr_threads; i++)
+    {
+      char name[THREAD_NAME_SIZE];
+      snprintf (name, sizeof (name), THREAD_KERNEL_PREFIX "test_ref/%u", i);
 
-    if (threads == NULL) {
-        panic("kmem_alloc: %s", strerror(ENOMEM));
+      struct thread_attr attr;
+      thread_attr_init (&attr, name);
+      error = thread_create (&threads[i], &attr, test_ref, NULL);
+      error_check (error, "thread_create");
     }
 
-    for (i = 0; i < nr_threads; i++) {
-        snprintf(name, sizeof(name), THREAD_KERNEL_PREFIX "test_ref/%u", i);
-        thread_attr_init(&attr, name);
-        error = thread_create(&threads[i], &attr, test_ref, NULL);
-        error_check(error, "thread_create");
-    }
+  printf ("allocating page\n");
+  struct test_obj *obj = vm_kmem_alloc (sizeof (*obj));
 
-    printf("allocating page\n");
-    obj = vm_kmem_alloc(sizeof(*obj));
+  if (! obj)
+    panic ("vm_kmem_alloc: %s", strerror (ENOMEM));
 
-    if (obj == NULL) {
-        panic("vm_kmem_alloc: %s", strerror(ENOMEM));
-    }
+  sref_counter_init (&obj->ref_counter, 1, NULL, test_obj_noref);
 
-    sref_counter_init(&obj->ref_counter, 1, NULL, test_obj_noref);
+  printf ("page allocated, 1 reference, publishing\n");
 
-    printf("page allocated, 1 reference, publishing\n");
+  mutex_lock (&test_lock);
+  test_obj = obj;
+  condition_broadcast (&test_condition);
+  mutex_unlock (&test_lock);
 
-    mutex_lock(&test_lock);
-    test_obj = obj;
-    condition_broadcast(&test_condition);
-    mutex_unlock(&test_lock);
+  for (volatile unsigned long loop = 0; loop < TEST_NR_LOOPS; loop++)
+    test_manipulate_counter (obj);
 
-    for (loop = 0; loop < TEST_NR_LOOPS; loop++) {
-        test_manipulate_counter(obj);
-    }
+  printf ("stopping test, wait for threads\n");
+  test_stop = 1;
 
-    printf("stopping test, wait for threads\n");
-    test_stop = 1;
+  for (uint32_t i = 0; i < nr_threads; i++)
+    thread_join (threads[i]);
 
-    for (i = 0; i < nr_threads; i++) {
-        thread_join(threads[i]);
-    }
+  printf ("releasing initial reference\n");
+  sref_counter_dec (&obj->ref_counter);
 
-    printf("releasing initial reference\n");
-    sref_counter_dec(&obj->ref_counter);
-
-    kmem_free(threads, sizeof(*threads) * nr_threads);
+  kmem_free (threads, sizeof (*threads) * nr_threads);
 }
 
-void __init
-test_setup(void)
+TEST_ENTRY_INIT (sref_noref)
 {
-    struct thread_attr attr;
-    struct thread *thread;
-    int error;
+  condition_init (&test_condition);
+  mutex_init (&test_lock);
 
-    condition_init(&test_condition);
-    mutex_init(&test_lock);
+  struct thread_attr attr;
+  thread_attr_init (&attr, THREAD_KERNEL_PREFIX "test_run");
+  thread_attr_set_detached (&attr);
+  int error = thread_create (NULL, &attr, test_run, NULL);
+  error_check (error, "thread_create");
 
-    thread_attr_init(&attr, THREAD_KERNEL_PREFIX "test_run");
-    thread_attr_set_detached(&attr);
-    error = thread_create(&thread, &attr, test_run, NULL);
-    error_check(error, "thread_create");
+  return (TEST_OK);
 }

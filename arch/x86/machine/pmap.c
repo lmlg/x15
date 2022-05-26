@@ -790,7 +790,7 @@ pmap_bootstrap (void)
   pmap_prot_table[VM_PROT_EXECUTE | VM_PROT_WRITE] = PMAP_PTE_RW;
   pmap_prot_table[VM_PROT_ALL] = PMAP_PTE_RW;
 
-  pmap_update_request_array_init (cpu_local_ptr (pmap_update_request_array) );
+  pmap_update_request_array_init (cpu_local_ptr (pmap_update_request_array));
 
   pmap_syncer_init (cpu_local_ptr (pmap_syncer), 0);
 
@@ -813,10 +813,9 @@ INIT_OP_DEFINE (pmap_bootstrap,
                 INIT_OP_DEP (thread_bootstrap, true));
 
 static void __init
-pmap_setup_set_ptp_type (phys_addr_t ptp_pa, uint32_t index,
+pmap_setup_set_ptp_type (phys_addr_t ptp_pa, uint32_t index __unused,
                          uint32_t level)
 {
-  (void) index;
   if (! level)
     return;
 

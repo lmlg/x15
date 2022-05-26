@@ -29,21 +29,17 @@ static struct plist shutdown_ops_list;
 #ifdef CONFIG_SHELL
 
 static void
-shutdown_shell_halt (struct shell *shell, int argc, char **argv)
+shutdown_shell_halt (struct shell *shell __unused,
+                     int argc __unused, char **argv __unused)
 {
-  (void) shell;
-  (void) argc;
-  (void) argv;
-  shutdown_halt();
+  shutdown_halt ();
 }
 
 static void
-shutdown_shell_reboot (struct shell *shell, int argc, char **argv)
+shutdown_shell_reboot (struct shell *shell __unused,
+                       int argc __unused, char **argv __unused)
 {
-  (void) shell;
-  (void) argc;
-  (void) argv;
-  shutdown_reboot();
+  shutdown_reboot ();
 }
 
 static struct shell_cmd shutdown_shell_cmds[] =

@@ -311,9 +311,8 @@ timer_bucket_add (struct timer_bucket *bucket, struct timer *timer)
 }
 
 static void
-timer_bucket_remove (struct timer_bucket *bucket, struct timer *timer)
+timer_bucket_remove (struct timer_bucket *bucket __unused, struct timer *timer)
 {
-  (void)bucket;
   hlist_remove (&timer->node);
 }
 

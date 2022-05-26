@@ -33,106 +33,92 @@
 #include <kern/panic.h>
 #include <kern/thread.h>
 #include <kern/xcall.h>
+
 #include <test/test.h>
 
-struct test_data {
-    unsigned int cpu;
-    bool done;
+struct test_data
+{
+  uint32_t cpu;
+  bool done;
 };
 
 static void
-test_fn(void *arg)
+test_fn (void *arg)
 {
-    struct test_data *data;
+  assert (thread_interrupted ());
 
-    assert(thread_interrupted());
+  struct test_data *data = arg;
+  if (data->cpu != cpu_id ())
+    panic ("test: invalid cpu");
 
-    data = arg;
-
-    if (data->cpu != cpu_id()) {
-        panic("test: invalid cpu");
-    }
-
-    log_info("function called, running on cpu%u\n", cpu_id());
-    data->done = true;
+  log_info ("function called, running on cpu%u\n", cpu_id() );
+  data->done = true;
 }
 
 static void
-test_once(unsigned int cpu)
+test_once (uint32_t cpu)
 {
-    struct test_data data;
+  struct test_data data = { .cpu = cpu, .done = false };
+  log_info ("cross-call: cpu%u -> cpu%u:\n", cpu_id (), cpu);
+  xcall_call (test_fn, &data, cpu);
 
-    data.cpu = cpu;
-    data.done = false;
-
-    log_info("cross-call: cpu%u -> cpu%u:\n", cpu_id(), cpu);
-    xcall_call(test_fn, &data, cpu);
-
-    if (!data.done) {
-        panic("test: xcall failed");
-    }
+  if (!data.done)
+    panic ("test: xcall failed");
 }
 
 static void
-test_run_cpu(void *arg)
+test_run_cpu (void *arg __unused)
 {
-    (void)arg;
-
-    for (unsigned int i = (cpu_count() - 1); i < cpu_count(); i--) {
-        test_once(i);
-    }
+  for (uint32_t i = cpu_count () - 1; i < cpu_count (); i--)
+    test_once (i);
 }
 
 static void
-test_run(void *arg)
+test_run (void *arg __unused)
 {
-    char name[THREAD_NAME_SIZE];
-    struct thread_attr attr;
-    struct thread *thread;
-    struct cpumap *cpumap;
-    unsigned int cpu;
-    int error;
+  struct cpumap *cpumap;
+  int error = cpumap_create (&cpumap);
+  error_check (error, "cpumap_create");
 
-    (void)arg;
+  for (uint32_t i = 0; i < cpu_count(); i++)
+    {
+      /*
+       * Send IPIs from CPU 1 first, in order to better trigger any
+       * initialization race that may prevent correct IPI transmission.
+       * This assumes CPUs are initialized sequentially, and that CPU 1
+       * may have finished initialization much earlier than the last CPU.
+       * CPU 0 isn't used since it's the one normally initializing remote
+       * CPUs.
+       */
+      uint32_t cpu = (1 + i) % cpu_count();
 
-    error = cpumap_create(&cpumap);
-    error_check(error, "cpumap_create");
+      cpumap_zero (cpumap);
+      cpumap_set (cpumap, cpu);
 
-    for (unsigned int i = 0; i < cpu_count(); i++) {
-        /*
-         * Send IPIs from CPU 1 first, in order to better trigger any
-         * initialization race that may prevent correct IPI transmission.
-         * This assumes CPUs are initialized sequentially, and that CPU 1
-         * may have finished initialization much earlier than the last CPU.
-         * CPU 0 isn't used since it's the one normally initializing remote
-         * CPUs.
-         */
-        cpu = (1 + i) % cpu_count();
+      char name[THREAD_NAME_SIZE];
+      snprintf (name, sizeof (name), THREAD_KERNEL_PREFIX "test_run/%u", cpu);
 
-        cpumap_zero(cpumap);
-        cpumap_set(cpumap, cpu);
-        snprintf(name, sizeof(name), THREAD_KERNEL_PREFIX "test_run/%u", cpu);
-        thread_attr_init(&attr, name);
-        thread_attr_set_cpumap(&attr, cpumap);
-        error = thread_create(&thread, &attr, test_run_cpu, NULL);
-        error_check(error, "thread_create");
-        thread_join(thread);
+      struct thread_attr attr;
+      thread_attr_init (&attr, name);
+      thread_attr_set_cpumap (&attr, cpumap);
+
+      struct thread *thread;
+      error = thread_create (&thread, &attr, test_run_cpu, NULL);
+      error_check (error, "thread_create");
+      thread_join (thread);
     }
 
-    cpumap_destroy(cpumap);
-
-    log_info("done\n");
+  cpumap_destroy (cpumap);
+  log_info ("test (xcall): done");
 }
 
-void __init
-test_setup(void)
+TEST_ENTRY_INIT (xcall)
 {
-    struct thread_attr attr;
-    struct thread *thread;
-    int error;
+  struct thread_attr attr;
+  thread_attr_init (&attr, THREAD_KERNEL_PREFIX "test_run");
+  thread_attr_set_detached (&attr);
+  int error = thread_create (NULL, &attr, test_run, NULL);
+  error_check (error, "thread_create");
 
-    thread_attr_init(&attr, THREAD_KERNEL_PREFIX "test_run");
-    thread_attr_set_detached(&attr);
-    error = thread_create(&thread, &attr, test_run, NULL);
-    error_check(error, "thread_create");
+  return (TEST_OK);
 }

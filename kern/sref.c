@@ -113,12 +113,12 @@ struct sref_data
 {
   struct
     {
-      alignas (CPU_L1_SIZE) unsigned int epoch_id;
+      alignas (CPU_L1_SIZE) uint32_t epoch_id;
     };
 
   struct
     {
-      alignas (CPU_L1_SIZE) unsigned int nr_pending_acks;
+      alignas (CPU_L1_SIZE) uint32_t nr_pending_acks;
     };
 
   uint64_t start_ts;
@@ -179,7 +179,7 @@ struct sref_cache
   struct sref_data *data;
   bool dirty;
   bool flushed;
-  unsigned int epoch_id;
+  uint32_t epoch_id;
   struct sref_delta deltas[SREF_CACHE_DELTA_TABLE_SIZE];
   struct list valid_deltas;
   struct sref_queue queues[SREF_NR_QUEUES];
@@ -191,17 +191,16 @@ struct sref_cache
 static struct sref_data sref_data;
 static struct sref_cache sref_cache __percpu;
 
-static unsigned int
+static uint32_t
 sref_data_get_epoch_id (const struct sref_data *data)
 {
   return (data->epoch_id);
 }
 
 static bool
-sref_data_check_epoch_id (const struct sref_data *data, unsigned int epoch_id)
+sref_data_check_epoch_id (const struct sref_data *data, uint32_t epoch_id)
 {
-  unsigned int global_epoch_id = atomic_load_rlx (&data->epoch_id);
-  if (likely (global_epoch_id == epoch_id))
+  if (likely (atomic_load_rlx (&data->epoch_id) != epoch_id))
     return (false);
 
   atomic_fence_acq ();
@@ -222,7 +221,7 @@ sref_data_start_epoch (struct sref_data *data)
   data->nr_pending_acks = cpu_count();
   data->start_ts = now;
 
-  unsigned int epoch_id = atomic_load_rlx (&data->epoch_id);
+  uint32_t epoch_id = atomic_load_rlx (&data->epoch_id);
   atomic_store_rel (&data->epoch_id, epoch_id + 1);
 }
 
@@ -230,7 +229,6 @@ static void
 sref_data_ack_cpu (struct sref_data *data)
 {
   uint32_t prev = atomic_sub (&data->nr_pending_acks, 1, ATOMIC_ACQ_REL);
-
   if (prev != 1)
     {
       assert (prev != 0);

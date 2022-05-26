@@ -35,96 +35,89 @@
 #include <kern/mutex.h>
 #include <kern/panic.h>
 #include <kern/thread.h>
+
 #include <machine/page.h>
+
 #include <test/test.h>
-#include <vm/vm_kmem.h>
+
+#include <vm/kmem.h>
 
 static struct condition test_condition;
 static struct mutex test_lock;
 static void *test_va;
 
 static void
-test_run1(void *arg)
+test_run1 (void *arg)
 {
-    void *ptr;
+  (void) arg;
 
-    (void)arg;
+  printf ("allocating page\n");
+  void *ptr = vm_kmem_alloc (PAGE_SIZE);
+  printf ("writing page\n");
+  memset (ptr, 'a', PAGE_SIZE);
 
-    printf("allocating page\n");
-    ptr = vm_kmem_alloc(PAGE_SIZE);
-    printf("writing page\n");
-    memset(ptr, 'a', PAGE_SIZE);
+  printf ("passing page to second thread (%p)\n", ptr);
 
-    printf("passing page to second thread (%p)\n", ptr);
-
-    mutex_lock(&test_lock);
-    test_va = ptr;
-    condition_signal(&test_condition);
-    mutex_unlock(&test_lock);
+  mutex_lock (&test_lock);
+  test_va = ptr;
+  condition_signal (&test_condition);
+  mutex_unlock (&test_lock);
 }
 
 static void
-test_run2(void *arg)
+test_run2 (void *arg)
 {
-    char *ptr;
-    unsigned int i;
+  (void) arg;
 
-    (void)arg;
+  printf ("waiting for page\n");
 
-    printf("waiting for page\n");
+  mutex_lock (&test_lock);
+  while (! test_va)
+    condition_wait (&test_condition, &test_lock);
 
-    mutex_lock(&test_lock);
+  char *ptr = test_va;
+  mutex_unlock (&test_lock);
 
-    while (test_va == NULL) {
-        condition_wait(&test_condition, &test_lock);
-    }
+  printf ("page received (%p), checking page\n", ptr);
+  for (size_t i = 0; i < PAGE_SIZE; i++)
+    if (ptr[i] != 'a')
+      panic ("invalid content");
 
-    ptr = test_va;
-
-    mutex_unlock(&test_lock);
-
-    printf("page received (%p), checking page\n", ptr);
-
-    for (i = 0; i < PAGE_SIZE; i++) {
-        if (ptr[i] != 'a') {
-            panic("invalid content");
-        }
-    }
-
-    vm_kmem_free(ptr, PAGE_SIZE);
-    printf("done\n");
+  vm_kmem_free (ptr, PAGE_SIZE);
+  printf ("done\n");
 }
 
-void __init
-test_setup(void)
+TEST_ENTRY_INIT (pmap_update)
 {
-    struct thread_attr attr;
-    struct thread *thread;
-    struct cpumap *cpumap;
-    int error;
+  condition_init (&test_condition);
+  mutex_init (&test_lock);
+  test_va = NULL;
 
-    condition_init(&test_condition);
-    mutex_init(&test_lock);
-    test_va = NULL;
+  struct cpumap *cpumap;
+  int error = cpumap_create (&cpumap);
+  error_check (error, "cpumap_create");
 
-    error = cpumap_create(&cpumap);
-    error_check(error, "cpumap_create");
+  cpumap_zero (cpumap);
+  cpumap_set (cpumap, 0);
 
-    cpumap_zero(cpumap);
-    cpumap_set(cpumap, 0);
-    thread_attr_init(&attr, THREAD_KERNEL_PREFIX "test_run1");
-    thread_attr_set_detached(&attr);
-    thread_attr_set_cpumap(&attr, cpumap);
-    error = thread_create(&thread, &attr, test_run1, NULL);
-    error_check(error, "thread_create");
+  struct thread_attr attr;
+  thread_attr_init (&attr, THREAD_KERNEL_PREFIX "test_run1");
+  thread_attr_set_detached (&attr);
+  thread_attr_set_cpumap (&attr, cpumap);
 
-    cpumap_zero(cpumap);
-    cpumap_set(cpumap, 1);
-    thread_attr_init(&attr, THREAD_KERNEL_PREFIX "test_run2");
-    thread_attr_set_detached(&attr);
-    thread_attr_set_cpumap(&attr, cpumap);
-    error = thread_create(&thread, &attr, test_run2, NULL);
-    error_check(error, "thread_create");
+  struct thread *thread;
+  error = thread_create (&thread, &attr, test_run1, NULL);
+  error_check (error, "thread_create");
 
-    cpumap_destroy(cpumap);
+  cpumap_zero (cpumap);
+  cpumap_set (cpumap, 1);
+  thread_attr_init (&attr, THREAD_KERNEL_PREFIX "test_run2");
+  thread_attr_set_detached (&attr);
+  thread_attr_set_cpumap (&attr, cpumap);
+  error = thread_create (&thread, &attr, test_run2, NULL);
+  error_check (error, "thread_create");
+
+  cpumap_destroy (cpumap);
+
+  return (TEST_OK);
 }

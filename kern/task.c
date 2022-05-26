@@ -60,9 +60,8 @@ task_init (struct task *task, const char *name, struct vm_map *map)
 #ifdef CONFIG_SHELL
 
 static void
-task_shell_info (struct shell *shell, int argc, char *argv[])
+task_shell_info (struct shell *shell __unused, int argc, char **argv)
 {
-  (void)shell;
   if (argc == 1)
     {
       task_info (NULL, shell->stream);

@@ -18,6 +18,21 @@
 #ifndef TEST_TEST_H
 #define TEST_TEST_H
 
-void test_setup(void);
+#include <kern/init.h>
+#include <kern/macros.h>
 
-#endif /* TEST_TEST_H */
+#define TEST_OK        0
+#define TEST_SKIPPED   1
+#define TEST_FAILED    2
+
+void __init test_setup (void);
+
+#define TEST_PREFIX   test_F_
+
+#define TEST_ENTRY(name)   \
+int CONCAT (TEST_PREFIX, name) (void)
+
+#define TEST_ENTRY_INIT(name)   \
+int __init test_F_##name (void)
+
+#endif

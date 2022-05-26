@@ -754,9 +754,8 @@ atkbd_process_code (uint8_t code)
 }
 
 static int
-atkbd_intr (void *arg)
+atkbd_intr (void *arg __unused)
 {
-  (void)arg;
   while (1)
     {
       uint8_t code;

@@ -464,11 +464,8 @@ shell_cb_help (struct shell *shell, int argc, char *argv[])
 }
 
 static void
-shell_cb_history (struct shell *shell, int argc, char *argv[])
+shell_cb_history (struct shell *shell, int argc __unused, char **argv __unused)
 {
-  (void) argc;
-  (void) argv;
-
   shell_history_print (shell_get_history (shell), shell);
 }
 
@@ -1068,11 +1065,8 @@ shell_main_run (void *arg)
 }
 
 static void
-shell_start (uintptr_t value, void *arg)
+shell_start (uintptr_t value __unused, void *arg __unused)
 {
-  (void)value;
-  (void)arg;
-
   struct thread_attr attr;
   thread_attr_init (&attr, THREAD_KERNEL_PREFIX "shell");
   thread_attr_set_detached (&attr);

@@ -41,18 +41,22 @@
 #include <kern/rcu.h>
 #include <kern/thread.h>
 #include <kern/work.h>
+
 #include <machine/page.h>
+
 #include <test/test.h>
-#include <vm/vm_kmem.h>
 
-#define TEST_LOOPS_PER_PRINT 100000
+#include <vm/kmem.h>
 
-struct test_pdsc {
-    struct work work;
-    void *addr;
+#define TEST_LOOPS_PER_PRINT   100000
+
+struct test_pdsc
+{
+  struct work work;
+  void *addr;
 };
 
-#define TEST_VALIDATION_BYTE 0xab
+#define TEST_VALIDATION_BYTE   0xab
 
 static struct mutex test_lock;
 static struct condition test_condition;
@@ -61,155 +65,120 @@ static struct test_pdsc *test_pdsc;
 static struct kmem_cache test_pdsc_cache;
 
 static void
-test_alloc(void *arg)
+test_alloc (void *arg __unused)
 {
-    struct test_pdsc *pdsc;
-    unsigned long nr_loops;
+  mutex_lock (&test_lock);
 
-    (void)arg;
+  for (size_t nr_loops = 0 ; ; ++nr_loops)
+    {
+      while (test_pdsc)
+        condition_wait (&test_condition, &test_lock);
 
-    nr_loops = 0;
+      struct test_pdsc *pdsc = kmem_cache_alloc (&test_pdsc_cache);
 
-    mutex_lock(&test_lock);
-
-    for (;;) {
-        while (test_pdsc != NULL) {
-            condition_wait(&test_condition, &test_lock);
+      if (pdsc)
+        {
+          pdsc->addr = vm_kmem_alloc (PAGE_SIZE);
+          if (pdsc->addr)
+            memset (pdsc->addr, TEST_VALIDATION_BYTE, PAGE_SIZE);
         }
 
-        pdsc = kmem_cache_alloc(&test_pdsc_cache);
+      rcu_store (&test_pdsc, pdsc);
+      condition_signal (&test_condition);
 
-        if (pdsc != NULL) {
-            pdsc->addr = vm_kmem_alloc(PAGE_SIZE);
+      if ((nr_loops % TEST_LOOPS_PER_PRINT) == 0)
+        printf ("alloc ");
+    }
+}
 
-            if (pdsc->addr != NULL) {
-                memset(pdsc->addr, TEST_VALIDATION_BYTE, PAGE_SIZE);
+static void
+test_deferred_free (struct work *work)
+{
+  struct test_pdsc *pdsc = structof (work, struct test_pdsc, work);
+  if (pdsc->addr)
+    vm_kmem_free (pdsc->addr, PAGE_SIZE);
+
+  kmem_cache_free (&test_pdsc_cache, pdsc);
+}
+
+static void
+test_free (void *arg __unused)
+{
+  mutex_lock (&test_lock);
+
+  for (size_t nr_loops = 0 ; ; ++nr_loops)
+    {
+      while (! test_pdsc)
+        condition_wait (&test_condition, &test_lock);
+
+      struct test_pdsc *pdsc = test_pdsc;
+      rcu_store (&test_pdsc, NULL);
+
+      if (pdsc)
+        {
+          work_init (&pdsc->work, test_deferred_free);
+          rcu_defer (&pdsc->work);
+        }
+
+      condition_signal (&test_condition);
+      if ((nr_loops % TEST_LOOPS_PER_PRINT) == 0)
+        printf ("free ");
+    }
+}
+
+static void
+test_read (void *arg __unused)
+{
+  size_t nr_loops = 0;
+  while (1)
+    {
+      RCU_GUARD ();
+      struct test_pdsc *pdsc = rcu_load (&test_pdsc);
+
+      if (pdsc != NULL)
+        {
+          _Auto s = (const unsigned char *)pdsc->addr;
+
+          if (s)
+            {
+              for (unsigned int i = 0; i < PAGE_SIZE; i++)
+                if (s[i] != TEST_VALIDATION_BYTE)
+                  panic ("invalid content");
+
+              if ((nr_loops % TEST_LOOPS_PER_PRINT) == 0)
+                printf ("read ");
+
+              nr_loops++;
             }
         }
-
-        rcu_store_ptr(test_pdsc, pdsc);
-        condition_signal(&test_condition);
-
-        if ((nr_loops % TEST_LOOPS_PER_PRINT) == 0) {
-            printf("alloc ");
-        }
-
-        nr_loops++;
     }
 }
 
-static void
-test_deferred_free(struct work *work)
+TEST_ENTRY (rcu_defer)
 {
-    struct test_pdsc *pdsc;
+  condition_init (&test_condition);
+  mutex_init (&test_lock);
 
-    pdsc = structof(work, struct test_pdsc, work);
+  kmem_cache_init (&test_pdsc_cache, "test_pdsc",
+                   sizeof (struct test_pdsc), 0, NULL, 0);
 
-    if (pdsc->addr != NULL) {
-        vm_kmem_free(pdsc->addr, PAGE_SIZE);
-    }
+  struct thread_attr attr;
+  thread_attr_init (&attr, THREAD_KERNEL_PREFIX "test_alloc");
+  thread_attr_set_detached (&attr);
 
-    kmem_cache_free(&test_pdsc_cache, pdsc);
-}
+  struct thread *thread;
+  int error = thread_create (&thread, &attr, test_alloc, NULL);
+  error_check (error, "thread_create");
 
-static void
-test_free(void *arg)
-{
-    struct test_pdsc *pdsc;
-    unsigned long nr_loops;
+  thread_attr_init (&attr, THREAD_KERNEL_PREFIX "test_free");
+  thread_attr_set_detached (&attr);
+  error = thread_create (&thread, &attr, test_free, NULL);
+  error_check (error, "thread_create");
 
-    (void)arg;
+  thread_attr_init (&attr, THREAD_KERNEL_PREFIX "test_read");
+  thread_attr_set_detached (&attr);
+  error = thread_create (&thread, &attr, test_read, NULL);
+  error_check (error, "thread_create");
 
-    nr_loops = 0;
-
-    mutex_lock(&test_lock);
-
-    for (;;) {
-        while (test_pdsc == NULL) {
-            condition_wait(&test_condition, &test_lock);
-        }
-
-        pdsc = test_pdsc;
-        rcu_store_ptr(test_pdsc, NULL);
-
-        if (pdsc != NULL) {
-            work_init(&pdsc->work, test_deferred_free);
-            rcu_defer(&pdsc->work);
-        }
-
-        condition_signal(&test_condition);
-
-        if ((nr_loops % TEST_LOOPS_PER_PRINT) == 0) {
-            printf("free ");
-        }
-
-        nr_loops++;
-    }
-}
-
-static void
-test_read(void *arg)
-{
-    const struct test_pdsc *pdsc;
-    const unsigned char *s;
-    unsigned long nr_loops;
-
-    (void)arg;
-
-    nr_loops = 0;
-
-    for (;;) {
-        rcu_read_enter();
-
-        pdsc = rcu_load_ptr(test_pdsc);
-
-        if (pdsc != NULL) {
-            s = (const unsigned char *)pdsc->addr;
-
-            if (s != NULL) {
-                for (unsigned int i = 0; i < PAGE_SIZE; i++) {
-                    if (s[i] != TEST_VALIDATION_BYTE) {
-                        panic("invalid content");
-                    }
-                }
-
-                if ((nr_loops % TEST_LOOPS_PER_PRINT) == 0) {
-                    printf("read ");
-                }
-
-                nr_loops++;
-            }
-        }
-
-        rcu_read_leave();
-    }
-}
-
-void
-test_setup(void)
-{
-    struct thread_attr attr;
-    struct thread *thread;
-    int error;
-
-    condition_init(&test_condition);
-    mutex_init(&test_lock);
-
-    kmem_cache_init(&test_pdsc_cache, "test_pdsc",
-                    sizeof(struct test_pdsc), 0, NULL, 0);
-
-    thread_attr_init(&attr, THREAD_KERNEL_PREFIX "test_alloc");
-    thread_attr_set_detached(&attr);
-    error = thread_create(&thread, &attr, test_alloc, NULL);
-    error_check(error, "thread_create");
-
-    thread_attr_init(&attr, THREAD_KERNEL_PREFIX "test_free");
-    thread_attr_set_detached(&attr);
-    error = thread_create(&thread, &attr, test_free, NULL);
-    error_check(error, "thread_create");
-
-    thread_attr_init(&attr, THREAD_KERNEL_PREFIX "test_read");
-    thread_attr_set_detached(&attr);
-    error = thread_create(&thread, &attr, test_read, NULL);
-    error_check(error, "thread_create");
+  return (TEST_OK);
 }

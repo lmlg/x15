@@ -342,9 +342,8 @@ rcu_window_get_start_ts (const struct rcu_window *window)
 }
 
 static void
-rcu_window_flush (struct sref_counter *counter)
+rcu_window_flush (struct sref_counter *counter __unused)
 {
-  (void) counter;
   rcu_data_update_gp_state (&rcu_data, RCU_GP_STATE_WORK_FLUSH);
 }
 

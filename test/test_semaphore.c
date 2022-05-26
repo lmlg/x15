@@ -36,76 +36,68 @@
 #define TEST_NR_WAITERS 2
 
 #if TEST_NR_WAITERS < 2
-#error "invalid number of waiters"
-#endif /* TEST_NR_WAITERS < 2 */
+  #error "invalid number of waiters"
+#endif
 
 static struct semaphore test_semaphore;
 
 static struct thread *test_waiters[TEST_NR_WAITERS];
 
 static void
-test_wait(void *arg)
+test_wait (void *arg __unused)
 {
-    (void)arg;
-
-    semaphore_wait(&test_semaphore);
+  semaphore_wait (&test_semaphore);
 }
 
 static void
-test_post(void *arg)
+test_post (void *arg __unused)
 {
-    int error;
+  for (size_t i = 0; i < ARRAY_SIZE (test_waiters); i++)
+    while (thread_state (test_waiters[i]) != THREAD_SLEEPING)
+      thread_delay (1, false);
 
-    (void)arg;
+  thread_preempt_disable ();
 
-    for (size_t i = 0; i < ARRAY_SIZE(test_waiters); i++) {
-        while (thread_state(test_waiters[i]) != THREAD_SLEEPING) {
-            thread_delay(1, false);
-        }
+  for (size_t i = 0; i < ARRAY_SIZE (test_waiters); i++)
+    {
+      int error = semaphore_post (&test_semaphore);
+      error_check (error, "semaphore_post");
     }
 
-    thread_preempt_disable();
+  thread_preempt_enable ();
 
-    for (size_t i = 0; i < ARRAY_SIZE(test_waiters); i++) {
-        error = semaphore_post(&test_semaphore);
-        error_check(error, "semaphore_post");
-    }
+  for (size_t i = 0; i < ARRAY_SIZE (test_waiters); i++)
+    thread_join (test_waiters[i]);
 
-    thread_preempt_enable();
-
-    for (size_t i = 0; i < ARRAY_SIZE(test_waiters); i++) {
-        thread_join(test_waiters[i]);
-    }
-
-    log_info("test: done");
+  log_info ("test: done");
 }
 
-void __init
-test_setup(void)
+TEST_ENTRY_INIT (semaphore)
 {
-    char name[THREAD_NAME_SIZE];
-    struct thread_attr attr;
-    struct cpumap *cpumap;
-    int error;
+  semaphore_init (&test_semaphore, 0, TEST_NR_WAITERS);
 
-    semaphore_init(&test_semaphore, 0, TEST_NR_WAITERS);
+  struct cpumap *cpumap;
+  int error = cpumap_create (&cpumap);
+  error_check (error, "cpumap_create");
+  cpumap_zero (cpumap);
+  cpumap_set (cpumap, 0);
 
-    error = cpumap_create(&cpumap);
-    error_check(error, "cpumap_create");
-    cpumap_zero(cpumap);
-    cpumap_set(cpumap, 0);
-
-    for (size_t i = 0; i < ARRAY_SIZE(test_waiters); i++) {
-        snprintf(name, sizeof(name), THREAD_KERNEL_PREFIX "test_wait:%zu", i);
-        thread_attr_init(&attr, name);
-        thread_attr_set_cpumap(&attr, cpumap);
-        error = thread_create(&test_waiters[i], &attr, test_wait, NULL);
-        error_check(error, "thread_create");
+  struct thread_attr attr;
+  for (size_t i = 0; i < ARRAY_SIZE (test_waiters); i++)
+    {
+      char name[THREAD_NAME_SIZE];
+      snprintf (name, sizeof (name), THREAD_KERNEL_PREFIX "test_wait:%zu", i);
+      thread_attr_init (&attr, name);
+      thread_attr_set_cpumap (&attr, cpumap);
+      error = thread_create (&test_waiters[i], &attr, test_wait, NULL);
+      error_check (error, "thread_create");
     }
 
-    thread_attr_init(&attr, THREAD_KERNEL_PREFIX "test_post");
-    thread_attr_set_detached(&attr);
-    thread_attr_set_cpumap(&attr, cpumap);
-    error = thread_create(NULL, &attr, test_post, NULL);
-    error_check(error, "thread_create");
+  thread_attr_init (&attr, THREAD_KERNEL_PREFIX "test_post");
+  thread_attr_set_detached (&attr);
+  thread_attr_set_cpumap (&attr, cpumap);
+  error = thread_create (NULL, &attr, test_post, NULL);
+  error_check (error, "thread_create");
+
+  return (TEST_OK);
 }

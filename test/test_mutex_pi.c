@@ -86,15 +86,16 @@
 #include <kern/syscnt.h>
 #include <kern/thread.h>
 #include <kern/turnstile.h>
+
 #include <test/test.h>
 
-#define TEST_MIN_CPUS 5
+#define TEST_MIN_CPUS   5
 
-#define TEST_PRIO_A (THREAD_SCHED_RT_PRIO_MIN + 1)
-#define TEST_PRIO_B (TEST_PRIO_A + 1)
-#define TEST_PRIO_C (TEST_PRIO_B + 1)
-#define TEST_PRIO_D (TEST_PRIO_C + 1)
-#define TEST_PRIO_E (TEST_PRIO_D + 1)
+#define TEST_PRIO_A   (THREAD_SCHED_RT_PRIO_MIN + 1)
+#define TEST_PRIO_B   (TEST_PRIO_A + 1)
+#define TEST_PRIO_C   (TEST_PRIO_B + 1)
+#define TEST_PRIO_D   (TEST_PRIO_C + 1)
+#define TEST_PRIO_E   (TEST_PRIO_D + 1)
 
 #define TEST_NR_LOCK_LOOPS          500
 #define TEST_NR_CONSUME_CPU_LOOPS   10000000
@@ -103,393 +104,363 @@ static struct mutex test_mutex_1;
 static struct mutex test_mutex_2;
 static struct mutex test_mutex_3;
 
-static const char *
-test_thread_from_priority(unsigned short priority)
+static const char*
+test_thread_from_priority (uint16_t priority)
 {
-    switch (priority) {
-    case TEST_PRIO_A:
-        return "a";
-    case TEST_PRIO_B:
-        return "b";
-    case TEST_PRIO_C:
-        return "c";
-    case TEST_PRIO_D:
-        return "d";
-    case TEST_PRIO_E:
-        return "e";
-    case TEST_PRIO_E + 1:
-        return "e+";
-    default:
-        panic("invalid priority %u", priority);
+  switch (priority)
+    {
+      case TEST_PRIO_A:
+        return ("a");
+      case TEST_PRIO_B:
+        return ("b");
+      case TEST_PRIO_C:
+        return ("c");
+      case TEST_PRIO_D:
+        return ("d");
+      case TEST_PRIO_E:
+        return ("e");
+      case TEST_PRIO_E + 1:
+        return ("e+");
+      default:
+        panic ("invalid priority %u", priority);
     }
 }
 
 static char
-test_get_name(void)
+test_get_name (void)
 {
-    const char *name;
-    size_t length;
-
-    name = thread_self()->name;
-    length = strlen(name);
-    return name[length - 1];
+  const char *name = thread_self()->name;
+  return (name[strlen (name) - 1]);
 }
 
 static void
-test_delay(void)
+test_delay (void)
 {
-    volatile unsigned int i;
+  volatile unsigned int i;
 
-    /*
-     * Put the thread to sleep to make some CPU time available, and then
-     * busy-wait to avoid synchronizing all threads on the clock tick.
-     */
+  /*
+   * Put the thread to sleep to make some CPU time available, and then
+   * busy-wait to avoid synchronizing all threads on the clock tick.
+   */
 
-    thread_delay(1, false);
+  thread_delay (1, false);
 
-    for (i = 0; i < TEST_NR_CONSUME_CPU_LOOPS; i++);
+  for (i = 0; i < TEST_NR_CONSUME_CPU_LOOPS; i++);
 }
 
 static void
-test_check_initial_priority(void)
+test_check_initial_priority (void)
 {
-    unsigned short user_priority, real_priority;
-    struct thread *thread;
+  struct thread *thread = thread_self();
+  uint16_t user_priority = thread_user_priority (thread),
+           real_priority = thread_real_priority (thread);
 
-    thread = thread_self();
-    user_priority = thread_user_priority(thread);
-    real_priority = thread_real_priority(thread);
-
-    if (user_priority != real_priority) {
-        panic("%c: invalid initial priority %hu",
-              test_get_name(), real_priority);
-    }
+  if (user_priority != real_priority)
+    panic ("%c: invalid initial priority %hu",
+           test_get_name (), real_priority);
 }
 
 static void
-test_for_priority_boosted(unsigned short *highest_priority)
+test_for_priority_boosted (uint16_t *highest_priority)
 {
-    unsigned short user_priority, real_priority;
-    struct turnstile_td *td;
-    struct thread *thread;
+  unsigned short user_priority, real_priority;
 
-    thread = thread_self();
-    td = thread_turnstile_td(thread);
+  struct thread *thread = thread_self ();
+  struct turnstile_td *td = thread_turnstile_td (thread);
 
-    turnstile_td_lock(td);
+  turnstile_td_lock (td);
 
-    user_priority = thread_user_priority(thread);
-    real_priority = thread_real_priority(thread);
+  uint16_t user_priority = thread_user_priority (thread),
+           real_priority = thread_real_priority (thread);
 
-    if (user_priority != real_priority) {
-        if (user_priority > real_priority) {
-            panic("%c: invalid real priority: %hu (boosted:%u)",
-                  test_get_name(), real_priority, thread->boosted);
-        }
+  if (user_priority != real_priority)
+    {
+      if (user_priority > real_priority)
+        panic ("%c: invalid real priority: %hu (boosted:%u)",
+               test_get_name (), real_priority, thread->boosted);
 
-        if (real_priority > *highest_priority) {
-            printf("%c: real priority boosted to %s\n",
-                   test_get_name(), test_thread_from_priority(real_priority));
-            *highest_priority = real_priority;
+      if (real_priority > *highest_priority)
+        {
+          printf ("%c: real priority boosted to %s\n",
+                  test_get_name(), test_thread_from_priority (real_priority) );
+          *highest_priority = real_priority;
         }
     }
 
-    turnstile_td_unlock(td);
+  turnstile_td_unlock (td);
 }
 
 static void
-test_for_priority_deboosted(void)
+test_for_priority_deboosted (void)
 {
-    unsigned short user_priority, real_priority;
-    struct turnstile_td *td;
-    struct thread *thread;
+  struct thread *thread = thread_self ();
+  struct turnstile_td *td = thread_turnstile_td (thread);
 
-    thread = thread_self();
-    td = thread_turnstile_td(thread);
+  turnstile_td_lock (td);
 
-    turnstile_td_lock(td);
+  uint16_t user_priority = thread_user_priority (thread),
+           real_priority = thread_real_priority (thread);
 
-    user_priority = thread_user_priority(thread);
-    real_priority = thread_real_priority(thread);
+  if (user_priority != real_priority)
+    panic ("%c: real priority not reset (boosted:%d)",
+           test_get_name (), thread->boosted);
 
-    if (user_priority != real_priority) {
-        panic("%c: real priority not reset (boosted:%d)", test_get_name(), thread->boosted);
-    }
-
-    turnstile_td_unlock(td);
+  turnstile_td_unlock (td);
 }
 
 static void
-test_report_progress(unsigned int i)
+test_report_progress (uint32_t i)
 {
-    printf("%c:%u ", test_get_name(), i);
+  printf ("%c:%u ", test_get_name (), i);
 }
 
 static void
-test_a(void *arg)
+test_a (void *arg __unused)
 {
-    unsigned short highest_priority;
-    unsigned int i, j;
+  test_check_initial_priority ();
 
-    (void)arg;
+  uint16_t highest_priority = 0;
+  for (uint32_t i = 1 ; ; i++)
+    {
+      for (uint32_t j = 0; j < TEST_NR_LOCK_LOOPS; j++)
+        {
+          mutex_lock (&test_mutex_1);
+          test_delay ();
+          test_for_priority_boosted (&highest_priority);
+          mutex_unlock (&test_mutex_1);
 
-    test_check_initial_priority();
-
-    highest_priority = 0;
-
-    for (i = 1; /* no condition */; i++) {
-        for (j = 0; j < TEST_NR_LOCK_LOOPS; j++) {
-            mutex_lock(&test_mutex_1);
-            test_delay();
-            test_for_priority_boosted(&highest_priority);
-            mutex_unlock(&test_mutex_1);
-
-            test_for_priority_deboosted();
-
-            test_delay();
+          test_for_priority_deboosted();
+          test_delay ();
         }
 
-        test_report_progress(i);
+      test_report_progress (i);
     }
 }
 
 static void
-test_b(void *arg)
+test_b (void *arg)
 {
-    test_check_initial_priority();
+  test_check_initial_priority ();
 
-    mutex_lock(&test_mutex_3);
-    mutex_lock(&test_mutex_2);
-    mutex_lock(&test_mutex_1);
-    test_delay();
-    test_for_priority_boosted(arg);
-    mutex_unlock(&test_mutex_1);
-    test_delay();
-    mutex_unlock(&test_mutex_2);
-    test_delay();
-    mutex_unlock(&test_mutex_3);
+  mutex_lock (&test_mutex_3);
+  mutex_lock (&test_mutex_2);
+  mutex_lock (&test_mutex_1);
+  test_delay ();
+  test_for_priority_boosted (arg);
+  mutex_unlock (&test_mutex_1);
+  test_delay ();
+  mutex_unlock (&test_mutex_2);
+  test_delay ();
+  mutex_unlock (&test_mutex_3);
 
-    /*
-     * It would be better if the thread could immediately terminate, but
-     * it's also the thread that locks multiple mutexes, so make sure it
-     * was correctly deboosted. This should be cheap enough to not matter
-     * much.
-     */
-    test_for_priority_deboosted();
+  /*
+   * It would be better if the thread could immediately terminate, but
+   * it's also the thread that locks multiple mutexes, so make sure it
+   * was correctly deboosted. This should be cheap enough to not matter
+   * much.
+   */
+  test_for_priority_deboosted ();
 }
 
 static void
-test_manage_b(void *arg)
+test_manage_b (void *arg __unused)
 {
-    unsigned short highest_priority;
-    struct thread_attr attr;
-    struct thread *thread_b;
-    struct cpumap *cpumap;
-    unsigned int i, j;
-    int error;
+  struct cpumap *cpumap;
+  int error = cpumap_create (&cpumap);
+  error_check (error, "cpumap_create");
+  cpumap_zero (cpumap);
+  cpumap_set (cpumap, 1);
 
-    (void)arg;
+  struct thread_attr attr;
+  thread_attr_init (&attr, THREAD_KERNEL_PREFIX "test_b");
+  thread_attr_set_policy (&attr, THREAD_SCHED_POLICY_FIFO);
+  thread_attr_set_priority (&attr, TEST_PRIO_B);
+  thread_attr_set_cpumap (&attr, cpumap);
+  cpumap_destroy (cpumap);
 
-    error = cpumap_create(&cpumap);
-    error_check(error, "cpumap_create");
-    cpumap_zero(cpumap);
-    cpumap_set(cpumap, 1);
-    thread_attr_init(&attr, THREAD_KERNEL_PREFIX "test_b");
-    thread_attr_set_policy(&attr, THREAD_SCHED_POLICY_FIFO);
-    thread_attr_set_priority(&attr, TEST_PRIO_B);
-    thread_attr_set_cpumap(&attr, cpumap);
-    cpumap_destroy(cpumap);
+  uint16_t highest_priority = 0;
 
-    highest_priority = 0;
+  for (uint32_t i = 1 ; ; i++)
+    {
+      for (uint32_t j = 0; j < TEST_NR_LOCK_LOOPS; j++)
+        {
+          struct thread *thread_b;
+          error = thread_create (&thread_b, &attr, test_b, &highest_priority);
+          error_check (error, "thread_create");
+          thread_join (thread_b);
 
-    for (i = 1; /* no condition */; i++) {
-        for (j = 0; j < TEST_NR_LOCK_LOOPS; j++) {
-            error = thread_create(&thread_b, &attr, test_b, &highest_priority);
-            error_check(error, "thread_create");
-            thread_join(thread_b);
-
-            test_delay();
+          test_delay ();
         }
 
-        printf("b:%u ", i);
-        syscnt_info("thread_boosts", log_info);
+      printf ("b:%u ", i);
+      syscnt_info ("thread_boosts", log_info);
     }
 }
 
 static void
-test_c(void *arg)
+test_c (void *arg __unused)
 {
-    unsigned short highest_priority;
-    unsigned int i, j;
+  test_check_initial_priority ();
 
-    (void)arg;
+  uint16_t highest_priority = 0;
 
-    test_check_initial_priority();
+  for (uint32_t i = 1 ; ; i++)
+    {
+      for (uint32_t j = 0; j < TEST_NR_LOCK_LOOPS; j++)
+        {
+          mutex_lock (&test_mutex_2);
+          test_delay ();
+          test_for_priority_boosted (&highest_priority);
+          mutex_unlock (&test_mutex_2);
 
-    highest_priority = 0;
-
-    for (i = 1; /* no condition */; i++) {
-        for (j = 0; j < TEST_NR_LOCK_LOOPS; j++) {
-            mutex_lock(&test_mutex_2);
-            test_delay();
-            test_for_priority_boosted(&highest_priority);
-            mutex_unlock(&test_mutex_2);
-
-            test_for_priority_deboosted();
-
-            test_delay();
+          test_for_priority_deboosted();
+          test_delay ();
         }
 
-        test_report_progress(i);
+      test_report_progress (i);
     }
 }
 
 static void
-test_chprio_c(void *arg)
+test_chprio_c (void *arg)
 {
-    struct thread *thread_c;
+  struct thread *thread_c = arg;
+  test_delay ();
 
-    thread_c = arg;
-
-    test_delay();
-
-    for (;;) {
-        thread_setscheduler(thread_c, THREAD_SCHED_POLICY_FIFO,
-                            TEST_PRIO_E + 1);
-        thread_setscheduler(thread_c, THREAD_SCHED_POLICY_FIFO,
-                            TEST_PRIO_C);
+  while (1)
+    {
+      thread_setscheduler (thread_c, THREAD_SCHED_POLICY_FIFO,
+                           TEST_PRIO_E + 1);
+      thread_setscheduler (thread_c, THREAD_SCHED_POLICY_FIFO,
+                           TEST_PRIO_C);
     }
 }
 
 static void
-test_d(void *arg)
+test_d (void *arg __unused)
 {
-    unsigned short highest_priority;
-    unsigned int i, j;
+  test_check_initial_priority ();
 
-    (void)arg;
+  uint16_t highest_priority = 0;
 
-    test_check_initial_priority();
+  for (uint32_t i = 1 ; ; i++)
+    {
+      for (uint32_t j = 0; j < TEST_NR_LOCK_LOOPS; j++)
+        {
+          mutex_lock (&test_mutex_3);
+          test_delay ();
+          test_for_priority_boosted (&highest_priority);
+          mutex_unlock (&test_mutex_3);
 
-    highest_priority = 0;
-
-    for (i = 1; /* no condition */; i++) {
-        for (j = 0; j < TEST_NR_LOCK_LOOPS; j++) {
-            mutex_lock(&test_mutex_3);
-            test_delay();
-            test_for_priority_boosted(&highest_priority);
-            mutex_unlock(&test_mutex_3);
-
-            test_for_priority_deboosted();
-
-            test_delay();
+          test_for_priority_deboosted ();
+          test_delay ();
         }
 
-        test_report_progress(i);
+      test_report_progress (i);
     }
 }
 
 static void
-test_e(void *arg)
+test_e (void *arg __unused)
 {
-    unsigned short highest_priority;
-    unsigned int i, j;
+  test_check_initial_priority ();
 
-    (void)arg;
+  uint16_t highest_priority = 0;
 
-    test_check_initial_priority();
+  for (uint32_t i = 1 ; ; i++)
+    {
+      for (uint32_t j = 0; j < TEST_NR_LOCK_LOOPS; j++)
+        {
+          mutex_lock (&test_mutex_3);
+          test_delay ();
+          test_for_priority_boosted (&highest_priority);
+          mutex_unlock (&test_mutex_3);
 
-    highest_priority = 0;
-
-    for (i = 1; /* no condition */; i++) {
-        for (j = 0; j < TEST_NR_LOCK_LOOPS; j++) {
-            mutex_lock(&test_mutex_3);
-            test_delay();
-            test_for_priority_boosted(&highest_priority);
-            mutex_unlock(&test_mutex_3);
-
-            test_for_priority_deboosted();
-
-            test_delay();
+          test_for_priority_deboosted();
+          test_delay ();
         }
 
-        test_report_progress(i);
+      test_report_progress (i);
     }
 }
 
-void __init
-test_setup(void)
+TEST_ENTRY_INIT (mutex_pi)
 {
-    struct thread_attr attr;
-    struct thread *thread;
-    struct cpumap *cpumap;
-    int error;
-
-    if (cpu_count() < TEST_MIN_CPUS) {
-        panic("test: at least %u processors are required", TEST_MIN_CPUS);
+  if (cpu_count () < TEST_MIN_CPUS)
+    {
+      log_err ("test: at least %u processors are required", TEST_MIN_CPUS);
+      return (TEST_SKIPPED);
     }
 
-    mutex_init(&test_mutex_1);
-    mutex_init(&test_mutex_2);
-    mutex_init(&test_mutex_3);
+  mutex_init (&test_mutex_1);
+  mutex_init (&test_mutex_2);
+  mutex_init (&test_mutex_3);
 
-    error = cpumap_create(&cpumap);
-    error_check(error, "cpumap_create");
+  struct cpumap *cpumap;
+  int error = cpumap_create (&cpumap);
+  error_check (error, "cpumap_create");
 
-    cpumap_zero(cpumap);
-    cpumap_set(cpumap, 0);
-    thread_attr_init(&attr, THREAD_KERNEL_PREFIX "test_a");
-    thread_attr_set_detached(&attr);
-    thread_attr_set_policy(&attr, THREAD_SCHED_POLICY_FIFO);
-    thread_attr_set_priority(&attr, TEST_PRIO_A);
-    thread_attr_set_cpumap(&attr, cpumap);
-    error = thread_create(&thread, &attr, test_a, NULL);
-    error_check(error, "thread_create");
+  cpumap_zero (cpumap);
+  cpumap_set (cpumap, 0);
 
-    cpumap_zero(cpumap);
-    cpumap_set(cpumap, 1);
-    thread_attr_init(&attr, THREAD_KERNEL_PREFIX "test_manage_b");
-    thread_attr_set_detached(&attr);
-    thread_attr_set_policy(&attr, THREAD_SCHED_POLICY_FIFO);
-    thread_attr_set_priority(&attr, TEST_PRIO_B);
-    thread_attr_set_cpumap(&attr, cpumap);
-    error = thread_create(&thread, &attr, test_manage_b, NULL);
-    error_check(error, "thread_create");
+  struct thread_attr attr;
+  thread_attr_init (&attr, THREAD_KERNEL_PREFIX "test_a");
+  thread_attr_set_detached (&attr);
+  thread_attr_set_policy (&attr, THREAD_SCHED_POLICY_FIFO);
+  thread_attr_set_priority (&attr, TEST_PRIO_A);
+  thread_attr_set_cpumap (&attr, cpumap);
 
-    cpumap_zero(cpumap);
-    cpumap_set(cpumap, 2);
-    thread_attr_init(&attr, THREAD_KERNEL_PREFIX "test_c");
-    thread_attr_set_detached(&attr);
-    thread_attr_set_policy(&attr, THREAD_SCHED_POLICY_FIFO);
-    thread_attr_set_priority(&attr, TEST_PRIO_C);
-    thread_attr_set_cpumap(&attr, cpumap);
-    error = thread_create(&thread, &attr, test_c, NULL);
-    error_check(error, "thread_create");
+  struct thread *thread;
+  error = thread_create (&thread, &attr, test_a, NULL);
+  error_check (error, "thread_create");
 
-    thread_attr_init(&attr, THREAD_KERNEL_PREFIX "test_chprio_c");
-    thread_attr_set_detached(&attr);
-    error = thread_create(&thread, &attr, test_chprio_c, thread);
-    error_check(error, "thread_create");
+  cpumap_zero (cpumap);
+  cpumap_set (cpumap, 1);
+  thread_attr_init (&attr, THREAD_KERNEL_PREFIX "test_manage_b");
+  thread_attr_set_detached (&attr);
+  thread_attr_set_policy (&attr, THREAD_SCHED_POLICY_FIFO);
+  thread_attr_set_priority (&attr, TEST_PRIO_B);
+  thread_attr_set_cpumap (&attr, cpumap);
+  error = thread_create (&thread, &attr, test_manage_b, NULL);
+  error_check (error, "thread_create");
 
-    cpumap_zero(cpumap);
-    cpumap_set(cpumap, 3);
-    thread_attr_init(&attr, THREAD_KERNEL_PREFIX "test_d");
-    thread_attr_set_detached(&attr);
-    thread_attr_set_policy(&attr, THREAD_SCHED_POLICY_FIFO);
-    thread_attr_set_priority(&attr, TEST_PRIO_D);
-    thread_attr_set_cpumap(&attr, cpumap);
-    error = thread_create(&thread, &attr, test_d, NULL);
-    error_check(error, "thread_create");
+  cpumap_zero (cpumap);
+  cpumap_set (cpumap, 2);
+  thread_attr_init (&attr, THREAD_KERNEL_PREFIX "test_c");
+  thread_attr_set_detached (&attr);
+  thread_attr_set_policy (&attr, THREAD_SCHED_POLICY_FIFO);
+  thread_attr_set_priority (&attr, TEST_PRIO_C);
+  thread_attr_set_cpumap (&attr, cpumap);
+  error = thread_create (&thread, &attr, test_c, NULL);
+  error_check (error, "thread_create");
 
-    cpumap_zero(cpumap);
-    cpumap_set(cpumap, 4);
-    thread_attr_init(&attr, THREAD_KERNEL_PREFIX "test_e");
-    thread_attr_set_detached(&attr);
-    thread_attr_set_policy(&attr, THREAD_SCHED_POLICY_FIFO);
-    thread_attr_set_priority(&attr, TEST_PRIO_E);
-    thread_attr_set_cpumap(&attr, cpumap);
-    error = thread_create(&thread, &attr, test_e, NULL);
-    error_check(error, "thread_create");
+  thread_attr_init (&attr, THREAD_KERNEL_PREFIX "test_chprio_c");
+  thread_attr_set_detached (&attr);
+  error = thread_create (&thread, &attr, test_chprio_c, thread);
+  error_check (error, "thread_create");
 
-    cpumap_destroy(cpumap);
+  cpumap_zero (cpumap);
+  cpumap_set (cpumap, 3);
+  thread_attr_init (&attr, THREAD_KERNEL_PREFIX "test_d");
+  thread_attr_set_detached (&attr);
+  thread_attr_set_policy (&attr, THREAD_SCHED_POLICY_FIFO);
+  thread_attr_set_priority (&attr, TEST_PRIO_D);
+  thread_attr_set_cpumap (&attr, cpumap);
+  error = thread_create (&thread, &attr, test_d, NULL);
+  error_check (error, "thread_create");
+
+  cpumap_zero (cpumap);
+  cpumap_set (cpumap, 4);
+  thread_attr_init (&attr, THREAD_KERNEL_PREFIX "test_e");
+  thread_attr_set_detached (&attr);
+  thread_attr_set_policy (&attr, THREAD_SCHED_POLICY_FIFO);
+  thread_attr_set_priority (&attr, TEST_PRIO_E);
+  thread_attr_set_cpumap (&attr, cpumap);
+  error = thread_create (&thread, &attr, test_e, NULL);
+  error_check (error, "thread_create");
+
+  cpumap_destroy (cpumap);
+
+  log_info ("test (mutex-pi): done");
+  return (TEST_OK);
 }

@@ -24,17 +24,17 @@
 #include <kern/log.h>
 #include <test/test.h>
 
-typedef struct
+struct test_stream
 {
   struct stream base;
   char *buf;
   uint32_t len;
-} test_stream_t;
+};
 
 static void
 test_stream_write (struct stream *stream, const void *data, uint32_t bytes)
 {
-  test_stream_t *sp = (test_stream_t *)stream;
+  _Auto sp = (struct test_stream *) stream;
   for (uint32_t i = 0; i < bytes; ++i)
     {
       int ch = ((const char *)data)[i];
@@ -50,47 +50,42 @@ static const struct stream_ops test_stream_ops =
 };
 
 static void
-test_sscanf(void)
+test_sscanf (void)
 {
-    int rv, x1, x2;
-    char c1, c2;
+  int x1, x2;
+  char c1, c2;
 
-    rv = fmt_sscanf("123 qx -45", "%d %c%c %d", &x1, &c1, &c2, &x2);
-    assert(rv == 4);
-    assert(x1 == 123);
-    assert(c1 == 'q');
-    assert(c2 == 'x');
-    assert(x2 == -45);
+  int rv = fmt_sscanf ("123 qx -45", "%d %c%c %d", &x1, &c1, &c2, &x2);
+  assert (rv == 4);
+  assert (x1 == 123);
+  assert (c1 == 'q');
+  assert (c2 == 'x');
+  assert (x2 == -45);
 }
 
-void __init
-test_setup(void)
+TEST_ENTRY_INIT (fmt)
 {
-    char buf[32];
-    test_stream_t stream;
-    int rv;
+  char buf[32];
+  int rv = fmt_sprintf (buf, "hello %d %s", -4, "???");
+  assert (rv == 12);
+  rv = strcmp (buf, "hello -4 ???");
+  assert (rv == 0);
 
-    rv = fmt_sprintf(buf, "hello %d %s", -4, "???");
-    assert(rv == 12);
-    rv = strcmp(buf, "hello -4 ???");
-    assert(rv == 0);
+  rv = fmt_snprintf (buf, 4, "abc%d", 33);
+  assert (rv == 5);
+  buf[rv - 1] = '\0';
+  rv = strcmp (buf, "abc3");
+  assert (rv == 0);
 
-    rv = fmt_snprintf(buf, 4, "abc%d", 33);
-    assert(rv == 5);
-    buf[rv - 1] = '\0';
-    rv = strcmp(buf, "abc3");
-    assert(rv == 0);
+  struct test_stream stream = { .buf = buf, .len = 0 };
+  stream_init (&stream.base, &test_stream_ops);
 
-    stream_init (&stream.base, &test_stream_ops);
-    stream.buf = buf;
-    stream.len = 0;
+  rv = fmt_xprintf (&stream.base, "HELLO %d", -1);
+  assert (rv > 0);
+  buf[rv] = '\0';
+  assert (strcmp (buf, "hello -1") == 0);
 
-    rv = fmt_xprintf(&stream.base, "HELLO %d", -1);
-    assert(rv > 0);
-    buf[rv] = '\0';
-    assert(strcmp(buf, "hello -1") == 0);
-
-    test_sscanf();
-
-    log_info("test (fmt) done");
+  test_sscanf ();
+  log_info ("test (fmt) done");
+  return (TEST_OK);
 }

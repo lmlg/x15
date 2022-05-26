@@ -18,6 +18,7 @@
 #ifndef KERN_SYMBOL_H
 #define KERN_SYMBOL_H
 
+#include <stdbool.h>
 #include <stdint.h>
 
 #include <kern/macros.h>
@@ -36,11 +37,31 @@ struct symbol
   const char *name;
 };
 
+// Symbol table iterator.
+struct symbol_iter
+{
+  size_t idx;
+  const struct symbol *symbol;
+};
+
 /*
  * Look up a symbol from an address.
  *
  * NULL is returned if no symbol was found for the given address.
  */
 const struct symbol* symbol_lookup (uintptr_t addr);
+
+// Initialize a symbol table iterator.
+void symbol_iter_init (struct symbol_iter *iter);
+
+// Move the symbol table iterator. Returns true if there are still entries.
+bool symbol_iter_next (struct symbol_iter *iter);
+
+// Test if an iterator is valid.
+static inline bool
+symbol_iter_valid (const struct symbol_iter *iter)
+{
+  return (iter->symbol != NULL);
+}
 
 #endif

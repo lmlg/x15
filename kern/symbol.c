@@ -47,3 +47,42 @@ symbol_lookup (uintptr_t addr)
 
   return (NULL);
 }
+
+static inline bool
+symbol_iter_adv (struct symbol_iter *iter)
+{
+  const struct symbol *table = symbol_table_ptr;
+  size_t size = symbol_table_size;
+
+  while (1)
+    {
+      const struct symbol *symbol = &table[iter->idx];
+      if (symbol->name && symbol->size)
+        {
+          iter->symbol = symbol;
+          return (true);
+        }
+      else if (++iter->idx >= size)
+        {
+          iter->symbol = NULL;
+          return (false);
+        }
+    }
+}
+
+void
+symbol_iter_init (struct symbol_iter *iter)
+{
+  iter->idx = 0;
+  symbol_iter_adv (iter);
+}
+
+bool
+symbol_iter_next (struct symbol_iter *iter)
+{
+  if (!symbol_iter_valid (iter))
+    return (false);
+
+  ++iter->idx;
+  return (symbol_iter_adv (iter));
+}

@@ -136,7 +136,7 @@ intr_ctl_create (const struct intr_ops *ops, void *priv,
   assert (ops);
   assert (first_intr < last_intr);
 
-  struct intr_ctl *ctl = kmem_alloc (sizeof (*ctl) );
+  struct intr_ctl *ctl = kmem_alloc (sizeof (*ctl));
   if (! ctl)
     panic ("intr: unable to allocate memory for controller");
 

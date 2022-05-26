@@ -41,143 +41,130 @@
 #include <kern/syscnt.h>
 #include <kern/thread.h>
 #include <kern/timer.h>
+
 #include <test/test.h>
 
-#define TEST_MIN_CPUS 3
+#define TEST_MIN_CPUS   3
 
-#define TEST_REPORT_INTERVAL 10000
+#define TEST_REPORT_INTERVAL   10000
 
-struct test {
-    struct mutex mutex;
-    unsigned int counter;
+struct test
+{
+  struct mutex mutex;
+  uint32_t counter;
 };
 
 static struct timer test_timer;
 
 static void
-test_run(void *arg)
+test_run (void *arg)
 {
-    unsigned int prev, counter;
-    struct test *test;
-    int error;
+  struct test *test = arg;
+  for (uint32_t counter = 1 ; ; ++counter)
+    {
+      if ((counter % 1024) == 0)
+        printf ("%s ", thread_self()->name);
 
-    test = arg;
-
-    for (counter = 1; /* no condition */; counter++) {
-        if ((counter % 1024) == 0) {
-            printf("%s ", thread_self()->name);
+      int error = mutex_timedlock (&test->mutex, clock_get_time () + 1);
+      if (error)
+        {
+          thread_delay (1, false);
+          continue;
         }
 
-        error = mutex_timedlock(&test->mutex, clock_get_time() + 1);
+      uint32_t prev = atomic_add (&test->counter, 1, ATOMIC_SEQ_CST);
+      if (prev)
+        break;
+      else if ((counter % 2) == 0)
+        cpu_delay (clock_ticks_to_ms (1) * 1000);
+      else
+        thread_delay (1, false);
 
-        if (error) {
-            thread_delay(1, false);
-            continue;
-        }
+      prev = atomic_sub (&test->counter, 1, ATOMIC_SEQ_CST);
+      if (prev != 1)
+        break;
 
-        prev = atomic_fetch_add(&test->counter, 1, ATOMIC_SEQ_CST);
+      mutex_unlock (&test->mutex);
 
-        if (prev != 0) {
-            break;
-        }
-
-        if ((counter % 2) == 0) {
-            cpu_delay(clock_ticks_to_ms(1) * 1000);
-        } else {
-            thread_delay(1, false);
-        }
-
-        prev = atomic_fetch_sub(&test->counter, 1, ATOMIC_SEQ_CST);
-
-        if (prev != 1) {
-            break;
-        }
-
-        mutex_unlock(&test->mutex);
-
-        if ((counter % 2) == 0) {
-            thread_delay(1, false);
-        }
+      if ((counter % 2) == 0)
+        thread_delay (1, false);
     }
 
-    panic("test: invalid counter value (%u)", test->counter);
+  panic ("test: invalid counter value (%u)", test->counter);
 }
 
 static struct test *
-test_create(unsigned int nr_threads)
+test_create (unsigned int nr_threads)
 {
-    char name[THREAD_NAME_SIZE];
-    struct thread_attr attr;
-    struct thread *thread;
-    struct cpumap *cpumap;
-    struct test *test;
-    int error;
+  assert (nr_threads);
 
-    assert(nr_threads);
+  struct test *test = kmem_alloc (sizeof (*test));
+  if (! test)
+    panic ("test: unable to allocate memory");
 
-    test = kmem_alloc(sizeof(*test));
+  mutex_init (&test->mutex);
+  test->counter = 0;
 
-    if (!test) {
-        panic("test: unable to allocate memory");
-    }
+  struct cpumap *cpumap;
+  int error = cpumap_create (&cpumap);
+  error_check (error, "cpumap_create");
 
-    mutex_init(&test->mutex);
-    test->counter = 0;
+  for (size_t i = 0; i < nr_threads; i++)
+    {
+      cpumap_zero (cpumap);
+      cpumap_set (cpumap, i % 3);
 
-    error = cpumap_create(&cpumap);
-    error_check(error, "cpumap_create");
+      char name[THREAD_NAME_SIZE];
+      snprintf (name, sizeof (name), THREAD_KERNEL_PREFIX "test_run:%u/%zu",
+                nr_threads, i);
 
-    for (size_t i = 0; i < nr_threads; i++) {
-        cpumap_zero(cpumap);
-        cpumap_set(cpumap, i % 3);
-        snprintf(name, sizeof(name), THREAD_KERNEL_PREFIX "test_run:%u/%zu",
-                 nr_threads, i);
-        thread_attr_init(&attr, name);
-        thread_attr_set_detached(&attr);
-        thread_attr_set_cpumap(&attr, cpumap);
+      struct thread_attr attr;
+      thread_attr_init (&attr, name);
+      thread_attr_set_detached (&attr);
+      thread_attr_set_cpumap (&attr, cpumap);
 
-        if (i < 2) {
-            thread_attr_set_policy(&attr, THREAD_SCHED_POLICY_RR);
-            thread_attr_set_priority(&attr, THREAD_SCHED_RT_PRIO_MIN + i);
+      if (i < 2)
+        {
+          thread_attr_set_policy (&attr, THREAD_SCHED_POLICY_RR);
+          thread_attr_set_priority (&attr, THREAD_SCHED_RT_PRIO_MIN + i);
         }
 
-        error = thread_create(&thread, &attr, test_run, test);
-        error_check(error, "thread_create");
+      error = thread_create (NULL, &attr, test_run, test);
+      error_check (error, "thread_create");
     }
 
-    return test;
+  return (test);
 }
 
 static void
-test_report_syscnt(struct timer *timer)
+test_report_syscnt (struct timer *timer)
 {
-    uint64_t time;
-
 #ifdef CONFIG_MUTEX_PI
-    syscnt_info("rtmutex", log_info);
-#else /* CONFIG_MUTEX_PI */
-    syscnt_info("mutex", log_info);
-#endif /* CONFIG_MUTEX_PI */
+  syscnt_info ("rtmutex", log_stream_info ());
+#else
+  syscnt_info ("mutex", log_stream_info ());
+#endif
 
-    time = timer_get_time(timer) + clock_ticks_from_ms(TEST_REPORT_INTERVAL);
-    timer_schedule(timer, time);
+  timer_schedule (timer, timer_get_time (timer) +
+                         clock_ticks_from_ms (TEST_REPORT_INTERVAL));
 }
 
-void __init
-test_setup(void)
+TEST_ENTRY_INIT (mutex)
 {
-    uint64_t time;
-
-    if (cpu_count() < TEST_MIN_CPUS) {
-        panic("test: at least %u processors are required", TEST_MIN_CPUS);
+  if (cpu_count() < TEST_MIN_CPUS)
+    {
+      log_err ("test: at least %u processors are required", TEST_MIN_CPUS);
+      return (TEST_SKIPPED);
     }
 
-    test_create(1);
-    test_create(2);
-    test_create(3);
-    test_create(10);
+  test_create (1);
+  test_create (2);
+  test_create (3);
+  test_create (10);
 
-    timer_init(&test_timer, test_report_syscnt, TIMER_DETACHED);
-    time = clock_get_time() + clock_ticks_from_ms(TEST_REPORT_INTERVAL);
-    timer_schedule(&test_timer, time);
+  timer_init (&test_timer, test_report_syscnt, TIMER_DETACHED);
+  timer_schedule (&test_timer, clock_get_time () +
+                               clock_ticks_from_ms (TEST_REPORT_INTERVAL));
+
+  return (TEST_OK);
 }

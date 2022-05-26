@@ -111,10 +111,8 @@ atcons_process_esc_seq (char c)
 }
 
 static void
-atcons_putc (struct console *console, char c)
+atcons_putc (char c)
 {
-  (void)console;
-
   if (c == '\e')
     {
       atcons_escape = true;
@@ -127,10 +125,10 @@ atcons_putc (struct console *console, char c)
 }
 
 static void
-atcons_puts (struct console *console, const char *s, size_t size)
+atcons_puts (struct console *console __unused, const char *s, size_t size)
 {
   while (size--)
-    atcons_putc (console, *s++);
+    atcons_putc (*s++);
 }
 
 static const struct console_ops atcons_ops =

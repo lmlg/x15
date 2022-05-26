@@ -30,16 +30,16 @@ static struct console_stream console_stream_storage;
 struct stream *console_stream;
 
 static void
-console_stream_write (struct stream *strm, const void *data, uint32_t bytes)
+console_stream_write (struct stream *strm __unused,
+                      const void *data, uint32_t bytes)
 {
-  (void)strm;
   console_puts_nolock (data, bytes);
 }
 
 static int32_t
-console_stream_read (struct stream *strm, void *data, uint32_t bytes)
+console_stream_read (struct stream *strm __unused,
+                     void *data, uint32_t bytes)
 {
-  (void)strm;
   return ((int32_t)console_gets_nolock ((char *)data, bytes));
 }
 

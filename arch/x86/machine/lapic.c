@@ -172,9 +172,8 @@ lapic_eoi (void)
 #ifdef CONFIG_PERFMON
 
 static void
-lapic_pmc_overflow_intr (uint32_t vector)
+lapic_pmc_overflow_intr (uint32_t vector __unused)
 {
-  (void) vector;
   lapic_eoi ();
 
   // Reset the LVT entry as it is automatically cleared when triggered.
@@ -185,27 +184,24 @@ lapic_pmc_overflow_intr (uint32_t vector)
 #endif
 
 static void
-lapic_timer_intr (unsigned int vector)
+lapic_timer_intr (uint32_t vector __unused)
 {
-  (void) vector;
   lapic_eoi ();
   clock_tick_intr ();
 }
 
 static void
-lapic_error_intr (unsigned int vector)
+lapic_error_intr (uint32_t vector __unused)
 {
-  (void)vector;
   uint32_t esr = lapic_read (&lapic_map->esr);
-  log_err ("lapic: error on cpu%u: esr:%08x", cpu_id (), (unsigned int)esr);
+  log_err ("lapic: error on cpu%u: esr:%08x", cpu_id (), esr);
   lapic_write (&lapic_map->esr, 0);
   lapic_eoi ();
 }
 
 static void
-lapic_spurious_intr (uint32_t vector)
+lapic_spurious_intr (uint32_t vector __unused)
 {
-  (void)vector;
   log_warning ("lapic: spurious interrupt");
   // No EOI for this interrupt.
 }

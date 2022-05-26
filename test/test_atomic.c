@@ -31,12 +31,13 @@
 #include <kern/init.h>
 #include <kern/log.h>
 #include <kern/macros.h>
+
 #include <test/test.h>
 
 #ifdef CONFIG_TEST_MODULE_ATOMIC_64
-typedef uint64_t test_int_t;
+  typedef uint64_t test_int_t;
 #else
-typedef unsigned long test_int_t;
+  typedef unsigned long test_int_t;
 #endif
 
 /*
@@ -52,316 +53,190 @@ test_int_t test_n;
  */
 
 static __noinline test_int_t
-test_atomic_load(test_int_t *n)
+test_atomic_load (test_int_t *n)
 {
-    return atomic_load(n, ATOMIC_RELAXED);
+  return (atomic_load_rlx (n));
 }
 
 static __noinline void
-test_atomic_store(test_int_t *n, test_int_t val)
+test_atomic_store (test_int_t *n, test_int_t val)
 {
-    atomic_store(n, val, ATOMIC_RELAXED);
+  atomic_store_rlx (n, val);
 }
 
 static __noinline test_int_t
-test_atomic_cas(test_int_t *n, test_int_t oval, test_int_t nval)
+test_atomic_cas (test_int_t *n, test_int_t oval, test_int_t nval)
 {
-    return atomic_cas(n, oval, nval, ATOMIC_RELAXED);
+  return (atomic_cas_rlx (n, oval, nval));
 }
 
 static __noinline test_int_t
-test_atomic_swap(test_int_t *n, test_int_t val)
+test_atomic_swap (test_int_t *n, test_int_t val)
 {
-    return atomic_swap(n, val, ATOMIC_RELAXED);
+  return (atomic_swap_rlx (n, val));
 }
 
 static __noinline test_int_t
-test_atomic_fetch_add(test_int_t *n, test_int_t val)
+test_atomic_fetch_add (test_int_t *n, test_int_t val)
 {
-    return atomic_fetch_add(n, val, ATOMIC_RELAXED);
+  return (atomic_add_rlx (n, val));
 }
 
 static __noinline test_int_t
-test_atomic_fetch_sub(test_int_t *n, test_int_t val)
+test_atomic_fetch_sub (test_int_t *n, test_int_t val)
 {
-    return atomic_fetch_sub(n, val, ATOMIC_RELAXED);
+  return (atomic_sub_rlx (n, val));
 }
 
 static __noinline test_int_t
-test_atomic_fetch_and(test_int_t *n, test_int_t val)
+test_atomic_fetch_and (test_int_t *n, test_int_t val)
 {
-    return atomic_fetch_and(n, val, ATOMIC_RELAXED);
+  return (atomic_and_rlx (n, val));
 }
 
 static __noinline test_int_t
-test_atomic_fetch_or(test_int_t *n, test_int_t val)
+test_atomic_fetch_or (test_int_t *n, test_int_t val)
 {
-    return atomic_fetch_or(n, val, ATOMIC_RELAXED);
+  return (atomic_or_rlx (n, val));
 }
 
 static __noinline test_int_t
-test_atomic_fetch_xor(test_int_t *n, test_int_t val)
+test_atomic_fetch_xor (test_int_t *n, test_int_t val)
 {
-    return atomic_fetch_xor(n, val, ATOMIC_RELAXED);
-}
-
-static __noinline void
-test_atomic_add(test_int_t *n, test_int_t val)
-{
-    atomic_add(n, val, ATOMIC_RELAXED);
-}
-
-static __noinline void
-test_atomic_sub(test_int_t *n, test_int_t val)
-{
-    atomic_sub(n, val, ATOMIC_RELAXED);
-}
-
-static __noinline void
-test_atomic_and(test_int_t *n, test_int_t val)
-{
-    atomic_and(n, val, ATOMIC_RELAXED);
-}
-
-static __noinline void
-test_atomic_or(test_int_t *n, test_int_t val)
-{
-    atomic_or(n, val, ATOMIC_RELAXED);
-}
-
-static __noinline void
-test_atomic_xor(test_int_t *n, test_int_t val)
-{
-    atomic_xor(n, val, ATOMIC_RELAXED);
+  return (atomic_xor_rlx (n, val));
 }
 
 static void
-test_check_n(test_int_t val, const char *fn)
+test_check_n (test_int_t val, const char *fn)
 {
-    volatile test_int_t *ptr;
-    int error;
-
-    ptr = &test_n;
-    error = (val == *ptr) ? 0 : EINVAL;
-    error_check(error, fn);
+  volatile test_int_t *ptr = &test_n;
+  int error = val == *ptr ? 0 : EINVAL;
+  error_check (error, fn);
 }
 
 static void
-test_load(void)
+test_load (void)
 {
-    test_int_t n;
-
-    n = test_atomic_load(&test_n);
-    test_check_n(n, __func__);
+  test_int_t n = test_atomic_load (&test_n);
+  test_check_n (n, __func__);
 }
 
 static void
-test_store(void)
+test_store (void)
 {
-    test_int_t val;
-
-    val = 0x123;
-    test_atomic_store(&test_n, val);
-    test_check_n(val, __func__);
+  test_int_t val = 0x123;
+  test_atomic_store (&test_n, val);
+  test_check_n (val, __func__);
 }
 
 static void
-test_cas_match(void)
+test_cas_match (void)
 {
-    test_int_t prev, oval, nval;
-    int error;
+  test_int_t oval = 0, nval = 0x123;
+  test_n = oval;
 
-    oval = 0;
-    nval = 0x123;
-    test_n = oval;
-    prev = test_atomic_cas(&test_n, oval, nval);
-    error = (prev == oval) ? 0 : EINVAL;
-    error_check(error, __func__);
-    test_check_n(nval, __func__);
+  test_int_t prev = test_atomic_cas (&test_n, oval, nval);
+  int error = prev == oval ? 0 : EINVAL;
+  error_check (error, __func__);
+  test_check_n (nval, __func__);
 }
 
 static void
-test_cas_nomatch(void)
+test_cas_nomatch (void)
 {
-    test_int_t prev, oval, nval;
-    int error;
+  test_int_t oval = 0, nval = 0x123;
+  test_n = oval;
 
-    oval = 0;
-    nval = 0x123;
-    test_n = oval;
-    prev = test_atomic_cas(&test_n, oval + 1, nval);
-    error = (prev == oval) ? 0 : EINVAL;
-    error_check(error, __func__);
-    test_check_n(oval, __func__);
+  test_int_t prev = test_atomic_cas (&test_n, oval + 1, nval);
+  int error = prev == oval ? 0 : EINVAL;
+  error_check (error, __func__);
+  test_check_n (oval, __func__);
 }
 
 static void
-test_swap(void)
+test_swap (void)
 {
-    test_int_t prev, oval, nval;
-    int error;
+  test_int_t oval = 0, nval = 0x123;
+  test_n = oval;
 
-    oval = 0;
-    nval = 0x123;
-    test_n = oval;
-    prev = test_atomic_swap(&test_n, nval);
-    error = (prev == oval) ? 0 : EINVAL;
-    error_check(error, __func__);
-    test_check_n(nval, __func__);
+  test_int_t prev = test_atomic_swap (&test_n, nval);
+  int error = prev == oval ? 0 : EINVAL;
+  error_check (error, __func__);
+  test_check_n (nval, __func__);
 }
 
 static void
-test_fetch_add(void)
+test_fetch_add (void)
 {
-    test_int_t prev, oval, delta;
-    int error;
+  test_int_t oval = 0x123, delta = 0x456;
+  test_n = oval;
 
-    oval = 0x123;
-    delta = 0x456;
-    test_n = oval;
-    prev = test_atomic_fetch_add(&test_n, delta);
-    error = (prev == oval) ? 0 : EINVAL;
-    error_check(error, __func__);
-    test_check_n(oval + delta, __func__);
+  test_int_t prev = test_atomic_fetch_add (&test_n, delta);
+  int error = prev == oval ? 0 : EINVAL;
+  error_check (error, __func__);
+  test_check_n (oval + delta, __func__);
 }
 
 static void
-test_fetch_sub(void)
+test_fetch_sub (void)
 {
-    test_int_t prev, oval, delta;
-    int error;
+  test_int_t oval = 0x123, delta = 0x456;
+  test_n = oval;
 
-    oval = 0x123;
-    delta = 0x456;
-    test_n = oval;
-    prev = test_atomic_fetch_sub(&test_n, delta);
-    error = (prev == oval) ? 0 : EINVAL;
-    error_check(error, __func__);
-    test_check_n(oval - delta, __func__);
+  test_int_t prev = test_atomic_fetch_sub (&test_n, delta);
+  int error = prev == oval ? 0 : EINVAL;
+  error_check (error, __func__);
+  test_check_n (oval - delta, __func__);
 }
 
 static void
-test_fetch_and(void)
+test_fetch_and (void)
 {
-    test_int_t prev, oval, delta;
-    int error;
+  test_int_t oval = 0x123, delta = 0x456;
+  test_n = oval;
 
-    oval = 0x123;
-    delta = 0x456;
-    test_n = oval;
-    prev = test_atomic_fetch_and(&test_n, delta);
-    error = (prev == oval) ? 0 : EINVAL;
-    error_check(error, __func__);
-    test_check_n(oval & delta, __func__);
+  test_int_t prev = test_atomic_fetch_and (&test_n, delta);
+  int error = prev == oval ? 0 : EINVAL;
+  error_check (error, __func__);
+  test_check_n (oval & delta, __func__);
 }
 
 static void
-test_fetch_or(void)
+test_fetch_or (void)
 {
-    test_int_t prev, oval, delta;
-    int error;
+  test_int_t oval = 0x123, delta = 0x456;
+  test_n = oval;
 
-    oval = 0x123;
-    delta = 0x456;
-    test_n = oval;
-    prev = test_atomic_fetch_or(&test_n, delta);
-    error = (prev == oval) ? 0 : EINVAL;
-    error_check(error, __func__);
-    test_check_n(oval | delta, __func__);
+  test_int_t prev = test_atomic_fetch_or (&test_n, delta);
+  int error = prev == oval ? 0 : EINVAL;
+  error_check (error, __func__);
+  test_check_n (oval | delta, __func__);
 }
 
 static void
-test_fetch_xor(void)
+test_fetch_xor (void)
 {
-    test_int_t prev, oval, delta;
-    int error;
+  test_int_t oval = 0x123, delta = 0x456;
+  test_n = oval;
 
-    oval = 0x123;
-    delta = 0x456;
-    test_n = oval;
-    prev = test_atomic_fetch_xor(&test_n, delta);
-    error = (prev == oval) ? 0 : EINVAL;
-    error_check(error, __func__);
-    test_check_n(oval ^ delta, __func__);
+  test_int_t prev = test_atomic_fetch_xor (&test_n, delta);
+  int error = prev == oval ? 0 : EINVAL;
+  error_check (error, __func__);
+  test_check_n (oval ^ delta, __func__);
 }
 
-static void
-test_add(void)
+TEST_ENTRY_INIT (atomic_ops)
 {
-    test_int_t oval, delta;
-
-    oval = 0x123;
-    delta = 0x456;
-    test_n = oval;
-    test_atomic_add(&test_n, delta);
-    test_check_n(oval + delta, __func__);
-}
-
-static void
-test_sub(void)
-{
-    test_int_t oval, delta;
-
-    oval = 0x123;
-    delta = 0x456;
-    test_n = oval;
-    test_atomic_sub(&test_n, delta);
-    test_check_n(oval - delta, __func__);
-}
-
-static void
-test_and(void)
-{
-    test_int_t oval, delta;
-
-    oval = 0x123;
-    delta = 0x456;
-    test_n = oval;
-    test_atomic_and(&test_n, delta);
-    test_check_n(oval & delta, __func__);
-}
-
-static void
-test_or(void)
-{
-    test_int_t oval, delta;
-
-    oval = 0x123;
-    delta = 0x456;
-    test_n = oval;
-    test_atomic_or(&test_n, delta);
-    test_check_n(oval | delta, __func__);
-}
-
-static void
-test_xor(void)
-{
-    test_int_t oval, delta;
-
-    oval = 0x123;
-    delta = 0x456;
-    test_n = oval;
-    test_atomic_xor(&test_n, delta);
-    test_check_n(oval ^ delta, __func__);
-}
-
-void __init
-test_setup(void)
-{
-    test_load();
-    test_store();
-    test_cas_match();
-    test_cas_nomatch();
-    test_swap();
-    test_fetch_add();
-    test_fetch_sub();
-    test_fetch_and();
-    test_fetch_or();
-    test_fetch_xor();
-    test_add();
-    test_sub();
-    test_and();
-    test_or();
-    test_xor();
-    log_info("test: done");
+  test_load ();
+  test_store ();
+  test_cas_match ();
+  test_cas_nomatch ();
+  test_swap ();
+  test_fetch_add ();
+  test_fetch_sub ();
+  test_fetch_and ();
+  test_fetch_or ();
+  test_fetch_xor ();
+  log_info ("test (atomic): done");
+  return (TEST_OK);
 }

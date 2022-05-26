@@ -33,7 +33,7 @@ kernel_main (void)
   init_setup();
   vm_page_info (log_stream_info ());
 
-#ifdef CONFIG_TEST_MODULE
+#ifdef CONFIG_RUN_TEST
   test_setup ();
 #endif
 

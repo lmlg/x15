@@ -230,7 +230,7 @@ pmu_intel_handle_overflow_intr (void)
   pmu_intel_ack_status (status);
   struct pmu_intel *pmu = pmu_intel_get ();
 
-  status &= ( (1ULL << pmu->pmc_width) - 1);
+  status &= ((1ULL << pmu->pmc_width) - 1);
 
   for (;;)
     {

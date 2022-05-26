@@ -42,81 +42,69 @@
 #include <kern/sref.h>
 #include <kern/syscnt.h>
 #include <kern/thread.h>
+
 #include <test/test.h>
-#include <vm/vm_kmem.h>
+
+#include <vm/kmem.h>
 
 static struct sref_weakref test_weakref;
 
 static void
-test_noref(struct sref_counter *counter)
+test_noref (struct sref_counter *counter)
 {
-    vm_kmem_free(counter, sizeof(*counter));
+  vm_kmem_free (counter, sizeof (*counter));
 }
 
 static void
-test_run(void *arg)
+test_run (void *arg __unused)
 {
-    struct sref_counter *counter;
-    volatile unsigned long j;
-    unsigned long i;
+  for (unsigned long i = 1 ; ; i++)
+    {
+      struct sref_counter *counter = vm_kmem_alloc (sizeof (*counter));
+      if (! counter)
+        continue;
 
-    (void)arg;
+      sref_counter_init (counter, 1, &test_weakref, test_noref);
+      sref_counter_dec (counter);
 
-    for (i = 1; /* no condition */; i++) {
-        counter = vm_kmem_alloc(sizeof(*counter));
+      for (volatile unsigned long j = 0; j < 0x20000000; j++)
+        ;
 
-        if (counter == NULL) {
-            continue;
-        }
-
-        sref_counter_init(counter, 1, &test_weakref, test_noref);
-        sref_counter_dec(counter);
-
-        for (j = 0; j < 0x20000000; j++);
-
-        printf("run: iterations: %lu\n", i);
-        syscnt_info("sref_epoch", log_info);
-        syscnt_info("sref_dirty_zero", log_info);
-        syscnt_info("sref_revive", log_info);
-        syscnt_info("sref_true_zero", log_info);
+      printf ("run: iterations: %lu\n", i);
+      syscnt_info ("sref_epoch", log_stream_info ());
+      syscnt_info ("sref_dirty_zero", log_stream_info ());
+      syscnt_info ("sref_revive", log_stream_info ());
+      syscnt_info ("sref_true_zero", log_stream_info ());
     }
 }
 
 static void
-test_ref(void *arg)
+test_ref (void *arg __unused)
 {
-    struct sref_counter *counter;
-    unsigned long i;
+  for (unsigned long i = 1 ; ; i++)
+    {
+      struct sref_counter *counter = sref_weakref_get (&test_weakref);
+      if (counter)
+        sref_counter_dec (counter);
 
-    (void)arg;
-
-    for (i = 1; /* no condition */; i++) {
-        counter = sref_weakref_get(&test_weakref);
-
-        if (counter != NULL) {
-            sref_counter_dec(counter);
-        }
-
-        if ((i % 100000000) == 0) {
-            printf("ref: iterations: %lu\n", i);
-        }
+      if ((i % 100000000) == 0)
+        printf ("ref: iterations: %lu\n", i);
     }
 }
 
-void __init
-test_setup(void)
+TEST_ENTRY_INIT (sref_weakref)
 {
-    struct thread_attr attr;
-    struct thread *thread;
-    int error;
+  struct thread_attr attr;
+  thread_attr_init (&attr, THREAD_KERNEL_PREFIX "test_run");
+  thread_attr_set_detached (&attr);
 
-    thread_attr_init(&attr, THREAD_KERNEL_PREFIX "test_run");
-    thread_attr_set_detached(&attr);
-    error = thread_create(&thread, &attr, test_run, NULL);
-    error_check(error, "thread_create");
+  int error = thread_create (NULL, &attr, test_run, NULL);
+  error_check (error, "thread_create");
 
-    thread_attr_init(&attr, THREAD_KERNEL_PREFIX "test_ref");
-    thread_attr_set_detached(&attr);
-    error = thread_create(&thread, &attr, test_ref, NULL);
-    error_check(error, "thread_create");
+  thread_attr_init (&attr, THREAD_KERNEL_PREFIX "test_ref");
+  thread_attr_set_detached (&attr);
+  error = thread_create (NULL, &attr, test_ref, NULL);
+  error_check (error, "thread_create");
+
+  return (TEST_OK);
 }

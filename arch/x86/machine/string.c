@@ -195,7 +195,7 @@ strchr (const char *s, int c)
                 "1:\n"
                 "dec %0\n"
                 : "+S" (s)
-                : "c" ( (char) c)
+                : "c" ((char) c)
                 : "al", "memory");
   return ((char *)s);
 }

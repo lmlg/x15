@@ -2,7 +2,7 @@
 # For a description of the syntax of this configuration file,
 # see doc/kbuild/kconfig-language.txt.
 #
-mainmenu "X15/$ARCH $VERSION Kernel Configuration"
+mainmenu "x15/$ARCH $VERSION Kernel Configuration"
 
 config ARCH
 	string

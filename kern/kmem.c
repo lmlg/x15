@@ -1020,10 +1020,8 @@ kmem_lookup_cache (const char *name)
 }
 
 static void
-kmem_shell_info (struct shell *shell, int argc, char **argv)
+kmem_shell_info (struct shell *shell __unused, int argc, char **argv)
 {
-  (void)shell;
-
   if (argc < 2)
     kmem_info (shell->stream);
   else

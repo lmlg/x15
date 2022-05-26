@@ -103,11 +103,8 @@ pic_read_isr (uint16_t port)
 }
 
 static void
-pic_ops_enable (void *priv, uint32_t intr, uint32_t cpu)
+pic_ops_enable (void *priv __unused, uint32_t intr, uint32_t cpu __unused)
 {
-  (void)priv;
-  (void)cpu;
-
   if (pic_is_slave_intr (intr))
     {
       pic_slave_mask &= ~ (1 << (intr - PIC_NR_INTRS));
@@ -122,9 +119,8 @@ pic_ops_enable (void *priv, uint32_t intr, uint32_t cpu)
 }
 
 static void
-pic_ops_disable (void *priv, uint32_t intr)
+pic_ops_disable (void *priv __unused, uint32_t intr)
 {
-  (void)priv;
   if (pic_is_slave_intr (intr))
     {
       pic_dec_slave_intrs ();
@@ -139,9 +135,8 @@ pic_ops_disable (void *priv, uint32_t intr)
 }
 
 static void
-pic_ops_eoi (void *priv, uint32_t intr)
+pic_ops_eoi (void *priv __unused, uint32_t intr)
 {
-  (void) priv;
   pic_eoi (intr);
 }
 

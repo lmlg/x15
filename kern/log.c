@@ -137,10 +137,8 @@ log_print_record (const struct log_record *record, unsigned int level)
 }
 
 static void
-log_run (void *arg)
+log_run (void *arg __unused)
 {
-  (void)arg;
-
   bool published = false;
   unsigned long flags;
 
@@ -214,10 +212,8 @@ log_dump (unsigned int level)
 }
 
 static void
-log_shell_dump (struct shell *shell, int argc, char **argv)
+log_shell_dump (struct shell *shell __unused, int argc, char **argv)
 {
-  (void)shell;
-
   unsigned int level;
 
   if (argc != 2)
@@ -352,7 +348,7 @@ log_setup (void)
   arg_log_info ();
   cpu_log_info (cpu_current ());
 
-  return 0;
+  return (0);
 }
 
 INIT_OP_DEFINE (log_setup,

@@ -130,7 +130,7 @@ init_op_init (struct init_op *op)
   for (size_t i = 0; i < op->nr_deps; i++)
     {
       _Auto dep = init_op_get_dep (op, i);
-      dep->op->nr_parents++;
+      ++dep->op->nr_parents;
       assert (dep->op->nr_parents);
     }
 }
@@ -209,10 +209,10 @@ struct init_debug_log
  */
 struct init_debug_logs
 {
-  struct init_debug_log roots;    /* graph roots */
-  struct init_debug_log cycles;   /* operations with dependency cycles */
-  struct init_debug_log pending;  /* operations successfully sorted */
-  struct init_debug_log complete; /* executed operations */
+  struct init_debug_log roots;      // graph roots.
+  struct init_debug_log cycles;     // operations with dependency cycles.
+  struct init_debug_log pending;    // operations successfully sorted.
+  struct init_debug_log complete;   // executed operations.
 };
 
 static struct init_debug_logs init_debug_logs;
@@ -257,11 +257,9 @@ init_debug_append_complete (const struct init_op *op)
 static void __init
 init_debug_scan_not_pending (void)
 {
-  for (_Auto op = &_init_ops; op < &_init_ops_end; op++)
-    {
-      if (!init_op_pending (op))
-        init_debug_append_cycle (op);
-    }
+  for (_Auto op = &_init_ops; op < &_init_ops_end; ++op)
+    if (!init_op_pending (op))
+      init_debug_append_cycle (op);
 }
 
 #else
@@ -288,7 +286,7 @@ init_op_visit (struct init_op *op, struct init_ops_stack *stack)
     {
       _Auto dep = init_op_get_dep (op, i);
       assert (dep->op->nr_parents != 0);
-      dep->op->nr_parents--;
+      --dep->op->nr_parents;
 
       if (init_op_orphan (dep->op))
         init_ops_stack_push (stack, dep->op);
@@ -320,13 +318,11 @@ init_scan_roots (struct init_ops_stack *stack)
   init_ops_stack_init (stack);
 
   for (_Auto op = &_init_ops; op < &_init_ops_end; op++)
-    {
-      if (init_op_orphan (op))
-        {
-          init_ops_stack_push (stack, op);
-          init_debug_append_root (op);
-        }
-    }
+    if (init_op_orphan (op))
+      {
+        init_ops_stack_push (stack, op);
+        init_debug_append_root (op);
+      }
 }
 
 static void __init
@@ -335,7 +331,7 @@ init_scan_ops (struct init_ops_list *pending_ops)
   struct init_ops_stack stack;
   init_scan_roots (&stack);
 
-  for (;;)
+  while (1)
     {
       _Auto op = init_ops_stack_pop (&stack);
       if (! op)
@@ -348,7 +344,6 @@ init_scan_ops (struct init_ops_list *pending_ops)
   init_debug_scan_not_pending ();
 
   size_t nr_ops = &_init_ops_end - &_init_ops;
-
   if (init_ops_list_size (pending_ops) != nr_ops)
     cpu_halt ();
 }
@@ -356,7 +351,7 @@ init_scan_ops (struct init_ops_list *pending_ops)
 static void __init
 init_run_ops (struct init_ops_list *pending_ops)
 {
-  for (;;)
+  while (1)
     {
       _Auto op = init_ops_list_pop (pending_ops);
       if (! op)

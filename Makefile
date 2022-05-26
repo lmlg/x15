@@ -275,7 +275,7 @@ XBUILD_CFLAGS += $(call xbuild_check_cc_option,-Wa$(COMMA)--divide)
 XBUILD_CFLAGS += -Wall
 XBUILD_CFLAGS += -Wextra
 XBUILD_CFLAGS += -Wshadow
-XBUILD_CFLAGS += -Wmissing-prototypes
+#XBUILD_CFLAGS += -Wmissing-prototypes
 XBUILD_CFLAGS += -Wstrict-prototypes
 
 # XXX Temporary, until a single solution is adopted to silence these warnings.
@@ -295,6 +295,11 @@ x15_LDS_S := arch/$(ARCH)/x15.lds.S
 # Include the additional Makefiles here, as they may augment the build
 # variables.
 include $(MAKEFILE_INCLUDES)
+
+ifeq ($(shell grep "^CONFIG_TEST" .config > /dev/null; echo $$?), 0)
+  x15_SOURCES-y += test/test.c
+  XBUILD_CPPFLAGS += -DCONFIG_RUN_TEST
+endif
 
 # Export to Kconfig.
 # Must be defined by the architecture-specific Makefile.

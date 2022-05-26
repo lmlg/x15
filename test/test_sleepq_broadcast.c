@@ -31,74 +31,61 @@
 #include <kern/thread.h>
 #include <test/test.h>
 
-#define TEST_NR_WAITERS 2
+#define TEST_NR_WAITERS   2
 
 #if TEST_NR_WAITERS < 2
-#error "invalid number of waiters"
-#endif /* TEST_NR_WAITERS < 2 */
+  #error "invalid number of waiters"
+#endif
 
-static unsigned int test_dummy_sync_obj;
-
+static uint32_t test_dummy_sync_obj;
 static struct thread *test_waiters[TEST_NR_WAITERS];
 
 static void
-test_wait(void *arg)
+test_wait (void *arg __unused)
 {
-    struct sleepq *sleepq;
-
-    (void)arg;
-
-    sleepq = sleepq_lend(&test_dummy_sync_obj, false);
-    sleepq_wait(sleepq, "test");
-    sleepq_return(sleepq);
+  struct sleepq *sleepq = sleepq_lend (&test_dummy_sync_obj, false);
+  sleepq_wait (sleepq, "test");
+  sleepq_return (sleepq);
 }
 
 static void
-test_broadcast(void *arg)
+test_broadcast (void *arg __unused)
 {
-    struct sleepq *sleepq;
+  for (size_t i = 0; i < ARRAY_SIZE (test_waiters); i++)
+    while (thread_state (test_waiters[i]) != THREAD_SLEEPING)
+      thread_delay (1, false);
 
-    (void)arg;
+  struct sleepq *sleepq = sleepq_acquire (&test_dummy_sync_obj, false);
+  if (! sleepq)
+    panic ("test: unable to acquire sleep queue");
 
-    for (size_t i = 0; i < ARRAY_SIZE(test_waiters); i++) {
-        while (thread_state(test_waiters[i]) != THREAD_SLEEPING) {
-            thread_delay(1, false);
-        }
-    }
+  sleepq_broadcast (sleepq);
+  sleepq_release (sleepq);
 
-    sleepq = sleepq_acquire(&test_dummy_sync_obj, false);
+  for (size_t i = 0; i < ARRAY_SIZE (test_waiters); i++)
+    thread_join (test_waiters[i]);
 
-    if (!sleepq) {
-        panic("test: unable to acquire sleep queue");
-    }
-
-    sleepq_broadcast(sleepq);
-
-    sleepq_release(sleepq);
-
-    for (size_t i = 0; i < ARRAY_SIZE(test_waiters); i++) {
-        thread_join(test_waiters[i]);
-    }
-
-    log_info("test: done");
+  log_info ("test: done");
 }
 
-void __init
-test_setup(void)
+TEST_ENTRY_INIT (sleepq_broadcast)
 {
-    char name[THREAD_NAME_SIZE];
-    struct thread_attr attr;
-    int error;
+  struct thread_attr attr;
+  int error;
 
-    for (size_t i = 0; i < ARRAY_SIZE(test_waiters); i++) {
-        snprintf(name, sizeof(name), THREAD_KERNEL_PREFIX "test_wait:%zu", i);
-        thread_attr_init(&attr, name);
-        error = thread_create(&test_waiters[i], &attr, test_wait, NULL);
-        error_check(error, "thread_create");
+  for (size_t i = 0; i < ARRAY_SIZE (test_waiters); i++)
+    {
+      char name[THREAD_NAME_SIZE];
+      snprintf (name, sizeof (name), THREAD_KERNEL_PREFIX "test_wait:%zu", i);
+      thread_attr_init (&attr, name);
+      error = thread_create (&test_waiters[i], &attr, test_wait, NULL);
+      error_check (error, "thread_create");
     }
 
-    thread_attr_init(&attr, THREAD_KERNEL_PREFIX "test_broadcast");
-    thread_attr_set_detached(&attr);
-    error = thread_create(NULL, &attr, test_broadcast, NULL);
-    error_check(error, "thread_create");
+  thread_attr_init (&attr, THREAD_KERNEL_PREFIX "test_broadcast");
+  thread_attr_set_detached (&attr);
+  error = thread_create (NULL, &attr, test_broadcast, NULL);
+  error_check (error, "thread_create");
+
+  return (TEST_OK);
 }

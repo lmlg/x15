@@ -116,13 +116,10 @@ pmu_amd_translate (uint32_t *raw_event_idp, uint32_t event_id)
 }
 
 static int
-pmu_amd_alloc (uint32_t *pmc_idp, uint32_t pmc_index, uint32_t raw_event_id)
+pmu_amd_alloc (uint32_t *pmc_idp, uint32_t pmc_index __unused,
+               uint32_t raw_event_id __unused)
 {
   // TODO Per-family/model event availability database.
-
-  (void)pmc_index;
-  (void)raw_event_id;
-
   struct pmu_amd *pmu = pmu_amd_get ();
   if (!pmu->pmc_bm)
     return (EAGAIN);
@@ -135,7 +132,7 @@ pmu_amd_alloc (uint32_t *pmc_idp, uint32_t pmc_index, uint32_t raw_event_id)
 }
 
 static void
-pmu_amd_free (unsigned int pmc_id)
+pmu_amd_free (uint32_t pmc_id)
 {
   assert (pmc_id < PMU_AMD_NR_PMCS);
 

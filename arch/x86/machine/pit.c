@@ -45,9 +45,8 @@
 #define PIT_INTR   0
 
 static int
-pit_intr (void *arg)
+pit_intr (void *arg __unused)
 {
-  (void)arg;
   clock_tick_intr ();
   return (0);
 }

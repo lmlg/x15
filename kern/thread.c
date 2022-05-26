@@ -569,12 +569,11 @@ thread_runq_schedule_load (struct thread *thread)
 }
 
 static void
-thread_runq_schedule_unload (struct thread *thread)
+thread_runq_schedule_unload (struct thread *thread __unused)
 {
 #ifdef CONFIG_PERFMON
   perfmon_td_unload (thread_get_perfmon_td (thread));
 #endif
-  (void) thread;
 }
 
 static struct thread_runq*
@@ -751,9 +750,8 @@ thread_sched_rt_set_next (struct thread_runq *runq, struct thread *thread)
 }
 
 static void
-thread_sched_rt_tick (struct thread_runq *runq, struct thread *thread)
+thread_sched_rt_tick (struct thread_runq *runq __unused, struct thread *thread)
 {
-  (void) runq;
   if (thread_real_sched_policy (thread) != THREAD_SCHED_POLICY_RR ||
       --thread->rt_data.time_slice > 0)
     return;
@@ -1105,17 +1103,15 @@ thread_sched_fs_update_priority (struct thread *thread, uint16_t priority)
 }
 
 static unsigned int
-thread_sched_fs_get_global_priority (uint16_t priority)
+thread_sched_fs_get_global_priority (uint16_t priority __unused)
 {
-  (void)priority;
   return (THREAD_SCHED_GLOBAL_PRIO_FS);
 }
 
 static void
-thread_sched_fs_set_next (struct thread_runq *runq, struct thread *thread)
+thread_sched_fs_set_next (struct thread_runq *rq __unused, struct thread *thr)
 {
-  (void) runq;
-  list_remove (&thread->fs_data.group_node);
+  list_remove (&thr->fs_data.group_node);
 }
 
 static void
@@ -1372,9 +1368,8 @@ no_migration:
 }
 
 static struct thread_runq*
-thread_sched_idle_select_runq (struct thread *thread)
+thread_sched_idle_select_runq (struct thread *thread __unused)
 {
-  (void)thread;
   panic ("thread: idler threads cannot be awoken");
 }
 
@@ -1385,20 +1380,13 @@ thread_sched_idle_panic (void)
 }
 
 static void
-thread_sched_idle_add (struct thread_runq *runq, struct thread *thread)
+thread_sched_idle_add (struct thread_runq *runq __unused,
+                       struct thread *thread __unused)
 {
-  (void)runq;
-  (void)thread;
   thread_sched_idle_panic ();
 }
 
-static void
-thread_sched_idle_remove (struct thread_runq *runq, struct thread *thread)
-{
-  (void)runq;
-  (void)thread;
-  thread_sched_idle_panic ();
-}
+#define thread_sched_idle_remove   thread_sched_idle_add
 
 static struct thread*
 thread_sched_idle_get_next (struct thread_runq *runq)
@@ -1407,9 +1395,8 @@ thread_sched_idle_get_next (struct thread_runq *runq)
 }
 
 static uint32_t
-thread_sched_idle_get_global_priority (uint16_t priority)
+thread_sched_idle_get_global_priority (uint16_t priority __unused)
 {
-  (void)priority;
   return (THREAD_SCHED_GLOBAL_PRIO_IDLE);
 }
 
@@ -1889,11 +1876,9 @@ thread_setup_balancer (struct thread_runq *runq)
 }
 
 static void
-thread_idle (void *arg)
+thread_idle (void *arg __unused)
 {
-  (void)arg;
   struct thread *self = thread_self ();
-
   while (1)
     {
       thread_preempt_disable ();

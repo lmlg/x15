@@ -36,9 +36,8 @@ static struct adaptive_lock syscnt_lock;
 #ifdef CONFIG_SHELL
 
 static void
-syscnt_shell_info (struct shell *shell, int argc, char **argv)
+syscnt_shell_info (struct shell *shell __unused, int argc, char **argv)
 {
-  (void) shell;
   char *prefix = argc >= 2 ? argv[1] : NULL;
   syscnt_info (prefix, shell->stream);
 }

@@ -34,9 +34,9 @@ $compile -E -DKERN_INIT_H "$@" \
      | sed -e 's/#.*$//' \
      | tr '\n' ' ' \
      | tr -s ' ' \
-     | sed -E -e 's/INIT_OP_DEP.*\(([a-zA-Z0-9_]*), 1 \)/\1/g' \
-     | grep -P -o 'INIT_OP_DEFINE.*\(.*?\)' \
-     | sed -e 's/^INIT_OP_DEFINE.*(//' \
+     | sed -E -e 's/INIT_OP_DEP \(([a-zA-Z0-9_]*), 1 \)/\1/g' \
+     | grep -P -o 'INIT_OP_DEFINE \(.*?\)' \
+     | sed -e 's/^INIT_OP_DEFINE (//' \
      | sed -e 's/).*$//' \
      | tr -d , \
 | while read line; do

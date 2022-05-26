@@ -40,8 +40,10 @@
 #include <kern/sref.h>
 #include <kern/syscnt.h>
 #include <kern/thread.h>
+
 #include <test/test.h>
-#include <vm/vm_kmem.h>
+
+#include <vm/kmem.h>
 
 static struct condition test_condition;
 static struct mutex test_lock;
@@ -49,80 +51,73 @@ static struct sref_counter test_counter;
 static unsigned long test_transient_ref;
 
 static void
-test_inc(void *arg)
+test_inc (void *arg __unused)
 {
-    volatile unsigned long i;
-    (void)arg;
+  while (1)
+    {
+      for (volatile unsigned long i = 0; i < 1000000; i++)
+        {
+          sref_counter_inc (&test_counter);
 
-    for (;;) {
-        for (i = 0; i < 1000000; i++) {
-            sref_counter_inc(&test_counter);
+          mutex_lock (&test_lock);
+          test_transient_ref++;
+          condition_signal (&test_condition);
 
-            mutex_lock(&test_lock);
-            test_transient_ref++;
-            condition_signal(&test_condition);
+          while (test_transient_ref)
+            condition_wait (&test_condition, &test_lock);
 
-            while (test_transient_ref != 0) {
-                condition_wait(&test_condition, &test_lock);
-            }
-
-            mutex_unlock(&test_lock);
+          mutex_unlock (&test_lock);
         }
 
-        printf("counter global value: %lu\n", test_counter.value);
-        syscnt_info("sref_epoch", log_info);
-        syscnt_info("sref_dirty_zero", log_info);
-        syscnt_info("sref_true_zero", log_info);
+      printf ("counter global value: %lu\n", test_counter.value);
+      syscnt_info ("sref_epoch", log_stream_info ());
+      syscnt_info ("sref_dirty_zero", log_stream_info ());
+      syscnt_info ("sref_true_zero", log_stream_info ());
     }
 }
 
 static void
-test_dec(void *arg)
+test_dec (void *arg __unused)
 {
-    (void)arg;
+  while (1)
+    {
+      mutex_lock (&test_lock);
 
-    for (;;) {
-        mutex_lock(&test_lock);
+      while (! test_transient_ref)
+        condition_wait (&test_condition, &test_lock);
 
-        while (test_transient_ref == 0) {
-            condition_wait(&test_condition, &test_lock);
-        }
+      --test_transient_ref;
+      condition_signal (&test_condition);
+      mutex_unlock (&test_lock);
 
-        test_transient_ref--;
-        condition_signal(&test_condition);
-        mutex_unlock(&test_lock);
-
-        sref_counter_dec(&test_counter);
+      sref_counter_dec (&test_counter);
     }
 }
 
 static void
-test_noref(struct sref_counter *counter)
+test_noref (struct sref_counter *counter __unused)
 {
-    (void)counter;
-    panic("0 references, page released\n");
+  panic ("0 references, page released\n");
 }
 
-void __init
-test_setup(void)
+TEST_ENTRY_INIT (sref_dirty_zeroes)
 {
-    struct thread_attr attr;
-    struct thread *thread;
-    int error;
+  condition_init (&test_condition);
+  mutex_init (&test_lock);
 
-    condition_init(&test_condition);
-    mutex_init(&test_lock);
+  sref_counter_init (&test_counter, 1, NULL, test_noref);
+  test_transient_ref = 0;
 
-    sref_counter_init(&test_counter, 1, NULL, test_noref);
-    test_transient_ref = 0;
+  struct thread_attr attr;
+  thread_attr_init (&attr, THREAD_KERNEL_PREFIX "test_inc");
+  thread_attr_set_detached (&attr);
+  int error = thread_create (NULL, &attr, test_inc, NULL);
+  error_check (error, "thread_create");
 
-    thread_attr_init(&attr, THREAD_KERNEL_PREFIX "test_inc");
-    thread_attr_set_detached(&attr);
-    error = thread_create(&thread, &attr, test_inc, NULL);
-    error_check(error, "thread_create");
+  thread_attr_init (&attr, THREAD_KERNEL_PREFIX "test_dec");
+  thread_attr_set_detached (&attr);
+  error = thread_create (NULL, &attr, test_dec, NULL);
+  error_check (error, "thread_create");
 
-    thread_attr_init(&attr, THREAD_KERNEL_PREFIX "test_dec");
-    thread_attr_set_detached(&attr);
-    error = thread_create(&thread, &attr, test_dec, NULL);
-    error_check(error, "thread_create");
+  return (TEST_OK);
 }

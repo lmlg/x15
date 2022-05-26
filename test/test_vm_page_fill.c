@@ -31,12 +31,15 @@
 #include <kern/init.h>
 #include <kern/list.h>
 #include <kern/thread.h>
+
 #include <machine/page.h>
 #include <machine/pmap.h>
+
 #include <test/test.h>
-#include <vm/vm_kmem.h>
-#include <vm/vm_map.h>
-#include <vm/vm_page.h>
+
+#include <vm/kmem.h>
+#include <vm/map.h>
+#include <vm/page.h>
 
 static struct list test_pages;
 static struct cpumap test_cpumap;
@@ -44,111 +47,98 @@ static struct cpumap test_cpumap;
 static unsigned char test_pattern = 1;
 
 static void
-test_write_pages(void)
+test_write_pages (void)
 {
-    struct vm_map *kernel_map;
-    struct pmap *kernel_pmap;
-    struct vm_page *page;
-    int error, flags;
-    uintptr_t va;
+  _Auto kernel_map = vm_map_get_kernel_map ();
+  _Auto kernel_pmap = pmap_get_kernel_pmap ();
 
-    kernel_map = vm_map_get_kernel_map();
-    kernel_pmap = pmap_get_kernel_pmap();
+  while (1)
+    {
+      struct vm_page *page = vm_page_alloc (0, VM_PAGE_SEL_HIGHMEM,
+                                            VM_PAGE_KERNEL);
 
-    for (;;) {
-        page = vm_page_alloc(0, VM_PAGE_SEL_HIGHMEM, VM_PAGE_KERNEL);
+      if (! page)
+        break;
 
-        if (page == NULL) {
-            break;
-        }
+      uintptr_t va = 0;
+      int flags = VM_MAP_FLAGS (VM_PROT_ALL, VM_PROT_ALL, VM_INHERIT_NONE,
+                                VM_ADV_DEFAULT, 0);
+      int error = vm_map_enter (kernel_map, &va, PAGE_SIZE, 0, flags, NULL, 0);
+      error_check (error, __func__);
+      error = pmap_enter (kernel_pmap, va, vm_page_to_pa (page),
+                          VM_PROT_READ | VM_PROT_WRITE, 0);
+      error_check (error, __func__);
+      error = pmap_update (kernel_pmap);
+      error_check (error, __func__);
+      memset ( (void *) va, test_pattern, PAGE_SIZE);
+      error = pmap_remove (kernel_pmap, va, &test_cpumap);
+      error_check (error, __func__);
+      error = pmap_update (kernel_pmap);
+      error_check (error, __func__);
 
-        va = 0;
-        flags = VM_MAP_FLAGS(VM_PROT_ALL, VM_PROT_ALL, VM_INHERIT_NONE,
-                             VM_ADV_DEFAULT, 0);
-        error = vm_map_enter(kernel_map, &va, PAGE_SIZE, 0, flags, NULL, 0);
-        error_check(error, __func__);
-        error = pmap_enter(kernel_pmap, va, vm_page_to_pa(page),
-                           VM_PROT_READ | VM_PROT_WRITE, 0);
-        error_check(error, __func__);
-        error = pmap_update(kernel_pmap);
-        error_check(error, __func__);
-        memset((void *)va, test_pattern, PAGE_SIZE);
-        error = pmap_remove(kernel_pmap, va, &test_cpumap);
-        error_check(error, __func__);
-        error = pmap_update(kernel_pmap);
-        error_check(error, __func__);
-        vm_map_remove(kernel_map, va, va + PAGE_SIZE);
-
-        list_insert_tail(&test_pages, &page->node);
+      vm_map_remove (kernel_map, va, va + PAGE_SIZE);
+      list_insert_tail (&test_pages, &page->node);
     }
 }
 
 static void
-test_reset_pages(void)
+test_reset_pages (void)
 {
-    struct vm_map *kernel_map;
-    struct pmap *kernel_pmap;
-    struct vm_page *page;
-    int error, flags;
-    uintptr_t va;
+  _Auto kernel_map = vm_map_get_kernel_map ();
+  _Auto kernel_pmap = pmap_get_kernel_pmap ();
 
-    kernel_map = vm_map_get_kernel_map();
-    kernel_pmap = pmap_get_kernel_pmap();
+  while (!list_empty (&test_pages))
+    {
+      _Auto page = list_first_entry (&test_pages, struct vm_page, node);
+      list_remove (&page->node);
 
-    while (!list_empty(&test_pages)) {
-        page = list_first_entry(&test_pages, struct vm_page, node);
-        list_remove(&page->node);
+      uintptr_t va = 0;
+      int flags = VM_MAP_FLAGS (VM_PROT_ALL, VM_PROT_ALL, VM_INHERIT_NONE,
+                                VM_ADV_DEFAULT, 0);
+      int  error = vm_map_enter (kernel_map, &va, PAGE_SIZE,
+                                 0, flags, NULL, 0);
 
-        va = 0;
-        flags = VM_MAP_FLAGS(VM_PROT_ALL, VM_PROT_ALL, VM_INHERIT_NONE,
-                             VM_ADV_DEFAULT, 0);
-        error = vm_map_enter(kernel_map, &va, PAGE_SIZE, 0, flags, NULL, 0);
-        error_check(error, __func__);
-        error = pmap_enter(kernel_pmap, va, vm_page_to_pa(page),
-                           VM_PROT_READ | VM_PROT_WRITE, 0);
-        error_check(error, __func__);
-        error = pmap_update(kernel_pmap);
-        error_check(error, __func__);
-        memset((void *)va, 0, PAGE_SIZE);
-        error = pmap_remove(kernel_pmap, va, &test_cpumap);
-        error_check(error, __func__);
-        error = pmap_update(kernel_pmap);
-        error_check(error, __func__);
-        vm_map_remove(kernel_map, va, va + PAGE_SIZE);
+      error_check (error, __func__);
+      error = pmap_enter (kernel_pmap, va, vm_page_to_pa (page),
+                          VM_PROT_READ | VM_PROT_WRITE, 0);
+      error_check (error, __func__);
+      error = pmap_update (kernel_pmap);
+      error_check (error, __func__);
+      memset ( (void *) va, 0, PAGE_SIZE);
+      error = pmap_remove (kernel_pmap, va, &test_cpumap);
+      error_check (error, __func__);
+      error = pmap_update (kernel_pmap);
+      error_check (error, __func__);
+      vm_map_remove (kernel_map, va, va + PAGE_SIZE);
 
-        vm_page_free(page, 0);
+      vm_page_free (page, 0);
     }
 }
 
 static void
-test_run(void *arg)
+test_run (void *arg __unused)
 {
-    unsigned int i;
-
-    (void)arg;
-
-    for (i = 0; /* no condition */; i++) {
-        printf("test: pass:%u pattern:%hhx\n", i, test_pattern);
-        test_write_pages();
-        test_reset_pages();
-        test_pattern++;
+  for (uint32_t i = 0 ; ; i++)
+    {
+      printf ("test: pass:%u pattern:%hhx\n", i, test_pattern);
+      test_write_pages ();
+      test_reset_pages ();
+      ++test_pattern;
     }
 }
 
-void __init
-test_setup(void)
+TEST_ENTRY_INIT (vm_page_fill)
 {
-    struct thread_attr attr;
-    struct thread *thread;
-    int error;
+  list_init (&test_pages);
+  cpumap_zero (&test_cpumap);
+  cpumap_set (&test_cpumap, cpu_id ());
 
-    list_init(&test_pages);
-    cpumap_zero(&test_cpumap);
-    cpumap_set(&test_cpumap, cpu_id());
+  struct thread_attr attr;
+  thread_attr_init (&attr, THREAD_KERNEL_PREFIX "test_run");
+  thread_attr_set_detached (&attr);
+  thread_attr_set_cpumap (&attr, &test_cpumap);
+  int error = thread_create (NULL, &attr, test_run, NULL);
+  error_check (error, "thread_create");
 
-    thread_attr_init(&attr, THREAD_KERNEL_PREFIX "test_run");
-    thread_attr_set_detached(&attr);
-    thread_attr_set_cpumap(&attr, &test_cpumap);
-    error = thread_create(&thread, &attr, test_run, NULL);
-    error_check(error, "thread_create");
+  return (TEST_OK);
 }

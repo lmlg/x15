@@ -30,6 +30,7 @@
 #include <kern/error.h>
 #include <kern/log.h>
 #include <kern/timer.h>
+
 #include <test/test.h>
 
 #define TEST_INTERVAL   1
@@ -38,45 +39,42 @@
 static struct bulletin test_bulletin;
 static struct bulletin_sub test_bulletin_sub;
 static struct timer test_timer;
-static unsigned int test_counter;
+static uint32_t test_counter;
 
 static void
-test_notify(uintptr_t value, void *arg)
+test_notify (uintptr_t value, void *arg)
 {
-    log_info("test: notify: value:%lu arg:%p", value, arg);
+  log_info ("test: notify: value:%lu arg:%p", value, arg);
 }
 
 static void
-test_tick(struct timer *timer)
+test_tick (struct timer *timer)
 {
-    uint64_t ticks;
+  bulletin_publish (&test_bulletin, ++test_counter);
+  bulletin_unsubscribe (&test_bulletin, &test_bulletin_sub);
 
-    test_counter++;
-    bulletin_publish(&test_bulletin, test_counter);
-    bulletin_unsubscribe(&test_bulletin, &test_bulletin_sub);
-
-    if (test_counter == TEST_NR_LOOPS) {
-        log_info("test: done");
-        return;
+  if (test_counter == TEST_NR_LOOPS)
+    {
+      log_info ("test: done");
+      return;
     }
 
-    bulletin_subscribe(&test_bulletin, &test_bulletin_sub,
-                       test_notify, (void *)0x123);
+  bulletin_subscribe (&test_bulletin, &test_bulletin_sub,
+                      test_notify, (void *) 0x123);
 
-    ticks = timer_get_time(timer) + clock_ticks_from_ms(TEST_INTERVAL * 1000);
-    timer_schedule(&test_timer, ticks);
+  timer_schedule (&test_timer, timer_get_time (timer) +
+                  clock_ticks_from_ms (TEST_INTERVAL * 1000));
 }
 
-void __init
-test_setup(void)
+TEST_ENTRY_INIT (bulletin)
 {
-    uint64_t ticks;
+  bulletin_init (&test_bulletin);
+  bulletin_subscribe (&test_bulletin, &test_bulletin_sub,
+                      test_notify, (void *) 0x123);
 
-    bulletin_init(&test_bulletin);
-    bulletin_subscribe(&test_bulletin, &test_bulletin_sub,
-                       test_notify, (void *)0x123);
+  timer_init (&test_timer, test_tick, TIMER_DETACHED);
+  timer_schedule (&test_timer, clock_get_time () +
+                  clock_ticks_from_ms (TEST_INTERVAL * 1000));
 
-    timer_init(&test_timer, test_tick, TIMER_DETACHED);
-    ticks = clock_get_time() + clock_ticks_from_ms(TEST_INTERVAL * 1000);
-    timer_schedule(&test_timer, ticks);
+  return (TEST_OK);
 }
