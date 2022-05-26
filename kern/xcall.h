@@ -26,10 +26,26 @@
 #ifndef KERN_XCALL_H
 #define KERN_XCALL_H
 
+#include <stdint.h>
+
 #include <kern/init.h>
+#include <kern/spinlock.h>
+#include <kern/work.h>
 
 // Type for cross-call functions.
 typedef void (*xcall_fn_t) (void *arg);
+
+// Asynchronous cross-call data structure.
+struct xcall_async
+{
+  struct work work;
+  xcall_fn_t fn;
+  void *arg;
+  uint32_t cpu;
+  struct spinlock lock;
+  struct thread *waiter;
+  bool done;
+};
 
 /*
  * Run the given cross-call function on a specific processor.
@@ -44,6 +60,25 @@ typedef void (*xcall_fn_t) (void *arg);
  * when calling this function.
  */
 void xcall_call (xcall_fn_t fn, void *arg, uint32_t cpu);
+
+// Initialize an async-xcall.
+void xcall_async_init (struct xcall_async *async,
+                       xcall_fn_t fn, void *arg, uint32_t cpu);
+
+// Same as xcall_call, only it's performed asynchronously.
+void xcall_async_call (struct xcall_async *async);
+
+// Wait for an async xcall to finish.
+void xcall_async_wait (struct xcall_async *async);
+
+int xcall_async_timedwait (struct xcall_async *async,
+                           uint64_t ticks, bool absolute);
+
+static inline bool
+xcall_async_done (const struct xcall_async *async)
+{
+  return (async->done);
+}
 
 /*
  * Handle a cross-call interrupt from a remote processor.

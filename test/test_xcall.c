@@ -51,7 +51,7 @@ test_fn (void *arg)
   if (data->cpu != cpu_id ())
     panic ("test: invalid cpu");
 
-  log_info ("function called, running on cpu%u\n", cpu_id() );
+  log_info ("function called, running on cpu%u\n", cpu_id ());
   data->done = true;
 }
 
@@ -69,7 +69,7 @@ test_once (uint32_t cpu)
 static void
 test_run_cpu (void *arg __unused)
 {
-  for (uint32_t i = cpu_count () - 1; i < cpu_count (); i--)
+  for (uint32_t i = cpu_count () - 1; i < cpu_count (); --i)
     test_once (i);
 }
 
@@ -80,7 +80,7 @@ test_run (void *arg __unused)
   int error = cpumap_create (&cpumap);
   error_check (error, "cpumap_create");
 
-  for (uint32_t i = 0; i < cpu_count(); i++)
+  for (uint32_t i = 0; i < cpu_count (); i++)
     {
       /*
        * Send IPIs from CPU 1 first, in order to better trigger any
@@ -112,13 +112,58 @@ test_run (void *arg __unused)
   log_info ("test (xcall): done");
 }
 
+static void
+async_xcall_test_fn (void *arg)
+{
+  log_info ("async xcall: %d\n", *(int *)arg);
+  *(int *)arg = -1;
+}
+
+static void
+test_async_xcall_run (void *arg __unused)
+{
+  struct xcall_async async;
+  int value = 42;
+
+  xcall_async_init (&async, async_xcall_test_fn, &value, 0);
+  xcall_async_call (&async);
+  xcall_async_wait (&async);
+
+  assert (value == -1);
+  log_info ("test (async-xcall): done");
+}
+
+static void
+test_async_xcall (void)
+{
+  struct cpumap *cpumap;
+  if (cpumap_create (&cpumap) != 0)
+    {
+      log_err ("failed to allocate cpumap");
+      return;
+    }
+
+  struct thread_attr attr;
+  thread_attr_init (&attr, THREAD_KERNEL_PREFIX "test_asyncx");
+
+  cpumap_zero (cpumap);
+  cpumap_set (cpumap, 1);
+  thread_attr_set_cpumap (&attr, cpumap);
+  thread_attr_set_detached (&attr);
+  if (thread_create (NULL, &attr, test_async_xcall_run, NULL) != 0)
+    log_err ("failed to create thread for async xcall");
+}
+
 TEST_ENTRY_INIT (xcall)
 {
   struct thread_attr attr;
-  thread_attr_init (&attr, THREAD_KERNEL_PREFIX "test_run");
+  thread_attr_init (&attr, THREAD_KERNEL_PREFIX "test_xcall");
   thread_attr_set_detached (&attr);
   int error = thread_create (NULL, &attr, test_run, NULL);
   error_check (error, "thread_create");
+
+  if (cpu_count () > 1)
+    test_async_xcall ();
 
   return (TEST_OK);
 }

@@ -21,6 +21,7 @@
 #include <stdio.h>
 
 #include <kern/atomic.h>
+#include <kern/clock.h>
 #include <kern/init.h>
 #include <kern/log.h>
 #include <kern/macros.h>
@@ -175,4 +176,62 @@ xcall_intr (void)
 
   // Enforce release ordering on the receive call.
   xcall_cpu_data_clear_recv_call (cpu_data);
+}
+
+static void
+xcall_async_work (struct work *work)
+{
+  _Auto async = (struct xcall_async *)work;
+  xcall_call (async->fn, async->arg, async->cpu);
+
+  SPINLOCK_GUARD (&async->lock, false);
+  async->done = true;
+  if (async->waiter)
+    thread_wakeup (async->waiter);
+}
+
+void
+xcall_async_init (struct xcall_async *async,
+                  xcall_fn_t fn, void *arg, uint32_t cpu)
+{
+  async->fn = fn;
+  async->arg = arg;
+  async->cpu = cpu;
+  spinlock_init (&async->lock);
+  async->waiter = NULL;
+  async->done = false;
+  work_init (&async->work, xcall_async_work);
+}
+
+void
+xcall_async_call (struct xcall_async *async)
+{
+  work_schedule (&async->work, 0);
+}
+
+void
+xcall_async_wait (struct xcall_async *async)
+{
+  SPINLOCK_GUARD (&async->lock, true);
+  if (!async->done)
+    {
+      async->waiter = thread_self ();
+      thread_sleep (&async->lock, &async->work, "asyncx");
+    }
+}
+
+int
+xcall_async_timedwait (struct xcall_async *async, uint64_t ticks, bool abs)
+{
+  int ret = 0;
+
+  SPINLOCK_GUARD (&async->lock, true);
+  if (!async->done)
+    {
+      async->waiter = thread_self ();
+      ret = thread_timedsleep (&async->lock, &async->work, "asyncx",
+                               ticks + (abs ? clock_get_time () + 1 : 0));
+    }
+
+  return (ret);
 }
