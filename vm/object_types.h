@@ -31,7 +31,7 @@ struct vm_object
   struct mutex lock;
   struct rdxtree pages;
   uint64_t size;
-  unsigned long nr_pages;
+  size_t nr_pages;
 };
 
 #endif /* VM_OBJECT_TYPES_H */

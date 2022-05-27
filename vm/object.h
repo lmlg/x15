@@ -75,7 +75,7 @@ void vm_object_remove (struct vm_object *object, uint64_t start, uint64_t end);
  * page is returned, it may already have been removed from the object, or
  * moved at a different offset.
  */
-struct vm_page * vm_object_lookup (struct vm_object *object, uint64_t offset);
+struct vm_page* vm_object_lookup (struct vm_object *object, uint64_t offset);
 
 /*
  * This init operation provides :
