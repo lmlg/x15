@@ -51,10 +51,10 @@
  */
 #define vm_page_btop(bytes)      ((bytes) >> PAGE_SHIFT)
 #define vm_page_ptob(pages)      ((pages) << PAGE_SHIFT)
-#define vm_page_trunc(bytes)     P2ALIGN(bytes, PAGE_SIZE)
-#define vm_page_round(bytes)     P2ROUND(bytes, PAGE_SIZE)
-#define vm_page_end(bytes)       P2END(bytes, PAGE_SIZE)
-#define vm_page_aligned(bytes)   P2ALIGNED(bytes, PAGE_SIZE)
+#define vm_page_trunc(bytes)     P2ALIGN (bytes, PAGE_SIZE)
+#define vm_page_round(bytes)     P2ROUND (bytes, PAGE_SIZE)
+#define vm_page_end(bytes)       P2END (bytes, PAGE_SIZE)
+#define vm_page_aligned(bytes)   P2ALIGNED (bytes, PAGE_SIZE)
 
 /*
  * Zone selectors.

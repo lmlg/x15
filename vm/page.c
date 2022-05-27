@@ -238,7 +238,7 @@ vm_page_zone_free_to_buddy (struct vm_page_zone *zone, struct vm_page *page,
   uint32_t nr_pages = (1 << order);
   phys_addr_t pa = page->phys_addr;
 
-  while (order < (VM_PAGE_NR_FREE_LISTS - 1))
+  while (order < VM_PAGE_NR_FREE_LISTS - 1)
     {
       phys_addr_t buddy_pa = pa ^ vm_page_ptob (1 << order);
 
@@ -558,11 +558,8 @@ vm_page_bootalloc (size_t size)
 #ifdef CONFIG_SHELL
 
 static void
-vm_page_shell_info (struct shell *shell, int argc, char **argv)
+vm_page_shell_info (struct shell *shell, int c __unused, char **v __unused)
 {
-  (void) shell;
-  (void) argc;
-  (void) argv;
   vm_page_info (shell->stream);
 }
 
@@ -658,7 +655,7 @@ vm_page_manage (struct vm_page *page)
   vm_page_zone_free_to_buddy (&vm_page_zones[page->zone_index], page, 0);
 }
 
-struct vm_page *
+struct vm_page*
 vm_page_lookup (phys_addr_t pa)
 {
   for (uint32_t i = 0; i < vm_page_zones_size; i++)
@@ -672,7 +669,7 @@ vm_page_lookup (phys_addr_t pa)
 }
 
 static bool
-vm_page_block_referenced (const struct vm_page *page, unsigned int order)
+vm_page_block_referenced (const struct vm_page *page, uint32_t order)
 {
   for (uint32_t i = 0, nr_pages = 1 << order; i < nr_pages; i++)
     if (vm_page_referenced (&page[i]))
@@ -682,7 +679,7 @@ vm_page_block_referenced (const struct vm_page *page, unsigned int order)
 }
 
 struct vm_page*
-vm_page_alloc (unsigned int order, unsigned int selector, unsigned short type)
+vm_page_alloc (uint32_t order, uint32_t selector, uint16_t type)
 {
   for (uint32_t i = vm_page_select_alloc_zone (selector);
       i < vm_page_zones_size; i--)
@@ -699,7 +696,7 @@ vm_page_alloc (unsigned int order, unsigned int selector, unsigned short type)
 }
 
 void
-vm_page_free (struct vm_page *page, unsigned int order)
+vm_page_free (struct vm_page *page, uint32_t order)
 {
   assert (page->zone_index < ARRAY_SIZE (vm_page_zones));
   assert (!vm_page_block_referenced (page, order));
@@ -707,7 +704,7 @@ vm_page_free (struct vm_page *page, unsigned int order)
 }
 
 const char*
-vm_page_zone_name (unsigned int zone_index)
+vm_page_zone_name (uint32_t zone_index)
 {
   // Don't use a switch statement since zones can be aliased.
   if (zone_index == PMEM_ZONE_HIGHMEM)
