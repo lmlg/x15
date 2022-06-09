@@ -41,12 +41,6 @@ int printf (const char *format, ...)
 int vprintf (const char *format, va_list ap)
   __attribute__ ((format (printf, 1, 0)));
 
-int printf_ln (const char *format, ...)
-  __attribute__ ((format (printf, 1, 2)));
-
-int vprintf_ln (const char *format, va_list ap)
-__attribute__ ((format (printf, 1, 0)));
-
 /*
  * This init operation provides :
  *  - printf is usable

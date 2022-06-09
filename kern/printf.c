@@ -24,15 +24,6 @@
 #include <machine/boot.h>
 #include <machine/cpu.h>
 
-static int
-vprintf_common (const char *format, va_list ap, bool newline)
-{
-  int ret = fmt_vxprintf (console_stream, format, ap);
-  if (newline)
-    console_putchar ('\n');
-  return ret;
-}
-
 int
 printf (const char *format, ...)
 {
@@ -47,24 +38,7 @@ printf (const char *format, ...)
 int
 vprintf (const char *format, va_list ap)
 {
-  return (vprintf_common (format, ap, false));
-}
-
-int
-printf_ln (const char *format, ...)
-{
-  va_list ap;
-  va_start (ap, format);
-
-  int length = vprintf_common (format, ap, true);
-  va_end (ap);
-  return (length);
-}
-
-int
-vprintf_ln (const char *format, va_list ap)
-{
-  return (vprintf_common (format, ap, true));
+  return (fmt_vxprintf (console_stream, format, ap));
 }
 
 static int __init

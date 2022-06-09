@@ -38,7 +38,7 @@ mutex_lock_slow_common (struct mutex *mutex, bool timed, uint64_t ticks)
 
       if (state == MUTEX_UNLOCKED)
         break;
-      else if (!timed)
+      else if (! timed)
         sleepq_wait (sleepq, "mutex");
       else
         {

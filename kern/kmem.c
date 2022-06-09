@@ -173,7 +173,7 @@ kmem_buf_fill (void *buf, uint64_t pattern, size_t size)
     *ptr = pattern;
 }
 
-static void *
+static void*
 kmem_buf_verify_fill (void *buf, uint64_t old, uint64_t new, size_t size)
 {
   assert (P2ALIGNED ((uintptr_t) buf, sizeof (uint64_t)));
@@ -195,13 +195,13 @@ kmem_buf_verify_fill (void *buf, uint64_t old, uint64_t new, size_t size)
 static inline union kmem_bufctl*
 kmem_buf_to_bufctl (void *buf, struct kmem_cache *cache)
 {
-  return ((union kmem_bufctl *)(buf + cache->bufctl_dist));
+  return ((union kmem_bufctl *)((char *)buf + cache->bufctl_dist));
 }
 
 static inline struct kmem_buftag*
 kmem_buf_to_buftag (void *buf, struct kmem_cache *cache)
 {
-  return ((struct kmem_buftag *)(buf + cache->buftag_dist));
+  return ((struct kmem_buftag *)((char *)buf + cache->buftag_dist));
 }
 
 static inline void*
@@ -389,7 +389,7 @@ kmem_cpu_pool_drain (struct kmem_cpu_pool *cpu_pool, struct kmem_cache *cache)
 static void
 kmem_cache_error (struct kmem_cache *cache, void *buf, int error, void *arg)
 {
-  printf_ln ("kmem: error: cache: %s, buffer: %p", cache->name, buf);
+  printf ("kmem: error: cache: %s, buffer: %p\n", cache->name, buf);
   switch (error)
     {
       case KMEM_ERR_INVALID:

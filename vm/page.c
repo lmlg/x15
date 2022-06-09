@@ -97,7 +97,7 @@ struct vm_page_free_list
 };
 
 // Zone name buffer size.
-#define VM_PAGE_NAME_SIZE 16
+#define VM_PAGE_NAME_SIZE   16
 
 // Zone of contiguous memory.
 struct vm_page_zone
@@ -147,7 +147,7 @@ static struct vm_page_boot_zone vm_page_boot_zones[PMEM_MAX_ZONES]
   __initdata;
 
 // Number of loaded zones.
-static unsigned int vm_page_zones_size __read_mostly;
+static uint32_t vm_page_zones_size __read_mostly;
 
 static void __init
 vm_page_init (struct vm_page *page, uint16_t zone_index, phys_addr_t pa)
@@ -200,7 +200,7 @@ vm_page_zone_alloc_from_buddy (struct vm_page_zone *zone, uint32_t order)
   assert (order < VM_PAGE_NR_FREE_LISTS);
 
   uint32_t i;
-  for (i = order; i < VM_PAGE_NR_FREE_LISTS; i++)
+  for (i = order; i < VM_PAGE_NR_FREE_LISTS; ++i)
     {
       free_list = &zone->free_lists[i];
       if (free_list->size != 0)
@@ -267,7 +267,7 @@ vm_page_cpu_pool_init (struct vm_page_cpu_pool *cpu_pool, int size)
   mutex_init (&cpu_pool->lock);
   cpu_pool->size = size;
   cpu_pool->transfer_size = (size + VM_PAGE_CPU_POOL_TRANSFER_RATIO - 1) /
-                            VM_PAGE_CPU_POOL_TRANSFER_RATIO;
+                             VM_PAGE_CPU_POOL_TRANSFER_RATIO;
   cpu_pool->nr_pages = 0;
   list_init (&cpu_pool->pages);
 }
@@ -282,7 +282,7 @@ static inline struct vm_page*
 vm_page_cpu_pool_pop (struct vm_page_cpu_pool *cpu_pool)
 {
   assert (cpu_pool->nr_pages != 0);
-  cpu_pool->nr_pages--;
+  --cpu_pool->nr_pages;
   _Auto page = list_first_entry (&cpu_pool->pages, struct vm_page, node);
   list_remove (&page->node);
   return (page);
@@ -323,7 +323,7 @@ vm_page_cpu_pool_drain (struct vm_page_cpu_pool *cpu_pool,
   assert (cpu_pool->nr_pages == cpu_pool->size);
   MUTEX_GUARD (&zone->lock);
 
-  for (int i = cpu_pool->transfer_size; i > 0; i--)
+  for (int i = cpu_pool->transfer_size; i > 0; --i)
     {
       _Auto page = vm_page_cpu_pool_pop (cpu_pool);
       vm_page_zone_free_to_buddy (zone, page, 0);
@@ -352,14 +352,14 @@ vm_page_zone_init (struct vm_page_zone *zone, phys_addr_t start, phys_addr_t end
   zone->end = end;
   int pool_size = vm_page_zone_compute_pool_size (zone);
 
-  for (uint32_t i = 0; i < ARRAY_SIZE (zone->cpu_pools); i++)
+  for (uint32_t i = 0; i < ARRAY_SIZE (zone->cpu_pools); ++i)
     vm_page_cpu_pool_init (&zone->cpu_pools[i], pool_size);
 
   zone->pages = pages;
   zone->pages_end = pages + vm_page_btop (vm_page_zone_size (zone));
   mutex_init (&zone->lock);
 
-  for (uint32_t i = 0; i < ARRAY_SIZE (zone->free_lists); i++)
+  for (uint32_t i = 0; i < ARRAY_SIZE (zone->free_lists); ++i)
     vm_page_free_list_init (&zone->free_lists[i]);
 
   zone->nr_free_pages = 0;
@@ -543,8 +543,7 @@ vm_page_bootalloc (size_t size)
 
       if (!zone->heap_present)
         continue;
-
-      if (size <= vm_page_boot_zone_avail_size (zone))
+      else if (size <= vm_page_boot_zone_avail_size (zone))
         {
           phys_addr_t pa = zone->avail_start;
           zone->avail_start += vm_page_round (size);
@@ -592,12 +591,12 @@ vm_page_setup (void)
   // Compute the page table size.
   size_t nr_pages = 0;
 
-  for (uint32_t i = 0; i < vm_page_zones_size; i++)
+  for (uint32_t i = 0; i < vm_page_zones_size; ++i)
     nr_pages += vm_page_btop (vm_page_boot_zone_size (&vm_page_boot_zones[i]));
 
   size_t table_size = vm_page_round (nr_pages * sizeof (struct vm_page));
-  log_info ("vm_page: page table size: %zu entries (%zuk)", nr_pages,
-            table_size >> 10);
+  log_info ("vm_page: page table size: %zu entries (%zuk)",
+            nr_pages, table_size >> 10);
   struct vm_page *table = vm_page_bootalloc (table_size);
   uintptr_t va = (uintptr_t) table;
 
@@ -606,7 +605,7 @@ vm_page_setup (void)
    * the zones are initialized, all their pages are set allocated.
    * Pages are then released, which populates the free lists.
    */
-  for (uint32_t i = 0; i < vm_page_zones_size; i++)
+  for (uint32_t i = 0; i < vm_page_zones_size; ++i)
     {
       struct vm_page *page, *end;
       _Auto zone = &vm_page_zones[i];
@@ -682,7 +681,7 @@ struct vm_page*
 vm_page_alloc (uint32_t order, uint32_t selector, uint16_t type)
 {
   for (uint32_t i = vm_page_select_alloc_zone (selector);
-      i < vm_page_zones_size; i--)
+      i < vm_page_zones_size; --i)
     {
       _Auto page = vm_page_zone_alloc (&vm_page_zones[i], order, type);
       if (page)
@@ -722,7 +721,7 @@ vm_page_zone_name (uint32_t zone_index)
 void
 vm_page_info (struct stream *stream)
 {
-  for (uint32_t i = 0; i < vm_page_zones_size; i++)
+  for (uint32_t i = 0; i < vm_page_zones_size; ++i)
     {
       _Auto zone = &vm_page_zones[i];
       unsigned long pages = (unsigned long) (zone->pages_end - zone->pages);

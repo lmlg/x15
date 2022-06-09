@@ -48,7 +48,8 @@ INIT_OP_DEFINE (vm_object_setup,
                 INIT_OP_DEP (vm_page_setup, true));
 
 void __init
-vm_object_init (struct vm_object *object, uint64_t size)
+vm_object_init (struct vm_object *object, uint64_t size,
+                struct vm_object_pager *pager)
 {
   assert (vm_page_aligned (size));
 
@@ -56,6 +57,7 @@ vm_object_init (struct vm_object *object, uint64_t size)
   rdxtree_init (&object->pages, 0);
   object->size = size;
   object->nr_pages = 0;
+  object->pager = pager;
 }
 
 int
@@ -130,4 +132,26 @@ vm_object_lookup (struct vm_object *object, uint64_t offset)
       if (!page || vm_page_tryref (page) == 0)
         return (page);
     }
+}
+
+int
+vm_object_pager_get (struct vm_object *object,
+                     struct vm_page **pages, int nr_pages)
+{
+  int ret = object->pager->get (object, pages, nr_pages);
+  for (int i = 0; i < nr_pages; ++i)
+    pages[i]->type = VM_PAGE_OBJECT;
+
+  return (ret);
+}
+
+int
+vm_object_pager_put (struct vm_object *object,
+                     struct vm_page **pages, int nr_pages)
+{
+  int ret = object->pager->put (object, pages, nr_pages);
+  for (int i = 0; i < nr_pages; ++i)
+    pages[i]->type = VM_PAGE_FREE;
+
+  return (ret);
 }

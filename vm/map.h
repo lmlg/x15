@@ -59,6 +59,8 @@
 #define VM_MAP_INHERIT(flags)   (((flags) & 0xf00) >> 8)
 #define VM_MAP_ADVICE(flags)    (((flags) & 0xf000) >> 12)
 
+struct vm_page;
+
 // Memory range descriptor.
 struct vm_map_entry
 {
@@ -104,6 +106,9 @@ void vm_map_remove (struct vm_map *map, uintptr_t start, uintptr_t end);
 
 // Create a VM map.
 int vm_map_create (struct vm_map **mapp);
+
+// Handle a page fault.
+int vm_map_fault (struct vm_map *map, uintptr_t addr, int prot);
 
 // Display information about a memory map.
 void vm_map_info (struct vm_map *map, struct stream *stream);

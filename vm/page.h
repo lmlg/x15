@@ -78,6 +78,7 @@
 #define VM_PAGE_KMEM        4   // Page is a direct-mapped kmem slab.
 #define VM_PAGE_OBJECT      5   // Page is part of a VM object.
 #define VM_PAGE_KERNEL      6   // Type for generic kernel allocations.
+#define VM_PAGE_EVICTING    7   // Page is being evicted.
 
 // Physical page descriptor.
 struct vm_page
@@ -88,7 +89,6 @@ struct vm_page
   uint16_t order;
   phys_addr_t phys_addr;
   void *priv;
-
   uint32_t nr_refs;
 
   // VM object back reference.
@@ -196,9 +196,7 @@ int vm_page_ready (void);
  */
 void vm_page_manage (struct vm_page *page);
 
-/*
- * Return the page descriptor for the given physical address.
- */
+// Return the page descriptor for the given physical address.
 struct vm_page* vm_page_lookup (phys_addr_t pa);
 
 /*

@@ -42,7 +42,8 @@ vm_object_get_kernel_object (void)
 }
 
 // Initialize a VM object.
-void vm_object_init (struct vm_object *object, uint64_t size);
+void vm_object_init (struct vm_object *object, uint64_t size,
+                     struct vm_object_pager *pager);
 
 /*
  * Insert a page into a VM object.
@@ -76,6 +77,14 @@ void vm_object_remove (struct vm_object *object, uint64_t start, uint64_t end);
  * moved at a different offset.
  */
 struct vm_page* vm_object_lookup (struct vm_object *object, uint64_t offset);
+
+// Fetch pages' contents from an external pager in a VM object.
+int vm_object_pager_get (struct vm_object *object, struct vm_page **pages,
+                         int nr_pages);
+
+// Pageout the pages' contents in an external pager for a VM object.
+int vm_object_pager_put (struct vm_object *object, struct vm_page **pages,
+                         int nr_pages);
 
 /*
  * This init operation provides :

@@ -262,15 +262,16 @@ INIT_OP_DEFINE (log_setup_shell,
 
 #endif   // CONFIG_SHELL
 
-typedef struct
+struct logger_stream
 {
   struct stream base;
   struct log_record record;
+  struct spinlock lock;
   uint32_t off;
-} logger_stream_t;
+};
 
 static size_t
-logger_stream_cap (const logger_stream_t *stream)
+logger_stream_cap (const struct logger_stream *stream)
 {
   return (sizeof (stream->record.msg) - 1 - stream->off);
 }
@@ -290,9 +291,9 @@ static int log_puts (const struct log_record *, int);
 static void
 logger_stream_write (struct stream *stream, const void *data, uint32_t bytes)
 {
-  _Auto logstr = (logger_stream_t *) stream;
+  _Auto logstr = (struct logger_stream *) stream;
   size_t cap = logger_stream_cap (logstr);
-  const char *newl = memchr ( (const char *) data, '\n', bytes);
+  const char *newl = memchr ((const char *) data, '\n', bytes);
 
   if (bytes < cap && !newl)
     {
@@ -312,15 +313,29 @@ logger_stream_write (struct stream *stream, const void *data, uint32_t bytes)
   logstr->off = 0;
 }
 
-static const struct stream_ops logger_stream_ops =
+static void
+logger_stream_lock (struct stream *stream)
 {
-  .write = logger_stream_write
-};
-
-static logger_stream_t logger_streams[LOG_NR_LEVELS];
+  spinlock_lock (&((struct logger_stream *)stream)->lock);
+}
 
 static void
-logger_stream_init (logger_stream_t *stream)
+logger_stream_unlock (struct stream *stream)
+{
+  spinlock_unlock (&((struct logger_stream *)stream)->lock);
+}
+
+static const struct stream_ops logger_stream_ops =
+{
+  .write = logger_stream_write,
+  .lock = logger_stream_lock,
+  .unlock = logger_stream_unlock
+};
+
+static struct logger_stream logger_streams[LOG_NR_LEVELS];
+
+static void
+logger_stream_init (struct logger_stream *stream)
 {
   stream_init (&stream->base, &logger_stream_ops);
   stream->record.level = stream - &logger_streams[0];

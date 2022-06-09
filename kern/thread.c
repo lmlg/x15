@@ -1637,6 +1637,7 @@ thread_init (struct thread *thread, void *stack,
   thread->task = task;
   thread->stack = stack;
   strlcpy (thread->name, attr->name, sizeof (thread->name));
+  thread->fixup = NULL;
 
 #ifdef CONFIG_PERFMON
   perfmon_td_init (thread_get_perfmon_td (thread));

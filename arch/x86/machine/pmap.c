@@ -753,7 +753,7 @@ pmap_update_request_array_release (struct pmap_update_request_array *array)
 }
 
 static void __init
-pmap_syncer_init (struct pmap_syncer *syncer, unsigned int cpu)
+pmap_syncer_init (struct pmap_syncer *syncer, uint32_t cpu)
 {
   char name[SYSCNT_NAME_SIZE];
   struct pmap_update_queue *queue = &syncer->queue;
@@ -993,11 +993,10 @@ pmap_thread_build (struct thread *thread)
   struct pmap_update_oplist *oplist;
   int error = pmap_update_oplist_create (&oplist);
 
-  if (error)
-    return (error);
+  if (! error)
+    tcb_set_pmap_update_oplist (thread_get_tcb (thread), oplist);
 
-  tcb_set_pmap_update_oplist (thread_get_tcb (thread), oplist);
-  return (0);
+  return (error);
 }
 
 void
@@ -1042,7 +1041,7 @@ pmap_create (struct pmap **pmapp)
   if (! pmap)
     return (ENOMEM);
 
-  for (size_t i = 0; i < ARRAY_SIZE (pmap->cpu_tables); i++)
+  for (size_t i = 0; i < ARRAY_SIZE (pmap->cpu_tables); ++i)
     pmap->cpu_tables[i] = NULL;
 
   *pmapp = pmap;
@@ -1051,11 +1050,9 @@ pmap_create (struct pmap **pmapp)
 
 static int
 pmap_enter_local (struct pmap *pmap, uintptr_t va, phys_addr_t pa,
-                  int prot, int flags)
+                  int prot, int flags __unused)
 {
   // TODO Page attributes.
-  (void)flags;
-
   pmap_pte_t pte_bits = PMAP_PTE_RW;
 
   if (pmap != pmap_get_kernel_pmap ())
@@ -1199,14 +1196,9 @@ pmap_remove (struct pmap *pmap, uintptr_t va, const struct cpumap *cpumap)
 }
 
 static void
-pmap_protect_local (struct pmap *pmap, uintptr_t start,
-                    uintptr_t end, int prot)
+pmap_protect_local (struct pmap *pmap __unused, uintptr_t start __unused,
+                    uintptr_t end __unused, int prot __unused)
 {
-  (void)pmap;
-  (void)start;
-  (void)end;
-  (void)prot;
-
   // TODO Implement.
   panic ("pmap: pmap_protect not implemented");
 }
@@ -1259,12 +1251,9 @@ pmap_flush_tlb (struct pmap *pmap, uintptr_t start, uintptr_t end)
 static void
 pmap_flush_tlb_all (struct pmap *pmap)
 {
-  if (pmap != pmap_current () && pmap != pmap_get_kernel_pmap ())
-    return;
-
   if (pmap == pmap_get_kernel_pmap ())
     cpu_tlb_flush_all ();
-  else
+  else if (pmap == pmap_current ())
     cpu_tlb_flush ();
 }
 
@@ -1306,7 +1295,7 @@ pmap_update_local (const struct pmap_update_oplist *oplist,
   struct pmap_syncer *syncer = cpu_local_ptr (pmap_syncer);
   syscnt_inc (&syncer->sc_updates);
   int error = 0,
-      global_tlb_flush = (nr_mappings > PMAP_UPDATE_MAX_MAPPINGS);
+      global_tlb_flush = nr_mappings > PMAP_UPDATE_MAX_MAPPINGS;
 
   for (uint32_t i = 0; i < oplist->nr_ops; i++)
     {
@@ -1321,7 +1310,7 @@ pmap_update_local (const struct pmap_update_oplist *oplist,
             error = pmap_update_enter (oplist->pmap, !global_tlb_flush,
                                        &op->enter_args);
             break;
-        case PMAP_UPDATE_OP_REMOVE:
+          case PMAP_UPDATE_OP_REMOVE:
             syscnt_inc (&syncer->sc_update_removes);
             pmap_update_remove (oplist->pmap, !global_tlb_flush,
                                 &op->remove_args);
@@ -1415,7 +1404,7 @@ pmap_sync (void *arg)
   struct pmap_syncer *self = arg;
   struct pmap_update_queue *queue = &self->queue;
 
-  for (;;)
+  while (1)
     {
       spinlock_lock (&queue->lock);
 

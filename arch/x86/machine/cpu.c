@@ -32,6 +32,7 @@
 #include <kern/percpu.h>
 #include <kern/spinlock.h>
 #include <kern/shutdown.h>
+#include <kern/task.h>
 #include <kern/thread.h>
 #include <kern/xcall.h>
 
@@ -47,6 +48,7 @@
 #include <machine/ssp.h>
 #include <machine/strace.h>
 
+#include <vm/defs.h>
 #include <vm/page.h>
 
 // Delay used for frequency measurement, in microseconds.
@@ -427,10 +429,6 @@ cpu_show_frame (const struct cpu_exc_frame *frame)
           frame->words[CPU_EXC_FRAME_RFLAGS],
           frame->words[CPU_EXC_FRAME_RSP],
           frame->words[CPU_EXC_FRAME_SS]);
-
-  // XXX Until the page fault handler is written.
-  if (frame->words[CPU_EXC_FRAME_VECTOR] == 14)
-    printf ("cpu: cr2: %016lx\n", cpu_get_cr2 ());
 }
 
 #else   // __LP64__
@@ -476,11 +474,6 @@ cpu_show_frame (const struct cpu_exc_frame *frame)
           frame->words[CPU_EXC_FRAME_EFLAGS],
           esp,
           ss);
-
-
-  // XXX Until the page fault handler is written.
-  if (frame->words[CPU_EXC_FRAME_VECTOR] == 14)
-    printf ("cpu: cr2: %08lx\n", cpu_get_cr2 ());
 }
 
 #endif
@@ -504,7 +497,7 @@ cpu_exc_double_fault (const struct cpu_exc_frame *frame)
    * frame useless. The interrupted state is automatically saved in the
    * main TSS by the processor. Build a proper exception frame from there.
    */
-  struct cpu *cpu = cpu_current();
+  struct cpu *cpu = cpu_current ();
   frame_store.words[CPU_EXC_FRAME_EAX]    = cpu->tss.eax;
   frame_store.words[CPU_EXC_FRAME_EBX]    = cpu->tss.ebx;
   frame_store.words[CPU_EXC_FRAME_ECX]    = cpu->tss.ecx;
@@ -605,12 +598,50 @@ cpu_setup_idt (void)
   cpu_idt_setup_double_fault (&cpu_idt);
 }
 
+// Page fault codes.
+#define CPU_PF_PROT       0x01   // Protection violation.
+#define CPU_PF_WRITE      0x02   // Write access.
+#define CPU_PF_USER       0x04   // User-mode access.
+#define CPU_PF_RESERVED   0x08   // Invalid PTE (reserved bit set).
+#define CPU_PF_EXEC       0x10   // Instruction fetch
+
+static void
+cpu_exc_page_fault (const struct cpu_exc_frame *frame)
+{
+  int code = (int)frame->words[CPU_EXC_FRAME_ERROR];
+
+  /*
+   * Reading CR2 is safe because interrupts are disabled and kernel code
+   * can't cause another page fault while handling a page fault.
+   */
+  uintptr_t addr = cpu_get_cr2 ();
+  int prot = (code & CPU_PF_WRITE) ? VM_PROT_WRITE : VM_PROT_READ;
+  struct thread *self = thread_self ();
+  int error = vm_map_fault (self->task->map, addr, prot);
+
+  if (! error)
+    return;
+  else if (self->fixup)
+    cpu_fixup_restore (self->fixup, (void *)frame->words);
+  else
+    { // TODO: Implement segfaults for userspace tasks.
+      cpu_halt_broadcast ();
+      printf ("trap: page fault error: %d, code %d at %#lx in task %s\n",
+              (int)error, code, addr, self->task->name);
+
+      cpu_show_thread ();
+      cpu_show_frame (frame);
+      cpu_show_stack (frame);
+      cpu_halt ();
+    }
+}
+
 static void __init
 cpu_setup_intr (void)
 {
   cpu_setup_idt ();
 
-  for (size_t i = 0; i < ARRAY_SIZE (cpu_exc_handlers); i++)
+  for (size_t i = 0; i < ARRAY_SIZE (cpu_exc_handlers); ++i)
     cpu_register_exc (i, cpu_exc_default);
 
   // Architecture defined exceptions.

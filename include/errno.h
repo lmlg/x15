@@ -31,5 +31,6 @@
 #define ENOENT              11
 #define EOVERFLOW           12
 #define EMSGSIZE            13
+#define EACCES              14
 
 #endif

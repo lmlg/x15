@@ -204,6 +204,8 @@ struct thread
 #ifdef CONFIG_PERFMON
   struct perfmon_td perfmon_td;   // ( )
 #endif
+
+  struct cpu_fixup *fixup;
 };
 
 #define THREAD_ATTR_DETACHED   0x1

@@ -99,7 +99,7 @@ adaptive_lock_acquire_slow (struct adaptive_lock *lock)
 void
 adaptive_lock_release_slow (struct adaptive_lock *lock)
 {
-  uintptr_t self = (uintptr_t) thread_self() | ADAPTIVE_LOCK_CONTENDED;
+  uintptr_t self = (uintptr_t) thread_self () | ADAPTIVE_LOCK_CONTENDED;
 
   while (1)
     {

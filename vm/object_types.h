@@ -26,12 +26,25 @@
 #include <kern/mutex.h>
 #include <kern/rdxtree.h>
 
+struct vm_object;
+struct vm_page;
+
+struct vm_object_pager
+{
+  int (*get) (struct vm_object *, struct vm_page **, int);
+  int (*put) (struct vm_object *, struct vm_page **, int);
+};
+
+#define VM_OBJECT_PAGEOUT   0x01   // VM object supports pageouts.
+
 struct vm_object
 {
   struct mutex lock;
   struct rdxtree pages;
   uint64_t size;
   size_t nr_pages;
+  struct vm_object_pager *pager;
+  int flags;
 };
 
 #endif /* VM_OBJECT_TYPES_H */

@@ -93,7 +93,7 @@
  * be linked against static libraries, and in particular libgcc, which
  * are built for standard ABIs.
  */
-#define CPU_DATA_ALIGN 16
+#define CPU_DATA_ALIGN   16
 
 /*
  * Function alignment.
@@ -222,8 +222,8 @@ enum cpu_feature
 #endif
 
 // EFLAGS register flags.
-#define CPU_EFL_ONE 0x00000002   // Reserved, must be set.
-#define CPU_EFL_IF  0x00000200
+#define CPU_EFL_ONE   0x00000002   // Reserved, must be set.
+#define CPU_EFL_IF    0x00000200
 
 /*
  * GDT segment selectors.
@@ -876,6 +876,22 @@ cpu_send_thread_schedule (uint32_t cpu)
  * Registration is system-wide.
  */
 void cpu_register_intr (uint32_t vector, cpu_intr_handler_fn_t fn);
+
+// CPU fixup context, used for safe access w.r.t page faults.
+struct cpu_fixup
+{
+#ifdef __LP64__
+  uintptr_t regs[8];
+#else
+  uintptr_t regs[6];
+#endif
+};
+
+// Save the context of a CPU fixup.
+int cpu_fixup_save (struct cpu_fixup *cf);
+
+// Restore the (previously saved) CPU fixup context into a memory area.
+void cpu_fixup_restore (const struct cpu_fixup *cf, void *area);
 
 /*
  * This init operation provides :

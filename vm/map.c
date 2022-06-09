@@ -43,10 +43,15 @@
 #include <vm/defs.h>
 #include <vm/map.h>
 #include <vm/kmem.h>
+#include <vm/object.h>
 #include <vm/page.h>
 
 // Special threshold which disables the use of the free area cache address.
 #define VM_MAP_NO_FIND_CACHE   (~(size_t)0)
+
+// Maximum number of frames to allocate per mapping.
+#define VM_MAP_MAX_FRAMES_ORDER   3
+#define VM_MAP_MAX_FRAMES         (1 << VM_MAP_MAX_FRAMES_ORDER)
 
 /*
  * Mapping request.
@@ -461,28 +466,20 @@ vm_map_enter (struct vm_map *map, uintptr_t *startp,
               size_t size, size_t align, int flags,
               struct vm_object *object, uint64_t offset)
 {
-  mutex_lock (&map->lock);
-
+  MUTEX_GUARD (&map->lock);
   struct vm_map_request request;
   int error = vm_map_prepare (map, *startp, size, align, flags, object,
                               offset, &request);
 
-  if (error)
-    goto error_enter;
+  if (error != 0 ||
+      (error = vm_map_insert (map, NULL, &request)) != 0)
+    {
+      vm_map_reset_find_cache (map);
+      return (error);
+    }
 
-  error = vm_map_insert (map, NULL, &request);
-
-  if (error)
-    goto error_enter;
-
-  mutex_unlock (&map->lock);
   *startp = request.start;
   return (0);
-
-error_enter:
-  vm_map_reset_find_cache (map);
-  mutex_unlock (&map->lock);
-  return (error);
 }
 
 static void
@@ -672,6 +669,81 @@ vm_map_create (struct vm_map **mapp)
   vm_map_init (map, pmap, PMAP_START_ADDRESS, PMAP_END_ADDRESS);
   *mapp = map;
   return (0);
+}
+
+// How many pages to cache per policy.
+static const uint8_t vm_pagein_targets[] =
+{
+  [VM_ADV_NORMAL]   = 2,
+  [VM_ADV_RANDOM]   = 0,
+  [VM_ADV_WILLNEED] = VM_MAP_MAX_FRAMES_ORDER
+};
+
+static int
+vm_map_gather_frames (struct vm_map *map __unused, struct vm_map_entry *entry,
+                      struct vm_page **frames)
+{
+  int target = vm_pagein_targets[VM_MAP_ADVICE (entry->flags)];
+  // TODO: Restrict how many pages each task can allocate.
+  struct vm_page *pages = vm_page_alloc (target, VM_PAGE_SEL_HIGHMEM,
+                                         VM_PAGE_OBJECT);
+  if (pages)
+    {
+      for (int i = 0; i < (1 << target); ++i)
+        frames[i] = pages + i;
+
+      return (target);
+    }
+
+  // TODO: Implement page eviction.
+  return (-ENOMEM);
+}
+
+int
+vm_map_fault (struct vm_map *map, uintptr_t addr, int prot)
+{
+  assert (map != vm_map_get_kernel_map ());
+  addr = vm_page_trunc (addr);
+
+  MUTEX_GUARD (&map->lock);
+  _Auto entry = vm_map_lookup_nearest (map, addr);
+
+  if (!entry || addr < entry->start)
+    return (EFAULT);
+  else if ((prot & VM_MAP_PROT (entry->flags)) != prot)
+    return (EACCES);
+
+  struct vm_object *object = entry->object;
+  assert (object);   // Null vm-objects are kernel-only and always wired.
+
+  uint64_t offset = entry->offset + (addr - entry->start);
+  struct vm_page *page = vm_object_lookup (object, offset);
+
+  if (! page)
+    { // Cache miss.
+      struct vm_page *frames[VM_MAP_MAX_FRAMES];
+      int n_pages = vm_map_gather_frames (map, entry, frames);
+
+      if (n_pages < 0)
+        return (-n_pages);
+
+      for (int i = 0; i < n_pages; ++i, offset += PAGE_SIZE)
+        {
+          int error = vm_object_insert (object, frames[i], offset);
+          assert (!error || error == EBUSY);
+        }
+
+      page = frames[0];
+    }
+
+  prot = VM_MAP_PROT (entry->flags);
+  int error = pmap_enter (map->pmap, addr, vm_page_to_pa (page),
+                          prot, PMAP_PEF_GLOBAL);
+  if (! error)
+    error = pmap_update (map->pmap);
+
+  vm_page_unref (page);
+  return (error);
 }
 
 void
