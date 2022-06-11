@@ -100,7 +100,7 @@ test_noref (struct sref_counter *counter __unused)
   panic ("0 references, page released\n");
 }
 
-TEST_ENTRY_INIT (sref_dirty_zeroes)
+TEST_INLINE (sref_dirty_zeroes)
 {
   condition_init (&test_condition);
   mutex_init (&test_lock);

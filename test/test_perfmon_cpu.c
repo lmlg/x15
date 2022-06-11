@@ -162,9 +162,9 @@ test_control (void *arg)
   test_group_add (&group, &cycle);
   test_group_add (&group, &instruction);
   test_group_attach_cpu (&group, TEST_MONITORED_CPU);
-  test_wait();
+  test_wait ();
   test_group_report (&group);
-  test_wait();
+  test_wait ();
   test_group_detach (&group);
   test_group_report (&group);
 
@@ -173,7 +173,7 @@ test_control (void *arg)
   log_info ("test: done");
 }
 
-TEST_ENTRY (perfmon_cpu)
+TEST_INLINE (perfmon_cpu)
 {
   if (cpu_count () < TEST_MIN_CPUS)
     {

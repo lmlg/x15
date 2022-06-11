@@ -384,7 +384,7 @@ test_e (void *arg __unused)
     }
 }
 
-TEST_ENTRY_INIT (mutex_pi)
+TEST_INLINE (mutex_pi)
 {
   if (cpu_count () < TEST_MIN_CPUS)
     {

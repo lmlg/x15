@@ -47,12 +47,16 @@ static struct mutex test_lock;
 static void *test_va;
 
 static void
-test_run1 (void *arg)
+test_run1 (void *arg __unused)
 {
-  (void) arg;
-
   printf ("allocating page\n");
   void *ptr = vm_kmem_alloc (PAGE_SIZE);
+  if (! ptr)
+    {
+      log_err ("(pmap_update): failed to allocate memory");
+      return;
+    }
+
   printf ("writing page\n");
   memset (ptr, 'a', PAGE_SIZE);
 
@@ -65,10 +69,8 @@ test_run1 (void *arg)
 }
 
 static void
-test_run2 (void *arg)
+test_run2 (void *arg __unused)
 {
-  (void) arg;
-
   printf ("waiting for page\n");
 
   mutex_lock (&test_lock);
@@ -84,10 +86,10 @@ test_run2 (void *arg)
       panic ("invalid content");
 
   vm_kmem_free (ptr, PAGE_SIZE);
-  printf ("done\n");
+  log_info ("test (pmap_update): done");
 }
 
-TEST_ENTRY_INIT (pmap_update)
+TEST_INLINE (pmap_update)
 {
   condition_init (&test_condition);
   mutex_init (&test_lock);
@@ -118,6 +120,5 @@ TEST_ENTRY_INIT (pmap_update)
   error_check (error, "thread_create");
 
   cpumap_destroy (cpumap);
-
   return (TEST_OK);
 }

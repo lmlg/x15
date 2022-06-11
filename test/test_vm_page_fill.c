@@ -104,7 +104,7 @@ test_reset_pages (void)
       error_check (error, __func__);
       error = pmap_update (kernel_pmap);
       error_check (error, __func__);
-      memset ( (void *) va, 0, PAGE_SIZE);
+      memset ((void *) va, 0, PAGE_SIZE);
       error = pmap_remove (kernel_pmap, va, &test_cpumap);
       error_check (error, __func__);
       error = pmap_update (kernel_pmap);
@@ -127,7 +127,7 @@ test_run (void *arg __unused)
     }
 }
 
-TEST_ENTRY_INIT (vm_page_fill)
+TEST_INLINE (vm_page_fill)
 {
   list_init (&test_pages);
   cpumap_zero (&test_cpumap);

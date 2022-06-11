@@ -149,7 +149,7 @@ test_report_syscnt (struct timer *timer)
                          clock_ticks_from_ms (TEST_REPORT_INTERVAL));
 }
 
-TEST_ENTRY_INIT (mutex)
+TEST_INLINE (mutex)
 {
   if (cpu_count () < TEST_MIN_CPUS)
     {

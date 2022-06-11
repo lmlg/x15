@@ -27,12 +27,25 @@
 
 void __init test_setup (void);
 
-#define TEST_PREFIX   test_F_
+/*
+ * Tests can be classified in 2 types: inline and delayed:
+ * Inline tests are run as they are discovered, whereas delayed tests create a
+ * detached thread that runs once the needed subsystems are up.
+ * In order for tests to be inline, they must only use the most basic of the
+ * functionalities that the kernel provides, since test discovery is run very
+ * early (Before application processors are up). 
+ */
 
-#define TEST_ENTRY(name)   \
-int CONCAT (TEST_PREFIX, name) (void)
+#define TEST_PREFIX        test_F
+#define TEST_INLINE_CHAR   I
 
-#define TEST_ENTRY_INIT(name)   \
-int __init CONCAT (TEST_PREFIX, name) (void)
+// Convert 'name' to 'test_FI_name'
+#define TEST_INLINE(name)   \
+  int __init CONCAT (TEST_PREFIX,   \
+                     CONCAT (TEST_INLINE_CHAR, CONCAT (_, name))) (void)
+
+// Convert 'name' to 'test_F_name'
+#define TEST_DELAYED(name)   \
+  int __init CONCAT (TEST_PREFIX, CONCAT (_, name)) (void)
 
 #endif

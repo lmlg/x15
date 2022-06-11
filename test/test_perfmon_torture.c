@@ -284,8 +284,7 @@ test_control (void *arg)
     }
 }
 
-static void
-test_controller_create (void)
+TEST_DELAYED (perfmon_torture)
 {
   struct test_controller *controller = kmem_alloc (sizeof (*controller));
   if (! controller)
@@ -318,10 +317,5 @@ test_controller_create (void)
   thread_attr_set_detached (&attr);
   int error = thread_create (NULL, &attr, test_control, controller);
   error_check (error, "thread_create");
-}
-
-TEST_ENTRY (perfmon_torture)
-{
-  test_controller_create ();
   return (TEST_OK);
 }

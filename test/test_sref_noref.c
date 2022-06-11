@@ -104,8 +104,7 @@ test_obj_noref (struct sref_counter *counter)
   syscnt_info ("sref_true_zero", log_stream_info ());
 }
 
-static void
-test_run (void *arg __unused)
+TEST_DELAYED (sref_noref)
 {
   int error;
   uint32_t nr_threads = cpu_count () + 1;
@@ -152,18 +151,5 @@ test_run (void *arg __unused)
   sref_counter_dec (&obj->ref_counter);
 
   kmem_free (threads, sizeof (*threads) * nr_threads);
-}
-
-TEST_ENTRY_INIT (sref_noref)
-{
-  condition_init (&test_condition);
-  mutex_init (&test_lock);
-
-  struct thread_attr attr;
-  thread_attr_init (&attr, THREAD_KERNEL_PREFIX "test_sref_noref");
-  thread_attr_set_detached (&attr);
-  int error = thread_create (NULL, &attr, test_run, NULL);
-  error_check (error, "thread_create");
-
   return (TEST_OK);
 }

@@ -66,7 +66,7 @@ test_tick (struct timer *timer)
                   clock_ticks_from_ms (TEST_INTERVAL * 1000));
 }
 
-TEST_ENTRY_INIT (bulletin)
+TEST_INLINE (bulletin)
 {
   bulletin_init (&test_bulletin);
   bulletin_subscribe (&test_bulletin, &test_bulletin_sub,

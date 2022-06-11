@@ -63,7 +63,7 @@ test_sscanf (void)
   assert (x2 == -45);
 }
 
-TEST_ENTRY_INIT (fmt)
+TEST_INLINE (fmt)
 {
   char buf[32];
   int rv = fmt_sprintf (buf, "hello %d %s", -4, "???");

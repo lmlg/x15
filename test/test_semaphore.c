@@ -72,7 +72,7 @@ test_post (void *arg __unused)
   log_info ("test: done");
 }
 
-TEST_ENTRY_INIT (semaphore)
+TEST_INLINE (semaphore)
 {
   semaphore_init (&test_semaphore, 0, TEST_NR_WAITERS);
 

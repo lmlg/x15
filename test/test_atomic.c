@@ -225,7 +225,7 @@ test_fetch_xor (void)
   test_check_n (oval ^ delta, __func__);
 }
 
-TEST_ENTRY_INIT (atomic_ops)
+TEST_INLINE (atomic_ops)
 {
   test_load ();
   test_store ();

@@ -92,7 +92,7 @@ test_ref (void *arg __unused)
     }
 }
 
-TEST_ENTRY_INIT (sref_weakref)
+TEST_INLINE (sref_weakref)
 {
   struct thread_attr attr;
   thread_attr_init (&attr, THREAD_KERNEL_PREFIX "test_sref_weakref");

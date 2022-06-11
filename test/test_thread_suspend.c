@@ -79,8 +79,7 @@ test_suspend_self (void *arg __unused)
   thread_suspend (thread_self ());
 }
 
-static void
-test_run (void *arg __unused)
+TEST_DELAYED (thread_suspend)
 {
   unsigned long lock = 1;
   struct thread_attr attr;
@@ -123,16 +122,5 @@ test_run (void *arg __unused)
   thread_join (thread);
 
   log_info ("test (thread-suspend): done");
-}
-
-TEST_ENTRY_INIT (thread_suspend)
-{
-  struct thread_attr attr;
-  thread_attr_init (&attr, THREAD_KERNEL_PREFIX "test_suspend");
-  thread_attr_set_detached (&attr);
-
-  int error = thread_create (NULL, &attr, test_run, NULL);
-  error_check (error, "thread_create");
-
   return (TEST_OK);
 }

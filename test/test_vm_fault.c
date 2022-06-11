@@ -46,7 +46,7 @@ static int test_pager_mapped;
 
 static int
 test_pager_get (struct vm_object *obj __unused, void *dst,
-                size_t size, uint64_t off __unused)
+                size_t size, uint64_t off)
 {
   assert (! test_pager_mapped);
   assert (off == TEST_OFFSET);
@@ -82,8 +82,7 @@ test_vm_fault_thread (void *arg __unused)
 
 static struct task vm_fault_task;
 
-static void
-test_vm_fault_entry (void *arg __unused)
+TEST_DELAYED (vm_fault)
 {
   struct vm_map *map;
   int error = vm_map_dup_kernel (&map);
@@ -102,17 +101,8 @@ test_vm_fault_entry (void *arg __unused)
   int val;
   error = vm_copy ((void *)0x1, &val, sizeof (val));
   assert (error != 0);
-  assert (! thread_self()->fixup);
+  assert (!thread_self()->fixup);
 
   log_info ("test (vm_fault): done");
-}
-
-TEST_ENTRY_INIT (vm_fault)
-{
-  struct thread_attr attr;
-  thread_attr_init (&attr, "test_vm_fault");
-  thread_attr_set_detached (&attr);
-
-  thread_create (NULL, &attr, test_vm_fault_entry, NULL);
   return (TEST_OK);
 }

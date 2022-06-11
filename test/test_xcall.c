@@ -74,45 +74,6 @@ test_run_cpu (void *arg __unused)
 }
 
 static void
-test_run (void *arg __unused)
-{
-  struct cpumap *cpumap;
-  int error = cpumap_create (&cpumap);
-  error_check (error, "cpumap_create");
-
-  for (uint32_t i = 0; i < cpu_count (); i++)
-    {
-      /*
-       * Send IPIs from CPU 1 first, in order to better trigger any
-       * initialization race that may prevent correct IPI transmission.
-       * This assumes CPUs are initialized sequentially, and that CPU 1
-       * may have finished initialization much earlier than the last CPU.
-       * CPU 0 isn't used since it's the one normally initializing remote
-       * CPUs.
-       */
-      uint32_t cpu = (1 + i) % cpu_count();
-
-      cpumap_zero (cpumap);
-      cpumap_set (cpumap, cpu);
-
-      char name[THREAD_NAME_SIZE];
-      snprintf (name, sizeof (name), THREAD_KERNEL_PREFIX "test_xcall/%u", cpu);
-
-      struct thread_attr attr;
-      thread_attr_init (&attr, name);
-      thread_attr_set_cpumap (&attr, cpumap);
-
-      struct thread *thread;
-      error = thread_create (&thread, &attr, test_run_cpu, NULL);
-      error_check (error, "thread_create");
-      thread_join (thread);
-    }
-
-  cpumap_destroy (cpumap);
-  log_info ("test (xcall): done");
-}
-
-static void
 async_xcall_test_fn (void *arg)
 {
   log_info ("async xcall: %d\n", *(int *)arg);
@@ -154,16 +115,44 @@ test_async_xcall (void)
     log_err ("failed to create thread for async xcall");
 }
 
-TEST_ENTRY_INIT (xcall)
+TEST_DELAYED (xcall)
 {
-  struct thread_attr attr;
-  thread_attr_init (&attr, THREAD_KERNEL_PREFIX "test_xcall");
-  thread_attr_set_detached (&attr);
-  int error = thread_create (NULL, &attr, test_run, NULL);
-  error_check (error, "thread_create");
+  struct cpumap *cpumap;
+  int error = cpumap_create (&cpumap);
+  error_check (error, "cpumap_create");
 
+  for (uint32_t i = 0; i < cpu_count (); i++)
+    {
+      /*
+       * Send IPIs from CPU 1 first, in order to better trigger any
+       * initialization race that may prevent correct IPI transmission.
+       * This assumes CPUs are initialized sequentially, and that CPU 1
+       * may have finished initialization much earlier than the last CPU.
+       * CPU 0 isn't used since it's the one normally initializing remote
+       * CPUs.
+       */
+      uint32_t cpu = (1 + i) % cpu_count();
+
+      cpumap_zero (cpumap);
+      cpumap_set (cpumap, cpu);
+
+      char name[THREAD_NAME_SIZE];
+      snprintf (name, sizeof (name), THREAD_KERNEL_PREFIX "test_xcall/%u", cpu);
+
+      struct thread_attr attr;
+      thread_attr_init (&attr, name);
+      thread_attr_set_cpumap (&attr, cpumap);
+
+      struct thread *thread;
+      error = thread_create (&thread, &attr, test_run_cpu, NULL);
+      error_check (error, "thread_create");
+      thread_join (thread);
+    }
+
+  cpumap_destroy (cpumap);
   if (cpu_count () > 1)
     test_async_xcall ();
 
+  log_info ("test (xcall): done");
   return (TEST_OK);
 }

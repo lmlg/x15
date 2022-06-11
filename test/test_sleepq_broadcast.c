@@ -68,7 +68,7 @@ test_broadcast (void *arg __unused)
   log_info ("test: done");
 }
 
-TEST_ENTRY_INIT (sleepq_broadcast)
+TEST_INLINE (sleepq_broadcast)
 {
   struct thread_attr attr;
   int error;

@@ -78,9 +78,14 @@ test_affinity_suspended (void *arg)
   cpumap_destroy (cpumap);
 }
 
-static void
-test_run (void *arg __unused)
+TEST_DELAYED (thread_affinity)
 {
+  if (cpu_count () < 2)
+    { // Nothing to test on uni-processor systems.
+      log_err ("not enough processors to test");
+      return (TEST_SKIPPED);
+    }
+
   semaphore_init (&affinity_sem, 0, 0xff);
 
   struct cpumap *cpumap;
@@ -117,22 +122,4 @@ test_run (void *arg __unused)
   thread_join (thread);
 
   log_info ("test (thread-affinity): done");
-}
-
-TEST_ENTRY_INIT (thread_affinity)
-{
-  if (cpu_count () < 2)
-    { // Nothing to test on uni-processor systems.
-      log_err ("not enough processors to test");
-      return (TEST_SKIPPED);
-    }
-
-  struct thread_attr attr;
-  thread_attr_init (&attr, THREAD_KERNEL_PREFIX "test_run");
-  thread_attr_set_detached (&attr);
-
-  int error = thread_create (NULL, &attr, test_run, NULL);
-  error_check (error, "thread_create");
-
-  return (TEST_OK);
 }

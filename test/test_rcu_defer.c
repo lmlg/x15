@@ -154,7 +154,7 @@ test_read (void *arg __unused)
     }
 }
 
-TEST_ENTRY (rcu_defer)
+TEST_INLINE (rcu_defer)
 {
   condition_init (&test_condition);
   mutex_init (&test_lock);

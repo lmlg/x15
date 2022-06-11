@@ -318,7 +318,7 @@ test_control (void *arg)
   log_info ("test: done");
 }
 
-TEST_ENTRY (perfmon_thread)
+TEST_INLINE (perfmon_thread)
 {
   condition_init (&test_condition);
   mutex_init (&test_mutex);
