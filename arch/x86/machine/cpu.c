@@ -49,6 +49,7 @@
 #include <machine/strace.h>
 
 #include <vm/defs.h>
+#include <vm/map.h>
 #include <vm/page.h>
 
 // Delay used for frequency measurement, in microseconds.
@@ -615,9 +616,14 @@ cpu_exc_page_fault (const struct cpu_exc_frame *frame)
    * can't cause another page fault while handling a page fault.
    */
   uintptr_t addr = cpu_get_cr2 ();
+  cpu_intr_enable ();
+
   int prot = (code & CPU_PF_WRITE) ? VM_PROT_WRITE : VM_PROT_READ;
   struct thread *self = thread_self ();
-  int error = vm_map_fault (self->task->map, addr, prot);
+  struct vm_map *map = self->task->map;
+  int error = map == vm_map_get_kernel_map () ? EFAULT :
+                     vm_map_fault (self->task->map, addr, prot);
+  cpu_intr_disable ();
 
   if (! error)
     return;
@@ -658,7 +664,7 @@ cpu_setup_intr (void)
   cpu_register_exc (CPU_EXC_NP, cpu_exc_default);
   cpu_register_exc (CPU_EXC_SS, cpu_exc_default);
   cpu_register_exc (CPU_EXC_GP, cpu_exc_default);
-  cpu_register_exc (CPU_EXC_PF, cpu_exc_default);
+  cpu_register_exc (CPU_EXC_PF, cpu_exc_page_fault);
   cpu_register_exc (CPU_EXC_MF, cpu_exc_default);
   cpu_register_exc (CPU_EXC_AC, cpu_exc_default);
   cpu_register_intr (CPU_EXC_MC, cpu_intr_default);

@@ -47,7 +47,7 @@ static struct kmem_cache task_cache;
 static struct list task_list;
 static struct spinlock task_list_lock;
 
-static void
+void
 task_init (struct task *task, const char *name, struct vm_map *map)
 {
   task->nr_refs = 1;

@@ -70,7 +70,7 @@ test_write_pages (void)
       error_check (error, __func__);
       error = pmap_update (kernel_pmap);
       error_check (error, __func__);
-      memset ( (void *) va, test_pattern, PAGE_SIZE);
+      memset ((void *) va, test_pattern, PAGE_SIZE);
       error = pmap_remove (kernel_pmap, va, &test_cpumap);
       error_check (error, __func__);
       error = pmap_update (kernel_pmap);

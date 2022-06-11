@@ -695,7 +695,7 @@ vm_page_alloc (uint32_t order, uint32_t selector, uint16_t type)
 }
 
 void
-vm_page_free (struct vm_page *page, uint32_t order)
+vm_page_free_fast (struct vm_page *page, uint32_t order)
 {
   assert (page->zone_index < ARRAY_SIZE (vm_page_zones));
   assert (!vm_page_block_referenced (page, order));

@@ -49,7 +49,7 @@ INIT_OP_DEFINE (vm_object_setup,
 
 void __init
 vm_object_init (struct vm_object *object, uint64_t size,
-                struct vm_object_pager *pager)
+                const struct vm_object_pager *pager)
 {
   assert (vm_page_aligned (size));
 
@@ -135,23 +135,27 @@ vm_object_lookup (struct vm_object *object, uint64_t offset)
 }
 
 int
-vm_object_pager_get (struct vm_object *object,
-                     struct vm_page **pages, int nr_pages)
+vm_object_pager_get (struct vm_object *object, struct vm_page **pages,
+                     void *dst, int nr_pages)
 {
-  int ret = object->pager->get (object, pages, nr_pages);
-  for (int i = 0; i < nr_pages; ++i)
-    pages[i]->type = VM_PAGE_OBJECT;
+  int error = object->pager->get (object, dst, nr_pages * PAGE_SIZE,
+                                  pages[0]->offset);
+  if (! error)
+    for (int i = 0; i < nr_pages; ++i)
+      pages[i]->type = VM_PAGE_OBJECT;
 
-  return (ret);
+  return (error);
 }
 
 int
-vm_object_pager_put (struct vm_object *object,
-                     struct vm_page **pages, int nr_pages)
+vm_object_pager_put (struct vm_object *object, struct vm_page **pages,
+                     const void *src, int nr_pages)
 {
-  int ret = object->pager->put (object, pages, nr_pages);
-  for (int i = 0; i < nr_pages; ++i)
-    pages[i]->type = VM_PAGE_FREE;
+  int error = object->pager->put (object, src, nr_pages * PAGE_SIZE,
+                                  pages[0]->offset);
+  if (! error)
+    for (int i = 0; i < nr_pages; ++i)
+      pages[i]->type = VM_PAGE_FREE;
 
-  return (ret);
+  return (error);
 }

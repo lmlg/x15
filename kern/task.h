@@ -42,6 +42,9 @@ struct task
   char name[TASK_NAME_SIZE];
 };
 
+// Initialize a task.
+void task_init (struct task *task, const char *name, struct vm_map *map);
+
 static inline struct task*
 task_get_kernel_task (void)
 {
@@ -84,7 +87,7 @@ int task_create (struct task **taskp, const char *name);
  *
  * This function is meant for debugging only.
  */
-struct task * task_lookup (const char *name);
+struct task* task_lookup (const char *name);
 
 // Add a thread to a task.
 void task_add_thread (struct task *task, struct thread *thread);
@@ -99,7 +102,7 @@ void task_remove_thread (struct task *task, struct thread *thread);
  *
  * This function is meant for debugging only.
  */
-struct thread * task_lookup_thread (struct task *task, const char *name);
+struct thread* task_lookup_thread (struct task *task, const char *name);
 
 /*
  * Display task information.

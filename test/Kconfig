@@ -90,6 +90,11 @@ config TEST_VM_PAGE_FILL
 	default n
 	select SYMTAB
 
+config TEST_VM_FAULT
+	bool "vm page fault"
+	default n
+	select SYMTAB
+
 config TEST_XCALL
 	bool "xcall"
 	default n

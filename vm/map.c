@@ -33,8 +33,10 @@
 #include <kern/macros.h>
 #include <kern/mutex.h>
 #include <kern/panic.h>
+#include <kern/plist.h>
 #include <kern/rbtree.h>
 #include <kern/shell.h>
+#include <kern/spinlock.h>
 #include <kern/task.h>
 
 #include <machine/page.h>
@@ -584,8 +586,6 @@ vm_map_init (struct vm_map *map, struct pmap *pmap,
 static void
 vm_map_shell_info (struct shell *shell, int argc, char **argv)
 {
-  (void)shell;
-
   if (argc < 2)
     {
       stream_puts (shell->stream, "usage: vm_map_info task\n");
@@ -637,23 +637,10 @@ INIT_OP_DEFINE (vm_map_bootstrap,
                 INIT_OP_DEP (kmem_bootstrap, true),
                 INIT_OP_DEP (thread_bootstrap, true));
 
-static int __init
-vm_map_setup (void)
-{
-  kmem_cache_init (&vm_map_cache, "vm_map", sizeof (struct vm_map),
-                   0, NULL, KMEM_CACHE_PAGE_ONLY);
-  return (0);
-}
-
-INIT_OP_DEFINE (vm_map_setup,
-                INIT_OP_DEP (pmap_setup, true),
-                INIT_OP_DEP (printf_setup, true),
-                INIT_OP_DEP (vm_map_bootstrap, true));
-
 int
 vm_map_create (struct vm_map **mapp)
 {
-  _Auto map = kmem_cache_alloc (&vm_map_cache);
+  struct vm_map *map = kmem_cache_alloc (&vm_map_cache);
   if (! map)
     return (ENOMEM);
 
@@ -679,9 +666,82 @@ static const uint8_t vm_pagein_targets[] =
   [VM_ADV_WILLNEED] = VM_MAP_MAX_FRAMES_ORDER
 };
 
+struct page_waiter
+{
+  struct thread *thread;
+  struct plist_node node;
+  struct vm_page **frames;
+  uint32_t nmax;
+};
+
+static struct spinlock page_waiters_lock;
+static struct plist page_waiters_list;
+
+static int __init
+vm_map_setup (void)
+{
+  kmem_cache_init (&vm_map_cache, "vm_map", sizeof (struct vm_map),
+                   0, NULL, KMEM_CACHE_PAGE_ONLY);
+  spinlock_init (&page_waiters_lock);
+  plist_init (&page_waiters_list);
+  return (0);
+}
+
+INIT_OP_DEFINE (vm_map_setup,
+                INIT_OP_DEP (pmap_setup, true),
+                INIT_OP_DEP (printf_setup, true),
+                INIT_OP_DEP (vm_map_bootstrap, true));
+
+static uint32_t
+vm_map_release_pages_impl (struct vm_page *pages, uint32_t n_pages)
+{
+  SPINLOCK_GUARD (&page_waiters_lock, true);
+  uint32_t released = 0;
+
+  while (1)
+    {
+      if (!n_pages || plist_empty (&page_waiters_list))
+        break;
+
+      _Auto entry = plist_entry (plist_first (&page_waiters_list),
+                                 struct page_waiter, node);
+      uint32_t n = MIN (n_pages, entry->nmax);
+      for (uint32_t i = 0; i < n; ++i)
+        entry->frames[i] = pages + i;
+
+      pages += n;
+      released += n;
+      thread_wakeup (entry->thread);
+    }
+
+  return (released);
+}
+
+bool
+vm_map_release_pages (struct vm_page *pages, uint32_t order)
+{
+  uint32_t n_pages = 1u << order,
+           n_rel = vm_map_release_pages_impl (pages, n_pages);
+  if (n_rel == 0)
+    return (false);
+  else if (n_rel == n_pages)
+    return (true);
+
+  pages += n_rel;
+  n_pages -= n_rel;
+  uint32_t l2 = log2 (n_pages);
+  vm_page_free_fast (pages, l2);
+  pages += 1u << l2;
+
+  for (n_pages -= 1u << l2; n_pages != 0; --n_pages)
+    vm_page_free_fast (pages, 0);
+
+  return (true);
+}
+
 static int
-vm_map_gather_frames (struct vm_map *map __unused, struct vm_map_entry *entry,
-                      struct vm_page **frames)
+vm_map_gather_frames (struct vm_map *map, struct vm_map_entry *entry,
+                      struct vm_page **frames, bool *waited)
 {
   int target = vm_pagein_targets[VM_MAP_ADVICE (entry->flags)];
   // TODO: Restrict how many pages each task can allocate.
@@ -695,9 +755,28 @@ vm_map_gather_frames (struct vm_map *map __unused, struct vm_map_entry *entry,
       return (target);
     }
 
-  // TODO: Implement page eviction.
-  return (-ENOMEM);
+  mutex_unlock (&map->lock);
+
+  struct page_waiter pw = { .thread = thread_self () };
+  plist_node_init (&pw.node, thread_real_global_priority (pw.thread));
+  pw.frames = frames;
+  pw.nmax = 1 << target;
+
+  // TODO: Interruptible wait (or even better, page evictions).
+  spinlock_lock (&page_waiters_lock);
+  plist_add (&page_waiters_list, &pw.node);
+  thread_sleep (&page_waiters_lock, &pw, "page");
+  plist_remove (&page_waiters_list, &pw.node);
+  spinlock_unlock (&page_waiters_lock);
+
+  for (uint32_t i = 0; i < pw.nmax; ++i)
+    frames[i]->type = VM_PAGE_OBJECT;
+
+  *waited = true;   // Signals that the lock was released already.
+  return (pw.nmax);
 }
+
+#define VM_PAGE_VA(page)   ((void *)vm_page_direct_va (vm_page_to_pa (page)))
 
 int
 vm_map_fault (struct vm_map *map, uintptr_t addr, int prot)
@@ -719,31 +798,108 @@ vm_map_fault (struct vm_map *map, uintptr_t addr, int prot)
   uint64_t offset = entry->offset + (addr - entry->start);
   struct vm_page *page = vm_object_lookup (object, offset);
 
-  if (! page)
-    { // Cache miss.
-      struct vm_page *frames[VM_MAP_MAX_FRAMES];
-      int n_pages = vm_map_gather_frames (map, entry, frames);
+  if (page)
+    {
+      prot = VM_MAP_PROT (entry->flags);
+      int error = pmap_enter (map->pmap, addr, vm_page_to_pa (page),
+                              VM_MAP_PROT (entry->flags), PMAP_PEF_GLOBAL);
 
-      if (n_pages < 0)
-        return (-n_pages);
+      if (! error)
+        error = pmap_update (map->pmap);
 
-      for (int i = 0; i < n_pages; ++i, offset += PAGE_SIZE)
-        {
-          int error = vm_object_insert (object, frames[i], offset);
-          assert (!error || error == EBUSY);
-        }
-
-      page = frames[0];
+      vm_page_unref (page);
+      return (error);
     }
 
-  prot = VM_MAP_PROT (entry->flags);
-  int error = pmap_enter (map->pmap, addr, vm_page_to_pa (page),
-                          prot, PMAP_PEF_GLOBAL);
-  if (! error)
-    error = pmap_update (map->pmap);
+  // Handle cache miss.
+  struct vm_page *frames[VM_MAP_MAX_FRAMES];
+  bool waited = false;
+  int n_pages = vm_map_gather_frames (map, entry, frames, &waited);
+  assert (n_pages > 0);
 
-  vm_page_unref (page);
+  if (! waited)
+    mutex_unlock (&map->lock);
+
+  frames[0]->offset = offset;
+  int error = vm_object_pager_get (object, frames,
+                                   VM_PAGE_VA (frames[0]), n_pages);
+  mutex_lock (&map->lock);
+
+  if (unlikely (error))
+    return (EIO);   // Will map to SIGBUS.
+
+  for (int i = 0; i < n_pages; ++i, offset += PAGE_SIZE)
+    {
+      error = vm_object_insert (object, frames[i], offset);
+      assert (!error || error == EBUSY);
+      if (! error)
+        pmap_enter (map->pmap, addr + i * PAGE_SIZE,
+                    vm_page_to_pa (frames[i]), prot, PMAP_PEF_GLOBAL);
+    }
+
+  return (pmap_update (map->pmap));
+}
+
+#ifdef CONFIG_RUN_TEST
+
+static inline int
+vm_map_dup_tree (struct vm_map *map, const struct rbtree_node *node)
+{
+  if (! node)
+    return (0);
+
+  _Auto entry = rbtree_entry (node, struct vm_map_entry, tree_node);
+  struct vm_map_request req;
+  int error = vm_map_prepare (map, 0, entry->end - entry->start,
+                              0, entry->flags, entry->object,
+                              entry->offset, &req);
+
+  error = error ||
+          vm_map_insert (map, NULL, &req) ||
+          vm_map_dup_tree (map, node->children[RBTREE_LEFT]) ||
+          vm_map_dup_tree (map, node->children[RBTREE_RIGHT]);
+
   return (error);
+}
+
+int
+vm_map_dup_kernel (struct vm_map **mapp)
+{
+  struct vm_map *src = vm_map_get_kernel_map ();
+  struct vm_map *map = kmem_cache_alloc (&vm_map_cache);
+  if (! map)
+    return (ENOMEM);
+
+  struct pmap *pmap;
+  if (pmap_copy (src->pmap, &pmap) != 0)
+    goto failpmap;
+
+  vm_map_init (map, pmap, 0, src->end);
+  if (vm_map_dup_tree (map, src->entry_tree.root) != 0)
+    goto faildup;
+
+  *mapp = map;
+  return (0);
+
+faildup:
+  pmap_destroy (map->pmap);
+failpmap:
+  kmem_cache_free (&vm_map_cache, map);
+  return (ENOMEM);
+}
+
+#endif
+
+int
+vm_copy (const void *src, void *dst, size_t size)
+{
+  struct vm_fixup fixup;
+  volatile int res = vm_fixup_save (&fixup);
+
+  if (res == 0)
+    memcpy (dst, src, size);
+
+  return (res);
 }
 
 void

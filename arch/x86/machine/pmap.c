@@ -1048,6 +1048,21 @@ pmap_create (struct pmap **pmapp)
   return (0);
 }
 
+int
+pmap_copy (const struct pmap *src, struct pmap **dst)
+{
+  int error = pmap_create (dst);
+  if (! error)
+    **dst = *src;
+  return (error);
+}
+
+void
+pmap_destroy (struct pmap *pmap)
+{
+  kmem_cache_free (&pmap_cache, pmap);
+}
+
 static int
 pmap_enter_local (struct pmap *pmap, uintptr_t va, phys_addr_t pa,
                   int prot, int flags __unused)

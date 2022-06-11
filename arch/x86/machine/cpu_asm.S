@@ -121,15 +121,15 @@
  * and skipping the red zone keeps the stack pointer correctly aligned.
  */
 .macro cpu_ll_exc_enter vector
-  pushq %rbx                               /* save registers used for
-  pushq %rax                                  stack switching. */
+  pushq %rbx                               // save registers used for.
+  pushq %rax                               // stack switching.
   leaq CPU_LEF_EXC_REM(%rsp), %rbx         // point to exception frame top.
   movq CPU_LEF_RSP(%rbx), %rsp             // point to thread stack.
   subq $CPU_RED_ZONE_SIZE, %rsp            // skip red zone.
   cpu_ll_exc_push %rbx, CPU_NR_CRE, %rax   /* copy frame start from interrupt
                                               stack to thread stack. */
-  movq CPU_LEF_EXC_RAX(%rbx), %rax         /* restore registers used
-  movq CPU_LEF_EXC_RBX(%rbx), %rbx            for stack switching. */
+  movq CPU_LEF_EXC_RAX(%rbx), %rax         // restore registers used */
+  movq CPU_LEF_EXC_RBX(%rbx), %rbx         // for stack switching.
   pushq $\vector                           // complete exception frame.
   cpu_ll_exc_store_registers
   xorq %rbp, %rbp                          // block stack tracing.
@@ -180,7 +180,7 @@
   pushl %eax
 .endm
 
-// XXX Don't load segment registers for now.
+/* XXX Don't load segment registers for now */
 .macro cpu_ll_exc_load_registers
   popl %eax
   popl %ebx
@@ -236,7 +236,7 @@
 ASM_ENTRY (name)   \
   push $0;   \
   cpu_ll_exc_handle vector;   \
-ASM_END (name)
+ASM_END(name)
 
 #define CPU_LL_EXC_HANDLER_WITH_ERROR(vector, name)   \
 ASM_ENTRY (name)   \
@@ -525,7 +525,7 @@ CPU_LL_INTR_HANDLER (255, cpu_ll_exc_255)
 .section INIT_DATA_SECTION
 
 // See the C declaration.
-ASM_DATA (cpu_ll_exc_handler_addrs)
+ASM_DATA(cpu_ll_exc_handler_addrs)
   CPU_LL_EXC_HANDLER_ADDR (cpu_ll_exc_divide_error)
   CPU_LL_EXC_HANDLER_ADDR (cpu_ll_exc_debug)
   CPU_LL_EXC_HANDLER_ADDR (cpu_ll_exc_nmi)
@@ -823,7 +823,7 @@ ASM_ENTRY (cpu_fixup_save)
   movq %rdx, 48(%rdi)
   movq (%rsp), %rdx
   movq %rdx, 56(%rdi)
-  xorq %rdx, %rdx
+  xorq %rax, %rax
 #else
   movl 4(%esp), %eax
   movl %ebx, (%eax)
@@ -843,22 +843,22 @@ ASM_END (cpu_fixup_save)
 
 .macro cpu_fixup_restore_off in out
   movq \in(%rdi), %rax
-  movq %rax, \out(%rsi)
+  movq %rax, (\out * 8)(%rsi)
 .endm
 
 #else
 
 .macro cpu_fixup_restore_off in out
   movl \in (%ecx), %eax
-  movl %eax, \out (%edx)
+  movl %eax, (\out * 4)(%edx)
 .endm
 
 #endif
 
 ASM_ENTRY (cpu_fixup_restore)
 #ifdef __LP64__
-  cpu_fixup_restore_off 0  CPU_EXC_FRAME_RBX
-  cpu_fixup_restore_off 8  CPU_EXC_FRAME_RBP
+  cpu_fixup_restore_off  0 CPU_EXC_FRAME_RBX
+  cpu_fixup_restore_off  8 CPU_EXC_FRAME_RBP
   cpu_fixup_restore_off 16 CPU_EXC_FRAME_R12
   cpu_fixup_restore_off 24 CPU_EXC_FRAME_R13
   cpu_fixup_restore_off 32 CPU_EXC_FRAME_R14
@@ -866,7 +866,7 @@ ASM_ENTRY (cpu_fixup_restore)
   cpu_fixup_restore_off 48 CPU_EXC_FRAME_RSP
   cpu_fixup_restore_off 56 CPU_EXC_FRAME_RIP
   movq $1, %rax
-  movq %rax, CPU_EXC_FRAME_RAX(%rsi)
+  movq %rax, (CPU_EXC_FRAME_RAX * 8)(%rsi)
 #else
   movl 4(%esp), %ecx
   movl 8(%esp), %edx
@@ -877,7 +877,7 @@ ASM_ENTRY (cpu_fixup_restore)
   cpu_fixup_restore 16 CPU_EXC_FRAME_ESP
   cpu_fixup_restore 20 CPU_EXC_FRAME_EIP
   movl $1, %eax
-  movl %rax, CPU_EXC_FRAME_EAX(%edx)
+  movl %rax, (CPU_EXC_FRAME_EAX * 4)(%edx)
 #endif
   ret
 ASM_END (cpu_fixup_restore)

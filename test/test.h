@@ -33,6 +33,6 @@ void __init test_setup (void);
 int CONCAT (TEST_PREFIX, name) (void)
 
 #define TEST_ENTRY_INIT(name)   \
-int __init test_F_##name (void)
+int __init CONCAT (TEST_PREFIX, name) (void)
 
 #endif

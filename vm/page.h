@@ -215,7 +215,17 @@ struct vm_page* vm_page_alloc (uint32_t order, uint32_t selector,
  *
  * The pages must have no references.
  */
-void vm_page_free (struct vm_page *page, uint32_t order);
+void vm_page_free_fast (struct vm_page *page, uint32_t order);
+
+static inline void
+vm_page_free (struct vm_page *page, uint32_t order)
+{
+  /* Same as above, only this function may awaken threads that are
+   * waiting for pages to be released. */
+  bool vm_map_release_pages (struct vm_page *, uint32_t);
+  if (likely (! vm_map_release_pages (page, order)))
+    vm_page_free_fast (page, order);
+}
 
 // Return the name of the given zone.
 const char* vm_page_zone_name (uint32_t zone_index);

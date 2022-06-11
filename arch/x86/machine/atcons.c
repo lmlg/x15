@@ -25,7 +25,7 @@
 #include <machine/atkbd.h>
 #include <machine/cga.h>
 
-#define ATCONS_ESC_SEQ_MAX_SIZE 8
+#define ATCONS_ESC_SEQ_MAX_SIZE   8
 
 static struct console atcons_console;
 

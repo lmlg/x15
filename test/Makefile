@@ -16,4 +16,5 @@ x15_SOURCES-$(CONFIG_TEST_SREF_WEAKREF)        += test/test_sref_weakref.c
 x15_SOURCES-$(CONFIG_TEST_THREAD_AFFINITY)     += test/test_thread_affinity.c
 x15_SOURCES-$(CONFIG_TEST_THREAD_SUSPEND)      += test/test_thread_suspend.c
 x15_SOURCES-$(CONFIG_TEST_VM_PAGE_FILL)        += test/test_vm_page_fill.c
+x15_SOURCES-$(CONFIG_TEST_VM_FAULT)            += test/test_vm_fault.c
 x15_SOURCES-$(CONFIG_TEST_XCALL)               += test/test_xcall.c

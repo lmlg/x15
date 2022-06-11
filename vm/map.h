@@ -28,6 +28,7 @@
 #include <kern/mutex.h>
 #include <kern/rbtree.h>
 #include <kern/stream.h>
+#include <kern/thread.h>
 
 #include <machine/pmap.h>
 
@@ -110,8 +111,32 @@ int vm_map_create (struct vm_map **mapp);
 // Handle a page fault.
 int vm_map_fault (struct vm_map *map, uintptr_t addr, int prot);
 
+#ifdef CONFIG_RUN_TEST
+// Duplicate the kernel VM map. Used only for tests.
+int vm_map_dup_kernel (struct vm_map **dst);
+
+#endif
+
+// Helper for vm_page_free
+bool vm_map_release_pages (struct vm_page *page, uint32_t order);
+
+// Safely copy bytes to and from arbitrary buffers.
+int vm_copy (const void *src, void *dst, size_t size);
+
 // Display information about a memory map.
 void vm_map_info (struct vm_map *map, struct stream *stream);
+
+// VM fixups.
+
+static inline void
+vm_fixup_fini (void *p __unused)
+{
+  thread_self()->fixup = NULL;
+}
+
+#define vm_fixup   cpu_fixup CLEANUP (vm_fixup_fini)
+
+#define vm_fixup_save(fx)   cpu_fixup_save (thread_self()->fixup = (fx))
 
 /*
  * This init operation provides :
