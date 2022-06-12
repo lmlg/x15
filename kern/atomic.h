@@ -153,6 +153,15 @@
 #define atomic_cas_acq_rel(place, exp, val)   \
   atomic_cas ((place), (exp), (val), ATOMIC_ACQ_REL)
 
+#define atomic_cas_bool_rlx(place, exp, val)   \
+  atomic_cas_bool ((place), (exp), (val), ATOMIC_RELAXED)
+
+#define atomic_cas_bool_acq(place, exp, val)   \
+  atomic_cas_bool ((place), (exp), (val), ATOMIC_ACQUIRE)
+
+#define atomic_cas_bool_rel(place, exp, val)   \
+  atomic_cas_bool ((place), (exp), (val), ATOMIC_RELEASE)
+
 #define atomic_swap_rlx(place, val)   \
   atomic_swap ((place), (val), ATOMIC_RELAXED)
 
@@ -162,6 +171,6 @@
 #define atomic_fence_acq()       atomic_fence (ATOMIC_ACQUIRE)
 #define atomic_fence_rel()       atomic_fence (ATOMIC_RELEASE)
 #define atomic_fence_acq_rel()   atomic_fence (ATOMIC_ACQ_REL)
-#define atomic_fence_seq()   atomic_fence (ATOMIC_SEQ_CST)
+#define atomic_fence_seq()       atomic_fence (ATOMIC_SEQ_CST)
 
 #endif

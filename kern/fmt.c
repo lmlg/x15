@@ -50,15 +50,15 @@
  * '0': 0x30 | 0x20 => 0x30 ('0')
  * 'A': 0x41 | 0x20 => 0x61 ('a')
  */
-#define FMT_FORMAT_ALT_FORM     0x0001 /* "Alternate form"                    */
-#define FMT_FORMAT_ZERO_PAD     0x0002 /* Zero padding on the left            */
-#define FMT_FORMAT_LEFT_JUSTIFY 0x0004 /* Align text on the left              */
-#define FMT_FORMAT_BLANK        0x0008 /* Blank space before positive number  */
-#define FMT_FORMAT_SIGN         0x0010 /* Always place a sign (either + or -) */
-#define FMT_FORMAT_LOWER        0x0020 /* To lowercase (for %x)               */
-#define FMT_FORMAT_CONV_SIGNED  0x0040 /* Format specifies signed conversion  */
-#define FMT_FORMAT_DISCARD      0x0080 /* Discard output (scanf)              */
-#define FMT_FORMAT_CHECK_WIDTH  0x0100 /* Check field width (scanf)           */
+#define FMT_FORMAT_ALT_FORM     0x0001   // "Alternate form"
+#define FMT_FORMAT_ZERO_PAD     0x0002   // Zero padding on the left
+#define FMT_FORMAT_LEFT_JUSTIFY 0x0004   // Align text on the left
+#define FMT_FORMAT_BLANK        0x0008   // Blank space before positive number
+#define FMT_FORMAT_SIGN         0x0010   // Always place a sign (either + or -)
+#define FMT_FORMAT_LOWER        0x0020   // To lowercase (for %x)
+#define FMT_FORMAT_CONV_SIGNED  0x0040   // Format specifies signed conversion
+#define FMT_FORMAT_DISCARD      0x0080   // Discard output (scanf)
+#define FMT_FORMAT_CHECK_WIDTH  0x0100   // Check field width (scanf)
 
 enum
 {
@@ -475,7 +475,7 @@ fmt_ostate_produce_int (struct fmt_ostate *state)
 
       // '0x' or '0X' for hexadecimal.
       if (state->base == 16)
-        state->width--;
+        --state->width;
     }
   else if (state->flags & FMT_FORMAT_CONV_SIGNED)
     {
@@ -688,22 +688,22 @@ fmt_ostate_produce (struct fmt_ostate *state)
 {
   switch (state->specifier)
     {
-    case FMT_SPECIFIER_INT:
-      fmt_ostate_produce_int (state);
-      break;
-    case FMT_SPECIFIER_CHAR:
-      fmt_ostate_produce_char (state);
-      break;
-    case FMT_SPECIFIER_STR:
-      fmt_ostate_produce_str (state);
-      break;
-    case FMT_SPECIFIER_NRCHARS:
-      fmt_ostate_produce_nrchars (state);
-      break;
-    case FMT_SPECIFIER_PERCENT:
-    case FMT_SPECIFIER_INVALID:
-      fmt_ostate_produce_raw_char (state, '%');
-      break;
+      case FMT_SPECIFIER_INT:
+        fmt_ostate_produce_int (state);
+        break;
+      case FMT_SPECIFIER_CHAR:
+        fmt_ostate_produce_char (state);
+        break;
+      case FMT_SPECIFIER_STR:
+        fmt_ostate_produce_str (state);
+        break;
+      case FMT_SPECIFIER_NRCHARS:
+        fmt_ostate_produce_nrchars (state);
+        break;
+      case FMT_SPECIFIER_PERCENT:
+      case FMT_SPECIFIER_INVALID:
+        fmt_ostate_produce_raw_char (state, '%');
+        break;
     }
 }
 
@@ -713,7 +713,7 @@ fmt_vxprintf (struct stream *stream, const char *format, va_list ap)
   struct fmt_ostate state;
   fmt_ostate_init (&state, stream, format, ap);
 
-  for (;;)
+  while (1)
     {
       int error = fmt_ostate_consume (&state);
 
