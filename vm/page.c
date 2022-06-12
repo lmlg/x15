@@ -765,7 +765,12 @@ vm_page_obj_free_impl (struct vm_page **frames, uint32_t n_frames,
                                  struct page_waiter, node);
       uint32_t n = MIN (n_frames, entry->nmax);
       for (uint32_t i = 0; i < n; ++i)
-        entry->frames[i] = frames[i];
+        {
+          struct vm_page *page = frames[i];
+          // Handover the page, referencing it in the process.
+          atomic_store_rel (&page->nr_refs, 1);
+          entry->frames[i] = page;
+        }
 
       frames += n;
       released += n;
@@ -785,19 +790,8 @@ vm_page_obj_free (struct vm_page **frames, uint32_t n_frames)
 
   frames += n_rel;
   n_frames -= n_rel;
-
-  THREAD_PIN_GUARD ();
-  _Auto zone = &vm_page_zones[frames[0]->zone_index];
-  _Auto cpu_pool = vm_page_cpu_pool_get (zone);
-  MUTEX_GUARD (&cpu_pool->lock);
-
   for (uint32_t i = 0; i < n_frames; ++i)
-    {
-      if (cpu_pool->nr_pages == cpu_pool->size)
-        vm_page_cpu_pool_drain (cpu_pool, zone);
-
-      vm_page_cpu_pool_push (cpu_pool, frames[i]);
-    }
+    vm_page_free (frames[i], 0);
 }
 
 const char*

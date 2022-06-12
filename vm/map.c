@@ -99,8 +99,51 @@ vm_map_entry_create (void)
 }
 
 static void
+vm_map_entry_free_obj (struct vm_map_entry *entry)
+{
+  struct vm_object *obj = entry->object;
+  if (! obj)
+    return;
+
+  struct vm_page *pages[16];
+  uint32_t n_pages = 0;
+  uint64_t offset = entry->offset;
+
+  {
+    MUTEX_GUARD (&obj->lock);
+
+    for (uintptr_t addr = entry->start; addr < entry->end; addr += PAGE_SIZE)
+      {
+        // Don't use vm_object_lookup, since it adds a reference to the page.
+        uint64_t poff = vm_page_btop (offset + addr);
+        struct vm_page *page = rdxtree_lookup (&obj->pages, poff);
+
+        if (! page ||
+            atomic_sub (&page->nr_refs, 1, ATOMIC_ACQ_REL) != 1)
+          continue;
+
+        rdxtree_remove (&obj->pages, poff);
+        if (n_pages == ARRAY_SIZE (pages))
+          {
+            vm_page_obj_free (pages, n_pages);
+            obj->nr_pages -= n_pages;
+            n_pages = 0;
+          }
+        else
+          pages[n_pages++] = page;
+      }
+
+    obj->nr_pages -= n_pages;
+  }
+
+  if (n_pages)
+    vm_page_obj_free (pages, n_pages);
+}
+
+static void
 vm_map_entry_destroy (struct vm_map_entry *entry)
 {
+  vm_map_entry_free_obj (entry);
   kmem_cache_free (&vm_map_entry_cache, entry);
 }
 

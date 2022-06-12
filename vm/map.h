@@ -60,8 +60,6 @@
 #define VM_MAP_INHERIT(flags)   (((flags) & 0xf00) >> 8)
 #define VM_MAP_ADVICE(flags)    (((flags) & 0xf000) >> 12)
 
-struct vm_page;
-
 // Memory range descriptor.
 struct vm_map_entry
 {

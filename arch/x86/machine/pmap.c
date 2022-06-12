@@ -927,7 +927,7 @@ pmap_copy_cpu_table (uint32_t cpu)
   _Auto cpu_table = kernel_pmap->cpu_tables[cpu];
   uint32_t level = PMAP_NR_LEVELS - 1;
   const pmap_pte_t *sptp =
-    pmap_ptp_from_pa (kernel_pmap->cpu_tables[cpu_id()]->root_ptp_pa);
+    pmap_ptp_from_pa (kernel_pmap->cpu_tables[cpu_id ()]->root_ptp_pa);
 
 #ifdef CONFIG_X86_PAE
   cpu_table->root_ptp_pa = BOOT_VTOP ((uintptr_t)pmap_cpu_kpdpts[cpu]);
