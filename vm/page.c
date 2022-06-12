@@ -720,19 +720,26 @@ vm_page_free (struct vm_page *page, uint32_t order)
   vm_page_zone_free (&vm_page_zones[page->zone_index], page, order);
 }
 
+static bool
+vm_page_obj_tryalloc (struct vm_page **frames, uint32_t order)
+{
+  struct vm_page *pages = vm_page_alloc (order, VM_PAGE_SEL_HIGHMEM,
+                                         VM_PAGE_OBJECT);
+  if (! pages)
+    return (false);
+
+  for (uint32_t i = 0; i < (1u << order); ++i)
+    frames[i] = pages + i;
+
+  return (true);
+}
+
 int
 vm_page_obj_alloc (struct vm_map *map, struct vm_page **frames, uint32_t order)
 {
   // TODO: Restrict how many pages each task can allocate.
-  struct vm_page *pages = vm_page_alloc (order, VM_PAGE_SEL_HIGHMEM,
-                                         VM_PAGE_OBJECT);
-  if (pages)
-    {
-      for (uint32_t i = 0; i < (1u << order); ++i)
-        frames[i] = pages + i;
-
-      return ((int)(1u << order));
-    }
+  if (likely (vm_page_obj_tryalloc (frames, order)))
+    return ((int) (1u << order));
 
   mutex_unlock (&map->lock);
 
@@ -742,11 +749,14 @@ vm_page_obj_alloc (struct vm_map *map, struct vm_page **frames, uint32_t order)
 
   // TODO: Interruptible wait (and possibly page evictions).
   spinlock_lock (&page_waiters_lock);
-  plist_add (&page_waiters_list, &pw.node);
-  thread_sleep (&page_waiters_lock, &pw, "pageobj");
-  plist_remove (&page_waiters_list, &pw.node);
-  spinlock_unlock (&page_waiters_lock);
+  if (!vm_page_obj_tryalloc (frames, order))
+    {
+      plist_add (&page_waiters_list, &pw.node);
+      thread_sleep (&page_waiters_lock, &pw, "pageobj");
+      plist_remove (&page_waiters_list, &pw.node);
+    }
 
+  spinlock_unlock (&page_waiters_lock);
   assert (pw.nmax != 0);
   // A negative result signals that the lock was released.
   return (-(int)pw.nmax);

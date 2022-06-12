@@ -123,6 +123,7 @@ vm_map_entry_free_obj (struct vm_map_entry *entry)
           continue;
 
         rdxtree_remove (&obj->pages, poff);
+        vm_page_unlink (page);
         if (n_pages == ARRAY_SIZE (pages))
           {
             vm_page_obj_free (pages, n_pages);
