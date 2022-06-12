@@ -86,7 +86,7 @@ test_run2 (void *arg __unused)
       panic ("invalid content");
 
   vm_kmem_free (ptr, PAGE_SIZE);
-  log_info ("test (pmap_update): done");
+  log_info ("test (pmap_update): OK");
 }
 
 TEST_INLINE (pmap_update)
@@ -120,5 +120,5 @@ TEST_INLINE (pmap_update)
   error_check (error, "thread_create");
 
   cpumap_destroy (cpumap);
-  return (TEST_OK);
+  return (TEST_RUNNING);
 }

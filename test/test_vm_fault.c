@@ -78,11 +78,13 @@ test_vm_fault_thread (void *arg __unused)
   assert (memcmp ((void *)va, "xxx", 3) == 0);
   // This mustn't fault.
   assert (memcmp ((void *)(va + PAGE_SIZE / 2), "xxxx", 4) == 0);
+
+  vm_map_remove (map, map->start, map->end);
 }
 
 static struct task vm_fault_task;
 
-TEST_DELAYED (vm_fault)
+TEST_DEFERRED (vm_fault)
 {
   struct vm_map *map;
   int error = vm_map_dup_kernel (&map);
@@ -103,6 +105,5 @@ TEST_DELAYED (vm_fault)
   assert (error != 0);
   assert (!thread_self()->fixup);
 
-  log_info ("test (vm_fault): done");
   return (TEST_OK);
 }

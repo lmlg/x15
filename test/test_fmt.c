@@ -86,6 +86,5 @@ TEST_INLINE (fmt)
   assert (strcmp (buf, "hello -1") == 0);
 
   test_sscanf ();
-  log_info ("test (fmt) done");
   return (TEST_OK);
 }

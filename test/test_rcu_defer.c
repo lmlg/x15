@@ -180,5 +180,5 @@ TEST_INLINE (rcu_defer)
   error = thread_create (&thread, &attr, test_read, NULL);
   error_check (error, "thread_create");
 
-  return (TEST_OK);
+  return (TEST_RUNNING);
 }

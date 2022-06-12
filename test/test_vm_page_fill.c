@@ -140,5 +140,5 @@ TEST_INLINE (vm_page_fill)
   int error = thread_create (NULL, &attr, test_run, NULL);
   error_check (error, "thread_create");
 
-  return (TEST_OK);
+  return (TEST_RUNNING);
 }

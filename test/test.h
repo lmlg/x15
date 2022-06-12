@@ -21,15 +21,17 @@
 #include <kern/init.h>
 #include <kern/macros.h>
 
+// Test exit status.
 #define TEST_OK        0
 #define TEST_SKIPPED   1
-#define TEST_FAILED    2
+#define TEST_RUNNING   2
+#define TEST_FAILED    3
 
 void __init test_setup (void);
 
 /*
- * Tests can be classified in 2 types: inline and delayed:
- * Inline tests are run as they are discovered, whereas delayed tests create a
+ * Tests can be classified in 2 types: inline and deferred:
+ * Inline tests are run as they are discovered, whereas deferred tests create a
  * detached thread that runs once the needed subsystems are up.
  * In order for tests to be inline, they must only use the most basic of the
  * functionalities that the kernel provides, since test discovery is run very
@@ -45,7 +47,7 @@ void __init test_setup (void);
                      CONCAT (TEST_INLINE_CHAR, CONCAT (_, name))) (void)
 
 // Convert 'name' to 'test_F_name'
-#define TEST_DELAYED(name)   \
+#define TEST_DEFERRED(name)   \
   int __init CONCAT (TEST_PREFIX, CONCAT (_, name)) (void)
 
 #endif

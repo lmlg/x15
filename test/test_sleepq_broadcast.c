@@ -65,7 +65,7 @@ test_broadcast (void *arg __unused)
   for (size_t i = 0; i < ARRAY_SIZE (test_waiters); i++)
     thread_join (test_waiters[i]);
 
-  log_info ("test: done");
+  log_info ("test (sleepq_broadcast): done");
 }
 
 TEST_INLINE (sleepq_broadcast)
@@ -87,5 +87,5 @@ TEST_INLINE (sleepq_broadcast)
   error = thread_create (NULL, &attr, test_broadcast, NULL);
   error_check (error, "thread_create");
 
-  return (TEST_OK);
+  return (TEST_RUNNING);
 }

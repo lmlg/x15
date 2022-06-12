@@ -55,7 +55,7 @@ test_tick (struct timer *timer)
 
   if (test_counter == TEST_NR_LOOPS)
     {
-      log_info ("test: done");
+      log_info ("test (bulletin): OK");
       return;
     }
 

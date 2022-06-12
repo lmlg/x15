@@ -104,7 +104,7 @@ test_obj_noref (struct sref_counter *counter)
   syscnt_info ("sref_true_zero", log_stream_info ());
 }
 
-TEST_DELAYED (sref_noref)
+TEST_DEFERRED (sref_noref)
 {
   int error;
   uint32_t nr_threads = cpu_count () + 1;

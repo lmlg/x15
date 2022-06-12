@@ -69,7 +69,7 @@ test_post (void *arg __unused)
   for (size_t i = 0; i < ARRAY_SIZE (test_waiters); i++)
     thread_join (test_waiters[i]);
 
-  log_info ("test: done");
+  log_info ("test (semaphore): OK");
 }
 
 TEST_INLINE (semaphore)
@@ -99,5 +99,5 @@ TEST_INLINE (semaphore)
   error = thread_create (NULL, &attr, test_post, NULL);
   error_check (error, "thread_create");
 
-  return (TEST_OK);
+  return (TEST_RUNNING);
 }

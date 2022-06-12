@@ -315,7 +315,7 @@ test_control (void *arg)
   test_group_detach (&thread_group);
 
   thread_join (runner);
-  log_info ("test: done");
+  log_info ("test (perfmon_thread): OK");
 }
 
 TEST_INLINE (perfmon_thread)
@@ -352,6 +352,5 @@ TEST_INLINE (perfmon_thread)
   error_check (error, "thread_create");
 
   cpumap_destroy (cpumap);
-  log_info ("test (perfmon-thread): done");
-  return (TEST_OK);
+  return (TEST_RUNNINNG);
 }

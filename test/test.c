@@ -32,16 +32,38 @@
 
 typedef int (*test_fn_t) (void);
 
-static void
-test_thread_run (void *arg)
-{
-  ((test_fn_t)arg) ();
-}
-
 static bool
 test_is_inline (const char *name)
 {
   return (name[PREFIX_LEN] == QUOTE(TEST_INLINE_CHAR)[0]);
+}
+
+static const char*
+test_exit_status (int ret)
+{
+  switch (ret)
+    {
+      case TEST_OK:
+        return ("OK");
+      case TEST_SKIPPED:
+        return ("skipped");
+      case TEST_RUNNING:
+        return ("running");
+      case TEST_FAILED:
+        return ("failed");
+      default:
+        assert (0);
+    }
+}
+
+static void
+test_thread_run (void *arg)
+{
+  const struct symbol *sym = arg;
+  int ret = ((test_fn_t)sym->addr) ();
+  const char *name = sym->name + PREFIX_LEN +
+                     (test_is_inline (sym->name) ? 2 : 1);
+  log_info ("test (%s): %s", name, test_exit_status (ret));
 }
 
 void
@@ -69,19 +91,19 @@ test_setup (void)
         continue;
       else if (test_is_inline (sym->name))
         {
-          ((test_fn_t)sym->addr) ();
+          test_thread_run ((void *)sym);
           continue;
         }
 
       char name[THREAD_NAME_SIZE];
-      fmt_snprintf (name, sizeof (name), "test_%s",
+      fmt_snprintf (name, sizeof (name), THREAD_KERNEL_PREFIX "test_%s",
                     sym->name + PREFIX_LEN + 1);
 
       struct thread_attr attr;
       thread_attr_init (&attr, name);
       thread_attr_set_detached (&attr);
 
-      if (thread_create (NULL, &attr, test_thread_run, (void *)sym->addr) != 0)
+      if (thread_create (NULL, &attr, test_thread_run, (void *)sym) != 0)
         log_err ("failed to run test: %s", attr.name);
     }
 }

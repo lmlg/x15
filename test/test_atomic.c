@@ -237,6 +237,5 @@ TEST_INLINE (atomic_ops)
   test_fetch_and ();
   test_fetch_or ();
   test_fetch_xor ();
-  log_info ("test (atomic): done");
   return (TEST_OK);
 }

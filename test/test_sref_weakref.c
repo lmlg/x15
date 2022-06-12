@@ -106,5 +106,5 @@ TEST_INLINE (sref_weakref)
   error = thread_create (NULL, &attr, test_ref, NULL);
   error_check (error, "thread_create");
 
-  return (TEST_OK);
+  return (TEST_RUNNING);
 }

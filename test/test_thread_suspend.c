@@ -79,7 +79,7 @@ test_suspend_self (void *arg __unused)
   thread_suspend (thread_self ());
 }
 
-TEST_DELAYED (thread_suspend)
+TEST_DEFERRED (thread_suspend)
 {
   unsigned long lock = 1;
   struct thread_attr attr;
@@ -121,6 +121,5 @@ TEST_DELAYED (thread_suspend)
   thread_resume (thread);
   thread_join (thread);
 
-  log_info ("test (thread-suspend): done");
   return (TEST_OK);
 }

@@ -78,11 +78,11 @@ test_affinity_suspended (void *arg)
   cpumap_destroy (cpumap);
 }
 
-TEST_DELAYED (thread_affinity)
+TEST_DEFERRED (thread_affinity)
 {
   if (cpu_count () < 2)
     { // Nothing to test on uni-processor systems.
-      log_err ("not enough processors to test");
+      log_err ("test (thread_affinity): not enough processors to test");
       return (TEST_SKIPPED);
     }
 
@@ -121,5 +121,5 @@ TEST_DELAYED (thread_affinity)
   semaphore_post (&affinity_sem);
   thread_join (thread);
 
-  log_info ("test (thread-affinity): done");
+  return (TEST_OK);
 }

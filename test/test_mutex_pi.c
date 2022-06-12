@@ -460,7 +460,5 @@ TEST_INLINE (mutex_pi)
   error_check (error, "thread_create");
 
   cpumap_destroy (cpumap);
-
-  log_info ("test (mutex-pi): done");
-  return (TEST_OK);
+  return (TEST_RUNNING);
 }

@@ -115,7 +115,7 @@ test_async_xcall (void)
     log_err ("failed to create thread for async xcall");
 }
 
-TEST_DELAYED (xcall)
+TEST_DEFERRED (xcall)
 {
   struct cpumap *cpumap;
   int error = cpumap_create (&cpumap);
@@ -153,6 +153,5 @@ TEST_DELAYED (xcall)
   if (cpu_count () > 1)
     test_async_xcall ();
 
-  log_info ("test (xcall): done");
   return (TEST_OK);
 }

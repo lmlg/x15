@@ -51,7 +51,7 @@
 #define TEST_MONITORED_CPU   (TEST_CONTROL_CPU + 1)
 #define TEST_MIN_CPUS        (TEST_MONITORED_CPU + 1)
 
-#define TEST_EVENT_NAME_MAX_SIZE 32
+#define TEST_EVENT_NAME_MAX_SIZE   32
 
 struct test_event
 {
@@ -141,12 +141,10 @@ test_group_report (struct test_group *group)
 }
 
 static void
-test_run (void *arg)
+test_run (void *arg __unused)
 {
-  (void)arg;
-  while (1)
-    if (atomic_load_rlx (&test_run_stop))
-      break;
+  while (!atomic_load_rlx (&test_run_stop))
+    cpu_pause ();
 }
 
 static void
@@ -170,7 +168,7 @@ test_control (void *arg)
 
   atomic_store_rlx (&test_run_stop, 1);
   thread_join (thread);
-  log_info ("test: done");
+  log_info ("test (perfmon_cpu): OK");
 }
 
 TEST_INLINE (perfmon_cpu)
@@ -204,6 +202,5 @@ TEST_INLINE (perfmon_cpu)
   error_check (error, "thread_create");
 
   cpumap_destroy (cpumap);
-  log_info ("test (perfmon-cpu): done");
-  return (TEST_OK);
+  return (TEST_RUNNING);
 }

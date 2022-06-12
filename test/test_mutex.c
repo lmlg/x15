@@ -166,5 +166,5 @@ TEST_INLINE (mutex)
   timer_schedule (&test_timer, clock_get_time () +
                                clock_ticks_from_ms (TEST_REPORT_INTERVAL));
 
-  return (TEST_OK);
+  return (TEST_RUNNING);
 }

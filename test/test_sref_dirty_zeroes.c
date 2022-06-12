@@ -119,5 +119,5 @@ TEST_INLINE (sref_dirty_zeroes)
   error = thread_create (NULL, &attr, test_dec, NULL);
   error_check (error, "thread_create");
 
-  return (TEST_OK);
+  return (TEST_RUNNING);
 }
