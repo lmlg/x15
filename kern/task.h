@@ -62,12 +62,12 @@ task_ref (struct task *task)
 static inline void
 task_unref (struct task *task)
 {
-  size_t nr_refs = atomic_sub (&task->nr_refs, 1UL, ATOMIC_ACQ_REL);
+  size_t nr_refs = atomic_sub_acq_rel (&task->nr_refs, 1);
   assert (nr_refs);
 
   if (nr_refs == 1)
     {
-      /* TODO Task destruction */
+      // TODO Task destruction.
     }
 }
 

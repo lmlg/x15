@@ -118,8 +118,7 @@ vm_map_entry_free_obj (struct vm_map_entry *entry)
         uint64_t poff = vm_page_btop (offset + addr);
         struct vm_page *page = rdxtree_lookup (&obj->pages, poff);
 
-        if (! page ||
-            atomic_sub (&page->nr_refs, 1, ATOMIC_ACQ_REL) != 1)
+        if (!page || atomic_sub_acq_rel (&page->nr_refs, 1) != 1)
           continue;
 
         rdxtree_remove (&obj->pages, poff);

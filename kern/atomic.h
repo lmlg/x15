@@ -54,7 +54,7 @@
       {   \
         typeof (val) val_ = (val);   \
         if (sizeof (*(place)) == sizeof (uint64_t))   \
-          atomic_write_64 ((place), &val_, (mo));   \
+          atomic_store_64 ((place), &val_, (mo));   \
         else   \
           __atomic_store_n ((place), val_, (mo));   \
       }   \
@@ -122,6 +122,9 @@
 
 #define atomic_sub_rel(place, val)   \
   atomic_sub ((place), (val), ATOMIC_RELEASE)
+
+#define atomic_sub_acq_rel(place, val)   \
+  atomic_sub ((place), (val), ATOMIC_ACQ_REL)
 
 #define atomic_and_rlx(place, val)   \
   atomic_and ((place), (val), ATOMIC_RELAXED)

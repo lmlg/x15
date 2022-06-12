@@ -393,7 +393,7 @@ rcu_data_schedule_timer (struct rcu_data *data, uint64_t now)
 static void
 rcu_data_ack_cpu (struct rcu_data *data)
 {
-  unsigned int prev_nr_acks = atomic_sub (&data->nr_acks, 1, ATOMIC_ACQ_REL);
+  unsigned int prev_nr_acks = atomic_sub_acq_rel (&data->nr_acks, 1);
 
   if (prev_nr_acks != 1)
     {

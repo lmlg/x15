@@ -475,7 +475,7 @@ thread_ref (struct thread *thread)
 static inline void
 thread_unref (struct thread *thread)
 {
-  size_t nr_refs = atomic_sub (&thread->nr_refs, 1, ATOMIC_ACQ_REL);
+  size_t nr_refs = atomic_sub_acq_rel (&thread->nr_refs, 1);
   assert (nr_refs);
 
   if (nr_refs == 1)

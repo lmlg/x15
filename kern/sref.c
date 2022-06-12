@@ -228,7 +228,7 @@ sref_data_start_epoch (struct sref_data *data)
 static void
 sref_data_ack_cpu (struct sref_data *data)
 {
-  uint32_t prev = atomic_sub (&data->nr_pending_acks, 1, ATOMIC_ACQ_REL);
+  uint32_t prev = atomic_sub_acq_rel (&data->nr_pending_acks, 1);
   if (prev != 1)
     {
       assert (prev != 0);

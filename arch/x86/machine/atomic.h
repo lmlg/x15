@@ -66,7 +66,7 @@ atomic_load_64 (const void *ptr, int memorder)
 }
 
 static inline void
-atomic_write_64 (void *ptr, void *valp, int memorder)
+atomic_store_64 (void *ptr, void *valp, int memorder)
 {
   uint64_t prev = *(uint64_t *)ptr, val = *(uint64_t *)valp;
   bool done;

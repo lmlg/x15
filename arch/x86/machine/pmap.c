@@ -98,7 +98,8 @@ typedef void (*pmap_walk_fn_t) (phys_addr_t, uint32_t, uint32_t);
  * that using a percpu variable would actually become ugly. This array
  * is rather small anyway.
  */
-static struct pmap_cpu_table pmap_kernel_cpu_tables[CONFIG_MAX_CPUS] __read_mostly;
+static struct pmap_cpu_table pmap_kernel_cpu_tables[CONFIG_MAX_CPUS]
+  __read_mostly;
 
 struct pmap pmap_kernel_pmap;
 struct pmap *pmap_current_ptr __percpu;
@@ -108,7 +109,7 @@ struct pmap *pmap_current_ptr __percpu;
   // Alignment required on page directory pointer tables.
   #define PMAP_PDPT_ALIGN 32
 
-  // Hidden" kernel root page tables for PAE mode.
+  // "Hidden" kernel root page tables for PAE mode.
   static alignas (PMAP_PDPT_ALIGN) pmap_pte_t
   pmap_cpu_kpdpts[CONFIG_MAX_CPUS][PMAP_L2_PTES_PER_PT] __read_mostly;
 
@@ -865,7 +866,7 @@ pmap_ap_setup (void)
 }
 
 static void __init
-pmap_copy_cpu_table_page (const pmap_pte_t *sptp, unsigned int level,
+pmap_copy_cpu_table_page (const pmap_pte_t *sptp, uint32_t level,
                           struct vm_page *page)
 {
   const _Auto pt_level = &pmap_pt_levels[level];
@@ -952,14 +953,14 @@ pmap_mp_setup (void)
   if (cpumap_create (&cpumap) != 0)
     panic ("pmap: unable to create syncer cpumap");
 
-  for (uint32_t cpu = 1; cpu < cpu_count (); cpu++)
+  for (uint32_t cpu = 1; cpu < cpu_count (); ++cpu)
     {
-      pmap_update_request_array_init (percpu_ptr (pmap_update_request_array,
-                                                  cpu));
+      _Auto array = percpu_ptr (pmap_update_request_array, cpu);
+      pmap_update_request_array_init (array);
       pmap_syncer_init (percpu_ptr (pmap_syncer, cpu), cpu);
     }
 
-  for (uint32_t cpu = 0; cpu < cpu_count(); cpu++)
+  for (uint32_t cpu = 0; cpu < cpu_count (); ++cpu)
     {
       struct pmap_syncer *syncer = percpu_ptr (pmap_syncer, cpu);
       char name[THREAD_NAME_SIZE];
@@ -1363,10 +1364,10 @@ pmap_update (struct pmap *pmap)
   assert (oplist->nr_ops);
   int error;
 
-  if (!pmap_do_remote_updates)
+  if (! pmap_do_remote_updates)
     {
-      uint32_t nr_mappings = pmap_update_oplist_count_mappings (oplist,
-                                                                cpu_id ());
+      uint32_t nr_mappings =
+        pmap_update_oplist_count_mappings (oplist, cpu_id ());
       error = pmap_update_local (oplist, nr_mappings);
       goto out;
     }

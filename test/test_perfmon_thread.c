@@ -252,7 +252,7 @@ test_resume (struct thread *thread)
 
   mutex_lock (&test_mutex);
   assert (test_state == TEST_STATE_SUSPENDED);
-  atomic_store (&test_state, TEST_STATE_RUNNING, ATOMIC_RELAXED);
+  atomic_store_rlx (&test_state, TEST_STATE_RUNNING);
   condition_signal (&test_condition);
   mutex_unlock (&test_mutex);
 
@@ -266,7 +266,7 @@ test_suspend (struct thread *thread)
 
   mutex_lock (&test_mutex);
   assert (test_state == TEST_STATE_RUNNING);
-  atomic_store (&test_state, TEST_STATE_SUSPENDED, ATOMIC_RELAXED);
+  atomic_store_rlx (&test_state, TEST_STATE_SUSPENDED);
   mutex_unlock (&test_mutex);
 
   test_wait_state (thread, THREAD_SLEEPING);

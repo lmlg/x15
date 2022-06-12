@@ -251,7 +251,7 @@ vm_page_ref (struct vm_page *page)
 static inline void
 vm_page_unref (struct vm_page *page)
 {
-  uint32_t nr_refs = atomic_sub (&page->nr_refs, 1, ATOMIC_ACQ_REL);
+  uint32_t nr_refs = atomic_sub_acq_rel (&page->nr_refs, 1);
   assert (nr_refs != 0);
 
   if (nr_refs == 1)
