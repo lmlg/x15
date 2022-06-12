@@ -117,9 +117,6 @@ int vm_map_dup_kernel (struct vm_map **dst);
 
 #endif
 
-// Helper for vm_page_free
-bool vm_map_release_pages (struct vm_page *page, uint32_t order);
-
 // Safely copy bytes to and from arbitrary buffers.
 int vm_copy (const void *src, void *dst, size_t size);
 

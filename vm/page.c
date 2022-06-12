@@ -43,8 +43,10 @@
 #include <kern/macros.h>
 #include <kern/mutex.h>
 #include <kern/panic.h>
+#include <kern/plist.h>
 #include <kern/printf.h>
 #include <kern/shell.h>
+#include <kern/spinlock.h>
 #include <kern/thread.h>
 
 #include <machine/boot.h>
@@ -53,6 +55,7 @@
 #include <machine/pmem.h>
 #include <machine/types.h>
 
+#include <vm/map.h>
 #include <vm/page.h>
 
 // Number of free block lists per zone.
@@ -122,6 +125,15 @@ struct vm_page_boot_zone
   phys_addr_t avail_end;
 };
 
+// Threads waiting for free object pages.
+struct page_waiter
+{
+  struct thread *thread;
+  struct plist_node node;
+  struct vm_page **frames;
+  uint32_t nmax;
+};
+
 static int vm_page_is_ready __read_mostly;
 
 /*
@@ -148,6 +160,10 @@ static struct vm_page_boot_zone vm_page_boot_zones[PMEM_MAX_ZONES]
 
 // Number of loaded zones.
 static uint32_t vm_page_zones_size __read_mostly;
+
+// Registry of page_waiters.
+static struct spinlock page_waiters_lock;
+static struct plist page_waiters_list;
 
 static void __init
 vm_page_init (struct vm_page *page, uint16_t zone_index, phys_addr_t pa)
@@ -634,6 +650,8 @@ vm_page_setup (void)
       va += PAGE_SIZE;
     }
 
+  spinlock_init (&page_waiters_lock);
+  plist_init (&page_waiters_list);
   vm_page_is_ready = 1;
   return (0);
 }
@@ -695,11 +713,91 @@ vm_page_alloc (uint32_t order, uint32_t selector, uint16_t type)
 }
 
 void
-vm_page_free_fast (struct vm_page *page, uint32_t order)
+vm_page_free (struct vm_page *page, uint32_t order)
 {
   assert (page->zone_index < ARRAY_SIZE (vm_page_zones));
   assert (!vm_page_block_referenced (page, order));
   vm_page_zone_free (&vm_page_zones[page->zone_index], page, order);
+}
+
+int
+vm_page_obj_alloc (struct vm_map *map, struct vm_page **frames, uint32_t order)
+{
+  // TODO: Restrict how many pages each task can allocate.
+  struct vm_page *pages = vm_page_alloc (order, VM_PAGE_SEL_HIGHMEM,
+                                         VM_PAGE_OBJECT);
+  if (pages)
+    {
+      for (uint32_t i = 0; i < (1u << order); ++i)
+        frames[i] = pages + i;
+
+      return ((int)(1u << order));
+    }
+
+  mutex_unlock (&map->lock);
+
+  struct page_waiter pw = { .thread = thread_self (), .frames = frames };
+  plist_node_init (&pw.node, thread_real_global_priority (pw.thread));
+  pw.nmax = 1u << order;
+
+  // TODO: Interruptible wait (and possibly page evictions).
+  spinlock_lock (&page_waiters_lock);
+  plist_add (&page_waiters_list, &pw.node);
+  thread_sleep (&page_waiters_lock, &pw, "pageobj");
+  plist_remove (&page_waiters_list, &pw.node);
+  spinlock_unlock (&page_waiters_lock);
+
+  assert (pw.nmax != 0);
+  // A negative result signals that the lock was released.
+  return (-(int)pw.nmax);
+}
+
+static uint32_t
+vm_page_obj_free_impl (struct vm_page **frames, uint32_t n_frames,
+                       struct plist *plist)
+{
+  for (uint32_t released = 0 ; ; )
+    {
+      if (!n_frames || plist_empty (plist))
+        return (released);
+
+      _Auto entry = plist_entry (plist_first (plist),
+                                 struct page_waiter, node);
+      uint32_t n = MIN (n_frames, entry->nmax);
+      for (uint32_t i = 0; i < n; ++i)
+        entry->frames[i] = frames[i];
+
+      frames += n;
+      released += n;
+      thread_wakeup (entry->thread);
+    }
+}
+
+void
+vm_page_obj_free (struct vm_page **frames, uint32_t n_frames)
+{
+  SPINLOCK_GUARD (&page_waiters_lock, true);
+  uint32_t n_rel = vm_page_obj_free_impl (frames, n_frames,
+                                          &page_waiters_list);
+
+  if (n_rel == n_frames)
+    return;
+
+  frames += n_rel;
+  n_frames -= n_rel;
+
+  THREAD_PIN_GUARD ();
+  _Auto zone = &vm_page_zones[frames[0]->zone_index];
+  _Auto cpu_pool = vm_page_cpu_pool_get (zone);
+  MUTEX_GUARD (&cpu_pool->lock);
+
+  for (uint32_t i = 0; i < n_frames; ++i)
+    {
+      if (cpu_pool->nr_pages == cpu_pool->size)
+        vm_page_cpu_pool_drain (cpu_pool, zone);
+
+      vm_page_cpu_pool_push (cpu_pool, frames[i]);
+    }
 }
 
 const char*
