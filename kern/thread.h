@@ -217,19 +217,19 @@ void thread_terminate (struct thread *thread);
 static inline void
 thread_set_flag (struct thread *thread, unsigned long flag)
 {
-  atomic_or (&thread->flags, flag, ATOMIC_RELEASE);
+  atomic_or_rel (&thread->flags, flag);
 }
 
 static inline void
 thread_clear_flag (struct thread *thread, unsigned long flag)
 {
-  atomic_and (&thread->flags, ~flag, ATOMIC_RELEASE);
+  atomic_and_rel (&thread->flags, ~flag);
 }
 
 static inline int
 thread_test_flag (struct thread *thread, unsigned long flag)
 {
-  return ((atomic_load (&thread->flags, ATOMIC_ACQUIRE) & flag) != 0);
+  return ((atomic_load_acq (&thread->flags) & flag) != 0);
 }
 
 #define THREAD_KERNEL_PREFIX   KERNEL_NAME "_"

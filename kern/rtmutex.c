@@ -83,7 +83,7 @@ rtmutex_get_thread (uintptr_t owner)
 static void
 rtmutex_set_contended (struct rtmutex *rtmutex)
 {
-  atomic_or (&rtmutex->owner, RTMUTEX_CONTENDED, ATOMIC_RELEASE);
+  atomic_or_rel (&rtmutex->owner, RTMUTEX_CONTENDED);
 }
 
 static int
@@ -97,8 +97,7 @@ rtmutex_lock_slow_common (struct rtmutex *rtmutex, bool timed, uint64_t ticks)
 
   while (1)
     {
-      uintptr_t owner = atomic_cas (&rtmutex->owner, bits,
-                                    self | bits, ATOMIC_ACQUIRE);
+      uintptr_t owner = atomic_cas_acq (&rtmutex->owner, bits, self | bits);
       assert ((owner & bits) == bits);
 
       if (owner == bits)
@@ -132,13 +131,13 @@ rtmutex_lock_slow_common (struct rtmutex *rtmutex, bool timed, uint64_t ticks)
        */
       if (turnstile_empty (turnstile))
         {
-          uintptr_t owner = atomic_load (&rtmutex->owner, ATOMIC_RELAXED);
+          uintptr_t owner = atomic_load_rlx (&rtmutex->owner);
 
           if (owner & RTMUTEX_CONTENDED)
             {
               rtmutex_inc_sc (RTMUTEX_SC_ERROR_DOWNGRADES);
               owner &= RTMUTEX_OWNER_MASK;
-              atomic_store (&rtmutex->owner, owner, ATOMIC_RELAXED);
+              atomic_store_rlx (&rtmutex->owner, owner);
             }
           else
             rtmutex_inc_sc (RTMUTEX_SC_CANCELED_DOWNGRADES);
@@ -153,7 +152,7 @@ rtmutex_lock_slow_common (struct rtmutex *rtmutex, bool timed, uint64_t ticks)
   if (turnstile_empty (turnstile))
     {
       rtmutex_inc_sc (RTMUTEX_SC_DOWNGRADES);
-      uintptr_t owner = atomic_swap (&rtmutex->owner, self, ATOMIC_RELAXED);
+      uintptr_t owner = atomic_swap_rlx (&rtmutex->owner, self);
       assert (owner == (self | bits));
     }
 
@@ -198,9 +197,8 @@ rtmutex_unlock_slow (struct rtmutex *rtmutex)
         goto out;
     }
 
-  uintptr_t owner = atomic_swap (&rtmutex->owner,
-                                 RTMUTEX_FORCE_WAIT | RTMUTEX_CONTENDED,
-                                 ATOMIC_RELEASE);
+  uintptr_t owner = atomic_swap_rel (&rtmutex->owner,
+                                     RTMUTEX_FORCE_WAIT | RTMUTEX_CONTENDED);
   assert (rtmutex_get_thread (owner) == thread_self ());
 
   turnstile_disown (turnstile);

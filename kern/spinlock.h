@@ -71,8 +71,8 @@ spinlock_disown (struct spinlock *lock)
 static inline int
 spinlock_lock_fast (struct spinlock *lock)
 {
-  uint32_t prev = atomic_cas (&lock->value, SPINLOCK_UNLOCKED,
-                              SPINLOCK_LOCKED, ATOMIC_ACQUIRE);
+  uint32_t prev = atomic_cas_acq (&lock->value, SPINLOCK_UNLOCKED,
+                                  SPINLOCK_LOCKED);
 
   if (unlikely (prev != SPINLOCK_UNLOCKED))
     return (EBUSY);
@@ -95,13 +95,13 @@ static inline void
 spinlock_unlock_common (struct spinlock *lock)
 {
   spinlock_disown (lock);
-  atomic_and (&lock->value, ~SPINLOCK_LOCKED, ATOMIC_RELEASE);
+  atomic_and_rel (&lock->value, ~SPINLOCK_LOCKED);
 }
 
 static inline bool
 spinlock_locked (const struct spinlock *lock)
 {
-  uint32_t value = atomic_load (&lock->value, ATOMIC_RELAXED);
+  uint32_t value = atomic_load_rlx (&lock->value);
   return (value != SPINLOCK_UNLOCKED);
 }
 

@@ -138,7 +138,7 @@ bitmap_test_atomic (const unsigned long *bm, int bit)
   if (bit >= LONG_BIT)
     bitmap_lookup (&bm, &bit);
 
-  return ((atomic_load (bm, ATOMIC_ACQUIRE) & bitmap_mask (bit)) != 0);
+  return ((atomic_load_acq (bm) & bitmap_mask (bit)) != 0);
 }
 
 static inline void

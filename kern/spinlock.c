@@ -173,7 +173,7 @@ spinlock_qnode_wait_next (const struct spinlock_qnode *qnode)
 {
   while (1)
     {
-      _Auto next = atomic_load (&qnode->next, ATOMIC_ACQUIRE);
+      _Auto next = atomic_load_acq (&qnode->next);
       if (next)
         return (next);
 
@@ -185,7 +185,7 @@ static void
 spinlock_qnode_set_next (struct spinlock_qnode *qnode, struct spinlock_qnode *next)
 {
   assert (next);
-  atomic_store (&qnode->next, next, ATOMIC_RELEASE);
+  atomic_store_rel (&qnode->next, next);
 }
 
 static void
@@ -199,7 +199,7 @@ spinlock_qnode_wait_locked (const struct spinlock_qnode *qnode)
 {
   while (1)
     {
-      if (!atomic_load (&qnode->locked, ATOMIC_ACQUIRE))
+      if (!atomic_load_acq (&qnode->locked))
         break;
 
       cpu_pause ();
@@ -209,7 +209,7 @@ spinlock_qnode_wait_locked (const struct spinlock_qnode *qnode)
 static void
 spinlock_qnode_clear_locked (struct spinlock_qnode *qnode)
 {
-  atomic_store (&qnode->locked, 0, ATOMIC_RELEASE);
+  atomic_store_rel (&qnode->locked, 0);
 }
 
 static void
@@ -229,10 +229,9 @@ spinlock_enqueue (struct spinlock *lock, uint32_t qid)
   uint32_t next = (qid << SPINLOCK_QID_SHIFT) | SPINLOCK_CONTENDED;
   while (1)
     {
-      uint32_t old_value = atomic_load (&lock->value, ATOMIC_RELAXED);
+      uint32_t old_value = atomic_load_rlx (&lock->value);
       uint32_t new_value = next | (old_value & SPINLOCK_LOCKED);
-      uint32_t prev = atomic_cas (&lock->value, old_value,
-                                  new_value, ATOMIC_RELEASE);
+      uint32_t prev = atomic_cas_rel (&lock->value, old_value, new_value);
 
       if (prev == old_value)
         return (prev);
@@ -245,7 +244,7 @@ static struct spinlock_qnode*
 spinlock_get_remote_qnode (uint32_t qid)
 {
   // This fence synchronizes with queueing.
-  atomic_fence (ATOMIC_ACQUIRE);
+  atomic_fence_acq ();
 
   uint32_t ctx = spinlock_qid_ctx (qid),
            cpu = spinlock_qid_cpu (qid);
@@ -256,7 +255,7 @@ spinlock_get_remote_qnode (uint32_t qid)
 static void
 spinlock_set_locked (struct spinlock *lock)
 {
-  atomic_or (&lock->value, SPINLOCK_LOCKED, ATOMIC_RELAXED);
+  atomic_or_rlx (&lock->value, SPINLOCK_LOCKED);
 }
 
 static void
@@ -264,7 +263,7 @@ spinlock_wait_locked (const struct spinlock *lock)
 {
   while (1)
     {
-      if (!(atomic_load (&lock->value, ATOMIC_ACQUIRE) & SPINLOCK_LOCKED))
+      if (!(atomic_load_acq (&lock->value) & SPINLOCK_LOCKED))
         break;
 
       cpu_pause ();
@@ -275,8 +274,7 @@ static int
 spinlock_downgrade (struct spinlock *lock, uint32_t qid)
 {
   uint32_t value = (qid << SPINLOCK_QID_SHIFT) | SPINLOCK_CONTENDED,
-           prev = atomic_cas (&lock->value, value,
-                              SPINLOCK_LOCKED, ATOMIC_RELAXED);
+           prev = atomic_cas_rlx (&lock->value, value, SPINLOCK_LOCKED);
 
   assert (prev & SPINLOCK_CONTENDED);
   return (prev != value ? EBUSY : 0);

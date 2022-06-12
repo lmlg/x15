@@ -101,7 +101,7 @@ timer_lock_cpu_data (struct timer *timer, unsigned long *flags)
 {
   while (1)
     {
-      uint32_t cpu = atomic_load (&timer->cpu, ATOMIC_RELAXED);
+      uint32_t cpu = atomic_load_rlx (&timer->cpu);
 
       if (cpu == TIMER_INVALID_CPU)
         return (NULL);
@@ -109,7 +109,7 @@ timer_lock_cpu_data (struct timer *timer, unsigned long *flags)
       _Auto cpu_data = percpu_ptr (timer_cpu_data, cpu);
       spinlock_lock_intr_save (&cpu_data->lock, flags);
 
-      if (cpu == atomic_load (&timer->cpu, ATOMIC_RELAXED))
+      if (cpu == atomic_load_rlx (&timer->cpu))
         return (cpu_data);
 
       spinlock_unlock_intr_restore (&cpu_data->lock, *flags);

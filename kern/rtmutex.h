@@ -90,7 +90,7 @@ void rtmutex_unlock_slow (struct rtmutex *rtmutex);
 static inline bool
 rtmutex_locked (const struct rtmutex *rtmutex)
 {
-  uintptr_t owner = atomic_load (&rtmutex->owner, ATOMIC_RELAXED);
+  uintptr_t owner = atomic_load_rlx (&rtmutex->owner);
   return (owner != 0);
 }
 

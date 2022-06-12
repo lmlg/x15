@@ -102,14 +102,14 @@ xcall_cpu_data_init (struct xcall_cpu_data *cpu_data, uint32_t cpu)
 static struct xcall*
 xcall_cpu_data_get_recv_call (const struct xcall_cpu_data *cpu_data)
 {
-  return (atomic_load (&cpu_data->recv_call, ATOMIC_ACQUIRE));
+  return (atomic_load_acq (&cpu_data->recv_call));
 }
 
 static void
 xcall_cpu_data_set_recv_call (struct xcall_cpu_data *cpu_data,
                               struct xcall *call)
 {
-  atomic_store (&cpu_data->recv_call, call, ATOMIC_RELEASE);
+  atomic_store_rel (&cpu_data->recv_call, call);
 }
 
 static void

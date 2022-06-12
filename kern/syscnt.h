@@ -52,19 +52,19 @@ void syscnt_register (struct syscnt *syscnt, const char *name);
 static inline void
 syscnt_set (struct syscnt *syscnt, uint64_t value)
 {
-  atomic_store (&syscnt->value, value, ATOMIC_RELAXED);
+  atomic_store_rlx (&syscnt->value, value);
 }
 
 static inline void
 syscnt_add (struct syscnt *syscnt, int64_t delta)
 {
-  atomic_add (&syscnt->value, delta, ATOMIC_RELAXED);
+  atomic_add_rlx (&syscnt->value, delta);
 }
 
 static inline uint64_t
 syscnt_read (const struct syscnt *syscnt)
 {
-  return (atomic_load ((uint64_t *)&syscnt->value, ATOMIC_RELAXED));
+  return (atomic_load_rlx ((uint64_t *)&syscnt->value));
 }
 
 #else
