@@ -772,9 +772,7 @@ vm_map_fault (struct vm_map *map, uintptr_t addr, int prot)
   return (pmap_update (map->pmap));
 }
 
-#ifdef CONFIG_RUN_TEST
-
-static inline int
+static int
 vm_map_dup_tree (struct vm_map *map, const struct rbtree_node *node)
 {
   if (! node)
@@ -793,34 +791,6 @@ vm_map_dup_tree (struct vm_map *map, const struct rbtree_node *node)
 
   return (error);
 }
-
-int
-vm_map_dup_kernel (struct vm_map **mapp)
-{
-  struct vm_map *src = vm_map_get_kernel_map ();
-  struct vm_map *map = kmem_cache_alloc (&vm_map_cache);
-  if (! map)
-    return (ENOMEM);
-
-  struct pmap *pmap;
-  if (pmap_copy (src->pmap, &pmap) != 0)
-    goto failpmap;
-
-  vm_map_init (map, pmap, 0, src->end);
-  if (vm_map_dup_tree (map, src->entry_tree.root) != 0)
-    goto faildup;
-
-  *mapp = map;
-  return (0);
-
-faildup:
-  pmap_destroy (map->pmap);
-failpmap:
-  kmem_cache_free (&vm_map_cache, map);
-  return (ENOMEM);
-}
-
-#endif
 
 int
 vm_map_create (struct vm_map **mapp)
