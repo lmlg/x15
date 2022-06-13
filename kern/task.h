@@ -42,9 +42,6 @@ struct task
   char name[TASK_NAME_SIZE];
 };
 
-// Initialize a task.
-void task_init (struct task *task, const char *name, struct vm_map *map);
-
 static inline struct task*
 task_get_kernel_task (void)
 {

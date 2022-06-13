@@ -121,14 +121,14 @@
  * and skipping the red zone keeps the stack pointer correctly aligned.
  */
 .macro cpu_ll_exc_enter vector
-  pushq %rbx                               // save registers used for.
+  pushq %rbx                               // save registers used for
   pushq %rax                               // stack switching.
   leaq CPU_LEF_EXC_REM(%rsp), %rbx         // point to exception frame top.
   movq CPU_LEF_RSP(%rbx), %rsp             // point to thread stack.
   subq $CPU_RED_ZONE_SIZE, %rsp            // skip red zone.
-  cpu_ll_exc_push %rbx, CPU_NR_CRE, %rax   /* copy frame start from interrupt
-                                              stack to thread stack. */
-  movq CPU_LEF_EXC_RAX(%rbx), %rax         // restore registers used */
+  cpu_ll_exc_push %rbx, CPU_NR_CRE, %rax   // copy frame start from interrupt
+                                           // stack to thread stack.
+  movq CPU_LEF_EXC_RAX(%rbx), %rax         // restore registers used
   movq CPU_LEF_EXC_RBX(%rbx), %rbx         // for stack switching.
   pushq $\vector                           // complete exception frame.
   cpu_ll_exc_store_registers
@@ -180,7 +180,7 @@
   pushl %eax
 .endm
 
-/* XXX Don't load segment registers for now */
+// XXX Don't load segment registers for now.
 .macro cpu_ll_exc_load_registers
   popl %eax
   popl %ebx
@@ -865,19 +865,18 @@ ASM_ENTRY (cpu_fixup_restore)
   cpu_fixup_restore_off 40 CPU_EXC_FRAME_R15
   cpu_fixup_restore_off 48 CPU_EXC_FRAME_RSP
   cpu_fixup_restore_off 56 CPU_EXC_FRAME_RIP
-  movq $1, %rax
-  movq %rax, (CPU_EXC_FRAME_RAX * 8)(%rsi)
+  movq %rdx, (CPU_EXC_FRAME_RAX * 8)(%rsi)
 #else
   movl 4(%esp), %ecx
   movl 8(%esp), %edx
-  cpu_fixup_restore 0  CPU_EXC_FRAME_EBX
-  cpu_fixup_restore 4  CPU_EXC_FRAME_ESI
-  cpu_fixup_restore 8  CPU_EXC_FRAME_EDI
-  cpu_fixup_restore 12 CPU_EXC_FRAME_EBP
-  cpu_fixup_restore 16 CPU_EXC_FRAME_ESP
-  cpu_fixup_restore 20 CPU_EXC_FRAME_EIP
-  movl $1, %eax
-  movl %rax, (CPU_EXC_FRAME_EAX * 4)(%edx)
+  cpu_fixup_restore_off  0 CPU_EXC_FRAME_EBX
+  cpu_fixup_restore_off  4 CPU_EXC_FRAME_ESI
+  cpu_fixup_restore_off  8 CPU_EXC_FRAME_EDI
+  cpu_fixup_restore_off 12 CPU_EXC_FRAME_EBP
+  cpu_fixup_restore_off 16 CPU_EXC_FRAME_ESP
+  cpu_fixup_restore_off 20 CPU_EXC_FRAME_EIP
+  movl 12(%esp), %eax
+  movl %eax, (CPU_EXC_FRAME_EAX * 4)(%edx)
 #endif
   ret
 ASM_END (cpu_fixup_restore)

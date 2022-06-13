@@ -628,12 +628,12 @@ cpu_exc_page_fault (const struct cpu_exc_frame *frame)
   if (! error)
     return;
   else if (self->fixup)
-    cpu_fixup_restore (self->fixup, (void *)frame->words);
+    cpu_fixup_restore (self->fixup, (void *)frame->words, error);
   else
     { // TODO: Implement segfaults for userspace tasks.
       cpu_halt_broadcast ();
       printf ("trap: page fault error: %d, code %d at %#lx in task %s\n",
-              (int)error, code, addr, self->task->name);
+              (int)error, code, (long)addr, self->task->name);
 
       cpu_show_thread ();
       cpu_show_frame (frame);

@@ -78,7 +78,6 @@
 #define VM_PAGE_KMEM        4   // Page is a direct-mapped kmem slab.
 #define VM_PAGE_OBJECT      5   // Page is part of a VM object.
 #define VM_PAGE_KERNEL      6   // Type for generic kernel allocations.
-#define VM_PAGE_EVICTING    7   // Page is being evicted.
 
 // Physical page descriptor.
 struct vm_page

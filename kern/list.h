@@ -281,9 +281,9 @@ list_remove (struct list *node)
        node = list_next (node))
 
 // Forge a loop to process all nodes of a list.
-#define list_for_each_safe(list, node, tmp)   \
-  for (struct list *node = list_first (list), *tmp = list_next (node);   \
-       !list_end (list, node);   \
+#define list_for_each_safe(lst, node, tmp)   \
+  for (struct list *node = list_first (lst), *tmp = list_next (node);   \
+       !list_end (lst, node);   \
        node = tmp, tmp = list_next (node))
 
 // Version of list_for_each() that processes nodes backward.

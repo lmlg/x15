@@ -891,7 +891,7 @@ struct cpu_fixup
 int cpu_fixup_save (struct cpu_fixup *cf) __attribute__ ((returns_twice));
 
 // Restore the (previously saved) CPU fixup context into a memory area.
-void cpu_fixup_restore (const struct cpu_fixup *cf, void *area);
+void cpu_fixup_restore (const struct cpu_fixup *cf, void *area, int retval);
 
 /*
  * This init operation provides :

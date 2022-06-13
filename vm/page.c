@@ -723,7 +723,7 @@ vm_page_free (struct vm_page *page, uint32_t order)
 static bool
 vm_page_obj_tryalloc (struct vm_page **frames, uint32_t order)
 {
-  struct vm_page *pages = vm_page_alloc (order, VM_PAGE_SEL_HIGHMEM,
+  struct vm_page *pages = vm_page_alloc (order, VM_PAGE_SEL_DIRECTMAP,
                                          VM_PAGE_OBJECT);
   if (! pages)
     return (false);

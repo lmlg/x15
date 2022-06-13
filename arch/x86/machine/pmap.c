@@ -77,13 +77,13 @@ static struct pmap_pt_level pmap_pt_levels[] __read_mostly =
 // Per-CPU page tables.
 struct pmap_cpu_table
 {
-  struct list node;
   phys_addr_t root_ptp_pa;
 };
 
 struct pmap
 {
-  struct pmap_cpu_table *cpu_tables[CONFIG_MAX_CPUS];
+  struct list pages;
+  struct pmap_cpu_table *cpu_tables[];
 };
 
 /*
@@ -101,7 +101,18 @@ typedef void (*pmap_walk_fn_t) (phys_addr_t, uint32_t, uint32_t);
 static struct pmap_cpu_table pmap_kernel_cpu_tables[CONFIG_MAX_CPUS]
   __read_mostly;
 
-struct pmap pmap_kernel_pmap;
+union pmap_global
+{
+  struct pmap pmap_kernel;
+  struct
+    {
+      struct list pgs;
+      struct pmap_cpu_table *tables[CONFIG_MAX_CPUS];
+    } full;
+};
+
+union pmap_global pmap_global_pmap;
+struct pmap *pmap_kernel_pmap;
 struct pmap *pmap_current_ptr __percpu;
 
 #ifdef CONFIG_X86_PAE
@@ -112,6 +123,8 @@ struct pmap *pmap_current_ptr __percpu;
   // "Hidden" kernel root page tables for PAE mode.
   static alignas (PMAP_PDPT_ALIGN) pmap_pte_t
   pmap_cpu_kpdpts[CONFIG_MAX_CPUS][PMAP_L2_PTES_PER_PT] __read_mostly;
+
+  static struct kmem_cache pmap_kpdpts_cache;
 
 #endif
 
@@ -335,7 +348,7 @@ pmap_boot_enter (pmap_pte_t *root_ptp, uintptr_t va, phys_addr_t pa,
                                       PMAP_PTE_RW | PMAP_PTE_P | bits;
 }
 
-static unsigned long __boot
+static size_t __boot
 pmap_boot_get_pgsize (void)
 {
   uint32_t eax, ebx, ecx, edx;
@@ -385,7 +398,7 @@ out:
 #else
 
 static void __boot
-pmap_boot_enable_pgext (unsigned long pgsize)
+pmap_boot_enable_pgext (size_t pgsize)
 {
   if (pgsize == PAGE_SIZE)
     return;
@@ -481,7 +494,8 @@ pmap_ap_setup_paging (uint32_t ap_id)
   size_t pgsize = pmap_boot_get_pgsize ();
   pmap_boot_enable_pgext (pgsize);
 
-  struct pmap *pmap = (void *)BOOT_VTOP ((uintptr_t)&pmap_kernel_pmap);
+  struct pmap *pmap =
+    (void *)BOOT_VTOP ((uintptr_t) &pmap_global_pmap.full);
   struct pmap_cpu_table *cpu_table =
     (void *)BOOT_VTOP((uintptr_t) pmap->cpu_tables[ap_id]);
 
@@ -774,7 +788,8 @@ pmap_syncer_init (struct pmap_syncer *syncer, uint32_t cpu)
 static int __init
 pmap_bootstrap (void)
 {
-  for (size_t i = 0; i < ARRAY_SIZE (pmap_get_kernel_pmap()->cpu_tables); ++i)
+  pmap_kernel_pmap = &pmap_global_pmap.pmap_kernel;
+  for (size_t i = 0; i < CONFIG_MAX_CPUS; ++i)
     {
       _Auto cpu_table = &pmap_kernel_cpu_tables[i];
       pmap_get_kernel_pmap()->cpu_tables[i] = cpu_table;
@@ -840,11 +855,19 @@ pmap_setup_fix_ptps (void)
 static int __init
 pmap_setup (void)
 {
+  pmap_kernel_pmap = &pmap_global_pmap.pmap_kernel;
   pmap_setup_fix_ptps ();
-  kmem_cache_init (&pmap_cache, "pmap", sizeof (struct pmap), 0, NULL, 0);
+  size_t size = sizeof (struct pmap) + (cpu_count () + 1) *
+                (sizeof (void *) + sizeof (struct pmap_cpu_table));
+  kmem_cache_init (&pmap_cache, "pmap", size, 0, NULL, 0);
   kmem_cache_init (&pmap_update_oplist_cache, "pmap_update_oplist",
                    sizeof (struct pmap_update_oplist), CPU_L1_SIZE,
                    pmap_update_oplist_ctor, 0);
+#ifdef CONFIG_X86_PAE
+  kmem_cache_init (&pmap_kpdpts_cache, "pmap_kpdpts", sizeof (pmap_pte_t),
+                   PMAP_PDPT_ALIGN, NULL, 0);
+#endif
+
   return (0);
 }
 
@@ -874,6 +897,12 @@ pmap_copy_cpu_table_page (const pmap_pte_t *sptp, uint32_t level,
   memcpy (dptp, sptp, pt_level->ptes_per_pt * sizeof (pmap_pte_t));
 }
 
+static struct vm_page* __init
+pmap_alloc_page (void)
+{
+  return (vm_page_alloc (0, VM_PAGE_SEL_DIRECTMAP, VM_PAGE_PMAP));
+}
+
 static void __init
 pmap_copy_cpu_table_recursive (const pmap_pte_t *sptp, uint32_t level,
                                pmap_pte_t *dptp, uintptr_t start_va)
@@ -901,9 +930,7 @@ pmap_copy_cpu_table_recursive (const pmap_pte_t *sptp, uint32_t level,
           continue;
         }
 
-      struct vm_page *page = vm_page_alloc (0, VM_PAGE_SEL_DIRECTMAP,
-                                            VM_PAGE_PMAP);
-
+      struct vm_page *page = pmap_alloc_page ();
       if (! page)
         panic ("pmap: unable to allocate page table page copy");
 
@@ -924,7 +951,7 @@ pmap_copy_cpu_table (uint32_t cpu)
   assert (cpu);
 
   _Auto kernel_pmap = pmap_get_kernel_pmap ();
-  assert (cpu < ARRAY_SIZE (kernel_pmap->cpu_tables));
+  assert (cpu < CONFIG_MAX_CPUS);
   _Auto cpu_table = kernel_pmap->cpu_tables[cpu];
   uint32_t level = PMAP_NR_LEVELS - 1;
   const pmap_pte_t *sptp =
@@ -934,8 +961,7 @@ pmap_copy_cpu_table (uint32_t cpu)
   cpu_table->root_ptp_pa = BOOT_VTOP ((uintptr_t)pmap_cpu_kpdpts[cpu]);
   pmap_pte_t *dptp = pmap_ptp_from_pa (cpu_table->root_ptp_pa);
 #else
-  struct vm_page *page = vm_page_alloc (0, VM_PAGE_SEL_DIRECTMAP,
-                                        VM_PAGE_PMAP);
+  struct vm_page *page = pmap_alloc_page ();
   if (! page)
     panic ("pmap: unable to allocate page table root page copy");
 
@@ -944,6 +970,51 @@ pmap_copy_cpu_table (uint32_t cpu)
 #endif
 
   pmap_copy_cpu_table_recursive (sptp, level, dptp, PMAP_START_ADDRESS);
+}
+
+static int __init
+pmap_copy_user (const pmap_pte_t *sptp, uint32_t level,
+                pmap_pte_t *dptp, uintptr_t start_va, struct list *pages)
+{
+  const _Auto pt_level = &pmap_pt_levels[level];
+  memset (dptp, 0, pt_level->ptes_per_pt * sizeof (pmap_pte_t));
+
+  for (uintptr_t i = 0, va = start_va;
+       i < pt_level->ptes_per_pt;
+       ++i, va = P2END (va, 1UL << pt_level->skip))
+    {
+#ifdef __LP64__
+      if (va == PMAP_END_ADDRESS)
+        va = PMAP_START_KERNEL_ADDRESS;
+#endif
+      if (!pmap_pte_valid (sptp[i]))
+        continue;
+      else if (pmap_pte_large (sptp[i]))
+        {
+          dptp[i] = sptp[i];
+          continue;
+        }
+
+      struct vm_page *page = pmap_alloc_page ();
+      if (! page)
+        return (ENOMEM);
+
+      list_insert_tail (pages, &page->node);
+      phys_addr_t pa = vm_page_to_pa (page);
+      dptp[i] = (sptp[i] & ~PMAP_PA_MASK) | (pa & PMAP_PA_MASK);
+
+      if (level == 1 || pmap_pte_large (sptp[i]))
+        pmap_copy_cpu_table_page (pmap_pte_next (sptp[i]), level - 1, page);
+      else
+        {
+          int ret = pmap_copy_user (pmap_pte_next (sptp[i]), level - 1,
+                                    vm_page_direct_ptr (page), va, pages);
+          if (ret != 0)
+            return (ret);
+        }
+    }
+
+  return (0);
 }
 
 void __init
@@ -1042,25 +1113,103 @@ pmap_create (struct pmap **pmapp)
   if (! pmap)
     return (ENOMEM);
 
-  for (size_t i = 0; i < ARRAY_SIZE (pmap->cpu_tables); ++i)
-    pmap->cpu_tables[i] = NULL;
+  list_init (&pmap->pages);
+  void *tables = (char *)pmap + sizeof (*pmap) +
+                 sizeof (struct pmap_cpu_table *) * cpu_count ();
+
+  if (((uintptr_t)tables % alignof (struct pmap_cpu_table)) != 0)
+    tables = (char *)tables + sizeof (struct pmap_cpu_table);
+
+  for (size_t i = 0; i < cpu_count (); ++i)
+    pmap->cpu_tables[i] = (struct pmap_cpu_table *)tables + i;
 
   *pmapp = pmap;
   return (0);
 }
 
+#ifdef CONFIG_X86_PAE
+
+static int
+pmap_alloc_root (struct pmap_cpu_table *tabp, pmap_pte_t **dptp)
+{
+  void *ptr = kmem_cache_alloc (&pmap_kpdpts_cache);
+  if (! ptr)
+    return (ENOMEM);
+
+  tabp->root_ptp_pa = vm_page_direct_pa ((uintptr_t)ptr);
+  *dptp = pmap_ptp_from_pa (tabp->root_ptp_pa);
+  return (0);
+}
+
+static void
+pmap_free_root (struct pmap_cpu_table *tabp)
+{
+  kmem_cache_free (&pmap_kpdpts_cache,
+                   (void *)vm_page_direct_va (tabp->root_ptp_pa));
+}
+
+#else
+
+static int
+pmap_alloc_root (struct pmap_cpu_table *tabp, pmap_pte_t **dptp)
+{
+  struct vm_page *page = pmap_alloc_page ();
+  if (! page)
+    return (ENOMEM);
+
+  tabp->root_ptp_pa = vm_page_to_pa (page);
+  *dptp = vm_page_direct_ptr (page);
+  return (0);
+}
+
+static void
+pmap_free_root (struct pmap_cpu_table *tabp)
+{
+  vm_page_free (vm_page_lookup (tabp->root_ptp_pa), 0);
+}
+
+#endif
+
 int
 pmap_copy (const struct pmap *src, struct pmap **dst)
 {
   int error = pmap_create (dst);
-  if (! error)
-    **dst = *src;
+  if (error)
+    return (error);
+
+  struct pmap *dmp = *dst;
+  for (uint32_t i = 0; i < cpu_count (); ++i)
+    {
+      pmap_pte_t *dptp;
+      error = pmap_alloc_root (dmp->cpu_tables[i], &dptp);
+      if (error)
+        goto fail;
+
+      const pmap_pte_t *sptp =
+        pmap_ptp_from_pa (src->cpu_tables[i]->root_ptp_pa);
+      error = pmap_copy_user (sptp, PMAP_NR_LEVELS - 1, dptp,
+                              PMAP_START_ADDRESS, &dmp->pages);
+
+      if (error)
+        goto fail;
+    }
+
+  return (0);
+
+fail:
+  pmap_destroy (dmp);
   return (error);
 }
 
 void
 pmap_destroy (struct pmap *pmap)
 {
+  list_for_each_safe (&pmap->pages, page, tmp)
+    vm_page_free (list_entry (page, struct vm_page, node), 0);
+
+  for (uint32_t i = 0; i < cpu_count (); ++i)
+    pmap_free_root (pmap->cpu_tables[i]);
+
   kmem_cache_free (&pmap_cache, pmap);
 }
 

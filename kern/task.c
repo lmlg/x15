@@ -47,7 +47,7 @@ static struct kmem_cache task_cache;
 static struct list task_list;
 static struct spinlock task_list_lock;
 
-void
+static void
 task_init (struct task *task, const char *name, struct vm_map *map)
 {
   task->nr_refs = 1;
@@ -210,6 +210,12 @@ task_info (struct task *task, struct stream *stream)
 
   SPINLOCK_GUARD (&task->lock, false);
   fmt_xprintf (stream, "task: name: %s, threads:\n", task->name);
+
+  if (list_empty (&task->threads))
+    {
+      stream_puts (stream, "(empty)\n");
+      return;
+    }
 
   /*
    * Don't grab any lock when accessing threads, so that the function

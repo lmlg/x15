@@ -62,7 +62,7 @@ void vm_kmem_free (void *addr, size_t size);
 /*
  * Map physical memory in the kernel map.
  *
- * Return the address at which the mapped memory can be accessed. If map_addrp
+ * Return the address at which the mapped memory can be accessed. If map_vap
  * and/or map_sizep aren't NULL, they are updated to the address and size of
  * the mapping created.
  *

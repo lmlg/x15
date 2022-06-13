@@ -109,11 +109,8 @@ int vm_map_create (struct vm_map **mapp);
 // Handle a page fault.
 int vm_map_fault (struct vm_map *map, uintptr_t addr, int prot);
 
-#ifdef CONFIG_RUN_TEST
-// Duplicate the kernel VM map. Used only for tests.
-int vm_map_dup_kernel (struct vm_map **dst);
-
-#endif
+// Destroy a VM map.
+void vm_map_destroy (struct vm_map *map);
 
 // Safely copy bytes to and from arbitrary buffers.
 int vm_copy (const void *src, void *dst, size_t size);

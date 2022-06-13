@@ -82,19 +82,15 @@ test_vm_fault_thread (void *arg __unused)
   vm_map_remove (map, map->start, map->end);
 }
 
-static struct task vm_fault_task;
-
 TEST_DEFERRED (vm_fault)
 {
-  struct vm_map *map;
-  int error = vm_map_dup_kernel (&map);
+  struct task *task;
+  int error = task_create (&task, "vm_fault");
   assert (! error);
-
-  task_init (&vm_fault_task, "vm_fault", map);
 
   struct thread_attr attr;
   thread_attr_init (&attr, "vm_fault/0");
-  thread_attr_set_task (&attr, &vm_fault_task);
+  thread_attr_set_task (&attr, task);
 
   struct thread *thread;
   thread_create (&thread, &attr, test_vm_fault_thread, 0);
@@ -102,7 +98,7 @@ TEST_DEFERRED (vm_fault)
 
   int val;
   error = vm_copy ((void *)0x1, &val, sizeof (val));
-  assert (error != 0);
+  assert (error == EFAULT);
   assert (!thread_self()->fixup);
 
   return (TEST_OK);

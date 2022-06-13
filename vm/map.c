@@ -678,27 +678,6 @@ INIT_OP_DEFINE (vm_map_bootstrap,
                 INIT_OP_DEP (kmem_bootstrap, true),
                 INIT_OP_DEP (thread_bootstrap, true));
 
-int
-vm_map_create (struct vm_map **mapp)
-{
-  struct vm_map *map = kmem_cache_alloc (&vm_map_cache);
-  if (! map)
-    return (ENOMEM);
-
-  struct pmap *pmap;
-  int error = pmap_create (&pmap);
-
-  if (error)
-    {
-      kmem_cache_free (&vm_map_cache, map);
-      return (error);
-    }
-
-  vm_map_init (map, pmap, PMAP_START_ADDRESS, PMAP_END_ADDRESS);
-  *mapp = map;
-  return (0);
-}
-
 // How many pages (expressed as an order) to cache per policy.
 static const uint8_t vm_pagein_targets[] =
 {
@@ -844,6 +823,36 @@ failpmap:
 #endif
 
 int
+vm_map_create (struct vm_map **mapp)
+{
+  struct vm_map *map = kmem_cache_alloc (&vm_map_cache);
+  if (! map)
+    return (ENOMEM);
+
+  struct pmap *pmap;
+  int error = pmap_copy (pmap_get_kernel_pmap (), &pmap);
+
+  if (error)
+    {
+      kmem_cache_free (&vm_map_cache, map);
+      return (error);
+    }
+
+  vm_map_init (map, pmap, PMAP_START_ADDRESS, PMAP_END_ADDRESS);
+  _Auto src_map = vm_map_get_kernel_map ();
+  error = vm_map_dup_tree (map, src_map->entry_tree.root);
+
+  if (error == 0)
+    {
+      *mapp = map;
+      return (0);
+    }
+
+  vm_map_destroy (map);
+  return (error);
+}
+
+int
 vm_copy (const void *src, void *dst, size_t size)
 {
   struct vm_fixup fixup;
@@ -853,6 +862,24 @@ vm_copy (const void *src, void *dst, size_t size)
     memcpy (dst, src, size);
 
   return (res);
+}
+
+static void
+vm_map_destroy_impl (struct vm_map *map)
+{
+  MUTEX_GUARD (&map->lock);
+  rbtree_for_each_remove (&map->entry_tree, entry, tmp)
+    vm_map_entry_destroy (rbtree_entry (entry, struct vm_map_entry,
+                                        tree_node));
+
+  list_init (&map->entry_list);
+}
+
+void
+vm_map_destroy (struct vm_map *map)
+{
+  vm_map_destroy_impl (map);
+  kmem_cache_free (&vm_map_cache, map);
 }
 
 void

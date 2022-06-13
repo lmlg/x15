@@ -98,15 +98,15 @@ union kmem_bufctl
 // Redzone guard word.
 #ifdef __LP64__
   #if __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
-    #define KMEM_REDZONE_WORD 0xfeedfacefeedfaceUL
+    #define KMEM_REDZONE_WORD   0xfeedfacefeedfaceUL
   #else
-    #define KMEM_REDZONE_WORD 0xcefaedfecefaedfeUL
+    #define KMEM_REDZONE_WORD   0xcefaedfecefaedfeUL
   #endif
 #else
   #if __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
-    #define KMEM_REDZONE_WORD 0xfeedfaceUL
+    #define KMEM_REDZONE_WORD   0xfeedfaceUL
   #else
-    #define KMEM_REDZONE_WORD 0xcefaedfeUL
+    #define KMEM_REDZONE_WORD   0xcefaedfeUL
   #endif
 #endif
 

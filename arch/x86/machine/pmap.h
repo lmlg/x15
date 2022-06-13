@@ -169,8 +169,8 @@ struct pmap;
 static inline struct pmap*
 pmap_get_kernel_pmap (void)
 {
-  extern struct pmap pmap_kernel_pmap;
-  return (&pmap_kernel_pmap);
+  extern struct pmap *pmap_kernel_pmap;
+  return (pmap_kernel_pmap);
 }
 
 /*
