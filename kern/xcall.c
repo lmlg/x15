@@ -53,7 +53,7 @@ struct xcall
  */
 struct xcall_cpu_data
 {
-  alignas (CPU_L1_SIZE) struct spinlock lock;
+  __cacheline_aligned struct spinlock lock;
   struct xcall *recv_call;     // (c)
   struct syscnt sc_sent;       // (a)
   struct syscnt sc_received;   // (a)

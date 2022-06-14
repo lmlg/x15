@@ -121,7 +121,7 @@ struct thread_fs_data
  */
 struct thread
 {
-  alignas (CPU_L1_SIZE) struct tcb tcb;   // (r)
+  __cacheline_aligned struct tcb tcb;   // (r)
 
   size_t nr_refs;         // (a)
   unsigned long flags;    // (a)

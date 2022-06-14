@@ -75,10 +75,14 @@
  *
  * XXX Use this value until processor selection is available.
  *
- * TODO Add macros to specifically align to the cache line size, and to
- * do so only in SMP configurations.
  */
 #define CPU_L1_SIZE   64
+
+#if CONFIG_MAX_CPUS > 1
+  #define __cacheline_aligned   alignas (CPU_L1_SIZE)
+#else
+  #define __cacheline_aligned
+#endif
 
 // CPU word size, 4 or 8 bytes.
 #define CPU_WORD_SIZE   (LONG_BIT / 8)

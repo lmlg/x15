@@ -79,7 +79,7 @@
 // Per-processor cache of pages.
 struct vm_page_cpu_pool
 {
-  alignas (CPU_L1_SIZE) struct mutex lock;
+  __cacheline_aligned struct mutex lock;
   int size;
   int transfer_size;
   int nr_pages;

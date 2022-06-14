@@ -67,7 +67,7 @@
  */
 struct turnstile_bucket
 {
-  alignas (CPU_L1_SIZE) struct spinlock lock;
+  __cacheline_aligned struct spinlock lock;
   struct hlist turnstiles;    // (b)
 };
 

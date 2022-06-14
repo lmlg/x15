@@ -55,7 +55,7 @@ typedef void (*kmem_ctor_fn_t) (void *);
  */
 struct kmem_cpu_pool
 {
-  alignas (CPU_L1_SIZE) struct adaptive_lock lock;
+  __cacheline_aligned struct adaptive_lock lock;
   int flags;
   int size;
   int transfer_size;

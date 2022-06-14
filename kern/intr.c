@@ -42,7 +42,7 @@
 
 struct intr_handler
 {
-  alignas (CPU_L1_SIZE) struct list node;
+  __cacheline_aligned struct list node;
   intr_handler_fn_t fn;
   void *arg;
 };
@@ -72,7 +72,7 @@ struct intr_ctl
  */
 struct intr_entry
 {
-  alignas (CPU_L1_SIZE) struct spinlock lock;
+  __cacheline_aligned struct spinlock lock;
   struct intr_ctl *ctl;
   unsigned int cpu;
   struct list handlers;

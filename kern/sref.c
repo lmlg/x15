@@ -111,16 +111,8 @@
  */
 struct sref_data
 {
-  struct
-    {
-      alignas (CPU_L1_SIZE) uint32_t epoch_id;
-    };
-
-  struct
-    {
-      alignas (CPU_L1_SIZE) uint32_t nr_pending_acks;
-    };
-
+  __cacheline_aligned uint32_t epoch_id;
+  __cacheline_aligned uint32_t nr_pending_acks;
   uint64_t start_ts;
   struct syscnt sc_epochs;
   struct syscnt sc_dirty_zeroes;

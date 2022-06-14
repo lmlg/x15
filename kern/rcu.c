@@ -216,16 +216,9 @@ struct rcu_window
  */
 struct rcu_data
 {
-  struct
-    {
-      alignas (CPU_L1_SIZE) enum rcu_gp_state gp_state;
-    };
-  struct
-    {
-      alignas (CPU_L1_SIZE) unsigned int nr_acks;
-    };
-
-  unsigned int wid;
+  __cacheline_aligned enum rcu_gp_state gp_state;
+  __cacheline_aligned uint32_t nr_acks;
+  uint32_t wid;
   struct rcu_window windows[2];
   struct timer timer;
   struct syscnt sc_nr_windows;

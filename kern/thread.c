@@ -226,7 +226,7 @@ struct thread_fs_runq
  */
 struct thread_runq
 {
-  alignas (CPU_L1_SIZE) struct spinlock lock;
+  __cacheline_aligned struct spinlock lock;
   unsigned int cpu;
   unsigned int nr_threads;
   struct thread *current;
@@ -319,7 +319,7 @@ static struct cpumap thread_idle_runqs;
  */
 static struct
 {
-  alignas (CPU_L1_SIZE) volatile size_t value;
+  __cacheline_aligned volatile size_t value;
 } thread_fs_highest_round_struct;
 
 #define thread_fs_highest_round   (thread_fs_highest_round_struct.value)

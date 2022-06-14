@@ -760,6 +760,8 @@ vm_map_fault (struct vm_map *map, uintptr_t addr, int prot)
   if (unlikely (error))
     return (EIO);   // Will map to SIGBUS.
 
+  // TODO: Test that the entry hasn't changed, and retry if so.
+
   for (int i = 0; i < n_pages; ++i, offset += PAGE_SIZE)
     {
       error = vm_object_insert (object, frames[i], offset);

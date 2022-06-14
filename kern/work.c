@@ -85,7 +85,7 @@ struct work_thread
  */
 struct work_pool
 {
-  alignas (CPU_L1_SIZE) struct spinlock lock;
+  __cacheline_aligned struct spinlock lock;
   int flags;
   struct work_queue queue0;
   struct work_queue queue1;

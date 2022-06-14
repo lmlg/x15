@@ -101,7 +101,7 @@ static_assert (SPINLOCK_BITS <= CHAR_BIT * sizeof (uint32_t),
 
 struct spinlock_qnode
 {
-  alignas (CPU_L1_SIZE) struct spinlock_qnode *next;
+  __cacheline_aligned struct spinlock_qnode *next;
   int locked;
 };
 

@@ -36,7 +36,7 @@
 
 struct sleepq_bucket
 {
-  alignas (CPU_L1_SIZE) struct spinlock lock;
+  __cacheline_aligned struct spinlock lock;
   struct hlist sleepqs;
 };
 
@@ -56,7 +56,7 @@ struct sleepq_waiter
  */
 struct sleepq
 {
-  alignas (CPU_L1_SIZE) struct sleepq_bucket *bucket;
+  __cacheline_aligned struct sleepq_bucket *bucket;
   struct hlist_node node;
   const void *sync_obj;
   struct list waiters;

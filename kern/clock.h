@@ -33,7 +33,7 @@
 
 union clock_global_time
 {
-  alignas (CPU_L1_SIZE) uint64_t ticks;
+  __cacheline_aligned uint64_t ticks;
 
 #ifndef __LP64__
   struct
