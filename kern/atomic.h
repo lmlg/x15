@@ -90,8 +90,8 @@
 
 #define atomic_cas_bool(place, exp, val, mo)   \
   ({   \
-     typeof(*(place)) exp_ = (exp);   \
-     atomic_cas (place, exp_, val, mo) == exp_;   \
+     typeof(*(place)) sexp_ = (exp);   \
+     atomic_cas (place, sexp_, val, mo) == sexp_;   \
    })
 
 #define atomic_fence(mo)   __atomic_thread_fence (mo)

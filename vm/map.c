@@ -509,7 +509,7 @@ vm_map_enter (struct vm_map *map, uintptr_t *startp,
               size_t size, size_t align, int flags,
               struct vm_object *object, uint64_t offset)
 {
-  MUTEX_GUARD (&map->lock);
+  SXLOCK_EXGUARD (&map->lock);
   struct vm_map_request request;
   int error = vm_map_prepare (map, *startp, size, align, flags, object,
                               offset, &request);
@@ -577,7 +577,7 @@ vm_map_remove (struct vm_map *map, uintptr_t start, uintptr_t end)
   assert (end <= map->end);
   assert (start < end);
 
-  MUTEX_GUARD (&map->lock);
+  SXLOCK_EXGUARD (&map->lock);
   _Auto entry = vm_map_lookup_nearest (map, start);
   if (! entry)
     return;
@@ -610,7 +610,7 @@ vm_map_init (struct vm_map *map, struct pmap *pmap,
   assert (vm_page_aligned (end));
   assert (start < end);
 
-  mutex_init (&map->lock);
+  sxlock_init (&map->lock);
   list_init (&map->entry_list);
   rbtree_init (&map->entry_tree);
   map->nr_entries = 0;
@@ -716,7 +716,7 @@ vm_map_fault (struct vm_map *map, uintptr_t addr, int prot)
   assert (map != vm_map_get_kernel_map ());
   addr = vm_page_trunc (addr);
 
-  MUTEX_GUARD (&map->lock);
+  SXLOCK_SHGUARD (&map->lock);
   _Auto entry = vm_map_lookup_nearest (map, addr);
 
   if (!entry || addr < entry->start)
@@ -750,12 +750,12 @@ vm_map_fault (struct vm_map *map, uintptr_t addr, int prot)
   if (n_pages < 0)
     n_pages = -n_pages;
   else
-    mutex_unlock (&map->lock);
+    sxlock_unlock (&map->lock);
 
   frames[0]->offset = offset;
   int error = vm_object_pager_get (object, frames,
                                    vm_page_direct_ptr (frames[0]), n_pages);
-  mutex_lock (&map->lock);
+  sxlock_exlock (&map->lock);
 
   if (unlikely (error))
     return (EIO);   // Will map to SIGBUS.
@@ -814,7 +814,7 @@ vm_map_create (struct vm_map **mapp)
   _Auto src_map = vm_map_get_kernel_map ();
   error = vm_map_dup_tree (map, src_map->entry_tree.root);
 
-  if (error == 0)
+  if (! error)
     {
       *mapp = map;
       return (0);
@@ -839,7 +839,7 @@ vm_copy (const void *src, void *dst, size_t size)
 static void
 vm_map_destroy_impl (struct vm_map *map)
 {
-  MUTEX_GUARD (&map->lock);
+  SXLOCK_EXGUARD (&map->lock);
   rbtree_for_each_remove (&map->entry_tree, entry, tmp)
     vm_map_entry_destroy (rbtree_entry (entry, struct vm_map_entry,
                                         tree_node));
@@ -858,7 +858,7 @@ void
 vm_map_info (struct vm_map *map, struct stream *stream)
 {
   const char *name = map == vm_map_get_kernel_map () ? "kernel map" : "map";
-  MUTEX_GUARD (&map->lock);
+  SXLOCK_SHGUARD (&map->lock);
 
   fmt_xprintf (stream, "vm_map: %s: %016lx-%016lx\n", name,
                (unsigned long) map->start, (unsigned long) map->end);

@@ -25,9 +25,9 @@
 
 #include <kern/init.h>
 #include <kern/list.h>
-#include <kern/mutex.h>
 #include <kern/rbtree.h>
 #include <kern/stream.h>
+#include <kern/sxlock.h>
 #include <kern/thread.h>
 
 #include <machine/pmap.h>
@@ -75,7 +75,7 @@ struct vm_map_entry
 // Memory map.
 struct vm_map
 {
-  struct mutex lock;
+  struct sxlock lock;
   struct list entry_list;
   struct rbtree entry_tree;
   uint32_t nr_entries;

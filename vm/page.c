@@ -741,7 +741,7 @@ vm_page_obj_alloc (struct vm_map *map, struct vm_page **frames, uint32_t order)
   if (likely (vm_page_obj_tryalloc (frames, order)))
     return ((int) (1u << order));
 
-  mutex_unlock (&map->lock);
+  sxlock_unlock (&map->lock);
 
   struct page_waiter pw = { .thread = thread_self (), .frames = frames };
   plist_node_init (&pw.node, thread_real_global_priority (pw.thread));

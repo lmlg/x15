@@ -323,7 +323,7 @@ sleepq_acquire_intr_save (const void *sync_obj, bool condition,
   return (sleepq_acquire_common (sync_obj, condition, flags));
 }
 
-struct sleepq *
+struct sleepq*
 sleepq_tryacquire_intr_save (const void *sync_obj, bool condition,
                              unsigned long *flags)
 {
@@ -537,7 +537,7 @@ void
 sleepq_wait (struct sleepq *sleepq, const char *wchan)
 {
   int error = sleepq_wait_common (sleepq, wchan, false, 0);
-  assert (!error);
+  assert (! error);
 }
 
 int
