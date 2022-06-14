@@ -570,8 +570,9 @@ vm_map_clip_end (struct vm_map *map, struct vm_map_entry *entry, uintptr_t end)
   vm_map_link (map, new_entry, next);
 }
 
-void
-vm_map_remove (struct vm_map *map, uintptr_t start, uintptr_t end)
+static void
+vm_map_remove_impl (struct vm_map *map, uintptr_t start,
+                    uintptr_t end, struct list *list)
 {
   assert (start >= map->start);
   assert (end <= map->end);
@@ -591,8 +592,7 @@ vm_map_remove (struct vm_map *map, uintptr_t start, uintptr_t end)
       struct list *node = list_next (&entry->list_node);
       vm_map_unlink (map, entry);
 
-      // TODO Defer destruction to shorten critical section.
-      vm_map_entry_destroy (entry);
+      list_insert_tail (list, &entry->list_node);
       if (list_end (&map->entry_list, node))
         break;
 
@@ -600,6 +600,17 @@ vm_map_remove (struct vm_map *map, uintptr_t start, uintptr_t end)
     }
 
   vm_map_reset_find_cache (map);
+}
+
+void
+vm_map_remove (struct vm_map *map, uintptr_t start, uintptr_t end)
+{
+  struct list entries;
+  list_init (&entries);
+
+  vm_map_remove_impl (map, start, end, &entries);
+  list_for_each_safe (&entries, entry, tmp)
+    vm_map_entry_destroy (list_entry (entry, struct vm_map_entry, list_node));
 }
 
 static void
