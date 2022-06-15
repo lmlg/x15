@@ -89,13 +89,38 @@ struct vm_map vm_map_kernel_map;
 static struct vm_map_entry*
 vm_map_entry_create (void)
 {
-  struct vm_map_entry *entry = kmem_cache_alloc (&vm_map_entry_cache);
+  return (kmem_cache_alloc (&vm_map_entry_cache));
+}
 
-  // TODO Handle error.
-  if (! entry)
-    panic ("vm_map: can't create map entry");
+static int
+vm_map_entry_alloc (struct list *list, uint32_t n)
+{
+  list_init (list);
+  for (uint32_t i = 0; i < n; ++i)
+    {
+      _Auto entry = vm_map_entry_create ();
+      if (entry)
+        {
+          list_insert_tail (list, &entry->list_node);
+          continue;
+        }
 
-  return (entry);
+      list_for_each_safe (list, nd, tmp)
+        kmem_cache_free (&vm_map_entry_cache, nd);
+
+      return (ENOMEM);
+    }
+
+  return (0);
+}
+
+static struct vm_map_entry*
+vm_map_entry_pop (struct list *list)
+{
+  assert (!list_empty (list));
+  _Auto ret = list_first_entry (list, struct vm_map_entry, list_node);
+  list_remove (&ret->list_node);
+  return (ret);
 }
 
 static void
@@ -490,6 +515,8 @@ vm_map_insert (struct vm_map *map, struct vm_map_entry *entry,
         goto out;
 
       entry = vm_map_entry_create ();
+      if (! entry)
+        return (ENOMEM);
     }
 
   entry->start = request->start;
@@ -539,15 +566,15 @@ vm_map_split_entries (struct vm_map_entry *prev, struct vm_map_entry *next,
 
 static void
 vm_map_clip_start (struct vm_map *map, struct vm_map_entry *entry,
-                   uintptr_t start)
+                   uintptr_t start, struct list *alloc)
 {
   if (start <= entry->start || start >= entry->end)
     return;
 
+  _Auto new_entry = vm_map_entry_pop (alloc);
   _Auto next = vm_map_next (map, entry);
   vm_map_unlink (map, entry);
 
-  _Auto new_entry = vm_map_entry_create ();
   *new_entry = *entry;
   vm_map_split_entries (new_entry, entry, start);
   vm_map_link (map, entry, next);
@@ -555,22 +582,23 @@ vm_map_clip_start (struct vm_map *map, struct vm_map_entry *entry,
 }
 
 static void
-vm_map_clip_end (struct vm_map *map, struct vm_map_entry *entry, uintptr_t end)
+vm_map_clip_end (struct vm_map *map, struct vm_map_entry *entry,
+                 uintptr_t end, struct list *alloc)
 {
   if (end <= entry->start || end >= entry->end)
     return;
 
+  _Auto new_entry = vm_map_entry_pop (alloc);
   _Auto next = vm_map_next (map, entry);
   vm_map_unlink (map, entry);
 
-  _Auto new_entry = vm_map_entry_create ();
   *new_entry = *entry;
   vm_map_split_entries (entry, new_entry, end);
   vm_map_link (map, entry, next);
   vm_map_link (map, new_entry, next);
 }
 
-static void
+static int
 vm_map_remove_impl (struct vm_map *map, uintptr_t start,
                     uintptr_t end, struct list *list)
 {
@@ -581,13 +609,32 @@ vm_map_remove_impl (struct vm_map *map, uintptr_t start,
   SXLOCK_EXGUARD (&map->lock);
   _Auto entry = vm_map_lookup_nearest (map, start);
   if (! entry)
-    return;
+    return (0);
 
-  vm_map_clip_start (map, entry, start);
+  // Pre-allocate the VM map entries.
+  uint32_t n_entries = start > entry->start && start < entry->end;
+  for (_Auto tmp = entry; tmp->start < end; )
+    {
+      if (end > tmp->start && end < tmp->end)
+        ++n_entries;
 
+      struct list *nx = list_next (&tmp->list_node);
+      if (list_end (&map->entry_list, nx))
+        break;
+
+      tmp = list_entry (nx, struct vm_map_entry, list_node);
+    }
+
+  struct list alloc_entries;
+  int error = vm_map_entry_alloc (&alloc_entries, n_entries);
+
+  if (error)
+    return (error);
+
+  vm_map_clip_start (map, entry, start, &alloc_entries);
   while (entry->start < end)
     {
-      vm_map_clip_end (map, entry, end);
+      vm_map_clip_end (map, entry, end, &alloc_entries);
       map->size -= entry->end - entry->start;
       struct list *node = list_next (&entry->list_node);
       vm_map_unlink (map, entry);
@@ -599,18 +646,23 @@ vm_map_remove_impl (struct vm_map *map, uintptr_t start,
       entry = list_entry (node, struct vm_map_entry, list_node);
     }
 
+  assert (list_empty (&alloc_entries));
   vm_map_reset_find_cache (map);
+  return (0);
 }
 
-void
+int
 vm_map_remove (struct vm_map *map, uintptr_t start, uintptr_t end)
 {
   struct list entries;
   list_init (&entries);
 
-  vm_map_remove_impl (map, start, end, &entries);
-  list_for_each_safe (&entries, entry, tmp)
-    vm_map_entry_destroy (list_entry (entry, struct vm_map_entry, list_node));
+  int error = vm_map_remove_impl (map, start, end, &entries);
+  if (! error)
+    list_for_each_safe (&entries, ex, tmp)
+      vm_map_entry_destroy (list_entry (ex, struct vm_map_entry, list_node));
+
+  return (error);
 }
 
 static void
@@ -735,6 +787,7 @@ vm_map_fault (struct vm_map *map, uintptr_t addr, int prot)
   else if ((prot & VM_MAP_PROT (entry->flags)) != prot)
     return (EACCES);
 
+  prot = VM_MAP_PROT (entry->flags);
   struct vm_object *object = entry->object;
   assert (object);   // Null vm-objects are kernel-only and always wired.
 
@@ -743,7 +796,6 @@ vm_map_fault (struct vm_map *map, uintptr_t addr, int prot)
 
   if (page)
     {
-      prot = VM_MAP_PROT (entry->flags);
       int error = pmap_enter (map->pmap, addr, vm_page_to_pa (page),
                               VM_MAP_PROT (entry->flags), PMAP_PEF_GLOBAL);
 

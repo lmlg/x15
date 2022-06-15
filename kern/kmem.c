@@ -377,7 +377,7 @@ static void
 kmem_cpu_pool_drain (struct kmem_cpu_pool *cpu_pool, struct kmem_cache *cache)
 {
   ADAPTIVE_LOCK_GUARD (&cache->lock);
-  for (int i = cpu_pool->transfer_size; i > 0; i--)
+  for (int i = cpu_pool->transfer_size; i > 0; --i)
     {
       void *obj = kmem_cpu_pool_pop (cpu_pool);
       kmem_cache_free_to_slab (cache, obj);
@@ -865,10 +865,10 @@ kmem_cache_free_verify (struct kmem_cache *cache, void *buf)
   uintptr_t slabend = P2ALIGN ((uintptr_t)slab->addr +
                                cache->slab_size, PAGE_SIZE);
 
-  if ((uintptr_t) buf >= slabend)
+  if ((uintptr_t)buf >= slabend)
     kmem_cache_error (cache, buf, KMEM_ERR_INVALID, NULL);
 
-  if (((uintptr_t) buf - (uintptr_t)slab->addr) % cache->buf_size)
+  if (((uintptr_t)buf - (uintptr_t)slab->addr) % cache->buf_size)
     kmem_cache_error (cache, buf, KMEM_ERR_INVALID, NULL);
 
   // As the buffer address is valid, accessing its buftag is safe.
@@ -964,7 +964,7 @@ fast_free:
 #else
   if (cache->flags & KMEM_CF_VERIFY)
     kmem_cache_free_verify (cache, obj);
-#endif // KMEM_USE_CPU_LAYER
+#endif   // KMEM_USE_CPU_LAYER
 
   adaptive_lock_acquire (&cache->lock);
   kmem_cache_free_to_slab (cache, obj);

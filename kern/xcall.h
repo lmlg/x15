@@ -19,8 +19,6 @@
  *
  * This module provides the ability to run functions, called cross-calls,
  * on specific processors.
- *
- * TODO Asynchronous cross-calls.
  */
 
 #ifndef KERN_XCALL_H

@@ -819,11 +819,11 @@ ASM_ENTRY (cpu_fixup_save)
   movq %r13, 24(%rdi)
   movq %r14, 32(%rdi)
   movq %r15, 40(%rdi)
-  leaq 8(%rsp), %rdx
+  leaq 8(%rsp), %rdx   // Previous RSP without the return address.
   movq %rdx, 48(%rdi)
-  movq (%rsp), %rdx
+  movq (%rsp), %rdx    // Previous return address as RIP.
   movq %rdx, 56(%rdi)
-  xorq %rax, %rax
+  xorq %rax, %rax      // Upon saving, return value is 0.
 #else
   movl 4(%esp), %eax
   movl %ebx, (%eax)
@@ -865,7 +865,7 @@ ASM_ENTRY (cpu_fixup_restore)
   cpu_fixup_restore_off 40 CPU_EXC_FRAME_R15
   cpu_fixup_restore_off 48 CPU_EXC_FRAME_RSP
   cpu_fixup_restore_off 56 CPU_EXC_FRAME_RIP
-  movq %rdx, (CPU_EXC_FRAME_RAX * 8)(%rsi)
+  movq %rdx, (CPU_EXC_FRAME_RAX * 8)(%rsi)   // Store return value.
 #else
   movl 4(%esp), %ecx
   movl 8(%esp), %edx

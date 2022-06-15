@@ -16,6 +16,7 @@
  */
 
 #include <assert.h>
+#include <stdio.h>
 #include <string.h>
 
 #include <kern/fmt.h>
@@ -96,8 +97,8 @@ test_setup (void)
         }
 
       char name[THREAD_NAME_SIZE];
-      fmt_snprintf (name, sizeof (name), THREAD_KERNEL_PREFIX "test_%s",
-                    sym->name + PREFIX_LEN + 1);
+      snprintf (name, sizeof (name), THREAD_KERNEL_PREFIX "test_%s",
+                sym->name + PREFIX_LEN + 1);
 
       struct thread_attr attr;
       thread_attr_init (&attr, name);

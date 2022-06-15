@@ -29,10 +29,22 @@ struct sxlock
   uint32_t val;
 };
 
-#define SXLOCK_UNOWNED    0
-#define SXLOCK_SHOWNED    1
-#define SXLOCK_EXOWNED    2
-#define SXLOCK_EXWAITER   3
+/*
+ * Values for the lowest 2 bits of an sxlock.
+ * Note that the combination of SXLOCK_EXOWNED | SXLOCK_SHOWNED is
+ * forbidden, while all others are allowed.
+ */
+
+#define SXLOCK_UNOWNED    0   // Unowned lock.
+#define SXLOCK_SHOWNED    1   // Owned by readers.
+#define SXLOCK_EXOWNED    2   // Owned by a writer.
+#define SXLOCK_EXWAITER   3   // A writer is waiting on the lock.
+
+/*
+ * The rest of the word contains the number of readers.
+ * Whether they are waiting or own the lock is determined by the
+ * above bits.
+ */
 
 #define SXLOCK_SHIFT    2
 #define SXLOCK_SHUSER   (1u << SXLOCK_SHIFT)
@@ -46,7 +58,7 @@ sxlock_init (struct sxlock *sxp)
 static inline int
 sxlock_tryexlock (struct sxlock *sxp)
 {
-  return (atomic_cas_bool_acq (&sxp->val, 0, SXLOCK_EXOWNED) ?
+  return (atomic_cas_bool_acq (&sxp->val, SXLOCK_UNOWNED, SXLOCK_EXOWNED) ?
           0 : EBUSY);
 }
 
@@ -62,10 +74,14 @@ sxlock_exlock (struct sxlock *sxp)
 static inline int
 sxlock_tryshlock (struct sxlock *sxp)
 {
+  // For shared locking, ignore queued writers.
   uint32_t val = atomic_load_rlx (&sxp->val) & ~SXLOCK_EXOWNED;
-  return (atomic_cas_bool_acq (&sxp->val, val,
-                               (val | SXLOCK_SHOWNED) + SXLOCK_SHUSER) ?
-          0 : EBUSY);
+  if ((! val || (val & SXLOCK_SHOWNED)) &&
+      atomic_cas_bool_acq (&sxp->val, val,
+                           (val | SXLOCK_SHOWNED) + SXLOCK_SHUSER))
+    return (0);
+
+  return (EBUSY);
 }
 
 void sxlock_shlock_slow (struct sxlock *sxp);

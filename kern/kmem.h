@@ -251,10 +251,10 @@ void kmem_cache_free (struct kmem_cache *cache, void *obj);
 void kmem_cache_info (struct kmem_cache *cache, struct stream *stream);
 
 // Allocate size bytes of uninitialized memory.
-void * kmem_alloc (size_t size);
+void* kmem_alloc (size_t size);
 
 // Allocate size bytes of zeroed memory.
-void * kmem_zalloc (size_t size);
+void* kmem_zalloc (size_t size);
 
 /*
  * Release memory obtained with kmem_alloc() or kmem_zalloc().

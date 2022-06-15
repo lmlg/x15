@@ -101,7 +101,7 @@ int vm_map_enter (struct vm_map *map, uintptr_t *startp,
                   struct vm_object *object, uint64_t offset);
 
 // Remove mappings from start to end.
-void vm_map_remove (struct vm_map *map, uintptr_t start, uintptr_t end);
+int vm_map_remove (struct vm_map *map, uintptr_t start, uintptr_t end);
 
 // Create a VM map.
 int vm_map_create (struct vm_map **mapp);

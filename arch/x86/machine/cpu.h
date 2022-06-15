@@ -881,7 +881,15 @@ cpu_send_thread_schedule (uint32_t cpu)
  */
 void cpu_register_intr (uint32_t vector, cpu_intr_handler_fn_t fn);
 
-// CPU fixup context, used for safe access w.r.t page faults.
+/*
+ * CPU fixups, used to safely perform operations on memory that may fault.
+ *
+ * These work similarly to what setjmp/longjmp do, with the exception that
+ * unwinding doesn't occur immediately; rather, the state is spilled into
+ * a memory area (i.e: the stack region where registers where saved before
+ * running the interrupt handler), so that it's restored afterwards.
+*/
+
 struct cpu_fixup
 {
 #ifdef __LP64__

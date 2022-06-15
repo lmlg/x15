@@ -766,7 +766,7 @@ thread_sched_fs_prio2weight (uint16_t priority)
   return ((priority + 1) * THREAD_FS_ROUND_SLICE_BASE);
 }
 
-static struct thread_runq *
+static struct thread_runq*
 thread_sched_fs_select_runq (struct thread *thread)
 {
   struct thread_runq *runq;
@@ -837,8 +837,8 @@ thread_sched_fs_select_runq (struct thread *thread)
 }
 
 static unsigned int
-thread_sched_fs_enqueue_scale (unsigned int work, unsigned int old_weight,
-                               unsigned int new_weight)
+thread_sched_fs_enqueue_scale (uint32_t work, uint32_t old_weight,
+                               uint32_t new_weight)
 {
   assert (old_weight);
 
@@ -861,7 +861,7 @@ thread_sched_fs_enqueue (struct thread_fs_runq *fs_runq, size_t round,
   uint32_t group_weight = group->weight + thread->fs_data.weight,
            total_weight = fs_runq->weight + thread->fs_data.weight;
   struct list *node = group->weight ?
-    list_prev (&group->node) : list_last (&fs_runq->groups);
+                      list_prev (&group->node) : list_last (&fs_runq->groups);
   struct list *init_node = node;
 
   while (!list_end (&fs_runq->groups, node))
@@ -895,7 +895,7 @@ thread_sched_fs_enqueue (struct thread_fs_runq *fs_runq, size_t round,
     {
       uint32_t group_work, thread_work;
 
-      if (fs_runq->weight == 0)
+      if (!fs_runq->weight)
         thread_work = 0;
       else
         {
@@ -940,7 +940,7 @@ thread_sched_fs_restart (struct thread_runq *runq)
 static void
 thread_sched_fs_add (struct thread_runq *runq, struct thread *thread)
 {
-  if (runq->fs_weight == 0)
+  if (!runq->fs_weight)
     runq->fs_round = thread_fs_highest_round;
 
   uint32_t total_weight = runq->fs_weight + thread->fs_data.weight;
@@ -1670,7 +1670,7 @@ thread_lock_runq (struct thread *thread, unsigned long *flags)
       _Auto runq = atomic_load_rlx (&thread->runq);
       spinlock_lock_intr_save (&runq->lock, flags);
 
-      if (runq == atomic_load_rlx (&thread->runq))
+      if (likely (runq == atomic_load_rlx (&thread->runq)))
         return (runq);
 
       spinlock_unlock_intr_restore (&runq->lock, *flags);
@@ -1734,7 +1734,7 @@ thread_free_stack (void *stack)
   vm_kmem_free (va, (PAGE_SIZE * 2) + stack_size);
 }
 
-#else /* CONFIG_THREAD_STACK_GUARD */
+#else   // CONFIG_THREAD_STACK_GUARD
 
 static void*
 thread_alloc_stack (void)
@@ -1829,7 +1829,7 @@ thread_balance (void *arg)
   unsigned long flags;
   spinlock_lock_intr_save (&runq->lock, &flags);
 
-  for (;;)
+  while (1)
     {
       runq->idle_balance_ticks = THREAD_IDLE_BALANCE_TICKS;
       thread_set_wchan (self, runq, "runq");
@@ -1953,7 +1953,7 @@ thread_setup_runq (struct thread_runq *runq)
  * tracing.
  */
 static void
-thread_shell_trace (struct shell *shell, int argc, char *argv[])
+thread_shell_trace (struct shell *shell, int argc, char **argv)
 {
   if (argc != 3)
     {

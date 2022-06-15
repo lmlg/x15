@@ -33,9 +33,6 @@ sxlock_exlock_slow (struct sxlock *sxp)
 
       sleepq_wait (sleepq, "sxlock_ex");
     }
-
-  if (sleepq_empty (sleepq))
-    atomic_and_rel (&sxp->val, ~SXLOCK_EXWAITER);
 }
 
 void

@@ -171,7 +171,7 @@ struct thread
    */
   bool boosted;   // (r,t)
 
-  /* True if the thread is marked to suspend */
+  // True if the thread is marked to suspend.
   bool suspend;   // (r)
 
   union
@@ -205,7 +205,7 @@ struct thread
   struct perfmon_td perfmon_td;   // ( )
 #endif
 
-  struct cpu_fixup *fixup;
+  struct cpu_fixup *fixup;        // (-)
 };
 
 #define THREAD_ATTR_DETACHED   0x1
@@ -453,8 +453,8 @@ void thread_schedule_intr (void);
 void thread_report_periodic_event (void);
 
 // Set thread scheduling parameters.
-void thread_setscheduler (struct thread *thread, unsigned char policy,
-                          unsigned short priority);
+void thread_setscheduler (struct thread *thread, uint8_t policy,
+                          uint16_t priority);
 
 /*
  * Variant used for priority inheritance.
@@ -462,8 +462,8 @@ void thread_setscheduler (struct thread *thread, unsigned char policy,
  * The caller must hold the turnstile thread data lock and no turnstile
  * locks when calling this function.
  */
-void thread_pi_setscheduler (struct thread *thread, unsigned char policy,
-                             unsigned short priority);
+void thread_pi_setscheduler (struct thread *thread, uint8_t policy,
+                             uint16_t priority);
 
 static inline void
 thread_ref (struct thread *thread)
