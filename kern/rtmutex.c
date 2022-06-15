@@ -29,51 +29,6 @@
 #include <kern/thread.h>
 #include <kern/turnstile.h>
 
-#ifdef CONFIG_MUTEX_DEBUG
-
-enum
-{
-  RTMUTEX_SC_WAIT_SUCCESSES,
-  RTMUTEX_SC_WAIT_ERRORS,
-  RTMUTEX_SC_DOWNGRADES,
-  RTMUTEX_SC_ERROR_DOWNGRADES,
-  RTMUTEX_SC_CANCELED_DOWNGRADES,
-  RTMUTEX_NR_SCS
-};
-
-static struct syscnt rtmutex_sc_array[RTMUTEX_NR_SCS];
-
-static void
-rtmutex_register_sc (unsigned int index, const char *name)
-{
-  assert (index < ARRAY_SIZE (rtmutex_sc_array));
-  syscnt_register (&rtmutex_sc_array[index], name);
-}
-
-static void
-rtmutex_setup_debug (void)
-{
-  rtmutex_register_sc (RTMUTEX_SC_WAIT_SUCCESSES, "rtmutex_wait_successes");
-  rtmutex_register_sc (RTMUTEX_SC_WAIT_ERRORS, "rtmutex_wait_errors");
-  rtmutex_register_sc (RTMUTEX_SC_DOWNGRADES, "rtmutex_downgrades");
-  rtmutex_register_sc (RTMUTEX_SC_ERROR_DOWNGRADES,
-                       "rtmutex_error_downgrades");
-  rtmutex_register_sc (RTMUTEX_SC_CANCELED_DOWNGRADES,
-                       "rtmutex_canceled_downgrades");
-}
-
-static void
-rtmutex_inc_sc (unsigned int index)
-{
-  assert (index < ARRAY_SIZE (rtmutex_sc_array));
-  syscnt_inc (&rtmutex_sc_array[index]);
-}
-
-#else
-  #define rtmutex_setup_debug()
-  #define rtmutex_inc_sc(x)
-#endif
-
 static struct thread*
 rtmutex_get_thread (uintptr_t owner)
 {
@@ -120,8 +75,6 @@ rtmutex_lock_slow_common (struct rtmutex *rtmutex, bool timed, uint64_t ticks)
 
   if (error)
     {
-      rtmutex_inc_sc (RTMUTEX_SC_WAIT_ERRORS);
-
       /*
        * Keep in mind more than one thread may have timed out on waiting.
        * These threads aren't considered waiters, making the turnstile
@@ -135,23 +88,18 @@ rtmutex_lock_slow_common (struct rtmutex *rtmutex, bool timed, uint64_t ticks)
 
           if (owner & RTMUTEX_CONTENDED)
             {
-              rtmutex_inc_sc (RTMUTEX_SC_ERROR_DOWNGRADES);
               owner &= RTMUTEX_OWNER_MASK;
               atomic_store_rlx (&rtmutex->owner, owner);
             }
-          else
-            rtmutex_inc_sc (RTMUTEX_SC_CANCELED_DOWNGRADES);
         }
 
       goto out;
     }
 
-  rtmutex_inc_sc (RTMUTEX_SC_WAIT_SUCCESSES);
   turnstile_own (turnstile);
 
   if (turnstile_empty (turnstile))
     {
-      rtmutex_inc_sc (RTMUTEX_SC_DOWNGRADES);
       uintptr_t owner = atomic_swap_rlx (&rtmutex->owner, self);
       assert (owner == (self | bits));
     }
@@ -221,16 +169,8 @@ INIT_OP_DEFINE (rtmutex_bootstrap,
 static int
 rtmutex_setup (void)
 {
-  rtmutex_setup_debug ();
   return (0);
 }
 
-#ifdef CONFIG_MUTEX_DEBUG
-  #define RTMUTEX_DEBUG_INIT_OPS   INIT_OP_DEP(syscnt_setup, true),
-#else
-  #define RTMUTEX_DEBUG_INIT_OPS
-#endif
-
 INIT_OP_DEFINE (rtmutex_setup,
-                INIT_OP_DEP (rtmutex_bootstrap, true),
-                RTMUTEX_DEBUG_INIT_OPS);
+                INIT_OP_DEP (rtmutex_bootstrap, true));
