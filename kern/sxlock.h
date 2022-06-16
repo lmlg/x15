@@ -26,7 +26,8 @@
 
 struct sxlock
 {
-  uint32_t val;
+  uint32_t lock;
+  uint32_t waiters;
 };
 
 /*
@@ -52,14 +53,14 @@ struct sxlock
 static inline void
 sxlock_init (struct sxlock *sxp)
 {
-  sxp->val = 0;
+  sxp->lock = 0;
+  sxp->waiters = 0;
 }
 
 static inline int
 sxlock_tryexlock (struct sxlock *sxp)
 {
-  return (atomic_cas_bool_acq (&sxp->val, SXLOCK_UNOWNED, SXLOCK_EXOWNED) ?
-          0 : EBUSY);
+  return (atomic_cas_bool_acq (&sxp->lock, 0, 0x7fffffffu) ? 0 : EBUSY);
 }
 
 void sxlock_exlock_slow (struct sxlock *sxp);
@@ -74,14 +75,10 @@ sxlock_exlock (struct sxlock *sxp)
 static inline int
 sxlock_tryshlock (struct sxlock *sxp)
 {
-  // For shared locking, ignore queued writers.
-  uint32_t val = atomic_load_rlx (&sxp->val) & ~SXLOCK_EXOWNED;
-  if ((! val || (val & SXLOCK_SHOWNED)) &&
-      atomic_cas_bool_acq (&sxp->val, val,
-                           (val | SXLOCK_SHOWNED) + SXLOCK_SHUSER))
-    return (0);
-
-  return (EBUSY);
+  uint32_t val = atomic_load_rlx (&sxp->lock);
+  return (val != 0x7fffffffu &&
+          atomic_cas_bool_acq (&sxp->lock, val, val + 1) ?
+          0 : EBUSY);
 }
 
 void sxlock_shlock_slow (struct sxlock *sxp);
@@ -93,33 +90,7 @@ sxlock_shlock (struct sxlock *sxp)
     sxlock_shlock_slow (sxp);
 }
 
-void sxlock_exunlock (struct sxlock *sxp);
-void sxlock_shunlock (struct sxlock *sxp);
-
-static inline void
-sxlock_unlock (struct sxlock *sxp)
-{
-  uint32_t val = atomic_load_rlx (&sxp->val);
-  assert (val != 0);
-  assert ((val & (SXLOCK_EXOWNED | SXLOCK_SHOWNED)) !=
-                 (SXLOCK_EXOWNED | SXLOCK_SHOWNED));
-
-  if (val & SXLOCK_EXOWNED)
-    {
-      if (atomic_cas_bool_rel (&sxp->val, SXLOCK_EXOWNED, 0))
-        return;
-
-      sxlock_exunlock (sxp);
-    }
-  else
-    {
-      if ((val >> SXLOCK_SHIFT) > 1 &&
-          atomic_cas_bool_rel (&sxp->val, val, val - SXLOCK_SHUSER))
-        return;
-
-      sxlock_shunlock (sxp);
-    }
-}
+void sxlock_unlock (struct sxlock *sxp);
 
 // Shared-Exclusive guards.
 
