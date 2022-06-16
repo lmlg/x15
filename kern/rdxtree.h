@@ -204,7 +204,7 @@ void* rdxtree_replace_slot (void **slot, void *ptr);
  * It is not safe to modify a tree from such a loop.
  */
 #define rdxtree_for_each(tree, iter, ptr)   \
-  for (rdxtree_iter_init (iter), ptr = rdxtree_walk(tree, iter);   \
+  for (rdxtree_iter_init (iter), ptr = rdxtree_walk (tree, iter);   \
        ptr; ptr = rdxtree_walk (tree, iter))
 
 // Return the key of the current pointer from an iterator.

@@ -275,9 +275,9 @@ list_remove (struct list *node)
  *
  * The node must not be altered during the loop.
  */
-#define list_for_each(list, node)   \
-  for (struct list *node = list_first (list);   \
-       !list_end (list, node);   \
+#define list_for_each(lst, node)   \
+  for (struct list *node = list_first (lst);   \
+       !list_end (lst, node);   \
        node = list_next (node))
 
 // Forge a loop to process all nodes of a list.
