@@ -26,6 +26,7 @@
 
 #include <stdint.h>
 
+#include <kern/atomic.h>
 #include <kern/init.h>
 #include <kern/rdxtree.h>
 
@@ -44,6 +45,10 @@ vm_object_get_kernel_object (void)
 // Initialize a VM object.
 void vm_object_init (struct vm_object *object, uint64_t size,
                      const struct vm_object_pager *pager);
+
+// Create a VM object.
+int vm_object_create (struct vm_object **objp, uint64_t size,
+                      const struct vm_object_pager *pager);
 
 /*
  * Insert a page into a VM object.
@@ -85,6 +90,32 @@ int vm_object_pager_get (struct vm_object *object, struct vm_page **pages,
 // Pageout the pages' contents in an external pager for a VM object.
 int vm_object_pager_put (struct vm_object *object, struct vm_page **pages,
                          const void *src, int n_pages);
+
+// Destroy a VM object.
+void vm_object_destroy (struct vm_object *object);
+
+// (Un)reference a VM object.
+static inline void
+vm_object_ref (struct vm_object *object)
+{
+  size_t prev = atomic_add_rlx (&object->refcount, 1);
+  assert (prev != ~(size_t)0);
+}
+
+static inline void
+vm_object_unref (struct vm_object *object)
+{
+  size_t prev = atomic_sub_acq_rel (&object->refcount, 1);
+  assert (prev != 0);
+  if (prev == 1)
+    vm_object_destroy (object);
+}
+
+/*
+ * This init operation provides :
+ * - operations on the kernel VM object
+ */
+INIT_OP_DECLARE (vm_object_bootstrap);
 
 /*
  * This init operation provides :

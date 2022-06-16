@@ -43,6 +43,7 @@ struct vm_object
   struct rdxtree pages;
   uint64_t size;
   size_t nr_pages;
+  size_t refcount;
   const struct vm_object_pager *pager;
   int flags;
 };

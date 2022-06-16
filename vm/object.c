@@ -25,6 +25,7 @@
 #include <stdint.h>
 
 #include <kern/init.h>
+#include <kern/kmem.h>
 #include <kern/mutex.h>
 #include <kern/rcu.h>
 #include <kern/rdxtree.h>
@@ -35,17 +36,29 @@
 #include <machine/page.h>
 
 struct vm_object vm_object_kernel_object;
+static struct kmem_cache vm_object_cache;
 
 static int __init
-vm_object_setup (void)
+vm_object_bootstrap (void)
 {
   return (0);
 }
 
-INIT_OP_DEFINE (vm_object_setup,
+INIT_OP_DEFINE (vm_object_bootstrap,
                 INIT_OP_DEP (mutex_setup, true),
                 INIT_OP_DEP (rdxtree_setup, true),
                 INIT_OP_DEP (vm_page_setup, true));
+
+static int __init
+vm_object_setup (void)
+{
+  kmem_cache_init (&vm_object_cache, "vm_object",
+                   sizeof (struct vm_object), 0, NULL, 0);
+  return (0);
+}
+
+INIT_OP_DEFINE (vm_object_setup,
+                INIT_OP_DEP (kmem_setup, true));
 
 void __init
 vm_object_init (struct vm_object *object, uint64_t size,
@@ -57,7 +70,29 @@ vm_object_init (struct vm_object *object, uint64_t size,
   rdxtree_init (&object->pages, 0);
   object->size = size;
   object->nr_pages = 0;
+  object->refcount = 1;
   object->pager = pager;
+}
+
+int
+vm_object_create (struct vm_object **objp, uint64_t size,
+                  const struct vm_object_pager *pager)
+{
+  struct vm_object *ret = kmem_cache_alloc (&vm_object_cache);
+  if (! ret)
+    return (ENOMEM);
+
+  vm_object_init (ret, size, pager);
+  *objp = ret;
+  return (0);
+}
+
+void
+vm_object_destroy (struct vm_object *object)
+{
+  assert (object->nr_pages == 0);
+  rdxtree_remove_all (&object->pages);
+  kmem_cache_free (&vm_object_cache, object);
 }
 
 int
