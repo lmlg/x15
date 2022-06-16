@@ -50,7 +50,7 @@ vm_kmem_setup (void)
 INIT_OP_DEFINE (vm_kmem_setup,
                 INIT_OP_DEP (pmap_bootstrap, true),
                 INIT_OP_DEP (vm_map_bootstrap, true),
-                INIT_OP_DEP (vm_object_setup, true),
+                INIT_OP_DEP (vm_object_bootstrap, true),
                 INIT_OP_DEP (vm_page_setup, true));
 
 static int

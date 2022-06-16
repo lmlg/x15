@@ -130,9 +130,10 @@ vm_map_entry_free_obj (struct vm_map_entry *entry)
   if (! obj)
     return;
 
-  struct vm_page *pages[16];
-  uint32_t n_pages = 0;
   uint64_t offset = entry->offset;
+  struct list pages;
+
+  list_init (&pages);
 
   {
     MUTEX_GUARD (&obj->lock);
@@ -140,7 +141,7 @@ vm_map_entry_free_obj (struct vm_map_entry *entry)
     for (uintptr_t addr = entry->start; addr < entry->end; addr += PAGE_SIZE)
       {
         // Don't use vm_object_lookup, since it adds a reference to the page.
-        uint64_t poff = vm_page_btop (offset + addr);
+        uint64_t poff = vm_page_btop (offset + addr - entry->start);
         struct vm_page *page = rdxtree_lookup (&obj->pages, poff);
 
         if (!page || atomic_sub_acq_rel (&page->nr_refs, 1) != 1)
@@ -148,21 +149,26 @@ vm_map_entry_free_obj (struct vm_map_entry *entry)
 
         rdxtree_remove (&obj->pages, poff);
         vm_page_unlink (page);
-        if (n_pages == ARRAY_SIZE (pages))
-          {
-            vm_page_obj_free (pages, n_pages);
-            obj->nr_pages -= n_pages;
-            n_pages = 0;
-          }
-        else
-          pages[n_pages++] = page;
+        list_insert_tail (&pages, &page->node);
+        --obj->nr_pages;
       }
-
-    obj->nr_pages -= n_pages;
   }
 
+  struct vm_page *frames[VM_MAP_MAX_FRAMES];
+  uint32_t n_pages = 0;
+
+  list_for_each (&pages, px)
+    {
+      frames[n_pages] = list_entry (px, struct vm_page, node);
+      if (++n_pages == ARRAY_SIZE (frames))
+        {
+          vm_page_obj_free (frames, n_pages);
+          n_pages = 0;
+        }
+    }
+
   if (n_pages)
-    vm_page_obj_free (pages, n_pages);
+    vm_page_obj_free (frames, n_pages);
 }
 
 static void
@@ -553,6 +559,14 @@ vm_map_enter (struct vm_map *map, uintptr_t *startp,
 }
 
 static void
+vm_map_entry_assign (struct vm_map_entry *dst, const struct vm_map_entry *src)
+{
+  *dst = *src;
+  if (dst->object)
+    vm_object_ref (dst->object);
+}
+
+static void
 vm_map_split_entries (struct vm_map_entry *prev, struct vm_map_entry *next,
                       uintptr_t split_addr)
 {
@@ -575,7 +589,7 @@ vm_map_clip_start (struct vm_map *map, struct vm_map_entry *entry,
   _Auto next = vm_map_next (map, entry);
   vm_map_unlink (map, entry);
 
-  *new_entry = *entry;
+  vm_map_entry_assign (new_entry, entry);
   vm_map_split_entries (new_entry, entry, start);
   vm_map_link (map, entry, next);
   vm_map_link (map, new_entry, entry);
@@ -592,7 +606,7 @@ vm_map_clip_end (struct vm_map *map, struct vm_map_entry *entry,
   _Auto next = vm_map_next (map, entry);
   vm_map_unlink (map, entry);
 
-  *new_entry = *entry;
+  vm_map_entry_assign (new_entry, entry);
   vm_map_split_entries (entry, new_entry, end);
   vm_map_link (map, entry, next);
   vm_map_link (map, new_entry, next);
@@ -773,6 +787,7 @@ vm_map_entry_order (const struct vm_map_entry *entry, uintptr_t addr)
   return (MIN (log2 (room), target));
 }
 
+
 int
 vm_map_fault (struct vm_map *map, uintptr_t addr, int prot)
 {
@@ -829,6 +844,7 @@ vm_map_fault (struct vm_map *map, uintptr_t addr, int prot)
     {
       error = vm_object_insert (object, frames[i], offset);
       assert (!error || error == EBUSY);
+
       if (! error)
         pmap_enter (map->pmap, addr + i * PAGE_SIZE,
                     vm_page_to_pa (frames[i]), prot, PMAP_PEF_GLOBAL);

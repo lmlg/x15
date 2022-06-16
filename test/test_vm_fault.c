@@ -63,15 +63,16 @@ static const struct vm_object_pager test_obj_pager =
 static void
 test_vm_fault_thread (void *arg __unused)
 {
-  struct vm_object test_obj;
-  vm_object_init (&test_obj, PAGE_SIZE * 4, &test_obj_pager);
+  struct vm_object *test_obj;
+  int error = vm_object_create (&test_obj, PAGE_SIZE * 4, &test_obj_pager);
+  assert (! error);
 
   uintptr_t va = PMAP_END_ADDRESS - PAGE_SIZE * 10;
   int flags = VM_MAP_FLAGS (VM_PROT_ALL, VM_PROT_ALL, VM_INHERIT_NONE,
                             VM_ADV_DEFAULT, VM_MAP_FIXED);
   struct vm_map *map = thread_self()->task->map;
-  int error = vm_map_enter (map, &va, PAGE_SIZE, 0, flags,
-                            &test_obj, TEST_OFFSET);
+  error = vm_map_enter (map, &va, PAGE_SIZE, 0, flags,
+                        test_obj, TEST_OFFSET);
 
   assert (! error);
   // First fault.
@@ -80,6 +81,7 @@ test_vm_fault_thread (void *arg __unused)
   assert (memcmp ((void *)(va + PAGE_SIZE / 2), "xxxx", 4) == 0);
 
   vm_map_remove (map, map->start, map->end);
+  vm_object_unref (test_obj);
 }
 
 TEST_DEFERRED (vm_fault)
