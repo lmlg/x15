@@ -151,7 +151,7 @@ log_run (void *arg __unused)
     {
       struct log_record record;
 
-      for (;;)
+      while (1)
         {
           int error = log_consumer_pop (&ctx, &record);
 
@@ -195,7 +195,7 @@ log_dump (unsigned int level)
   struct log_consumer ctx;
   log_consumer_init (&ctx, &log_mbuf);
 
-  for (;;)
+  while (1)
     {
       struct log_record record;
       int error = log_consumer_pop (&ctx, &record);

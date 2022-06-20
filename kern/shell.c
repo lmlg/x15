@@ -992,7 +992,7 @@ shell_run (struct shell *shell)
       shell_reset (shell);
       int error, escape = 0;
 
-      for (;;)
+      while (1)
         {
           int c = stream_getc (shell->stream);
 

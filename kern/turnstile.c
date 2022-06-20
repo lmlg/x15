@@ -544,7 +544,7 @@ turnstile_push_free (struct turnstile *turnstile,
   turnstile->next_free = free_turnstile;
 }
 
-static struct turnstile *
+static struct turnstile*
 turnstile_pop_free (struct turnstile *turnstile)
 {
   struct turnstile *free_turnstile = turnstile->next_free;

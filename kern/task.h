@@ -56,6 +56,8 @@ task_ref (struct task *task)
   assert (nr_refs != (size_t)-1);
 }
 
+void task_destroy (struct task *task);
+
 static inline void
 task_unref (struct task *task)
 {
@@ -63,9 +65,7 @@ task_unref (struct task *task)
   assert (nr_refs);
 
   if (nr_refs == 1)
-    {
-      // TODO Task destruction.
-    }
+    task_destroy (task);
 }
 
 static inline struct vm_map*

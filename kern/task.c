@@ -145,6 +145,12 @@ error_map:
   return (error);
 }
 
+void
+task_destroy (struct task *task)
+{
+  kmem_cache_free (&task_cache, task);
+}
+
 struct task*
 task_lookup (const char *name)
 {
@@ -174,8 +180,16 @@ task_add_thread (struct task *task, struct thread *thread)
 void
 task_remove_thread (struct task *task, struct thread *thread)
 {
-  SPINLOCK_GUARD (&task->lock, false);
-  list_remove (&thread->task_node);
+  bool unref;
+
+  {
+    SPINLOCK_GUARD (&task->lock, false);
+    list_remove (&thread->task_node);
+    unref = list_empty (&task->threads);
+  }
+
+  if (unref)
+    task_unref (task);
 }
 
 struct thread*

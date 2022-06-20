@@ -1404,7 +1404,7 @@ fmt_vxscanf (struct stream *stream, const char *format, va_list ap)
   struct fmt_istate state;
   fmt_istate_init (&state, stream, format, ap);
 
-  for (;;)
+  while (1)
     {
       int error = fmt_istate_consume (&state);
 

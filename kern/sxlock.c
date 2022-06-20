@@ -35,9 +35,11 @@
       atomic_cas_acq (&(obj)->lock, val, tx);   \
       \
       struct sleepq *sleepq = sleepq_lend (obj, false);   \
-      sleepq_wait (sleepq, label);   \
+      if (atomic_load_rlx (&(obj)->lock) == tx)   \
+        sleepq_wait (sleepq, label);   \
+      sleepq_return (sleepq);   \
     }   \
-  while (0)
+  while (1)
 
 void
 sxlock_exlock_slow (struct sxlock *sxp)

@@ -232,7 +232,7 @@ pmu_intel_handle_overflow_intr (void)
 
   status &= ((1ULL << pmu->pmc_width) - 1);
 
-  for (;;)
+  while (1)
     {
       int pmc_id = pmu_intel_consume_bits (&status);
 

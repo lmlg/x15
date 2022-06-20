@@ -227,8 +227,8 @@ struct thread_fs_runq
 struct thread_runq
 {
   __cacheline_aligned struct spinlock lock;
-  unsigned int cpu;
-  unsigned int nr_threads;
+  uint32_t cpu;
+  uint32_t nr_threads;
   struct thread *current;
 
   // Real-time related members.
@@ -243,7 +243,7 @@ struct thread_runq
    * present, i.e. the global weight isn't zero.
    */
   size_t fs_round;
-  unsigned int fs_weight;
+  uint32_t fs_weight;
   struct thread_fs_runq fs_runqs[2];
   struct thread_fs_runq *fs_runq_active;
   struct thread_fs_runq *fs_runq_expired;
@@ -581,8 +581,8 @@ thread_runq_schedule (struct thread_runq *runq)
 {
   struct thread *prev = thread_self ();
 
-  assert (__builtin_frame_address (0) >= prev->stack);
-  assert (__builtin_frame_address (0) < prev->stack + TCB_STACK_SIZE);
+  assert (__builtin_frame_address (0) >= prev->stack &&
+          __builtin_frame_address (0) < prev->stack + TCB_STACK_SIZE);
   assert (prev->preempt_level == THREAD_SUSPEND_PREEMPT_LEVEL);
   assert (!cpu_intr_enabled ());
   assert (spinlock_locked (&runq->lock));
@@ -737,7 +737,7 @@ thread_sched_rt_reset_priority (struct thread *thread, uint16_t priority)
   thread->rt_data.time_slice = THREAD_DEFAULT_RR_TIME_SLICE;
 }
 
-static unsigned int
+static uint32_t
 thread_sched_rt_get_global_priority (uint16_t priority)
 {
   return (THREAD_SCHED_GLOBAL_PRIO_RT + priority);
@@ -836,7 +836,7 @@ thread_sched_fs_select_runq (struct thread *thread)
   return (runq);
 }
 
-static unsigned int
+static uint32_t
 thread_sched_fs_enqueue_scale (uint32_t work, uint32_t old_weight,
                                uint32_t new_weight)
 {
@@ -1102,7 +1102,7 @@ thread_sched_fs_update_priority (struct thread *thread, uint16_t priority)
     thread->fs_data.work = thread->fs_data.weight;
 }
 
-static unsigned int
+static uint32_t
 thread_sched_fs_get_global_priority (uint16_t priority __unused)
 {
   return (THREAD_SCHED_GLOBAL_PRIO_FS);
@@ -1261,7 +1261,7 @@ thread_sched_fs_balance_pull (struct thread_runq *runq,
   return (nr_pulls);
 }
 
-static unsigned int
+static uint32_t
 thread_sched_fs_balance_migrate (struct thread_runq *runq,
                                  struct thread_runq *remote_runq,
                                  size_t highest_round)
@@ -2386,13 +2386,8 @@ thread_boot_barrier_wait (void)
   assert (!cpu_intr_enabled ());
   atomic_add_rlx (&thread_nr_boot_cpus, 1);
 
-  while (1)
-    {
-      if (atomic_load_seq (&thread_nr_boot_cpus) == cpu_count ())
-        break;
-
-      cpu_pause ();
-    }
+  while (atomic_load_seq (&thread_nr_boot_cpus) != cpu_count ())
+    cpu_pause ();
 }
 
 void __init
@@ -2595,7 +2590,7 @@ thread_pi_setscheduler (struct thread *thread, uint8_t policy,
   syscnt_inc (&runq->sc_boosts);
   bool current, requeue = thread->in_runq;
 
-  if (!requeue)
+  if (! requeue)
     current = false;
   else
     {

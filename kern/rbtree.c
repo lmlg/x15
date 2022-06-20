@@ -309,7 +309,7 @@ update_color:
   if (color == RBTREE_COLOR_RED)
     return;
 
-  for (;;)
+  while (1)
     {
       if (child && rbtree_node_is_red (child))
         {

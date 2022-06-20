@@ -64,11 +64,13 @@ void sleepq_release (struct sleepq *sleepq);
  * interrupts.
  */
 struct sleepq* sleepq_acquire_intr_save (const void *sync_obj,
-    bool condition,
-    unsigned long *flags);
+                                         bool condition,
+                                         unsigned long *flags);
+
 struct sleepq* sleepq_tryacquire_intr_save (const void *sync_obj,
-    bool condition,
-    unsigned long *flags);
+                                            bool condition,
+                                            unsigned long *flags);
+
 void sleepq_release_intr_restore (struct sleepq *sleepq,
                                   unsigned long flags);
 
@@ -98,7 +100,8 @@ void sleepq_return (struct sleepq *sleepq);
  * interrupts.
  */
 struct sleepq* sleepq_lend_intr_save (const void *sync_obj, bool condition,
-                                       unsigned long *flags);
+                                      unsigned long *flags);
+
 void sleepq_return_intr_restore (struct sleepq *sleepq, unsigned long flags);
 
 /*

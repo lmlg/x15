@@ -77,7 +77,7 @@ bitmap_find_next_bit (const unsigned long *bm, int nr_bits, int bit,
   if (bit < LONG_BIT)
     word &= ~ (bitmap_mask (bit) - 1);
 
-  for (;;)
+  while (1)
     {
       bit = __builtin_ffsl (word);
 

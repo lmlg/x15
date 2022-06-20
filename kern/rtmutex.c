@@ -135,11 +135,11 @@ rtmutex_unlock_slow (struct rtmutex *rtmutex)
 {
   struct turnstile *turnstile;
 
-  for (;;)
+  while (1)
     {
       turnstile = turnstile_acquire (rtmutex);
 
-      if (turnstile != NULL)
+      if (turnstile)
         break;
       else if (!(rtmutex_unlock_fast (rtmutex) & RTMUTEX_CONTENDED))
         goto out;

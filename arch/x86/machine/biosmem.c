@@ -819,7 +819,7 @@ biosmem_free_usable_range (phys_addr_t start, phys_addr_t end)
 static void __init
 biosmem_free_usable_entry (phys_addr_t start, phys_addr_t end)
 {
-  for (;;)
+  while (1)
     {
       phys_addr_t avail_start, avail_end;
       if (biosmem_find_avail (start, end, &avail_start, &avail_end) != 0)
