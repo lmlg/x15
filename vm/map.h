@@ -106,6 +106,19 @@ int vm_map_remove (struct vm_map *map, uintptr_t start, uintptr_t end);
 // Create a VM map.
 int vm_map_create (struct vm_map **mapp);
 
+/*
+ * Lookup an entry in a VM map.
+ *
+ * Note that the returned entry may not contained the address, and instead
+ * compare strictly less than it. The VM object of the entry is referenced
+ * prior to returning, so normally 'vm_map_entry_put' must be called on
+ * the entry. */
+int vm_map_lookup (struct vm_map *map, uintptr_t addr,
+                   struct vm_map_entry *entry);
+
+// Put back a previously returned entry.
+void vm_map_entry_put (struct vm_map_entry *entry);
+
 // Handle a page fault.
 int vm_map_fault (struct vm_map *map, uintptr_t addr, int prot);
 

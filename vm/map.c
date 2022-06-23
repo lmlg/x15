@@ -908,6 +908,28 @@ vm_map_create (struct vm_map **mapp)
 }
 
 int
+vm_map_lookup (struct vm_map *map, uintptr_t addr,
+               struct vm_map_entry *entry)
+{
+  SXLOCK_SHGUARD (&map->lock);
+  _Auto ep = vm_map_lookup_nearest (map, addr);
+
+  if (! ep)
+    return (ESRCH);
+
+  vm_map_entry_assign (entry, ep);
+  return (0);
+}
+
+void
+vm_map_entry_put (struct vm_map_entry *entry)
+{
+  struct vm_object *obj = entry->object;
+  if (obj)
+    vm_object_unref (obj);
+}
+
+int
 vm_copy (const void *src, void *dst, size_t size)
 {
   struct vm_fixup fixup;
@@ -926,8 +948,6 @@ vm_map_destroy_impl (struct vm_map *map)
   rbtree_for_each_remove (&map->entry_tree, entry, tmp)
     vm_map_entry_destroy (rbtree_entry (entry, struct vm_map_entry,
                                         tree_node));
-
-  list_init (&map->entry_list);
 }
 
 void

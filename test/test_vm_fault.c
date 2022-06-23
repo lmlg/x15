@@ -80,6 +80,12 @@ test_vm_fault_thread (void *arg __unused)
   // This mustn't fault.
   assert (memcmp ((void *)(va + PAGE_SIZE / 2), "xxxx", 4) == 0);
 
+  struct vm_map_entry entry;
+  error = vm_map_lookup (map, va, &entry);
+  assert (! error);
+  assert (entry.object == test_obj);
+  vm_map_entry_put (&entry);
+
   vm_map_remove (map, map->start, map->end);
   vm_object_unref (test_obj);
 }
