@@ -811,7 +811,7 @@ vm_map_fault (struct vm_map *map, uintptr_t addr, int prot)
   if (page)
     {
       int error = pmap_enter (map->pmap, addr, vm_page_to_pa (page),
-                              VM_MAP_PROT (entry->flags), PMAP_PEF_GLOBAL);
+                              prot, PMAP_PEF_GLOBAL);
 
       if (! error)
         error = pmap_update (map->pmap);
