@@ -795,6 +795,7 @@ pmap_bootstrap (void)
       pmap_get_kernel_pmap()->cpu_tables[i] = cpu_table;
     }
 
+  list_init (&pmap_kernel_pmap->pages);
   cpu_local_assign (pmap_current_ptr, pmap_get_kernel_pmap ());
 
   pmap_prot_table[VM_PROT_NONE] = 0;
@@ -856,6 +857,7 @@ static int __init
 pmap_setup (void)
 {
   pmap_kernel_pmap = &pmap_global_pmap.pmap_kernel;
+  list_init (&pmap_kernel_pmap->pages);
   pmap_setup_fix_ptps ();
   size_t size = sizeof (struct pmap) + (cpu_count () + 1) *
                 (sizeof (void *) + sizeof (struct pmap_cpu_table));
@@ -1219,8 +1221,9 @@ pmap_enter_local (struct pmap *pmap, uintptr_t va, phys_addr_t pa,
 {
   // TODO Page attributes.
   pmap_pte_t pte_bits = PMAP_PTE_RW;
+  bool is_kernel = pmap == pmap_get_kernel_pmap ();
 
-  if (pmap != pmap_get_kernel_pmap ())
+  if (! is_kernel)
     pte_bits |= PMAP_PTE_US;
 
   uint32_t level = PMAP_NR_LEVELS - 1;
@@ -1240,11 +1243,21 @@ pmap_enter_local (struct pmap *pmap, uintptr_t va, phys_addr_t pa,
         ptp = pmap_pte_next (*pte);
       else
         {
-          struct vm_page *page = vm_page_alloc (0, VM_PAGE_SEL_DIRECTMAP,
-                                                VM_PAGE_PMAP);
-          if (! page)
+          struct vm_page *page = NULL;
+
+          if (is_kernel)
+            page = vm_page_alloc (0, VM_PAGE_SEL_DIRECTMAP, VM_PAGE_PMAP);
+          else
+            vm_page_obj_alloc (&page, 0);
+
+          if (page)
             {
-              log_warning ("pmap: page table page allocation failure");
+              list_insert_tail (&pmap->pages, &page->node);
+              vm_page_set_type (page, 0, VM_PAGE_PMAP);
+            }
+          else
+            {
+              log_warning ("pmap: page table allocation failure");
               return (ENOMEM);
             }
 
@@ -1258,7 +1271,7 @@ pmap_enter_local (struct pmap *pmap, uintptr_t va, phys_addr_t pa,
     }
 
   assert (!pmap_pte_valid (*pte));
-  pte_bits = ((pmap == pmap_get_kernel_pmap ()) ? PMAP_PTE_G : PMAP_PTE_US) |
+  pte_bits = (is_kernel ? PMAP_PTE_G : PMAP_PTE_US) |
              pmap_prot_table[prot & VM_PROT_ALL];
   pmap_pte_set (pte, pa, pte_bits, pt_level);
   return (0);

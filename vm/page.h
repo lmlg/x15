@@ -223,9 +223,7 @@ void vm_page_free (struct vm_page *page, uint32_t order);
  * Same as above, only these functions are called to get and
  * release pages for backing vm_object's.
  */
-int vm_page_obj_alloc (struct vm_map *map, struct vm_page **pages,
-                       uint32_t order);
-
+int vm_page_obj_alloc (struct vm_page **pages, uint32_t order);
 void vm_page_obj_free (struct vm_page **pages, uint32_t n_pages);
 
 // Return the name of the given zone.

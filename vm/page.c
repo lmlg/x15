@@ -126,7 +126,7 @@ struct vm_page_boot_zone
 };
 
 // Threads waiting for free object pages.
-struct page_waiter
+struct vm_page_waiter
 {
   struct thread *thread;
   struct plist_node node;
@@ -162,8 +162,8 @@ static struct vm_page_boot_zone vm_page_boot_zones[PMEM_MAX_ZONES]
 static uint32_t vm_page_zones_size __read_mostly;
 
 // Registry of page_waiters.
-static struct spinlock page_waiters_lock;
-static struct plist page_waiters_list;
+static struct spinlock vm_page_waiters_lock;
+static struct plist vm_page_waiters_list;
 
 static void __init
 vm_page_init (struct vm_page *page, uint16_t zone_index, phys_addr_t pa)
@@ -650,8 +650,8 @@ vm_page_setup (void)
       va += PAGE_SIZE;
     }
 
-  spinlock_init (&page_waiters_lock);
-  plist_init (&page_waiters_list);
+  spinlock_init (&vm_page_waiters_lock);
+  plist_init (&vm_page_waiters_list);
   vm_page_is_ready = 1;
   return (0);
 }
@@ -735,31 +735,28 @@ vm_page_obj_tryalloc (struct vm_page **frames, uint32_t order)
 }
 
 int
-vm_page_obj_alloc (struct vm_map *map, struct vm_page **frames, uint32_t order)
+vm_page_obj_alloc (struct vm_page **frames, uint32_t order)
 {
   // TODO: Restrict how many pages each task can allocate.
   if (likely (vm_page_obj_tryalloc (frames, order)))
     return ((int) (1u << order));
 
-  sxlock_unlock (&map->lock);
-
-  struct page_waiter pw = { .thread = thread_self (), .frames = frames };
+  struct vm_page_waiter pw = { .thread = thread_self (), .frames = frames };
   plist_node_init (&pw.node, thread_real_global_priority (pw.thread));
   pw.nmax = 1u << order;
 
   // TODO: Interruptible wait (and possibly page evictions).
-  spinlock_lock (&page_waiters_lock);
+  spinlock_lock (&vm_page_waiters_lock);
   if (!vm_page_obj_tryalloc (frames, order))
     {
-      plist_add (&page_waiters_list, &pw.node);
-      thread_sleep (&page_waiters_lock, &pw, "pageobj");
-      plist_remove (&page_waiters_list, &pw.node);
+      plist_add (&vm_page_waiters_list, &pw.node);
+      thread_sleep (&vm_page_waiters_lock, &pw, "pageobj");
+      plist_remove (&vm_page_waiters_list, &pw.node);
     }
 
-  spinlock_unlock (&page_waiters_lock);
+  spinlock_unlock (&vm_page_waiters_lock);
   assert (pw.nmax != 0);
-  // A negative result signals that the lock was released.
-  return (-(int)pw.nmax);
+  return (pw.nmax);
 }
 
 static uint32_t
@@ -772,7 +769,7 @@ vm_page_obj_free_impl (struct vm_page **frames, uint32_t n_frames,
         return (released);
 
       _Auto entry = plist_entry (plist_first (plist),
-                                 struct page_waiter, node);
+                                 struct vm_page_waiter, node);
       uint32_t n = MIN (n_frames, entry->nmax);
       for (uint32_t i = 0; i < n; ++i)
         {
@@ -791,9 +788,9 @@ vm_page_obj_free_impl (struct vm_page **frames, uint32_t n_frames,
 void
 vm_page_obj_free (struct vm_page **frames, uint32_t n_frames)
 {
-  SPINLOCK_GUARD (&page_waiters_lock, true);
+  SPINLOCK_GUARD (&vm_page_waiters_lock, true);
   uint32_t n_rel = vm_page_obj_free_impl (frames, n_frames,
-                                          &page_waiters_list);
+                                          &vm_page_waiters_list);
 
   if (n_rel == n_frames)
     return;

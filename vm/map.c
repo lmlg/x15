@@ -787,7 +787,6 @@ vm_map_entry_order (const struct vm_map_entry *entry, uintptr_t addr)
   return (MIN (log2 (room), target));
 }
 
-
 int
 vm_map_fault (struct vm_map *map, uintptr_t addr, int prot)
 {
@@ -822,13 +821,15 @@ vm_map_fault (struct vm_map *map, uintptr_t addr, int prot)
     }
 
   // Handle cache miss.
+  sxlock_unlock (&map->lock);
+
   struct vm_page *frames[VM_MAP_MAX_FRAMES];
-  int n_pages = vm_page_obj_alloc (map, frames,
+  int n_pages = vm_page_obj_alloc (frames,
                                    vm_map_entry_order (entry, addr));
+
   if (n_pages < 0)
-    n_pages = -n_pages;
-  else
-    sxlock_unlock (&map->lock);
+    // Allocation was interrupted. Let userspace handle things.
+    return (0);
 
   frames[0]->offset = offset;
   int error = vm_object_pager_get (object, frames,
@@ -845,9 +846,12 @@ vm_map_fault (struct vm_map *map, uintptr_t addr, int prot)
       error = vm_object_insert (object, frames[i], offset);
       assert (!error || error == EBUSY);
 
-      if (! error)
-        pmap_enter (map->pmap, addr + i * PAGE_SIZE,
-                    vm_page_to_pa (frames[i]), prot, PMAP_PEF_GLOBAL);
+      if (! error &&
+          pmap_enter (map->pmap, addr + i * PAGE_SIZE,
+                      vm_page_to_pa (frames[i]), prot, PMAP_PEF_GLOBAL) != 0)
+        /* This can only happen if page table allocation was interrupted.
+         * We again let userspace handle this error. */
+        return (0);
     }
 
   return (pmap_update (map->pmap));

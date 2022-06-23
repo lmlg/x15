@@ -66,7 +66,7 @@ test_write_pages (void)
       int error = vm_map_enter (kernel_map, &va, PAGE_SIZE, 0, flags, NULL, 0);
       error_check (error, __func__);
       error = pmap_enter (kernel_pmap, va, vm_page_to_pa (page),
-                          VM_PROT_READ | VM_PROT_WRITE, 0);
+                          VM_PROT_DEFAULT, 0);
       error_check (error, __func__);
       error = pmap_update (kernel_pmap);
       error_check (error, __func__);
@@ -100,7 +100,7 @@ test_reset_pages (void)
 
       error_check (error, __func__);
       error = pmap_enter (kernel_pmap, va, vm_page_to_pa (page),
-                          VM_PROT_READ | VM_PROT_WRITE, 0);
+                          VM_PROT_DEFAULT, 0);
       error_check (error, __func__);
       error = pmap_update (kernel_pmap);
       error_check (error, __func__);
