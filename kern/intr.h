@@ -39,9 +39,9 @@ typedef int (*intr_handler_fn_t) (void *);
  */
 struct intr_ops
 {
-  void (*enable) (void *priv, uint32_t, uint32_t);
-  void (*disable) (void *priv, uint32_t);
-  void (*eoi) (void *priv, uint32_t);
+  void (*enable) (void *, uint32_t, uint32_t);
+  void (*disable) (void *, uint32_t);
+  void (*eoi) (void *, uint32_t);
 };
 
 /*

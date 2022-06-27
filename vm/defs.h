@@ -36,9 +36,9 @@
 #define VM_PROT_NONE      0
 #define VM_PROT_READ      1
 #define VM_PROT_WRITE     2
-#define VM_PROT_EXECUTE   4
+#define VM_PROT_EXEC      4
 #define VM_PROT_DEFAULT   (VM_PROT_READ | VM_PROT_WRITE)
 #define VM_PROT_ALL   \
-  (VM_PROT_READ | VM_PROT_WRITE | VM_PROT_EXECUTE)
+  (VM_PROT_READ | VM_PROT_WRITE | VM_PROT_EXEC)
 
 #endif

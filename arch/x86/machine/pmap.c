@@ -804,9 +804,9 @@ pmap_bootstrap (void)
   pmap_prot_table[VM_PROT_READ] = 0;
   pmap_prot_table[VM_PROT_WRITE] = PMAP_PTE_RW;
   pmap_prot_table[VM_PROT_WRITE | VM_PROT_READ] = PMAP_PTE_RW;
-  pmap_prot_table[VM_PROT_EXECUTE] = 0;
-  pmap_prot_table[VM_PROT_EXECUTE | VM_PROT_READ] = 0;
-  pmap_prot_table[VM_PROT_EXECUTE | VM_PROT_WRITE] = PMAP_PTE_RW;
+  pmap_prot_table[VM_PROT_EXEC] = 0;
+  pmap_prot_table[VM_PROT_EXEC | VM_PROT_READ] = 0;
+  pmap_prot_table[VM_PROT_EXEC | VM_PROT_WRITE] = PMAP_PTE_RW;
   pmap_prot_table[VM_PROT_ALL] = PMAP_PTE_RW;
 
   pmap_update_request_array_init (cpu_local_ptr (pmap_update_request_array));

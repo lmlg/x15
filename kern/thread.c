@@ -1797,10 +1797,9 @@ thread_join_common (struct thread *thread)
 
 void thread_terminate (struct thread *thread)
 {
-  spinlock_lock (&thread->join_lock);
+  SPINLOCK_GUARD (&thread->join_lock, false);
   thread->terminating = true;
   thread_wakeup (thread->join_waiter);
-  spinlock_unlock (&thread->join_lock);
 }
 
 static void
@@ -1866,14 +1865,11 @@ thread_setup_balancer (struct thread_runq *runq)
   thread_attr_set_policy (&attr, THREAD_SCHED_POLICY_FIFO);
   thread_attr_set_priority (&attr, THREAD_SCHED_RT_PRIO_MIN);
 
-  struct thread *balancer;
-  int error = thread_create (&balancer, &attr, thread_balance, runq);
+  int error = thread_create (&runq->balancer, &attr, thread_balance, runq);
   cpumap_destroy (cpumap);
 
   if (error)
     panic ("thread: unable to create balancer thread");
-
-  runq->balancer = balancer;
 }
 
 static void

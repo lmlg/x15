@@ -612,7 +612,8 @@ cpu_exc_page_fault (const struct cpu_exc_frame *frame)
   uintptr_t addr = cpu_get_cr2 ();
   cpu_intr_enable ();
 
-  int prot = (code & CPU_PF_WRITE) ? VM_PROT_WRITE : VM_PROT_READ;
+  int prot = ((code & CPU_PF_WRITE) ? VM_PROT_WRITE : VM_PROT_READ) |
+             ((code & CPU_PF_EXEC)  ? VM_PROT_EXEC  : 0);
   struct thread *self = thread_self ();
   struct vm_map *map = self->task->map;
   int error = map == vm_map_get_kernel_map () ?

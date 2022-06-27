@@ -68,7 +68,7 @@ test_vm_fault_thread (void *arg __unused)
   assert (! error);
 
   uintptr_t va = PMAP_END_ADDRESS - PAGE_SIZE * 10;
-  int flags = VM_MAP_FLAGS (VM_PROT_ALL, VM_PROT_ALL, VM_INHERIT_NONE,
+  int flags = VM_MAP_FLAGS (VM_PROT_READ, VM_PROT_READ, VM_INHERIT_NONE,
                             VM_ADV_DEFAULT, VM_MAP_FIXED);
   struct vm_map *map = thread_self()->task->map;
   error = vm_map_enter (map, &va, PAGE_SIZE, 0, flags,
@@ -80,10 +80,15 @@ test_vm_fault_thread (void *arg __unused)
   // This mustn't fault.
   assert (memcmp ((void *)(va + PAGE_SIZE / 2), "xxxx", 4) == 0);
 
+  // Test that writing to read-only mappings returns with EACCES.
+  error = vm_copy ("???", (void *)va, 3);
+  assert (error == EACCES);
+
   struct vm_map_entry entry;
   error = vm_map_lookup (map, va, &entry);
   assert (! error);
   assert (entry.object == test_obj);
+  assert (VM_MAP_PROT (entry.flags) == VM_PROT_READ);
   vm_map_entry_put (&entry);
 
   vm_map_remove (map, map->start, map->end);
