@@ -112,7 +112,7 @@ struct cpu_gate_desc
 
 struct cpu_idt
 {
-  alignas (CPU_L1_SIZE) struct cpu_gate_desc descs[CPU_NR_EXC_VECTORS];
+  __cacheline_aligned struct cpu_gate_desc descs[CPU_NR_EXC_VECTORS];
 };
 
 struct cpu_pseudo_desc
@@ -301,7 +301,7 @@ cpu_gate_desc_init_intr (struct cpu_gate_desc *desc, cpu_ll_exc_fn_t fn,
 #ifndef __LP64__
 
 static void __init
-cpu_gate_desc_init_task (struct cpu_gate_desc *desc, unsigned int tss_seg_sel)
+cpu_gate_desc_init_task (struct cpu_gate_desc *desc, uint32_t tss_seg_sel)
 {
   desc->word2 = CPU_DESC_PRESENT | CPU_DESC_TYPE_GATE_TASK;
   desc->word1 = tss_seg_sel << 16;
@@ -310,7 +310,7 @@ cpu_gate_desc_init_task (struct cpu_gate_desc *desc, unsigned int tss_seg_sel)
 #endif
 
 static struct cpu_gate_desc* __init
-cpu_idt_get_desc (struct cpu_idt *idt, unsigned int vector)
+cpu_idt_get_desc (struct cpu_idt *idt, uint32_t vector)
 {
   assert (vector < ARRAY_SIZE (idt->descs));
   return (&idt->descs[vector]);
@@ -738,14 +738,14 @@ cpu_gdt_get_desc (struct cpu_gdt *gdt, uint32_t selector)
 }
 
 static void __init
-cpu_gdt_set_null (struct cpu_gdt *gdt, unsigned int selector)
+cpu_gdt_set_null (struct cpu_gdt *gdt, uint32_t selector)
 {
   struct cpu_seg_desc *desc = cpu_gdt_get_desc (gdt, selector);
   cpu_seg_desc_init_null (desc);
 }
 
 static void __init
-cpu_gdt_set_code (struct cpu_gdt *gdt, unsigned int selector)
+cpu_gdt_set_code (struct cpu_gdt *gdt, uint32_t selector)
 {
   struct cpu_seg_desc *desc = cpu_gdt_get_desc (gdt, selector);
   cpu_seg_desc_init_code (desc);
@@ -759,7 +759,7 @@ cpu_gdt_set_data (struct cpu_gdt *gdt, uint32_t selector, const void *base)
 }
 
 static void __init
-cpu_gdt_set_tss (struct cpu_gdt *gdt, unsigned int selector,
+cpu_gdt_set_tss (struct cpu_gdt *gdt, uint32_t selector,
                  const struct cpu_tss *tss)
 {
   struct cpu_sysseg_desc *desc = cpu_gdt_get_desc (gdt, selector);
@@ -834,7 +834,7 @@ cpu_feature_map_init (struct cpu_feature_map *map)
 
 static void __init
 cpu_feature_map_cset (struct cpu_feature_map *map, uint32_t word,
-                      unsigned int mask, enum cpu_feature feature)
+                      uint32_t mask, enum cpu_feature feature)
 {
   if (word & mask)
     bitmap_set (map->flags, feature);
@@ -1303,7 +1303,7 @@ cpu_mp_setup (void)
 }
 
 void __init
-cpu_ap_setup (unsigned int ap_id)
+cpu_ap_setup (uint32_t ap_id)
 {
   struct cpu *cpu = percpu_ptr (cpu_desc, ap_id);
   cpu_build (cpu);

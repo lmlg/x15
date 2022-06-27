@@ -109,10 +109,10 @@ int vm_map_create (struct vm_map **mapp);
 /*
  * Lookup an entry in a VM map.
  *
- * Note that the returned entry may not contained the address, and instead
+ * Note that the returned entry may not contain the address, and instead
  * compare strictly less than it. The VM object of the entry is referenced
- * prior to returning, so normally 'vm_map_entry_put' must be called on
- * the entry. */
+ * prior to returning to guarantee its existence, so normally 'vm_map_entry_put'
+ * must be called on the entry. */
 int vm_map_lookup (struct vm_map *map, uintptr_t addr,
                    struct vm_map_entry *entry);
 

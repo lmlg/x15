@@ -77,13 +77,16 @@ static struct pmap_pt_level pmap_pt_levels[] __read_mostly =
 // Per-CPU page tables.
 struct pmap_cpu_table
 {
+  struct list pages;
   phys_addr_t root_ptp_pa;
 };
 
 struct pmap
 {
-  struct list pages;
-  struct pmap_cpu_table *cpu_tables[];
+  /* Normally, this would be a flexarray, but they aren't allowed
+   * when they are the only member of a struct, so for now, we use
+   * a 'fake' 1 element array. */
+  struct pmap_cpu_table *cpu_tables[1];
 };
 
 /*
@@ -106,7 +109,6 @@ union pmap_global
   struct pmap pmap_kernel;
   struct
     {
-      struct list pgs;
       struct pmap_cpu_table *tables[CONFIG_MAX_CPUS];
     } full;
 };
@@ -196,7 +198,7 @@ struct pmap_update_op
  */
 struct pmap_update_oplist
 {
-  alignas (CPU_L1_SIZE) struct cpumap cpumap;
+  __cacheline_aligned struct cpumap cpumap;
   struct pmap *pmap;
   uint32_t nr_ops;
   struct pmap_update_op ops[PMAP_UPDATE_MAX_OPS];
@@ -225,7 +227,7 @@ struct pmap_update_queue
  */
 struct pmap_syncer
 {
-  alignas (CPU_L1_SIZE) struct thread *thread;
+  __cacheline_aligned struct thread *thread;
   struct pmap_update_queue queue;
   struct syscnt sc_updates;
   struct syscnt sc_update_enters;
@@ -251,7 +253,7 @@ static struct pmap_syncer pmap_syncer __percpu;
  */
 struct pmap_update_request
 {
-  alignas (CPU_L1_SIZE) struct list node;
+  __cacheline_aligned struct list node;
   struct spinlock lock;
   struct thread *sender;
   const struct pmap_update_oplist *oplist;
@@ -792,10 +794,10 @@ pmap_bootstrap (void)
   for (size_t i = 0; i < CONFIG_MAX_CPUS; ++i)
     {
       _Auto cpu_table = &pmap_kernel_cpu_tables[i];
+      list_init (&cpu_table->pages);
       pmap_get_kernel_pmap()->cpu_tables[i] = cpu_table;
     }
 
-  list_init (&pmap_kernel_pmap->pages);
   cpu_local_assign (pmap_current_ptr, pmap_get_kernel_pmap ());
 
   pmap_prot_table[VM_PROT_NONE] = 0;
@@ -857,7 +859,6 @@ static int __init
 pmap_setup (void)
 {
   pmap_kernel_pmap = &pmap_global_pmap.pmap_kernel;
-  list_init (&pmap_kernel_pmap->pages);
   pmap_setup_fix_ptps ();
   size_t size = sizeof (struct pmap) + (cpu_count () + 1) *
                 (sizeof (void *) + sizeof (struct pmap_cpu_table));
@@ -1115,7 +1116,6 @@ pmap_create (struct pmap **pmapp)
   if (! pmap)
     return (ENOMEM);
 
-  list_init (&pmap->pages);
   void *tables = (char *)pmap + sizeof (*pmap) +
                  sizeof (struct pmap_cpu_table *) * cpu_count ();
 
@@ -1123,7 +1123,11 @@ pmap_create (struct pmap **pmapp)
     tables = (char *)tables + sizeof (struct pmap_cpu_table);
 
   for (size_t i = 0; i < cpu_count (); ++i)
-    pmap->cpu_tables[i] = (struct pmap_cpu_table *)tables + i;
+    {
+      _Auto cpu_table = (struct pmap_cpu_table *)tables + i;
+      list_init (&cpu_table->pages);
+      pmap->cpu_tables[i] = cpu_table;
+    }
 
   *pmapp = pmap;
   return (0);
@@ -1190,7 +1194,7 @@ pmap_copy (const struct pmap *src, struct pmap **dst)
       const pmap_pte_t *sptp =
         pmap_ptp_from_pa (src->cpu_tables[i]->root_ptp_pa);
       error = pmap_copy_user (sptp, PMAP_NR_LEVELS - 1, dptp,
-                              PMAP_START_ADDRESS, &dmp->pages);
+                              PMAP_START_ADDRESS, &dmp->cpu_tables[i]->pages);
 
       if (error)
         goto fail;
@@ -1206,11 +1210,13 @@ fail:
 void
 pmap_destroy (struct pmap *pmap)
 {
-  list_for_each_safe (&pmap->pages, page, tmp)
-    vm_page_free (list_entry (page, struct vm_page, node), 0);
-
   for (uint32_t i = 0; i < cpu_count (); ++i)
-    pmap_free_root (pmap->cpu_tables[i]);
+    {
+      _Auto cpu_table = pmap->cpu_tables[i];
+      list_for_each_safe (&cpu_table->pages, page, tmp)
+        vm_page_free (list_entry (page, struct vm_page, node), 0);
+      pmap_free_root (cpu_table);
+    }
 
   kmem_cache_free (&pmap_cache, pmap);
 }
@@ -1227,8 +1233,8 @@ pmap_enter_local (struct pmap *pmap, uintptr_t va, phys_addr_t pa,
     pte_bits |= PMAP_PTE_US;
 
   uint32_t level = PMAP_NR_LEVELS - 1;
-  pmap_pte_t *pte, *ptp =
-    pmap_ptp_from_pa (pmap->cpu_tables[cpu_id ()]->root_ptp_pa);
+  _Auto cpu_table = pmap->cpu_tables[cpu_id ()];
+  pmap_pte_t *pte, *ptp = pmap_ptp_from_pa (cpu_table->root_ptp_pa);
 
   const struct pmap_pt_level *pt_level;
   while (1)
@@ -1252,7 +1258,7 @@ pmap_enter_local (struct pmap *pmap, uintptr_t va, phys_addr_t pa,
 
           if (page)
             {
-              list_insert_tail (&pmap->pages, &page->node);
+              list_insert_tail (&cpu_table->pages, &page->node);
               vm_page_set_type (page, 0, VM_PAGE_PMAP);
             }
           else

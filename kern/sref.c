@@ -394,7 +394,7 @@ sref_queue_push (struct sref_queue *queue, struct sref_counter *counter)
   ++queue->size;
 }
 
-static struct sref_counter *
+static struct sref_counter*
 sref_queue_pop (struct sref_queue *queue)
 {
   struct sref_counter *counter = slist_first_entry (&queue->counters,
