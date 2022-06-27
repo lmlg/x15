@@ -242,6 +242,8 @@ strerror (int error)
         return ("value too large to be stored in data type");
       case EMSGSIZE:
         return ("message too long");
+      case EACCES:
+        return ("permission denied");
       default:
         return ("unknown error");
     }
