@@ -793,35 +793,38 @@ vm_map_fault (struct vm_map *map, uintptr_t addr, int prot)
   assert (map != vm_map_get_kernel_map ());
   addr = vm_page_trunc (addr);
 
-  SXLOCK_SHGUARD (&map->lock);
-  _Auto entry = vm_map_lookup_nearest (map, addr);
+  struct vm_map_entry *entry;
+  struct vm_object *object;
+  uint64_t offset;
 
-  if (!entry || addr < entry->start)
-    return (EFAULT);
-  else if ((prot & VM_MAP_PROT (entry->flags)) != prot)
-    return (EACCES);
+  {
+    SXLOCK_SHGUARD (&map->lock);
+    entry = vm_map_lookup_nearest (map, addr);
 
-  prot = VM_MAP_PROT (entry->flags);
-  struct vm_object *object = entry->object;
-  assert (object);   // Null vm-objects are kernel-only and always wired.
+    if (!entry || addr < entry->start)
+      return (EFAULT);
+    else if ((prot & VM_MAP_PROT (entry->flags)) != prot)
+      return (EACCES);
 
-  uint64_t offset = entry->offset + (addr - entry->start);
-  struct vm_page *page = vm_object_lookup (object, offset);
+    prot = VM_MAP_PROT (entry->flags);
+    object = entry->object;
+    assert (object);   // Null vm-objects are kernel-only and always wired.
 
-  if (page)
-    {
-      int error = pmap_enter (map->pmap, addr, vm_page_to_pa (page),
-                              prot, PMAP_PEF_GLOBAL);
+    offset = entry->offset + (addr - entry->start);
+    struct vm_page *page = vm_object_lookup (object, offset);
 
-      if (! error)
-        error = pmap_update (map->pmap);
+    if (page)
+      {
+        int error = pmap_enter (map->pmap, addr, vm_page_to_pa (page),
+                                prot, PMAP_PEF_GLOBAL);
 
-      vm_page_unref (page);
-      return (error);
-    }
+        if (! error)
+          error = pmap_update (map->pmap);
 
-  // Handle cache miss.
-  sxlock_unlock (&map->lock);
+        vm_page_unref (page);
+        return (error);
+      }
+  }
 
   struct vm_page *frames[VM_MAP_MAX_FRAMES];
   int n_pages = vm_page_obj_alloc (frames,
@@ -834,7 +837,8 @@ vm_map_fault (struct vm_map *map, uintptr_t addr, int prot)
   frames[0]->offset = offset;
   int error = vm_object_pager_get (object, frames,
                                    vm_page_direct_ptr (frames[0]), n_pages);
-  sxlock_exlock (&map->lock);
+
+  SXLOCK_EXGUARD (&map->lock);
 
   if (unlikely (error))
     return (EIO);   // Will map to SIGBUS.
