@@ -245,6 +245,13 @@ static struct pmap_syncer pmap_syncer __percpu;
  */
 #define PMAP_UPDATE_MAX_MAPPINGS   64
 
+struct pmap_update_shared_data
+{
+  struct spinlock lock;
+  uint32_t n_req;
+  int error;
+};
+
 /*
  * Per processor request, queued on a remote processor.
  *
@@ -258,8 +265,7 @@ struct pmap_update_request
   struct thread *sender;
   const struct pmap_update_oplist *oplist;
   unsigned int nr_mappings;
-  int done;
-  int error;
+  struct pmap_update_shared_data *shared;
 };
 
 /*
@@ -1150,21 +1156,18 @@ pmap_copy (const struct pmap *src, struct pmap **dst)
     {
       pmap_pte_t *dptp;
       error = pmap_alloc_root (dmp->cpu_tables[i], &dptp);
+
       if (error)
-        goto fail;
+        {
+          pmap_destroy (dmp);
+          return (error);
+        }
 
-      const pmap_pte_t *sptp =
-        pmap_ptp_from_pa (src->cpu_tables[i]->root_ptp_pa);
-
-      memcpy (dptp, sptp,
+      memcpy (dptp, pmap_ptp_from_pa (src->cpu_tables[i]->root_ptp_pa),
               sizeof (*dptp) * pmap_pt_levels[PMAP_NR_LEVELS - 1].ptes_per_pt);
     }
 
   return (0);
-
-fail:
-  pmap_destroy (dmp);
-  return (error);
 }
 
 void
@@ -1491,7 +1494,7 @@ pmap_update (struct pmap *pmap)
     }
 
   assert (oplist->nr_ops);
-  int error;
+  int error = 0;
 
   if (! pmap_do_remote_updates)
     {
@@ -1501,9 +1504,14 @@ pmap_update (struct pmap *pmap)
       goto out;
     }
 
-  error = 0;
   _Auto array = pmap_update_request_array_acquire ();
+  struct pmap_update_shared_data shared =
+    {
+      .n_req = cpumap_count_set (&oplist->cpumap),
+      .error = 0
+    };
 
+  spinlock_init (&shared.lock);
   cpumap_for_each (&oplist->cpumap, cpu)
     {
       struct pmap_syncer *syncer = percpu_ptr (pmap_syncer, cpu);
@@ -1513,27 +1521,19 @@ pmap_update (struct pmap *pmap)
       request->sender = thread_self ();
       request->oplist = oplist;
       request->nr_mappings = pmap_update_oplist_count_mappings (oplist, cpu);
-      request->done = 0;
-      request->error = 0;
+      request->shared = &shared;
 
       SPINLOCK_GUARD (&queue->lock, false);
       list_insert_tail (&queue->requests, &request->node);
       thread_wakeup (syncer->thread);
-  }
-
-  // TODO Improve scalability.
-  cpumap_for_each (&oplist->cpumap, cpu)
-    {
-      struct pmap_update_request *request = &array->requests[cpu];
-      SPINLOCK_GUARD (&request->lock, false);
-
-      while (!request->done)
-        thread_sleep (&request->lock, request, "pmaprq");
-
-      if (!error && request->error)
-        error = request->error;
     }
 
+  spinlock_lock (&shared.lock);
+  while (shared.n_req > 0)
+    thread_sleep (&shared.lock, &shared, "pmaprq");
+  spinlock_unlock (&shared.lock);
+
+  error = shared.error;
   pmap_update_request_array_release (array);
 
 out:
@@ -1562,12 +1562,14 @@ pmap_sync (void *arg)
       spinlock_unlock (&queue->lock);
 
       int error = pmap_update_local (request->oplist, request->nr_mappings);
+      _Auto shared = request->shared;
 
-      spinlock_lock (&request->lock);
-      request->done = 1;
-      request->error = error;
-      thread_wakeup (request->sender);
-      spinlock_unlock (&request->lock);
+      SPINLOCK_GUARD (&shared->lock, false);
+      if (error && !shared->error)
+        shared->error = error;
+
+      if (--shared->n_req == 0)
+        thread_wakeup (request->sender);
     }
 }
 

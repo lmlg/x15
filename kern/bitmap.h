@@ -200,6 +200,16 @@ bitmap_intersects (const unsigned long *a, const unsigned long *b, int nr_bits)
   return (false);
 }
 
+static inline unsigned int
+bitmap_count_set (const unsigned long *bm, int nr_bits)
+{
+  unsigned int ret = 0;
+  for (int i = 0; i < BITMAP_LONGS (nr_bits); ++i)
+    ret += __builtin_popcountl (bm[i]);
+
+  return (ret);
+}
+
 #define bitmap_for_each(bm, nr_bits, bit)   \
   for (int bit = 0;   \
        bit < nr_bits &&   \
