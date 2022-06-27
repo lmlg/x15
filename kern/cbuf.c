@@ -99,7 +99,7 @@ cbuf_pushb (struct cbuf *cbuf, uint8_t byte, bool erase)
   cbuf->buf[cbuf_index (cbuf, cbuf->end)] = byte;
   cbuf->end++;
   cbuf_update_start (cbuf);
-  return 0;
+  return (0);
 }
 
 int

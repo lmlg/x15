@@ -80,11 +80,11 @@ test_wait (void)
 static uint32_t
 test_rand (uint32_t x)
 {
-  /* Basic 32-bit xorshift PRNG */
+  // Basic 32-bit xorshift PRNG.
   x ^= x << 13;
   x ^= x >> 17;
   x ^= x << 5;
-  return x;
+  return (x);
 }
 
 static bool

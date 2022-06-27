@@ -47,9 +47,6 @@ typedef void (*sref_noref_fn_t) (struct sref_counter *);
   #define SREF_VERIFY
 #endif
 
-#define SREF_WEAKREF_DYING  ((uintptr_t)1)
-#define SREF_WEAKREF_MASK   (~SREF_WEAKREF_DYING)
-
 /*
  * Weak reference.
  *
@@ -65,11 +62,6 @@ struct sref_weakref
 {
   uintptr_t addr;
 };
-
-// Counter flags.
-#define SREF_CNTF_QUEUED  0x1     // Queued for review
-#define SREF_CNTF_DIRTY   0x2     // Dirty zero seen
-#define SREF_CNTF_UNREF   0x4     // Unreferenced, for debugging only
 
 /*
  * Scalable reference counter.

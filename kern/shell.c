@@ -640,7 +640,7 @@ shell_process_right (struct shell *shell)
 
   ++shell->cursor;
   shell_printf (shell, "\e[1C");
-  return 0;
+  return (0);
 }
 
 static void

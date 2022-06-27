@@ -97,7 +97,7 @@ extern char _percpu_end;
 #define percpu_var(var, cpu)   (*percpu_ptr(var, cpu))
 
 static inline void*
-percpu_area (unsigned int cpu)
+percpu_area (uint32_t cpu)
 {
   extern void *percpu_areas[CONFIG_MAX_CPUS];
 
@@ -123,7 +123,7 @@ void percpu_register_op (struct percpu_op *op);
  * given processor. The created area is filled from the content of the
  * percpu section.
  */
-int percpu_add (unsigned int cpu);
+int percpu_add (uint32_t cpu);
 
 /*
  * Run registered percpu operations on an AP.

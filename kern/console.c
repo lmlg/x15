@@ -79,7 +79,7 @@ console_process_ctrl_char (struct console *console, char c)
     }
 
   console->ops->puts (console, &c, 1);
-  return 0;
+  return (0);
 }
 
 static size_t

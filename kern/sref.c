@@ -54,12 +54,15 @@
 #include <kern/thread.h>
 #include <machine/cpu.h>
 
-/*
- * Per-cache delta table size.
- */
-#define SREF_CACHE_DELTA_TABLE_SIZE 4096
+// Counter flags.
+#define SREF_CNTF_QUEUED  0x1     // Queued for review
+#define SREF_CNTF_DIRTY   0x2     // Dirty zero seen
+#define SREF_CNTF_UNREF   0x4     // Unreferenced, for debugging only
 
-#if !ISP2(SREF_CACHE_DELTA_TABLE_SIZE)
+// Per-cache delta table size.
+#define SREF_CACHE_DELTA_TABLE_SIZE   4096
+
+#if !ISP2 (SREF_CACHE_DELTA_TABLE_SIZE)
   #error "delta table size must be a power-of-two"
 #endif
 
@@ -69,10 +72,12 @@
   #define SREF_HASH_SHIFT 2
 #endif
 
-/*
- * Negative close to 0 so that an overflow occurs early.
- */
-#define SREF_EPOCH_ID_INIT_VALUE   ((unsigned int)-500)
+// Negative close to 0 so that an overflow occurs early.
+#define SREF_EPOCH_ID_INIT_VALUE   ((uint32_t)-500)
+
+// Weakref flags.
+#define SREF_WEAKREF_DYING  ((uintptr_t)1)
+#define SREF_WEAKREF_MASK   (~SREF_WEAKREF_DYING)
 
 /*
  * Since review queues are processor-local, at least two local epochs

@@ -66,9 +66,9 @@ percpu_setup (void)
   assert (vm_page_aligned (percpu_area_size));
 
   if (! percpu_area_size)
-    return 0;
+    return (0);
 
-  unsigned int order = vm_page_order (percpu_area_size);
+  uint32_t order = vm_page_order (percpu_area_size);
   _Auto page = vm_page_alloc (order, VM_PAGE_SEL_DIRECTMAP, VM_PAGE_KERNEL);
 
   if (! page)
@@ -92,7 +92,7 @@ percpu_register_op (struct percpu_op *op)
 }
 
 int __init
-percpu_add (unsigned int cpu)
+percpu_add (uint32_t cpu)
 {
   if (cpu >= ARRAY_SIZE (percpu_areas))
     {
