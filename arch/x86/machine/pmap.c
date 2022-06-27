@@ -248,7 +248,7 @@ static struct pmap_syncer pmap_syncer __percpu;
 struct pmap_update_shared_data
 {
   struct spinlock lock;
-  uint32_t n_req;
+  uint32_t nr_reqs;
   int error;
 };
 
@@ -261,10 +261,9 @@ struct pmap_update_shared_data
 struct pmap_update_request
 {
   __cacheline_aligned struct list node;
-  struct spinlock lock;
   struct thread *sender;
   const struct pmap_update_oplist *oplist;
-  unsigned int nr_mappings;
+  uint32_t nr_mappings;
   struct pmap_update_shared_data *shared;
 };
 
@@ -753,9 +752,6 @@ pmap_update_oplist_count_mappings (const struct pmap_update_oplist *oplist,
 static void
 pmap_update_request_array_init (struct pmap_update_request_array *array)
 {
-  for (size_t i = 0; i < ARRAY_SIZE (array->requests); i++)
-    spinlock_init (&array->requests[i].lock);
-
   mutex_init (&array->lock);
 }
 
@@ -1507,7 +1503,7 @@ pmap_update (struct pmap *pmap)
   _Auto array = pmap_update_request_array_acquire ();
   struct pmap_update_shared_data shared =
     {
-      .n_req = cpumap_count_set (&oplist->cpumap),
+      .nr_reqs = cpumap_count_set (&oplist->cpumap),
       .error = 0
     };
 
@@ -1529,7 +1525,7 @@ pmap_update (struct pmap *pmap)
     }
 
   spinlock_lock (&shared.lock);
-  while (shared.n_req > 0)
+  while (shared.nr_reqs > 0)
     thread_sleep (&shared.lock, &shared, "pmaprq");
   spinlock_unlock (&shared.lock);
 
@@ -1568,7 +1564,7 @@ pmap_sync (void *arg)
       if (error && !shared->error)
         shared->error = error;
 
-      if (--shared->n_req == 0)
+      if (--shared->nr_reqs == 0)
         thread_wakeup (request->sender);
     }
 }
