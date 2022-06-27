@@ -306,13 +306,15 @@ logger_stream_write (struct stream *stream, const void *data, uint32_t bytes)
 static void
 logger_stream_lock (struct stream *stream)
 {
-  spinlock_lock (&((struct logger_stream *)stream)->lock);
+  _Auto logstr = structof (stream, struct logger_stream, base);
+  spinlock_lock (&logstr->lock);
 }
 
 static void
 logger_stream_unlock (struct stream *stream)
 {
-  spinlock_unlock (&((struct logger_stream *)stream)->lock);
+  _Auto logstr = structof (stream, struct logger_stream, base);
+  spinlock_unlock (&logstr->lock);
 }
 
 static const struct stream_ops logger_stream_ops =

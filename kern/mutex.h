@@ -94,13 +94,13 @@ mutex_unlock (struct mutex *mutex)
 // Mutex guards.
 
 static inline void
-mutex_guard_fini (void *ptr)
+mutex_guard_fini (struct mutex **ptr)
 {
-  mutex_unlock (*(struct mutex **) ptr);
+  mutex_unlock (*ptr);
 }
 
 #define MUTEX_GUARD(mtx)   \
-  CLEANUP (mutex_guard_fini) __unused void *UNIQ(mg) =   \
+  CLEANUP (mutex_guard_fini) __unused _Auto UNIQ(mg) =   \
   ({   \
     struct mutex *mutex_ = (mtx);   \
     mutex_lock (mutex_);   \

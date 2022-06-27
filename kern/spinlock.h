@@ -259,9 +259,8 @@ spinlock_guard_make (struct spinlock *spinlock, bool save_flags)
 }
 
 static inline void
-spinlock_guard_fini (void *ptr)
+spinlock_guard_fini (struct spinlock_guard *guard)
 {
-  struct spinlock_guard *guard = ptr;
   if (guard->saved_flags)
     spinlock_unlock_intr_restore (guard->spinlock, guard->flags);
   else

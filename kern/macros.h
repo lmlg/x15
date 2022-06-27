@@ -86,6 +86,9 @@
 
 #define barrier()           asm volatile ("" : : : "memory")
 
+// Allocate memory from the stack.
+#define alloca   __builtin_alloca
+
 // The following macros may be provided by the C environment.
 
 #ifndef __noinline

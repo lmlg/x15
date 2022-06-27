@@ -85,13 +85,13 @@ adaptive_lock_release (struct adaptive_lock *lock)
 // Adaptive lock guards.
 
 static inline void
-adaptive_lock_guard_fini (void *ptr)
+adaptive_lock_guard_fini (struct adaptive_lock **ptr)
 {
-  adaptive_lock_release (*(struct adaptive_lock **) ptr);
+  adaptive_lock_release (*ptr);
 }
 
 #define ADAPTIVE_LOCK_GUARD(lock)   \
-  CLEANUP (adaptive_lock_guard_fini) __unused void *UNIQ(alg) =   \
+  CLEANUP (adaptive_lock_guard_fini) __unused _Auto UNIQ(alg) =   \
     ({   \
        struct adaptive_lock *lock_ = (lock);   \
        adaptive_lock_acquire (lock_);   \

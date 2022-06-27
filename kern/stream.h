@@ -131,7 +131,7 @@ int string_stream_init (struct string_stream *strm, char *ptr, size_t size);
 
 #define string_stream_create(ptr, size)   \
   ({   \
-    struct string_stream *s_ = __builtin_alloca (sizeof (*s_));   \
+    struct string_stream *s_ = alloca (sizeof (*s_));   \
     string_stream_init (s_, (ptr), (size)) == 0 ?   \
       (struct stream *)s_ : (struct stream *)NULL;   \
   })

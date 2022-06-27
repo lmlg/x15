@@ -95,13 +95,13 @@ void sxlock_unlock (struct sxlock *sxp);
 // Shared-Exclusive guards.
 
 static inline void
-sxlock_guard_fini (void *ptr)
+sxlock_guard_fini (struct sxlock **ptr)
 {
-  sxlock_unlock (*(struct sxlock **)ptr);
+  sxlock_unlock (*ptr);
 }
 
 #define SXLOCK_SHGUARD(sxp)   \
-  CLEANUP (sxlock_guard_fini) __unused void *UNIQ(sxg) =   \
+  CLEANUP (sxlock_guard_fini) __unused _Auto UNIQ(sxg) =   \
     ({   \
        struct sxlock *sxp_ = (sxp);   \
        sxlock_shlock (sxp_);   \
@@ -109,7 +109,7 @@ sxlock_guard_fini (void *ptr)
      })
 
 #define SXLOCK_EXGUARD(sxp)   \
-  CLEANUP (sxlock_guard_fini) __unused void *UNIQ(sxg) =   \
+  CLEANUP (sxlock_guard_fini) __unused _Auto UNIQ(sxg) =   \
     ({   \
        struct sxlock *sxp_ = (sxp);   \
        sxlock_exlock (sxp_);   \
