@@ -85,11 +85,8 @@ struct init_op_dep
   bool required;
 };
 
-#define __INIT_OP_DEPS(fn)  fn ## _init_op_deps
-#define INIT_OP_DEPS(fn)    __INIT_OP_DEPS(fn)
-
-#define __INIT_OP(fn)       fn ## _init_op
-#define INIT_OP(fn)         __INIT_OP(fn)
+#define INIT_OP_DEPS(fn)   CONCAT (fn, _init_op_deps)
+#define INIT_OP(fn)        CONCAT (fn, _init_op)
 
 // Forge an init operation declaration.
 #define INIT_OP_DECLARE(fn)   extern struct init_op INIT_OP (fn)
@@ -138,6 +135,6 @@ struct init_op_dep
  */
 void init_setup (void);
 
-#endif /* __ASSEMBLER__ */
+#endif   // __ASSEMBLER__
 
 #endif

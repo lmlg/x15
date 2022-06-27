@@ -46,13 +46,15 @@ console_stream_read (struct stream *strm __unused,
 static void
 console_stream_lock (struct stream *strm)
 {
-  console_lock (&((struct console_stream *)strm)->flags);
+  _Auto cs = structof (strm, struct console_stream, base);
+  console_lock (&cs->flags);
 }
 
 static void
 console_stream_unlock (struct stream *strm)
 {
-  console_unlock (((struct console_stream *)strm)->flags);
+  _Auto cs = structof (strm, struct console_stream, base);
+  console_unlock (cs->flags);
 }
 
 static const struct stream_ops console_stream_ops =

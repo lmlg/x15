@@ -181,7 +181,7 @@ xcall_intr (void)
 static void
 xcall_async_work (struct work *work)
 {
-  _Auto async = (struct xcall_async *)work;
+  _Auto async = structof (work, struct xcall_async, work);
   xcall_call (async->fn, async->arg, async->cpu);
 
   SPINLOCK_GUARD (&async->lock, false);

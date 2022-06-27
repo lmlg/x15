@@ -30,7 +30,7 @@
 void __init test_setup (void);
 
 /*
- * Tests can be classified in 2 types: inline and deferred:
+ * Tests can be classified in 2 types: inline and deferred.
  * Inline tests are run as they are discovered, whereas deferred tests create a
  * detached thread that runs once the needed subsystems are up.
  * In order for tests to be inline, they must only use the most basic of the
@@ -41,12 +41,12 @@ void __init test_setup (void);
 #define TEST_PREFIX        test_F
 #define TEST_INLINE_CHAR   I
 
-// Convert 'name' to 'test_FI_name'
+// Convert 'name' to 'test_FI_name'.
 #define TEST_INLINE(name)   \
   int __init CONCAT (TEST_PREFIX,   \
                      CONCAT (TEST_INLINE_CHAR, CONCAT (_, name))) (void)
 
-// Convert 'name' to 'test_F_name'
+// Convert 'name' to 'test_F_name'.
 #define TEST_DEFERRED(name)   \
   int __init CONCAT (TEST_PREFIX, CONCAT (_, name)) (void)
 

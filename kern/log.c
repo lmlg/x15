@@ -276,24 +276,14 @@ logger_stream_cap (const struct logger_stream *stream)
   return (sizeof (stream->record.msg) - 1 - stream->off);
 }
 
-static const void*
-memchr (const void *buf, int ch, size_t bytes)
-{
-  for (size_t i = 0; i < bytes; ++i)
-    if ((unsigned char)((const char *)buf)[i] == ch)
-      return ((const char *)buf + i);
-
-  return (NULL);
-}
-
 static int log_puts (const struct log_record *, int);
 
 static void
 logger_stream_write (struct stream *stream, const void *data, uint32_t bytes)
 {
-  _Auto logstr = (struct logger_stream *) stream;
+  _Auto logstr = structof (stream, struct logger_stream, base);
   size_t cap = logger_stream_cap (logstr);
-  const char *newl = memchr ((const char *) data, '\n', bytes);
+  const char *newl = memchr (data, '\n', bytes);
 
   if (bytes < cap && !newl)
     {

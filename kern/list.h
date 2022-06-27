@@ -293,9 +293,9 @@ list_remove (struct list *node)
        node = list_prev (node))
 
 // Version of list_for_each_safe() that processes nodes backward.
-#define list_for_each_reverse_safe(list, node, tmp)   \
-  for (struct list *node = list_last (list), tmp = list_prev (node);   \
-       !list_end (list, node);   \
+#define list_for_each_reverse_safe(lst, node, tmp)   \
+  for (struct list *node = list_last (lst), tmp = list_prev (node);   \
+       !list_end (lst, node);   \
        node = tmp, tmp = list_prev (node))
 
 /*
@@ -443,9 +443,9 @@ MACRO_END
  *
  * The node must not be altered during the loop.
  */
-#define list_rcu_for_each(list, node)   \
-  for (struct list *node = list_rcu_first (list);   \
-       !list_end (list, node);   \
+#define list_rcu_for_each(lst, node)   \
+  for (struct list *node = list_rcu_first (lst);   \
+       !list_end (lst, node);   \
        node = list_rcu_next (node))
 
 /*
