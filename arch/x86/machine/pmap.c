@@ -975,51 +975,6 @@ pmap_copy_cpu_table (uint32_t cpu)
   pmap_copy_cpu_table_recursive (sptp, level, dptp, PMAP_START_ADDRESS);
 }
 
-static int __init
-pmap_copy_user (const pmap_pte_t *sptp, uint32_t level,
-                pmap_pte_t *dptp, uintptr_t start_va, struct list *pages)
-{
-  const _Auto pt_level = &pmap_pt_levels[level];
-  memset (dptp, 0, pt_level->ptes_per_pt * sizeof (pmap_pte_t));
-
-  for (uintptr_t i = 0, va = start_va;
-       i < pt_level->ptes_per_pt;
-       ++i, va = P2END (va, 1UL << pt_level->skip))
-    {
-#ifdef __LP64__
-      if (va == PMAP_END_ADDRESS)
-        va = PMAP_START_KERNEL_ADDRESS;
-#endif
-      if (!pmap_pte_valid (sptp[i]))
-        continue;
-      else if (pmap_pte_large (sptp[i]))
-        {
-          dptp[i] = sptp[i];
-          continue;
-        }
-
-      struct vm_page *page = pmap_alloc_page ();
-      if (! page)
-        return (ENOMEM);
-
-      list_insert_tail (pages, &page->node);
-      phys_addr_t pa = vm_page_to_pa (page);
-      dptp[i] = (sptp[i] & ~PMAP_PA_MASK) | (pa & PMAP_PA_MASK);
-
-      if (level == 1 || pmap_pte_large (sptp[i]))
-        pmap_copy_cpu_table_page (pmap_pte_next (sptp[i]), level - 1, page);
-      else
-        {
-          int ret = pmap_copy_user (pmap_pte_next (sptp[i]), level - 1,
-                                    vm_page_direct_ptr (page), va, pages);
-          if (ret != 0)
-            return (ret);
-        }
-    }
-
-  return (0);
-}
-
 void __init
 pmap_mp_setup (void)
 {
@@ -1109,6 +1064,13 @@ pmap_kextract (uintptr_t va, phys_addr_t *pap)
   return (0);
 }
 
+static void
+pmap_cpu_table_init (struct pmap_cpu_table *table)
+{
+  list_init (&table->pages);
+  table->root_ptp_pa = 0;
+}
+
 int
 pmap_create (struct pmap **pmapp)
 {
@@ -1125,7 +1087,7 @@ pmap_create (struct pmap **pmapp)
   for (size_t i = 0; i < cpu_count (); ++i)
     {
       _Auto cpu_table = (struct pmap_cpu_table *)tables + i;
-      list_init (&cpu_table->pages);
+      pmap_cpu_table_init (cpu_table);
       pmap->cpu_tables[i] = cpu_table;
     }
 
@@ -1193,11 +1155,9 @@ pmap_copy (const struct pmap *src, struct pmap **dst)
 
       const pmap_pte_t *sptp =
         pmap_ptp_from_pa (src->cpu_tables[i]->root_ptp_pa);
-      error = pmap_copy_user (sptp, PMAP_NR_LEVELS - 1, dptp,
-                              PMAP_START_ADDRESS, &dmp->cpu_tables[i]->pages);
 
-      if (error)
-        goto fail;
+      memcpy (dptp, sptp,
+              sizeof (*dptp) * pmap_pt_levels[PMAP_NR_LEVELS - 1].ptes_per_pt);
     }
 
   return (0);
@@ -1215,7 +1175,8 @@ pmap_destroy (struct pmap *pmap)
       _Auto cpu_table = pmap->cpu_tables[i];
       list_for_each_safe (&cpu_table->pages, page, tmp)
         vm_page_free (list_entry (page, struct vm_page, node), 0);
-      pmap_free_root (cpu_table);
+      if (cpu_table->root_ptp_pa)
+        pmap_free_root (cpu_table);
     }
 
   kmem_cache_free (&pmap_cache, pmap);
