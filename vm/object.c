@@ -175,6 +175,10 @@ vm_object_pager_get (struct vm_object *object, struct vm_page **pages,
 {
   int error = object->pager->get (object, dst, nr_pages * PAGE_SIZE,
                                   pages[0]->offset);
+  if (! error)
+    for (int i = 0; i < nr_pages; ++i)
+      pages[i]->type = VM_PAGE_OBJECT;
+
   return (error);
 }
 

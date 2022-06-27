@@ -858,7 +858,8 @@ vm_map_fault (struct vm_map *map, uintptr_t addr, int prot)
         return (0);
     }
 
-  return (pmap_update (map->pmap));
+  pmap_update (map->pmap);
+  return (0);
 }
 
 static int
