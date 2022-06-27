@@ -626,12 +626,14 @@ vm_map_remove_impl (struct vm_map *map, uintptr_t start,
     return (0);
 
   // Pre-allocate the VM map entries.
-  uint32_t n_entries = start > entry->start && start < entry->end;
+  uint32_t n_entries = start > entry->start && start < entry->end,
+           n_loops = 0;
   for (_Auto tmp = entry; tmp->start < end; )
     {
       if (end > tmp->start && end < tmp->end)
         ++n_entries;
 
+      ++n_loops;
       struct list *nx = list_next (&tmp->list_node);
       if (list_end (&map->entry_list, nx))
         break;
@@ -646,7 +648,7 @@ vm_map_remove_impl (struct vm_map *map, uintptr_t start,
     return (error);
 
   vm_map_clip_start (map, entry, start, &alloc_entries);
-  while (entry->start < end)
+  for (uint32_t i = 0; i < n_loops; ++i)
     {
       vm_map_clip_end (map, entry, end, &alloc_entries);
       map->size -= entry->end - entry->start;
@@ -654,9 +656,6 @@ vm_map_remove_impl (struct vm_map *map, uintptr_t start,
       vm_map_unlink (map, entry);
 
       list_insert_tail (list, &entry->list_node);
-      if (list_end (&map->entry_list, node))
-        break;
-
       entry = list_entry (node, struct vm_map_entry, list_node);
     }
 
