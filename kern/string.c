@@ -19,7 +19,9 @@
  */
 
 #include <errno.h>
+#include <stdbool.h>
 #include <stddef.h>
+#include <stdint.h>
 #include <string.h>
 
 #include <kern/macros.h>
@@ -174,6 +176,38 @@ strchr (const char *s, int c)
 }
 
 #endif
+
+static const uintptr_t ONES_ZEROES = (~((uintptr_t)0)) / 0xff;
+static const uintptr_t HIGH_BITS = ONES_ZEROES * (0xff / 2 + 1);
+
+static inline bool
+has_zero (uintptr_t v)
+{
+  return ((v - ONES_ZEROES) & ~v & HIGH_BITS);
+}
+
+void*
+memchr (const void *src, int c, size_t n)
+{
+  _Auto s = (const unsigned char *)src;
+  for (; ((uintptr_t)s & (sizeof (uintptr_t) - 1)) && n && *s != c; ++s, --n)
+    ;
+
+  if (n && *s != c)
+    {
+      uintptr_t key = ONES_ZEROES * c;
+      const uintptr_t __attribute__ ((may_alias)) *w = (const void *)s;
+      for (; n >= sizeof (uintptr_t) && !has_zero (*w ^ key);
+           ++w, n -= sizeof (uintptr_t))
+        ;
+
+      s = (const void *)w;
+    }
+
+  for (; n && *s != c; ++s, --n)
+    ;
+  return (n ? (void *)s : NULL);
+}
 
 const char*
 strerror (int error)
