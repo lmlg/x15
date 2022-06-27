@@ -148,6 +148,9 @@ error_map:
 void
 task_destroy (struct task *task)
 {
+  spinlock_lock (&task_list_lock);
+  list_remove (&task->node);
+  spinlock_unlock (&task_list_lock);
   kmem_cache_free (&task_cache, task);
 }
 
@@ -180,13 +183,10 @@ task_add_thread (struct task *task, struct thread *thread)
 void
 task_remove_thread (struct task *task, struct thread *thread)
 {
-  bool unref;
-
-  {
-    SPINLOCK_GUARD (&task->lock, false);
-    list_remove (&thread->task_node);
-    unref = list_empty (&task->threads);
-  }
+  spinlock_lock (&task->lock);
+  list_remove (&thread->task_node);
+  bool unref = list_empty (&task->threads);
+  spinlock_unlock (&task->lock);
 
   if (unref)
     task_unref (task);
