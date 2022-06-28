@@ -199,13 +199,11 @@ task_lookup_thread (struct task *task, const char *name)
 
   struct thread *thread;
   list_for_each_entry (&task->threads, thread, task_node)
-    {
-      if (strcmp (thread_name (thread), name) == 0)
-        {
-          thread_ref (thread);
-          return (thread);
-        }
-    }
+    if (strcmp (thread_name (thread), name) == 0)
+      {
+        thread_ref (thread);
+        return (thread);
+      }
 
   return (NULL);
 }

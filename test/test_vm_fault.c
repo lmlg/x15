@@ -80,7 +80,7 @@ test_vm_fault_thread (void *arg __unused)
   // This mustn't fault.
   assert (memcmp ((void *)(va + PAGE_SIZE / 2), "xxxx", 4) == 0);
 
-  // Test that writing to read-only mappings returns with EACCES.
+  // Test that writing to read-only mappings fails with EACCES.
   error = vm_copy ("???", (void *)va, 3);
   assert (error == EACCES);
 

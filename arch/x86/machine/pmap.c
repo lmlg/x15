@@ -1542,8 +1542,7 @@ out:
 static void
 pmap_sync (void *arg)
 {
-  struct pmap_syncer *self = arg;
-  struct pmap_update_queue *queue = &self->queue;
+  _Auto queue = &((struct pmap_syncer *)arg)->queue;
 
   while (1)
     {
@@ -1561,7 +1560,7 @@ pmap_sync (void *arg)
       _Auto shared = request->shared;
 
       SPINLOCK_GUARD (&shared->lock, false);
-      if (error && !shared->error)
+      if (unlikely (error && !shared->error))
         shared->error = error;
 
       if (--shared->nr_reqs == 0)
