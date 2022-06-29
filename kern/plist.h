@@ -181,8 +181,8 @@ void plist_remove (struct plist *plist, struct plist_node *pnode);
  */
 #define plist_for_each(plist, pnode)   \
   for (struct plist_node *pnode = plist_first (plist);   \
-       !plist_end(plist, pnode);   \
-       pnode = plist_next(pnode))
+       !plist_end (plist, pnode);   \
+       pnode = plist_next (pnode))
 
 // Forge a loop to process all nodes of a priority list.
 #define plist_for_each_safe(plist, pnode, tmp)   \

@@ -123,6 +123,7 @@ struct kmem_cache
 #define KMEM_CACHE_NOOFFSLAB    0x1   // Don't allocate external slab data.
 #define KMEM_CACHE_PAGE_ONLY    0x2   // Allocate slabs from the page allocator.
 #define KMEM_CACHE_VERIFY       0x4   // Use debugging facilities.
+#define KMEM_CACHE_SLEEPABLE    0x8   // Allocations may sleep.
 
 /*
  * Initialize a cache.

@@ -320,13 +320,19 @@ kmem_pagealloc_is_virtual (size_t size)
 }
 
 static void*
-kmem_pagealloc (size_t size)
+kmem_pagealloc (size_t size, bool sleep)
 {
   if (kmem_pagealloc_is_virtual (size))
     return (vm_kmem_alloc (size));
 
-  _Auto page = vm_page_alloc (vm_page_order (size), VM_PAGE_SEL_DIRECTMAP,
-                              VM_PAGE_KMEM);
+  struct vm_page *page = NULL;
+  size_t order = vm_page_order (size);
+
+  if (sleep)
+    vm_page_array_alloc (&page, order, VM_PAGE_SEL_DIRECTMAP, VM_PAGE_KMEM);
+  else
+    page = vm_page_alloc (order, VM_PAGE_SEL_DIRECTMAP, VM_PAGE_KMEM);
+
   return (page ? vm_page_direct_ptr (page) : NULL);
 }
 
@@ -367,7 +373,8 @@ kmem_slab_create_verify (struct kmem_slab *slab, struct kmem_cache *cache)
 static struct kmem_slab*
 kmem_slab_create (struct kmem_cache *cache, size_t color)
 {
-  void *slab_buf = kmem_pagealloc (cache->slab_size);
+  void *slab_buf = kmem_pagealloc (cache->slab_size,
+                                   (cache->flags & KMEM_CACHE_SLEEPABLE) != 0);
   if (! slab_buf)
     return (NULL);
 
@@ -599,6 +606,8 @@ kmem_cache_init (struct kmem_cache *cache, const char *name, size_t obj_size,
 
   if (flags & KMEM_CACHE_VERIFY)
     cache->flags |= KMEM_CF_VERIFY;
+
+  cache->flags |= flags & KMEM_CACHE_SLEEPABLE;
 
   if (align < KMEM_ALIGN_MIN)
     align = KMEM_ALIGN_MIN;
@@ -1254,7 +1263,7 @@ kmem_alloc (size_t size)
       return (buf);
     }
 
-  return (kmem_pagealloc (size));
+  return (kmem_pagealloc (size, false));
 }
 
 void*

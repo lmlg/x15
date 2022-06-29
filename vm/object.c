@@ -133,6 +133,40 @@ error:
   return (error);
 }
 
+int
+vm_object_insert_array (struct vm_object *object, struct vm_page **pages,
+                        int nr_pages, uint64_t offset)
+{
+  assert (vm_page_aligned (offset));
+  MUTEX_GUARD (&object->lock);
+
+  int error;
+  if (offset + (nr_pages - 1) * PAGE_SIZE >= object->size)
+    return (EINVAL);
+
+  for (int i = 0; i < nr_pages; ++i, offset += PAGE_SIZE)
+    {
+      error = rdxtree_insert (&object->pages, vm_page_btop (offset), pages[i]);
+      if (error)
+        {
+          for (; i > 0; --i, offset -= PAGE_SIZE)
+            {
+              rdxtree_remove (&object->pages, vm_page_btop (offset));
+              vm_page_unref (pages[i]);
+              vm_page_unlink (pages[i]);
+            }
+
+          return (error);
+        }
+
+      vm_page_ref (pages[i]);
+      vm_page_link (pages[i], object, offset);
+    }
+
+  object->nr_pages += nr_pages;
+  return (0);
+}
+
 void
 vm_object_remove (struct vm_object *object, uint64_t start, uint64_t end)
 {

@@ -829,7 +829,8 @@ rdxtree_setup (void)
 {
   kmem_cache_init (&rdxtree_node_cache, "rdxtree_node",
                    sizeof (struct rdxtree_node), 0,
-                   rdxtree_node_ctor, KMEM_CACHE_PAGE_ONLY);
+                   rdxtree_node_ctor,
+                   KMEM_CACHE_PAGE_ONLY | KMEM_CACHE_SLEEPABLE);
   return (0);
 }
 

@@ -131,7 +131,9 @@ struct vm_page_waiter
   struct thread *thread;
   struct plist_node node;
   struct vm_page **frames;
-  uint32_t nmax;
+  uint32_t min_order;
+  uint32_t max_order;
+  int received;
 };
 
 static int vm_page_is_ready __read_mostly;
@@ -251,7 +253,7 @@ vm_page_zone_free_to_buddy (struct vm_page_zone *zone, struct vm_page *page,
   assert (page->order == VM_PAGE_ORDER_UNLISTED);
   assert (order < VM_PAGE_NR_FREE_LISTS);
 
-  uint32_t nr_pages = (1 << order);
+  uint32_t nr_pages = 1 << order;
   phys_addr_t pa = page->phys_addr;
 
   while (order < VM_PAGE_NR_FREE_LISTS - 1)
@@ -720,77 +722,98 @@ vm_page_free (struct vm_page *page, uint32_t order)
   vm_page_zone_free (&vm_page_zones[page->zone_index], page, order);
 }
 
-static bool
-vm_page_obj_tryalloc (struct vm_page **frames, uint32_t order)
+static int
+vm_page_array_tryalloc (struct vm_page **frames, uint32_t min_order,
+                        uint32_t max_order, uint32_t selector, uint16_t type)
 {
-  struct vm_page *pages = vm_page_alloc (order, VM_PAGE_SEL_DIRECTMAP,
-                                         VM_PAGE_OBJECT);
+  uint32_t order = max_order;
+  struct vm_page *pages = vm_page_alloc (order, selector, type);
   if (! pages)
-    return (false);
+    {
+      order = min_order;
+      pages = vm_page_alloc (order, selector, type);
+      if (! pages)
+        return (-1);
+    }
 
   for (uint32_t i = 0; i < (1u << order); ++i)
     frames[i] = pages + i;
 
-  return (true);
+  return ((int)order);
 }
 
 int
-vm_page_obj_alloc (struct vm_page **frames, uint32_t order)
+vm_page_array_alloc_range (struct vm_page **frames, uint32_t min_order,
+                           uint32_t max_order, uint32_t selector,
+                           uint16_t type)
 {
   // TODO: Restrict how many pages each task can allocate.
-  if (likely (vm_page_obj_tryalloc (frames, order)))
-    return ((int) (1u << order));
+  int ret = vm_page_array_tryalloc (frames, min_order, max_order,
+                                    selector, type);
+  if (likely (ret >= 0))
+    return (ret);
 
-  struct vm_page_waiter pw = { .thread = thread_self (), .frames = frames };
+  struct vm_page_waiter pw =
+    {
+      .thread = thread_self (),
+      .frames = frames,
+      .min_order = min_order,
+      .max_order = max_order,
+    };
+
   plist_node_init (&pw.node, thread_real_global_priority (pw.thread));
-  pw.nmax = 1u << order;
 
   // TODO: Interruptible wait (and possibly page evictions).
   spinlock_lock (&vm_page_waiters_lock);
-  if (!vm_page_obj_tryalloc (frames, order))
+  ret = vm_page_array_tryalloc (frames, min_order, max_order, selector, type);
+  if (ret < 0)
     {
       plist_add (&vm_page_waiters_list, &pw.node);
       thread_sleep (&vm_page_waiters_lock, &pw, "pageobj");
       plist_remove (&vm_page_waiters_list, &pw.node);
     }
+  else
+    pw.received = ret;
 
   spinlock_unlock (&vm_page_waiters_lock);
-  assert (pw.nmax != 0);
-  return (pw.nmax);
+  return (pw.received);
 }
 
 static uint32_t
-vm_page_obj_free_impl (struct vm_page **frames, uint32_t n_frames,
-                       struct plist *plist)
+vm_page_array_free_impl (struct vm_page **frames, uint32_t n_frames,
+                         struct plist *plist)
 {
-  for (uint32_t released = 0 ; ; )
+  uint32_t released = 0;
+  plist_for_each_safe (plist, pnode, tmp)
     {
-      if (!n_frames || plist_empty (plist))
-        return (released);
+      _Auto entry = plist_entry (pnode, struct vm_page_waiter, node);
 
-      _Auto entry = plist_entry (plist_first (plist),
-                                 struct vm_page_waiter, node);
-      uint32_t n = MIN (n_frames, entry->nmax);
+      if ((1u << entry->min_order) > n_frames)
+        continue;
+
+      uint32_t n = MIN (n_frames, 1u << entry->max_order);
       for (uint32_t i = 0; i < n; ++i)
         {
           struct vm_page *page = frames[i];
-          // Handover the page, referencing it in the process.
-          atomic_store_rel (&page->nr_refs, 1);
           entry->frames[i] = page;
         }
 
       frames += n;
       released += n;
+      entry->received = log2 (n);
       thread_wakeup (entry->thread);
     }
+
+  return (released);
 }
 
 void
-vm_page_obj_free (struct vm_page **frames, uint32_t n_frames)
+vm_page_array_free (struct vm_page **frames, uint32_t order)
 {
+  uint32_t n_frames = 1u << order;
   SPINLOCK_GUARD (&vm_page_waiters_lock, true);
-  uint32_t n_rel = vm_page_obj_free_impl (frames, n_frames,
-                                          &vm_page_waiters_list);
+  uint32_t n_rel = vm_page_array_free_impl (frames, n_frames,
+                                            &vm_page_waiters_list);
 
   if (n_rel == n_frames)
     return;

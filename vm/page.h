@@ -220,11 +220,26 @@ struct vm_page* vm_page_alloc (uint32_t order, uint32_t selector,
 void vm_page_free (struct vm_page *page, uint32_t order);
 
 /*
- * Same as above, only these functions are called to get and
- * release pages for backing vm_object's.
+ * (De)allocate an array of pages.
+ *
+ * Unlike the above versions, these functions operate on arrays of
+ * pages that may not be physically contiguous. They also may sleep
+ * when not enough pages are free, and allow callers to specify a
+ * lower and upper bound of the needed allocation.
  */
-int vm_page_obj_alloc (struct vm_page **pages, uint32_t order);
-void vm_page_obj_free (struct vm_page **pages, uint32_t n_pages);
+
+int vm_page_array_alloc_range (struct vm_page **pages, uint32_t min_order,
+                               uint32_t max_order, uint32_t selector,
+                               uint16_t type);
+
+static inline int
+vm_page_array_alloc (struct vm_page **pages, uint32_t order,
+                     uint32_t selector, uint16_t type)
+{
+  return (vm_page_array_alloc_range (pages, order, order, selector, type));
+}
+
+void vm_page_array_free (struct vm_page **pages, uint32_t order);
 
 // Return the name of the given zone.
 const char* vm_page_zone_name (uint32_t zone_index);

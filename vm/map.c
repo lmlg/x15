@@ -162,13 +162,13 @@ vm_map_entry_free_obj (struct vm_map_entry *entry)
       frames[n_pages] = list_entry (px, struct vm_page, node);
       if (++n_pages == ARRAY_SIZE (frames))
         {
-          vm_page_obj_free (frames, n_pages);
+          vm_page_array_free (frames, VM_MAP_MAX_FRAMES_ORDER);
           n_pages = 0;
         }
     }
 
-  if (n_pages)
-    vm_page_obj_free (frames, n_pages);
+  for (; n_pages > 0; --n_pages)
+    vm_page_array_free (&frames[n_pages - 1], 0);
 }
 
 static void
@@ -786,6 +786,17 @@ vm_map_entry_order (const struct vm_map_entry *entry, uintptr_t addr)
   return (MIN (log2 (room), target));
 }
 
+static int
+vm_map_fault_cleanup (struct pmap *pmap, uintptr_t addr,
+                      int nr_pages, int retval, struct vm_page **pages)
+{
+  for (int i = 0; i < nr_pages; ++i)
+    pmap_remove (pmap, addr + i * PAGE_SIZE, NULL);
+
+  vm_page_array_free (pages, log2 (nr_pages));
+  return (retval);
+}
+
 int
 vm_map_fault (struct vm_map *map, uintptr_t addr, int prot)
 {
@@ -795,6 +806,8 @@ vm_map_fault (struct vm_map *map, uintptr_t addr, int prot)
   struct vm_map_entry *entry;
   struct vm_object *object;
   uint64_t offset;
+
+  THREAD_PIN_GUARD ();
 
   {
     SXLOCK_SHGUARD (&map->lock);
@@ -815,70 +828,57 @@ vm_map_fault (struct vm_map *map, uintptr_t addr, int prot)
     if (page)
       {
         int error = pmap_enter (map->pmap, addr, vm_page_to_pa (page),
-                                prot, PMAP_PEF_GLOBAL);
+                                prot, 0);
 
         if (! error)
-          error = pmap_update (map->pmap);
+          pmap_update (map->pmap);
 
         vm_page_unref (page);
-        return (error);
+        return (0);
       }
   }
 
   struct vm_page *frames[VM_MAP_MAX_FRAMES];
-  int n_pages = vm_page_obj_alloc (frames,
-                                   vm_map_entry_order (entry, addr));
+  int n_pages = vm_page_array_alloc_range (frames, 0,
+                                           vm_map_entry_order (entry, addr),
+                                           VM_PAGE_SEL_HIGHMEM, VM_PAGE_OBJECT);
 
   if (n_pages < 0)
     // Allocation was interrupted. Let userspace handle things.
     return (0);
 
-  frames[0]->offset = offset;
-  int error = vm_object_pager_get (object, frames,
-                                   vm_page_direct_ptr (frames[0]), n_pages);
+  n_pages = 1 << n_pages;
+  for (int i = 0; i < n_pages; ++i)
+    {
+      int error = pmap_enter (map->pmap, addr + i * PAGE_SIZE,
+                              vm_page_to_pa (frames[i]),
+                              VM_PROT_READ | VM_PROT_WRITE, 0);
 
-  SXLOCK_EXGUARD (&map->lock);
+      if (unlikely (error))
+        return (vm_map_fault_cleanup (map->pmap, addr, i, 0, frames));
+    }
+
+  int error = pmap_update (map->pmap);
+  if (unlikely (error))
+    return (vm_map_fault_cleanup (map->pmap, addr, n_pages, 0, frames));
+
+  frames[0]->offset = offset;
+  error = vm_object_pager_get (object, frames, (void *)addr, n_pages);
 
   if (unlikely (error))
-    return (EIO);   // Will map to SIGBUS.
+    return (vm_map_fault_cleanup (map->pmap, addr, n_pages, EIO, frames));
 
+  SXLOCK_SHGUARD (&map->lock);
   // TODO: Test that the entry hasn't changed, and retry if so.
+  error = vm_object_insert_array (object, frames, n_pages, offset);
+  assert (! error);
 
-  for (int i = 0; i < n_pages; ++i, offset += PAGE_SIZE)
-    {
-      error = vm_object_insert (object, frames[i], offset);
-      assert (!error || error == EBUSY);
-
-      if (! error &&
-          pmap_enter (map->pmap, addr + i * PAGE_SIZE,
-                      vm_page_to_pa (frames[i]), prot, PMAP_PEF_GLOBAL) != 0)
-        /* This can only happen if page table allocation was interrupted.
-         * We again let userspace handle this error. */
-        return (0);
-    }
+  if (prot != (VM_PROT_READ | VM_PROT_WRITE))
+    for (int i = 0; i < n_pages; ++i)
+      pmap_protect (map->pmap, addr + i * PAGE_SIZE, prot, NULL);
 
   pmap_update (map->pmap);
   return (0);
-}
-
-static int
-vm_map_dup_tree (struct vm_map *map, const struct rbtree_node *node)
-{
-  if (! node)
-    return (0);
-
-  _Auto entry = rbtree_entry (node, struct vm_map_entry, tree_node);
-  struct vm_map_request req;
-  int error = vm_map_prepare (map, 0, entry->end - entry->start,
-                              0, entry->flags, entry->object,
-                              entry->offset, &req);
-
-  error = error ||
-          vm_map_insert (map, NULL, &req) ||
-          vm_map_dup_tree (map, node->children[RBTREE_LEFT]) ||
-          vm_map_dup_tree (map, node->children[RBTREE_RIGHT]);
-
-  return (error);
 }
 
 int
@@ -898,17 +898,8 @@ vm_map_create (struct vm_map **mapp)
     }
 
   vm_map_init (map, pmap, PMAP_START_ADDRESS, PMAP_END_ADDRESS);
-  _Auto src_map = vm_map_get_kernel_map ();
-  error = vm_map_dup_tree (map, src_map->entry_tree.root);
-
-  if (! error)
-    {
-      *mapp = map;
-      return (0);
-    }
-
-  vm_map_destroy (map);
-  return (error);
+  *mapp = map;
+  return (0);
 }
 
 int

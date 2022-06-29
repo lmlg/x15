@@ -1166,14 +1166,35 @@ pmap_copy (const struct pmap *src, struct pmap **dst)
   return (0);
 }
 
+static void
+pmap_cpu_table_free_pages (struct pmap_cpu_table *table)
+{
+  struct list *pages = &table->pages;
+  struct vm_page *frames[1u << 4];
+  uint32_t nr_pages = 0;
+
+  list_for_each_safe (pages, page, tmp)
+    {
+      frames[nr_pages] = list_entry (page, struct vm_page, node);
+      if (++nr_pages == ARRAY_SIZE (frames))
+        {
+          vm_page_array_free (frames, 4);
+          nr_pages = 0;
+        }
+    }
+
+  for (; nr_pages > 0; --nr_pages)
+    vm_page_array_free (&frames[nr_pages - 1], 0);
+}
+
 void
 pmap_destroy (struct pmap *pmap)
 {
+  assert (pmap != pmap_get_kernel_pmap ());
   for (uint32_t i = 0; i < cpu_count (); ++i)
     {
       _Auto cpu_table = pmap->cpu_tables[i];
-      list_for_each_safe (&cpu_table->pages, page, tmp)
-        vm_page_free (list_entry (page, struct vm_page, node), 0);
+      pmap_cpu_table_free_pages (cpu_table);
       if (cpu_table->root_ptp_pa)
         pmap_free_root (cpu_table);
     }
@@ -1214,7 +1235,8 @@ pmap_enter_local (struct pmap *pmap, uintptr_t va, phys_addr_t pa,
           if (is_kernel)
             page = vm_page_alloc (0, VM_PAGE_SEL_DIRECTMAP, VM_PAGE_PMAP);
           else
-            vm_page_obj_alloc (&page, 0);
+            vm_page_array_alloc (&page, 0,
+                                 VM_PAGE_SEL_DIRECTMAP, VM_PAGE_PMAP);
 
           if (page)
             {
@@ -1307,6 +1329,27 @@ pmap_remove_local (struct pmap *pmap, uintptr_t start, uintptr_t end)
     pmap_remove_local_single (pmap, start);
 }
 
+static bool
+pmap_cpumap_eq (const struct cpumap *a, const struct cpumap *b)
+{
+  if (! b)
+    return (cpumap_count_set (a) == 1 &&
+            cpumap_test (a, cpu_id ()));
+  return (cpumap_cmp (a, b) == 0);
+}
+
+static inline void
+pmap_cpumap_copy (struct cpumap *dst, const struct cpumap *src)
+{
+  if (! src)
+    {
+      cpumap_zero (dst);
+      cpumap_set (dst, cpu_id ());
+    }
+  else
+    cpumap_copy (dst, src);
+}
+
 int
 pmap_remove (struct pmap *pmap, uintptr_t va, const struct cpumap *cpumap)
 {
@@ -1324,14 +1367,14 @@ pmap_remove (struct pmap *pmap, uintptr_t va, const struct cpumap *cpumap)
   if (op &&
       op->operation == PMAP_UPDATE_OP_REMOVE &&
       op->remove_args.end == va &&
-      cpumap_cmp (&op->cpumap, cpumap) == 0)
+      pmap_cpumap_eq (&op->cpumap, cpumap))
     {
       op->remove_args.end = va + PAGE_SIZE;
       return (0);
     }
 
   op = pmap_update_oplist_prepare_op (oplist);
-  cpumap_copy (&op->cpumap, cpumap);
+  pmap_cpumap_copy (&op->cpumap, cpumap);
   op->operation = PMAP_UPDATE_OP_REMOVE;
   op->remove_args.start = va;
   op->remove_args.end = va + PAGE_SIZE;
@@ -1339,12 +1382,49 @@ pmap_remove (struct pmap *pmap, uintptr_t va, const struct cpumap *cpumap)
   return (0);
 }
 
-static void
-pmap_protect_local (struct pmap *pmap __unused, uintptr_t start __unused,
-                    uintptr_t end __unused, int prot __unused)
+static int
+pmap_protect_single (struct pmap_cpu_table *table, uintptr_t addr,
+                     int prot, bool is_kernel)
 {
-  // TODO Implement.
-  panic ("pmap: pmap_protect not implemented");
+  uint32_t level = PMAP_NR_LEVELS - 1;
+  pmap_pte_t *pte, *ptp = pmap_ptp_from_pa (table->root_ptp_pa);
+
+  const struct pmap_pt_level *pt_level;
+  while (1)
+    {
+      pt_level = &pmap_pt_levels[level];
+      pte = &ptp[pmap_pte_index (addr, pt_level)];
+
+      if (!pmap_pte_valid (*pte))
+        return (EFAULT);
+      else if (! level || pmap_pte_large (*pte))
+        break;
+
+      --level;
+      ptp = pmap_pte_next (*pte);
+    }
+
+  assert (pmap_pte_valid (*pte));
+  pmap_pte_t bits = (is_kernel ? PMAP_PTE_G : PMAP_PTE_US) |
+                    pmap_prot_table[prot & VM_PROT_ALL];
+  pmap_pte_set (pte, *pte & PMAP_PA_MASK, bits, pt_level);
+  return (0);
+}
+
+static int
+pmap_protect_local (struct pmap *pmap, uintptr_t start,
+                    uintptr_t end, int prot)
+{
+  bool is_kernel = pmap == pmap_get_kernel_pmap ();
+  _Auto cpu_table = pmap->cpu_tables[cpu_id ()];
+  for (; start < end; start += PAGE_SIZE)
+    {
+      int error = pmap_protect_single (cpu_table, start, prot, is_kernel);
+      if (error)
+        return (error);
+    }
+
+  return (0);
 }
 
 int
@@ -1366,14 +1446,14 @@ pmap_protect (struct pmap *pmap, uintptr_t va, int prot,
        op->operation == PMAP_UPDATE_OP_PROTECT &&
        op->protect_args.end == va &&
        op->protect_args.prot == prot &&
-       cpumap_cmp (&op->cpumap, cpumap) == 0)
+       pmap_cpumap_eq (&op->cpumap, cpumap))
     {
       op->protect_args.end = va + PAGE_SIZE;
       return (0);
     }
 
   op = pmap_update_oplist_prepare_op (oplist);
-  cpumap_copy (&op->cpumap, cpumap);
+  pmap_cpumap_copy (&op->cpumap, cpumap);
   op->operation = PMAP_UPDATE_OP_PROTECT;
   op->protect_args.start = va;
   op->protect_args.end = va + PAGE_SIZE;
@@ -1423,13 +1503,15 @@ pmap_update_remove (struct pmap *pmap, int flush,
     pmap_flush_tlb (pmap, args->start, args->end);
 }
 
-static void
+static int
 pmap_update_protect (struct pmap *pmap, int flush,
                      const struct pmap_update_protect_args *args)
 {
-  pmap_protect_local (pmap, args->start, args->end, args->prot);
-  if (flush)
+  int error = pmap_protect_local (pmap, args->start, args->end, args->prot);
+  if (!error && flush)
     pmap_flush_tlb (pmap, args->start, args->end);
+
+  return (error);
 }
 
 static int
@@ -1461,8 +1543,8 @@ pmap_update_local (const struct pmap_update_oplist *oplist,
             break;
           case PMAP_UPDATE_OP_PROTECT:
             syscnt_inc (&syncer->sc_update_protects);
-            pmap_update_protect (oplist->pmap, !global_tlb_flush,
-                                 &op->protect_args);
+            error = pmap_update_protect (oplist->pmap, !global_tlb_flush,
+                                         &op->protect_args);
             break;
           default:
             assert (! "invalid update operation");

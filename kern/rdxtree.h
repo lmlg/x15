@@ -39,7 +39,7 @@
 typedef uint64_t rdxtree_key_t;
 
 // Radix tree initialization flags.
-#define RDXTREE_KEY_ALLOC 0x1   // Enable key allocation.
+#define RDXTREE_KEY_ALLOC   0x1   // Enable key allocation.
 
 // Static tree initializer.
 #define RDXTREE_INITIALIZER   { 0, NULL }

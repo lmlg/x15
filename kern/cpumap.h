@@ -85,7 +85,7 @@ cpumap_clear_atomic (struct cpumap *cpumap, int index)
 static inline int
 cpumap_test (const struct cpumap *cpumap, int index)
 {
-  return bitmap_test (cpumap->cpus, index);
+  return (bitmap_test (cpumap->cpus, index));
 }
 
 static inline void
