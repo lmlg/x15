@@ -114,7 +114,7 @@
 #include <machine/cpu.h>
 
 // Negative close to 0 so that an overflow occurs early.
-#define RCU_WINDOW_ID_INIT_VALUE   ((unsigned int)-500)
+#define RCU_WINDOW_ID_INIT_VALUE   ((uint32_t)-500)
 
 /*
  * Interval (in milliseconds) between window checking.
@@ -162,8 +162,8 @@ struct rcu_cpu_window
 struct rcu_cpu_data
 {
   enum rcu_gp_state gp_state;
-  unsigned int work_wid;
-  unsigned int reader_wid;
+  uint32_t work_wid;
+  uint32_t reader_wid;
   struct rcu_cpu_window windows[2];
   struct syscnt sc_nr_detected_readers;
 };
@@ -253,7 +253,7 @@ rcu_data_get_gp_state (const struct rcu_data *data)
   return (data->gp_state);
 }
 
-static unsigned int
+static uint32_t
 rcu_data_get_wid (const struct rcu_data *data)
 {
   return (data->wid);
@@ -267,7 +267,7 @@ rcu_data_get_window_from_index (struct rcu_data *data, size_t index)
 }
 
 static struct rcu_window*
-rcu_data_get_window (struct rcu_data *data, unsigned int wid)
+rcu_data_get_window (struct rcu_data *data, uint32_t wid)
 {
   return (rcu_data_get_window_from_index (data, wid & 1));
 }
@@ -386,7 +386,7 @@ rcu_data_schedule_timer (struct rcu_data *data, uint64_t now)
 static void
 rcu_data_ack_cpu (struct rcu_data *data)
 {
-  unsigned int prev_nr_acks = atomic_sub_acq_rel (&data->nr_acks, 1);
+  uint32_t prev_nr_acks = atomic_sub_acq_rel (&data->nr_acks, 1);
 
   if (prev_nr_acks != 1)
     {
@@ -474,7 +474,7 @@ rcu_cpu_window_flush (struct rcu_cpu_window *cpu_window)
   work_queue_init (&cpu_window->works);
 }
 
-static unsigned int
+static uint32_t
 rcu_cpu_data_get_reader_wid (const struct rcu_cpu_data *cpu_data)
 {
   return (cpu_data->reader_wid);
@@ -488,13 +488,13 @@ rcu_cpu_data_get_window_from_index (struct rcu_cpu_data *cpu_data, size_t index)
 }
 
 static struct rcu_cpu_window*
-rcu_cpu_data_get_window (struct rcu_cpu_data *cpu_data, unsigned int wid)
+rcu_cpu_data_get_window (struct rcu_cpu_data *cpu_data, uint32_t wid)
 {
   return (rcu_cpu_data_get_window_from_index (cpu_data, wid & 1));
 }
 
 static void __init
-rcu_cpu_data_init (struct rcu_cpu_data *cpu_data, unsigned int cpu)
+rcu_cpu_data_init (struct rcu_cpu_data *cpu_data, uint32_t cpu)
 {
   struct rcu_data *data = &rcu_data;
   cpu_data->gp_state = rcu_data_get_gp_state (data);
@@ -556,7 +556,7 @@ rcu_reader_enter (struct rcu_reader *reader, struct rcu_cpu_data *cpu_data)
     return;
 
   struct rcu_data *data = &rcu_data;
-  unsigned int wid = rcu_cpu_data_get_reader_wid (cpu_data);
+  uint32_t wid = rcu_cpu_data_get_reader_wid (cpu_data);
   _Auto window = rcu_data_get_window (data, wid);
 
   rcu_reader_link (reader, cpu_data);
@@ -609,7 +609,7 @@ rcu_cpu_data_check_gp_state (struct rcu_cpu_data *cpu_data)
    * also immediately changes and can be acknowleged right away. As a
    * result, this loop may never run more than twice.
    */
-  for (unsigned int i = 0; /* no condition */; i++)
+  for (size_t i = 0; /* no condition */; i++)
     {
       enum rcu_gp_state global_gp_state,
                         local_gp_state = cpu_data->gp_state;
@@ -736,7 +736,7 @@ INIT_OP_DEFINE (rcu_bootstrap,
 static int __init
 rcu_setup (void)
 {
-  for (unsigned int i = 1; i < cpu_count (); i++)
+  for (uint32_t i = 1; i < cpu_count (); i++)
     rcu_cpu_data_init (percpu_ptr (rcu_cpu_data, i), i);
 
   return (0);
