@@ -241,6 +241,8 @@ vm_page_array_alloc (struct vm_page **pages, uint32_t order,
 
 void vm_page_array_free (struct vm_page **pages, uint32_t order);
 
+void vm_page_array_list_free (struct list *pages);
+
 // Return the name of the given zone.
 const char* vm_page_zone_name (uint32_t zone_index);
 

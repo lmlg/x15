@@ -154,21 +154,7 @@ vm_map_entry_free_obj (struct vm_map_entry *entry)
       }
   }
 
-  struct vm_page *frames[VM_MAP_MAX_FRAMES];
-  uint32_t n_pages = 0;
-
-  list_for_each (&pages, px)
-    {
-      frames[n_pages] = list_entry (px, struct vm_page, node);
-      if (++n_pages == ARRAY_SIZE (frames))
-        {
-          vm_page_array_free (frames, VM_MAP_MAX_FRAMES_ORDER);
-          n_pages = 0;
-        }
-    }
-
-  for (; n_pages > 0; --n_pages)
-    vm_page_array_free (&frames[n_pages - 1], 0);
+  vm_page_array_list_free (&pages);
 }
 
 static void
@@ -260,9 +246,6 @@ vm_map_find_fixed (struct vm_map *map, struct vm_map_request *request)
     {
       if (map->end - start < size)
         return (ENOMEM);
-
-      request->next = NULL;
-      return (0);
     }
   else if (start >= next->start || next->start - start < size)
     return (ENOMEM);
@@ -797,6 +780,12 @@ vm_map_fault_cleanup (struct pmap *pmap, uintptr_t addr,
   return (retval);
 }
 
+static inline void
+vm_map_cleanup_object (struct vm_object **ptr)
+{
+  vm_object_unref (*ptr);
+}
+
 int
 vm_map_fault (struct vm_map *map, uintptr_t addr, int prot)
 {
@@ -808,6 +797,7 @@ vm_map_fault (struct vm_map *map, uintptr_t addr, int prot)
   uint64_t offset;
 
   THREAD_PIN_GUARD ();
+retry:
 
   {
     SXLOCK_SHGUARD (&map->lock);
@@ -836,8 +826,11 @@ vm_map_fault (struct vm_map *map, uintptr_t addr, int prot)
         vm_page_unref (page);
         return (0);
       }
+
+    vm_object_ref (object);
   }
 
+  CLEANUP (vm_map_cleanup_object) __unused _Auto objg = object;
   struct vm_page *frames[VM_MAP_MAX_FRAMES];
   int n_pages = vm_page_array_alloc_range (frames, 0,
                                            vm_map_entry_order (entry, addr),
@@ -866,13 +859,20 @@ vm_map_fault (struct vm_map *map, uintptr_t addr, int prot)
   error = vm_object_pager_get (object, frames, (void *)addr, n_pages);
 
   if (unlikely (error))
+    // Will map to SIGBUS.
     return (vm_map_fault_cleanup (map->pmap, addr, n_pages, EIO, frames));
 
   SXLOCK_SHGUARD (&map->lock);
-  // TODO: Test that the entry hasn't changed, and retry if so.
+  _Auto e2 = vm_map_lookup_nearest (map, addr);
+
+  if (!(e2 && e2->object == entry->object &&
+        addr >= entry->start && addr < entry->end))
+    goto retry;
+
   error = vm_object_insert_array (object, frames, n_pages, offset);
   assert (! error);
 
+  prot = VM_MAP_PROT (e2->flags);
   if (prot != (VM_PROT_READ | VM_PROT_WRITE))
     for (int i = 0; i < n_pages; ++i)
       pmap_protect (map->pmap, addr + i * PAGE_SIZE, prot, NULL);

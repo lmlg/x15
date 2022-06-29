@@ -1166,27 +1166,6 @@ pmap_copy (const struct pmap *src, struct pmap **dst)
   return (0);
 }
 
-static void
-pmap_cpu_table_free_pages (struct pmap_cpu_table *table)
-{
-  struct list *pages = &table->pages;
-  struct vm_page *frames[1u << 4];
-  uint32_t nr_pages = 0;
-
-  list_for_each_safe (pages, page, tmp)
-    {
-      frames[nr_pages] = list_entry (page, struct vm_page, node);
-      if (++nr_pages == ARRAY_SIZE (frames))
-        {
-          vm_page_array_free (frames, 4);
-          nr_pages = 0;
-        }
-    }
-
-  for (; nr_pages > 0; --nr_pages)
-    vm_page_array_free (&frames[nr_pages - 1], 0);
-}
-
 void
 pmap_destroy (struct pmap *pmap)
 {
@@ -1194,7 +1173,7 @@ pmap_destroy (struct pmap *pmap)
   for (uint32_t i = 0; i < cpu_count (); ++i)
     {
       _Auto cpu_table = pmap->cpu_tables[i];
-      pmap_cpu_table_free_pages (cpu_table);
+      vm_page_array_list_free (&cpu_table->pages);
       if (cpu_table->root_ptp_pa)
         pmap_free_root (cpu_table);
     }

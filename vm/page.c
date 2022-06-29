@@ -824,6 +824,26 @@ vm_page_array_free (struct vm_page **frames, uint32_t order)
     vm_page_free (frames[i], 0);
 }
 
+void
+vm_page_array_list_free (struct list *pages)
+{
+  struct vm_page *frames[1u << 4];
+  uint32_t nr_frames = 0;
+
+  list_for_each_safe (pages, page, tmp)
+    {
+      frames[nr_frames] = list_entry (page, struct vm_page, node);
+      if (++nr_frames == ARRAY_SIZE (frames))
+        {
+          vm_page_array_free (frames, 4);
+          nr_frames = 0;
+        }
+    }
+
+  for (; nr_frames > 0; --nr_frames)
+    vm_page_array_free (&frames[nr_frames - 1], 0);
+}
+
 const char*
 vm_page_zone_name (uint32_t zone_index)
 {
