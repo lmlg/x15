@@ -88,12 +88,20 @@ void vm_object_remove (struct vm_object *object, uint64_t start, uint64_t end);
 struct vm_page* vm_object_lookup (struct vm_object *object, uint64_t offset);
 
 // Fetch pages' contents from an external pager in a VM object.
-int vm_object_pager_get (struct vm_object *object, struct vm_page **pages,
-                         void *dst, int n_pages);
+static inline int
+vm_object_pager_get (struct vm_object *object, uint64_t offset,
+                     uint32_t nr_pages, void *dst)
+{
+  return (object->pager->get (object, offset, nr_pages, dst));
+}
 
 // Pageout the pages' contents in an external pager for a VM object.
-int vm_object_pager_put (struct vm_object *object, struct vm_page **pages,
-                         const void *src, int n_pages);
+static inline int
+vm_object_pager_put (struct vm_object *object, struct vm_page **pages,
+                     uint32_t nr_pages)
+{
+  return (object->pager->put (object, pages, nr_pages));
+}
 
 // Destroy a VM object.
 void vm_object_destroy (struct vm_object *object);

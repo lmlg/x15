@@ -856,7 +856,7 @@ retry:
     return (vm_map_fault_cleanup (map->pmap, addr, n_pages, 0, frames));
 
   frames[0]->offset = offset;
-  error = vm_object_pager_get (object, frames, (void *)addr, n_pages);
+  error = vm_object_pager_get (object, offset, n_pages, (void *)addr);
 
   if (unlikely (error))
     // Will map to SIGBUS.

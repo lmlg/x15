@@ -31,8 +31,8 @@ struct vm_page;
 
 struct vm_object_pager
 {
-  int (*get) (struct vm_object *, void *, size_t, uint64_t);
-  int (*put) (struct vm_object *, const void *, size_t, uint64_t);
+  int (*get) (struct vm_object *, uint64_t, uint32_t, void *);
+  int (*put) (struct vm_object *, struct vm_page **, uint32_t);
 };
 
 #define VM_OBJECT_PAGEOUT   0x01   // VM object supports pageouts.

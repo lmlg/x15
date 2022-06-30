@@ -202,29 +202,3 @@ vm_object_lookup (struct vm_object *object, uint64_t offset)
         return (page);
     }
 }
-
-int
-vm_object_pager_get (struct vm_object *object, struct vm_page **pages,
-                     void *dst, int nr_pages)
-{
-  int error = object->pager->get (object, dst, nr_pages * PAGE_SIZE,
-                                  pages[0]->offset);
-  if (! error)
-    for (int i = 0; i < nr_pages; ++i)
-      pages[i]->type = VM_PAGE_OBJECT;
-
-  return (error);
-}
-
-int
-vm_object_pager_put (struct vm_object *object, struct vm_page **pages,
-                     const void *src, int nr_pages)
-{
-  int error = object->pager->put (object, src, nr_pages * PAGE_SIZE,
-                                  pages[0]->offset);
-  if (! error)
-    for (int i = 0; i < nr_pages; ++i)
-      pages[i]->type = VM_PAGE_FREE;
-
-  return (error);
-}
