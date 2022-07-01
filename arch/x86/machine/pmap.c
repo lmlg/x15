@@ -1311,10 +1311,9 @@ pmap_remove_local (struct pmap *pmap, uintptr_t start, uintptr_t end)
 static bool
 pmap_cpumap_eq (const struct cpumap *a, const struct cpumap *b)
 {
-  if (! b)
-    return (cpumap_count_set (a) == 1 &&
-            cpumap_test (a, cpu_id ()));
-  return (cpumap_cmp (a, b) == 0);
+  return (b ? cpumap_cmp (a, b) == 0 :
+              (cpumap_count_set (a) == 1 &&
+               cpumap_test (a, cpu_id ())));
 }
 
 static inline void
