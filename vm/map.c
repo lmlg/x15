@@ -131,30 +131,7 @@ vm_map_entry_free_obj (struct vm_map_entry *entry)
     return;
 
   uint64_t offset = entry->offset;
-  struct list pages;
-
-  list_init (&pages);
-
-  {
-    MUTEX_GUARD (&obj->lock);
-
-    for (uintptr_t addr = entry->start; addr < entry->end; addr += PAGE_SIZE)
-      {
-        // Don't use vm_object_lookup, since it adds a reference to the page.
-        uint64_t poff = vm_page_btop (offset + addr - entry->start);
-        struct vm_page *page = rdxtree_lookup (&obj->pages, poff);
-
-        if (!page || atomic_sub_acq_rel (&page->nr_refs, 1) != 1)
-          continue;
-
-        rdxtree_remove (&obj->pages, poff);
-        vm_page_unlink (page);
-        list_insert_tail (&pages, &page->node);
-        --obj->nr_pages;
-      }
-  }
-
-  vm_page_array_list_free (&pages);
+  vm_object_remove (obj, offset, offset + entry->end - entry->start);
 }
 
 static void
@@ -796,6 +773,8 @@ vm_map_fault (struct vm_map *map, uintptr_t addr, int prot)
   struct vm_object *object;
   uint64_t offset;
 
+  // TODO: Handle COW pages.
+
   THREAD_PIN_GUARD ();
 retry:
 
@@ -855,7 +834,6 @@ retry:
   if (unlikely (error))
     return (vm_map_fault_cleanup (map->pmap, addr, n_pages, 0, frames));
 
-  frames[0]->offset = offset;
   error = vm_object_pager_get (object, offset, n_pages, (void *)addr);
 
   if (unlikely (error))
@@ -867,7 +845,10 @@ retry:
 
   if (!(e2 && e2->object == entry->object &&
         addr >= entry->start && addr < entry->end))
-    goto retry;
+    {
+      vm_map_fault_cleanup (map->pmap, addr, n_pages, 0, frames);
+      goto retry;
+    }
 
   error = vm_object_insert_array (object, frames, n_pages, offset);
   assert (! error);

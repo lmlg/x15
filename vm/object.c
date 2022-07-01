@@ -138,33 +138,51 @@ vm_object_insert_array (struct vm_object *object, struct vm_page **pages,
                         int nr_pages, uint64_t offset)
 {
   assert (vm_page_aligned (offset));
-  MUTEX_GUARD (&object->lock);
+
+  struct list pl;
+  list_init (&pl);
 
   int error;
-  if (offset + (nr_pages - 1) * PAGE_SIZE >= object->size)
-    return (EINVAL);
 
-  for (int i = 0; i < nr_pages; ++i, offset += PAGE_SIZE)
+  {
+    MUTEX_GUARD (&object->lock);
+
+    if (offset + (nr_pages - 1) * PAGE_SIZE >= object->size)
+      return (EINVAL);
+
+    for (int i = 0; i < nr_pages; ++i, offset += PAGE_SIZE)
+      {
+        error = rdxtree_insert (&object->pages, vm_page_btop (offset),
+                                pages[i]);
+        if (unlikely (error))
+          {
+            for (; i > 0; --i, offset -= PAGE_SIZE)
+              {
+                rdxtree_remove (&object->pages, vm_page_btop (offset));
+                list_insert_tail (&pl, &pages[i]->node);
+              }
+
+            goto fail;
+          }
+
+        vm_page_ref (pages[i]);
+        vm_page_link (pages[i], object, offset);
+      }
+
+    object->nr_pages += nr_pages;
+    return (0);
+  }
+
+fail:
+  list_for_each_safe (&pl, pnode, tmp)
     {
-      error = rdxtree_insert (&object->pages, vm_page_btop (offset), pages[i]);
-      if (error)
-        {
-          for (; i > 0; --i, offset -= PAGE_SIZE)
-            {
-              rdxtree_remove (&object->pages, vm_page_btop (offset));
-              vm_page_unref (pages[i]);
-              vm_page_unlink (pages[i]);
-            }
-
-          return (error);
-        }
-
-      vm_page_ref (pages[i]);
-      vm_page_link (pages[i], object, offset);
+      struct vm_page *pg = list_entry (pnode, struct vm_page, node);
+      if (vm_page_referenced (pg))
+        list_remove (pnode);
     }
 
-  object->nr_pages += nr_pages;
-  return (0);
+  vm_page_array_list_free (&pl);
+  return (error);
 }
 
 void
@@ -174,20 +192,29 @@ vm_object_remove (struct vm_object *object, uint64_t start, uint64_t end)
   assert (vm_page_aligned (end));
   assert (start <= end);
 
-  MUTEX_GUARD (&object->lock);
-  for (uint64_t offset = start; offset < end; offset += PAGE_SIZE)
-    {
-      struct vm_page *page = rdxtree_remove (&object->pages,
-                                             vm_page_btop (offset));
+  struct list pages;
+  list_init (&pages);
 
-      if (! page)
-        continue;
+  {
+    MUTEX_GUARD (&object->lock);
+    for (uint64_t offset = start; offset < end; offset += PAGE_SIZE)
+      {
+        struct vm_page *page = rdxtree_remove (&object->pages,
+                                               vm_page_btop (offset));
 
-      vm_page_unlink (page);
-      vm_page_unref (page);
-      assert (object->nr_pages != 0);
-      --object->nr_pages;
-    }
+        if (! page)
+          continue;
+
+        vm_page_unlink (page);
+        if (vm_page_unref_nofree (page))
+          list_insert_tail (&pages, &page->node);
+
+        assert (object->nr_pages != 0);
+        --object->nr_pages;
+      }
+  }
+
+  vm_page_array_list_free (&pages);
 }
 
 struct vm_page*

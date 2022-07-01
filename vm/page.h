@@ -262,13 +262,18 @@ vm_page_ref (struct vm_page *page)
   assert (nr_refs != (uint32_t)-1);
 }
 
-static inline void
-vm_page_unref (struct vm_page *page)
+static inline bool
+vm_page_unref_nofree (struct vm_page *page)
 {
   uint32_t nr_refs = atomic_sub_acq_rel (&page->nr_refs, 1);
   assert (nr_refs != 0);
+  return (nr_refs == 1);
+}
 
-  if (nr_refs == 1)
+static inline void
+vm_page_unref (struct vm_page *page)
+{
+  if (vm_page_unref_nofree (page))
     vm_page_free (page, 0);
 }
 
