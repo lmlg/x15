@@ -30,26 +30,6 @@ struct sxlock
   uint32_t waiters;
 };
 
-/*
- * Values for the lowest 2 bits of an sxlock.
- * Note that the combination of SXLOCK_EXOWNED | SXLOCK_SHOWNED is
- * forbidden, while all others are allowed.
- */
-
-#define SXLOCK_UNOWNED    0   // Unowned lock.
-#define SXLOCK_SHOWNED    1   // Owned by readers.
-#define SXLOCK_EXOWNED    2   // Owned by a writer.
-#define SXLOCK_EXWAITER   3   // A writer is waiting on the lock.
-
-/*
- * The rest of the word contains the number of readers.
- * Whether they are waiting or own the lock is determined by the
- * above bits.
- */
-
-#define SXLOCK_SHIFT    2
-#define SXLOCK_SHUSER   (1u << SXLOCK_SHIFT)
-
 static inline void
 sxlock_init (struct sxlock *sxp)
 {

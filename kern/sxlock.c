@@ -38,6 +38,7 @@
       if (atomic_load_rlx (&(obj)->lock) == tx)   \
         sleepq_wait (sleepq, label);   \
       sleepq_return (sleepq);   \
+      atomic_sub_rlx (&(obj)->waiters, 1);   \
     }   \
   while (1)
 
@@ -45,7 +46,7 @@ void
 sxlock_exlock_slow (struct sxlock *sxp)
 {
 #define COND(x)   ((x) == 0)
-  sxlock_lock_impl (sxlock_tryexlock, COND, "sxlock/0", sxp);
+  sxlock_lock_impl (sxlock_tryexlock, COND, "sxlock/X", sxp);
 #undef COND
 }
 
@@ -53,7 +54,7 @@ void
 sxlock_shlock_slow (struct sxlock *sxp)
 {
 #define COND(x)   ((x) == 0 || (((x) & 0x7fffffffu) != 0x7fffffffu))
-  sxlock_lock_impl (sxlock_tryshlock, COND, "sxlock/1", sxp);
+  sxlock_lock_impl (sxlock_tryshlock, COND, "sxlock/S", sxp);
 #undef COND
 }
 
