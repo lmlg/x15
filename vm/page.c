@@ -133,6 +133,7 @@ struct vm_page_waiter
   struct vm_page **frames;
   uint32_t min_order;
   uint32_t max_order;
+  uint32_t selector;
   int received;
 };
 
@@ -759,6 +760,7 @@ vm_page_array_alloc_range (struct vm_page **frames, uint32_t min_order,
       .frames = frames,
       .min_order = min_order,
       .max_order = max_order,
+      .selector = selector
     };
 
   plist_node_init (&pw.node, thread_real_global_priority (pw.thread));
@@ -783,12 +785,13 @@ static uint32_t
 vm_page_array_free_impl (struct vm_page **frames, uint32_t n_frames,
                          struct plist *plist)
 {
-  uint32_t released = 0;
+  uint32_t released = 0, selector = frames[0]->zone_index;
   plist_for_each_safe (plist, pnode, tmp)
     {
       _Auto entry = plist_entry (pnode, struct vm_page_waiter, node);
 
-      if ((1u << entry->min_order) > n_frames)
+      if ((1u << entry->min_order) > n_frames ||
+          selector > entry->selector)
         continue;
 
       uint32_t n = MIN (n_frames, 1u << entry->max_order);

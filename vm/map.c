@@ -851,9 +851,8 @@ retry:
     }
 
   error = vm_object_insert_array (object, frames, n_pages, offset);
-  assert (! error);
-
   prot = VM_MAP_PROT (e2->flags);
+
   if (prot != (VM_PROT_READ | VM_PROT_WRITE))
     for (int i = 0; i < n_pages; ++i)
       pmap_protect (map->pmap, addr + i * PAGE_SIZE, prot, NULL);

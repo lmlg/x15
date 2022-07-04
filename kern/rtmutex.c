@@ -45,7 +45,7 @@ static int
 rtmutex_lock_slow_common (struct rtmutex *rtmutex, bool timed, uint64_t ticks)
 {
   int error = 0;
-  uintptr_t self = (uintptr_t)thread_self(), bits = RTMUTEX_CONTENDED;
+  uintptr_t self = (uintptr_t)thread_self (), bits = RTMUTEX_CONTENDED;
 
   struct turnstile *turnstile = turnstile_lend (rtmutex);
   rtmutex_set_contended (rtmutex);
