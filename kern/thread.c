@@ -2642,7 +2642,7 @@ thread_propagate_priority (void)
       return;
     }
 
-  struct thread *thread = thread_self();
+  struct thread *thread = thread_self ();
 
   // Clear before propagation to avoid infinite recursion.
   thread->propagate_priority = false;

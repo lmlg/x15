@@ -52,7 +52,7 @@ adaptive_lock_is_owner (struct adaptive_lock *lock, uintptr_t owner)
 void
 adaptive_lock_acquire_slow (struct adaptive_lock *lock)
 {
-  uintptr_t self = (uintptr_t) thread_self();
+  uintptr_t self = (uintptr_t) thread_self ();
   struct sleepq *sleepq = sleepq_lend (lock, false);
 
   adaptive_lock_set_contended (lock);
