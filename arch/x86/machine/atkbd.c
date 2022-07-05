@@ -490,7 +490,7 @@ atkbd_read_status (bool check_out)
   if (status == 0xff)
     {
       log_info ("atkbd: no keyboard controller");
-      return ENODEV;
+      return (ENODEV);
     }
   else if (status & ATKBD_STATUS_PARITY_ERROR)
     {

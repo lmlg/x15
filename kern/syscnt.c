@@ -104,7 +104,7 @@ syscnt_info (const char *prefix, struct stream *stream)
             continue;
         }
       
-      fmt_xprintf (stream, "syscnt: %40s %20llu\n", syscnt->name,
-                   (unsigned long long)syscnt_read (syscnt));
+      fmt_xprintf (stream, "syscnt: %40s %20llu\n",
+                   syscnt->name, syscnt_read (syscnt));
     }
 }

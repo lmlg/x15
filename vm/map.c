@@ -938,8 +938,8 @@ vm_map_info (struct vm_map *map, struct stream *stream)
   const char *name = map == vm_map_get_kernel_map () ? "kernel map" : "map";
   SXLOCK_SHGUARD (&map->lock);
 
-  fmt_xprintf (stream, "vm_map: %s: %016lx-%016lx\n", name,
-               (unsigned long) map->start, (unsigned long) map->end);
+  fmt_xprintf (stream, "vm_map: %s: %016lx-%016lx\n",
+               name, map->start, map->end);
   fmt_xprintf (stream, "vm_map:      start             end          "
                "size     offset   flags    type\n");
 
@@ -948,9 +948,9 @@ vm_map_info (struct vm_map *map, struct stream *stream)
     {
       const char *type = entry->object ? "object" : "null";
       fmt_xprintf (stream, "vm_map: %016lx %016lx %8luk %08llx %08x %s\n",
-                   (unsigned long) entry->start, (unsigned long) entry->end,
-                   (unsigned long) (entry->end - entry->start) >> 10,
-                   (unsigned long long) entry->offset, entry->flags, type);
+                   entry->start, entry->end,
+                   (entry->end - entry->start) >> 10,
+                   entry->offset, entry->flags, type);
     }
 
   fmt_xprintf (stream, "vm_map: total: %zuk\n", map->size >> 10);

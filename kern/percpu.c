@@ -61,8 +61,8 @@ percpu_setup (void)
 {
   slist_init (&percpu_ops);
   percpu_area_size = &_percpu_end - &_percpu;
-  log_info ("percpu: max_cpus: %u, section size: %zuk", CONFIG_MAX_CPUS,
-            percpu_area_size >> 10);
+  log_info ("percpu: max_cpus: %u, section size: %zuk",
+            CONFIG_MAX_CPUS, percpu_area_size >> 10);
   assert (vm_page_aligned (percpu_area_size));
 
   if (! percpu_area_size)

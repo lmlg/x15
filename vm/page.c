@@ -463,8 +463,7 @@ vm_page_load (uint32_t zone_index, phys_addr_t start, phys_addr_t end)
   zone->heap_present = false;
 
   log_debug ("vm_page: load: %s: %llx:%llx",
-             vm_page_zone_name (zone_index),
-             (unsigned long long)start, (unsigned long long)end);
+             vm_page_zone_name (zone_index), (uint64_t)start, (uint64_t)end);
 
   ++vm_page_zones_size;
 }
@@ -486,8 +485,7 @@ vm_page_load_heap (uint32_t zone_index, phys_addr_t start, phys_addr_t end)
   zone->heap_present = true;
 
   log_debug ("vm_page: heap: %s: %llx:%llx",
-             vm_page_zone_name (zone_index),
-             (unsigned long long)start, (unsigned long long)end);
+             vm_page_zone_name (zone_index), (uint64_t)start, (uint64_t)end);
 }
 
 int
@@ -771,7 +769,7 @@ vm_page_array_alloc_range (struct vm_page **frames, uint32_t min_order,
   if (ret < 0)
     {
       plist_add (&vm_page_waiters_list, &pw.node);
-      thread_sleep (&vm_page_waiters_lock, &pw, "pageobj");
+      thread_sleep (&vm_page_waiters_lock, &pw, "pages");
       plist_remove (&vm_page_waiters_list, &pw.node);
     }
   else
@@ -788,23 +786,20 @@ vm_page_array_free_impl (struct vm_page **frames, uint32_t n_frames,
   uint32_t released = 0, selector = frames[0]->zone_index;
   plist_for_each_safe (plist, pnode, tmp)
     {
-      _Auto entry = plist_entry (pnode, struct vm_page_waiter, node);
+      _Auto waiter = plist_entry (pnode, struct vm_page_waiter, node);
 
-      if ((1u << entry->min_order) > n_frames ||
-          selector > entry->selector)
+      if ((1u << waiter->min_order) > n_frames ||
+          selector > waiter->selector)
         continue;
 
-      uint32_t n = MIN (n_frames, 1u << entry->max_order);
+      uint32_t n = MIN (n_frames, 1u << waiter->max_order);
       for (uint32_t i = 0; i < n; ++i)
-        {
-          struct vm_page *page = frames[i];
-          entry->frames[i] = page;
-        }
+        waiter->frames[i] = frames[i];
 
       frames += n;
       released += n;
-      entry->received = log2 (n);
-      thread_wakeup (entry->thread);
+      waiter->received = log2 (n);
+      thread_wakeup (waiter->thread);
     }
 
   return (released);
@@ -813,13 +808,16 @@ vm_page_array_free_impl (struct vm_page **frames, uint32_t n_frames,
 void
 vm_page_array_free (struct vm_page **frames, uint32_t order)
 {
-  uint32_t n_frames = 1u << order;
-  SPINLOCK_GUARD (&vm_page_waiters_lock, true);
-  uint32_t n_rel = vm_page_array_free_impl (frames, n_frames,
-                                            &vm_page_waiters_list);
+  uint32_t n_frames = 1u << order, n_rel;
 
-  if (n_rel == n_frames)
-    return;
+  {
+    SPINLOCK_GUARD (&vm_page_waiters_lock, true);
+    n_rel = vm_page_array_free_impl (frames, n_frames,
+                                     &vm_page_waiters_list);
+
+    if (n_rel == n_frames)
+      return;
+  }
 
   frames += n_rel;
   n_frames -= n_rel;
