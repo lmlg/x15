@@ -75,9 +75,9 @@ void sxlock_unlock (struct sxlock *sxp);
 // Shared-Exclusive guards.
 
 static inline void
-sxlock_guard_fini (struct sxlock **ptr)
+sxlock_guard_fini (void *ptr)
 {
-  sxlock_unlock (*ptr);
+  sxlock_unlock (*(struct sxlock **)ptr);
 }
 
 #define SXLOCK_SHGUARD(sxp)   \

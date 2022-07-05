@@ -758,9 +758,9 @@ vm_map_fault_cleanup (struct pmap *pmap, uintptr_t addr,
 }
 
 static inline void
-vm_map_cleanup_object (struct vm_object **ptr)
+vm_map_cleanup_object (void *ptr)
 {
-  vm_object_unref (*ptr);
+  vm_object_unref (*(struct vm_object **)ptr);
 }
 
 int

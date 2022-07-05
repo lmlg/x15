@@ -94,9 +94,9 @@ mutex_unlock (struct mutex *mutex)
 // Mutex guards.
 
 static inline void
-mutex_guard_fini (struct mutex **ptr)
+mutex_guard_fini (void *ptr)
 {
-  mutex_unlock (*ptr);
+  mutex_unlock (*(struct mutex **)ptr);
 }
 
 #define MUTEX_GUARD(mtx)   \

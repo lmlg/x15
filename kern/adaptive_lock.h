@@ -85,9 +85,9 @@ adaptive_lock_release (struct adaptive_lock *lock)
 // Adaptive lock guards.
 
 static inline void
-adaptive_lock_guard_fini (struct adaptive_lock **ptr)
+adaptive_lock_guard_fini (void *ptr)
 {
-  adaptive_lock_release (*ptr);
+  adaptive_lock_release (*(struct adaptive_lock **)ptr);
 }
 
 #define ADAPTIVE_LOCK_GUARD(lock)   \
