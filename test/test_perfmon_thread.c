@@ -120,7 +120,7 @@ static uint64_t
 test_event_read (struct test_event *event)
 {
   uint64_t value = perfmon_event_read (&event->pm_event);
-  log_info ("test: %s: %llu", event->name, (unsigned long long) value);
+  log_info ("test: %s: %llu", event->name, value);
   return (value);
 }
 

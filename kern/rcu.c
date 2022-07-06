@@ -673,7 +673,7 @@ rcu_defer (struct work *work)
 {
   assert (!rcu_reader_in_cs (thread_rcu_reader (thread_self ())));
 
-  unsigned long flags;
+  cpu_flags_t flags;
   thread_preempt_disable_intr_save (&flags);
 
   _Auto cpu_data = rcu_get_cpu_data ();

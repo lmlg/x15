@@ -1172,7 +1172,7 @@ thread_sched_fs_balance_scan (struct thread_runq *runq,
 {
   struct thread_runq *remote_runq = NULL;
 
-  unsigned long flags;
+  cpu_flags_t flags;
   thread_preempt_disable_intr_save (&flags);
 
   cpumap_for_each (&thread_active_runqs, i)
@@ -1294,7 +1294,7 @@ thread_sched_fs_balance_migrate (struct thread_runq *runq,
  * released and preemption enabled when needed.
  */
 static void
-thread_sched_fs_balance (struct thread_runq *runq, unsigned long *flags)
+thread_sched_fs_balance (struct thread_runq *runq, cpu_flags_t *flags)
 {
   /*
    * Grab the highest round now and only use the copy so the value is stable
@@ -1663,7 +1663,7 @@ error_sleepq:
 }
 
 static struct thread_runq*
-thread_lock_runq (struct thread *thread, unsigned long *flags)
+thread_lock_runq (struct thread *thread, cpu_flags_t *flags)
 {
   while (1)
     {
@@ -1678,7 +1678,7 @@ thread_lock_runq (struct thread *thread, unsigned long *flags)
 }
 
 static void
-thread_unlock_runq (struct thread_runq *runq, unsigned long flags)
+thread_unlock_runq (struct thread_runq *runq, cpu_flags_t flags)
 {
   spinlock_unlock_intr_restore (&runq->lock, flags);
 }
@@ -1785,7 +1785,7 @@ thread_join_common (struct thread *thread)
   uint32_t state;
   do
     {
-      unsigned long flags;
+      cpu_flags_t flags;
       _Auto runq = thread_lock_runq (thread, &flags);
       state = thread->state;
       thread_unlock_runq (runq, flags);
@@ -1825,7 +1825,7 @@ thread_balance (void *arg)
 
   thread_preempt_disable ();
 
-  unsigned long flags;
+  cpu_flags_t flags;
   spinlock_lock_intr_save (&runq->lock, &flags);
 
   while (1)
@@ -1977,7 +1977,7 @@ thread_shell_trace (struct shell *shell, int argc, char **argv)
       return;
     }
 
-  unsigned long flags;
+  cpu_flags_t flags;
   _Auto runq = thread_lock_runq (thread, &flags);
 
   if (thread == runq->current)
@@ -2152,7 +2152,7 @@ thread_exit (void)
 
   _Auto runq = thread_runq_local ();
 
-  unsigned long flags;
+  cpu_flags_t flags;
   spinlock_lock_intr_save (&runq->lock, &flags);
   atomic_store_rlx (&thread->state, THREAD_DEAD);
   thread_runq_schedule (runq);
@@ -2179,7 +2179,7 @@ thread_wakeup_common (struct thread *thread, int error, bool resume)
    */
 
   struct thread_runq *runq;
-  unsigned long flags;
+  cpu_flags_t flags;
 
   if (!thread->runq)
     {
@@ -2260,7 +2260,7 @@ thread_sleep_common (struct spinlock *interlock, const void *wchan_addr,
 
   _Auto runq = thread_runq_local ();
 
-  unsigned long flags;
+  cpu_flags_t flags;
   spinlock_lock_intr_save (&runq->lock, &flags);
 
   if (interlock)
@@ -2311,7 +2311,7 @@ thread_suspend (struct thread *thread)
     return (EINVAL);
 
   thread_preempt_disable ();
-  unsigned long flags;
+  cpu_flags_t flags;
   _Auto runq = thread_lock_runq (thread, &flags);
 
   int error;
@@ -2417,7 +2417,7 @@ thread_yield (void)
       thread_preempt_disable ();
       _Auto runq = thread_runq_local ();
 
-      unsigned long flags;
+      cpu_flags_t flags;
       spinlock_lock_intr_save (&runq->lock, &flags);
       runq = thread_runq_schedule (runq);
       spinlock_unlock_intr_restore (&runq->lock, flags);
@@ -2500,7 +2500,7 @@ thread_setscheduler (struct thread *thread, uint8_t policy,
   _Auto td = thread_turnstile_td (thread);
   turnstile_td_lock (td);
 
-  unsigned long flags;
+  cpu_flags_t flags;
   _Auto runq = thread_lock_runq (thread, &flags);
 
   if (thread_user_sched_policy (thread) == policy &&
@@ -2576,7 +2576,7 @@ thread_pi_setscheduler (struct thread *thread, uint8_t policy,
   const _Auto ops = thread_get_sched_ops (thread_policy_to_class (policy));
   uint32_t global_priority = ops->get_global_priority (priority);
 
-  unsigned long flags;
+  cpu_flags_t flags;
   _Auto runq = thread_lock_runq (thread, &flags);
 
   if (thread_real_sched_policy (thread) == policy &&
@@ -2677,7 +2677,7 @@ thread_get_affinity (const struct thread *thread, struct cpumap *cpumap)
 
   thread_preempt_disable ();
 
-  unsigned long flags;
+  cpu_flags_t flags;
   _Auto runq = thread_lock_runq ((struct thread *) thread, &flags);
 
   cpumap_copy (cpumap, &thread->cpumap);
@@ -2694,7 +2694,7 @@ thread_set_affinity (struct thread *thread, const struct cpumap *cpumap)
 
   thread_preempt_disable ();
 
-  unsigned long flags;
+  cpu_flags_t flags;
   _Auto runq = thread_lock_runq (thread, &flags);
   int error;
 

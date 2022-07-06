@@ -103,10 +103,10 @@ void console_puts_nolock (const char *s, size_t size);
 size_t console_gets_nolock (char *s, size_t size);
 
 // Acquire an exclusive lock on the console device.
-void console_lock (unsigned long *flags);
+void console_lock (cpu_flags_t *flags);
 
 // Release the lock on the console.
-void console_unlock (unsigned long flags);
+void console_unlock (cpu_flags_t flags);
 
 /*
  * This init operation provides :

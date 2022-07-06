@@ -197,7 +197,7 @@ console_puts_nolock (const char *s, size_t size)
 void
 console_puts (const char *s, size_t size)
 {
-  unsigned long flags;
+  cpu_flags_t flags;
 
   console_lock (&flags);
   console_puts_nolock (s, size);
@@ -213,7 +213,7 @@ console_gets_nolock (char *s, size_t size)
 size_t
 console_gets (char *s, size_t size)
 {
-  unsigned long flags;
+  cpu_flags_t flags;
 
   console_lock (&flags);
   size = console_gets_nolock (s, size);
@@ -223,14 +223,14 @@ console_gets (char *s, size_t size)
 }
 
 void
-console_lock (unsigned long *flags)
+console_lock (cpu_flags_t *flags)
 {
   if (console_dev)
     spinlock_lock_intr_save (&console_dev->lock, flags);
 }
 
 void
-console_unlock (unsigned long flags)
+console_unlock (cpu_flags_t flags)
 {
   if (console_dev)
     spinlock_unlock_intr_restore (&console_dev->lock, flags);

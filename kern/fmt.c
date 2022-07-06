@@ -38,7 +38,7 @@
  * doesn't use the null byte.
  */
 #define FMT_MAX_NUM_SIZE   \
-  (((sizeof(unsigned long long) * CHAR_BIT) / 3) + 1)
+  (((sizeof (uint64_t) * CHAR_BIT) / 3) + 1)
 
 // Special character used to denote that the putback buffer is empty.
 #define FMT_NOPUTBACK   (EOF - 1)

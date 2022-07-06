@@ -250,7 +250,7 @@ sleepq_destroy (struct sleepq *sleepq)
 }
 
 static struct sleepq*
-sleepq_acquire_common (const void *sync_obj, bool condition, unsigned long *flags)
+sleepq_acquire_common (const void *sync_obj, bool condition, cpu_flags_t *flags)
 {
   assert (sync_obj);
 
@@ -275,7 +275,7 @@ sleepq_acquire_common (const void *sync_obj, bool condition, unsigned long *flag
 
 static struct sleepq*
 sleepq_tryacquire_common (const void *sync_obj, bool condition,
-                          unsigned long *flags)
+                          cpu_flags_t *flags)
 {
   assert (sync_obj);
 
@@ -318,20 +318,20 @@ sleepq_release (struct sleepq *sleepq)
 
 struct sleepq*
 sleepq_acquire_intr_save (const void *sync_obj, bool condition,
-                          unsigned long *flags)
+                          cpu_flags_t *flags)
 {
   return (sleepq_acquire_common (sync_obj, condition, flags));
 }
 
 struct sleepq*
 sleepq_tryacquire_intr_save (const void *sync_obj, bool condition,
-                             unsigned long *flags)
+                             cpu_flags_t *flags)
 {
   return (sleepq_tryacquire_common (sync_obj, condition, flags));
 }
 
 void
-sleepq_release_intr_restore (struct sleepq *sleepq, unsigned long flags)
+sleepq_release_intr_restore (struct sleepq *sleepq, cpu_flags_t flags)
 {
   spinlock_unlock_intr_restore (&sleepq->bucket->lock, flags);
 }
@@ -357,7 +357,7 @@ sleepq_pop_free (struct sleepq *sleepq)
 }
 
 static struct sleepq*
-sleepq_lend_common (const void *sync_obj, bool condition, unsigned long *flags)
+sleepq_lend_common (const void *sync_obj, bool condition, cpu_flags_t *flags)
 {
   assert (sync_obj);
 
@@ -388,7 +388,7 @@ sleepq_lend_common (const void *sync_obj, bool condition, unsigned long *flags)
 }
 
 static void
-sleepq_return_common (struct sleepq *sleepq, unsigned long *flags)
+sleepq_return_common (struct sleepq *sleepq, cpu_flags_t *flags)
 {
   assert (sleepq_in_use (sleepq));
 
@@ -425,13 +425,13 @@ sleepq_return (struct sleepq *sleepq)
 
 struct sleepq*
 sleepq_lend_intr_save (const void *sync_obj, bool condition,
-                       unsigned long *flags)
+                       cpu_flags_t *flags)
 {
   return (sleepq_lend_common (sync_obj, condition, flags));
 }
 
 void
-sleepq_return_intr_restore (struct sleepq *sleepq, unsigned long flags)
+sleepq_return_intr_restore (struct sleepq *sleepq, cpu_flags_t flags)
 {
   sleepq_return_common (sleepq, &flags);
 }

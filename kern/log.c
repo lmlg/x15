@@ -140,7 +140,7 @@ static void
 log_run (void *arg __unused)
 {
   bool published = false;
-  unsigned long flags;
+  cpu_flags_t flags;
 
   spinlock_lock_intr_save (&log_lock, &flags);
 
@@ -189,7 +189,7 @@ log_run (void *arg __unused)
 static void
 log_dump (unsigned int level)
 {
-  unsigned long flags;
+  cpu_flags_t flags;
   spinlock_lock_intr_save (&log_lock, &flags);
 
   struct log_consumer ctx;
@@ -413,7 +413,7 @@ log_puts (const struct log_record *record, int nr_chars)
   assert (nr_chars >= 0);
   size_t size = offsetof (struct log_record, msg) + nr_chars + 1;
 
-  unsigned long flags;
+  cpu_flags_t flags;
   spinlock_lock_intr_save (&log_lock, &flags);
 
   int error = mbuf_push (&log_mbuf, record, size, true);

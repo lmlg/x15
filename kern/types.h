@@ -21,6 +21,8 @@
 #ifndef KERN_TYPES_H
 #define KERN_TYPES_H
 
+#include <machine/types.h>
+
 typedef long ssize_t;
 
 #endif

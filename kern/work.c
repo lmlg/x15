@@ -201,7 +201,7 @@ work_pool_cpu_select (int flags)
 }
 
 static void
-work_pool_acquire (struct work_pool *pool, unsigned long *flags)
+work_pool_acquire (struct work_pool *pool, cpu_flags_t *flags)
 {
   if (pool->flags & WORK_PF_GLOBAL)
     spinlock_lock_intr_save (&pool->lock, flags);
@@ -210,7 +210,7 @@ work_pool_acquire (struct work_pool *pool, unsigned long *flags)
 }
 
 static void
-work_pool_release (struct work_pool *pool, unsigned long flags)
+work_pool_release (struct work_pool *pool, cpu_flags_t flags)
 {
   if (pool->flags & WORK_PF_GLOBAL)
     spinlock_unlock_intr_restore (&pool->lock, flags);
@@ -283,7 +283,7 @@ work_process (void *arg)
   struct work_pool *pool = self->pool;
   struct spinlock *lock = (pool->flags & WORK_PF_GLOBAL) ? &pool->lock : NULL;
 
-  unsigned long flags;
+  cpu_flags_t flags;
   work_pool_acquire (pool, &flags);
 
   while (1)
@@ -505,7 +505,7 @@ work_schedule (struct work *work, int flags)
   THREAD_PIN_GUARD ();
   struct work_pool *pool = work_pool_cpu_select (flags);
 
-  unsigned long cpu_flags;
+  cpu_flags_t cpu_flags;
   work_pool_acquire (pool, &cpu_flags);
   work_pool_push_work (pool, work);
   work_pool_release (pool, cpu_flags);
@@ -517,7 +517,7 @@ work_queue_schedule (struct work_queue *queue, int flags)
   THREAD_PIN_GUARD ();
   struct work_pool *pool = work_pool_cpu_select (flags);
 
-  unsigned long cpu_flags;
+  cpu_flags_t cpu_flags;
   work_pool_acquire (pool, &cpu_flags);
   work_pool_concat_queue (pool, queue);
   work_pool_release (pool, cpu_flags);

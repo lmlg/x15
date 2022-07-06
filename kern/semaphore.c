@@ -34,7 +34,7 @@ semaphore_init (struct semaphore *semaphore, uint16_t value, uint16_t max_value)
 int
 semaphore_trywait (struct semaphore *semaphore)
 {
-  unsigned long flags;
+  cpu_flags_t flags;
   _Auto sleepq = sleepq_lend_intr_save (semaphore, false, &flags);
   int error;
 
@@ -53,7 +53,7 @@ semaphore_trywait (struct semaphore *semaphore)
 void
 semaphore_wait (struct semaphore *semaphore)
 {
-  unsigned long flags;
+  cpu_flags_t flags;
   _Auto sleepq = sleepq_lend_intr_save (semaphore, false, &flags);
 
   while (1)
@@ -73,7 +73,7 @@ semaphore_wait (struct semaphore *semaphore)
 int
 semaphore_timedwait (struct semaphore *semaphore, uint64_t ticks)
 {
-  unsigned long flags;
+  cpu_flags_t flags;
   _Auto sleepq = sleepq_lend_intr_save (semaphore, false, &flags);
   int error;
 
@@ -99,7 +99,7 @@ semaphore_timedwait (struct semaphore *semaphore, uint64_t ticks)
 int
 semaphore_post (struct semaphore *semaphore)
 {
-  unsigned long flags;
+  cpu_flags_t flags;
   _Auto sleepq = sleepq_lend_intr_save (semaphore, false, &flags);
   int error;
 

@@ -742,14 +742,14 @@ thread_preempt_enable (void)
 }
 
 static inline void
-thread_preempt_disable_intr_save (unsigned long *flags)
+thread_preempt_disable_intr_save (cpu_flags_t *flags)
 {
   thread_preempt_disable ();
   cpu_intr_save (flags);
 }
 
 static inline void
-thread_preempt_enable_intr_restore (unsigned long flags)
+thread_preempt_enable_intr_restore (cpu_flags_t flags)
 {
   cpu_intr_restore (flags);
   thread_preempt_enable ();

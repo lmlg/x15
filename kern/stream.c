@@ -22,7 +22,7 @@
 struct console_stream
 {
   struct stream base;
-  unsigned long flags;
+  cpu_flags_t flags;
 };
 
 static struct console_stream console_stream_storage;

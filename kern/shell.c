@@ -282,8 +282,8 @@ shell_history_print (struct shell_history *history, struct shell *shell)
   for (size_t i = history->oldest; i != history->newest; i++)
     {
       _Auto line = shell_history_get (history, i);
-      shell_printf (shell, "%6lu  %s\n",
-                    (unsigned long) (i - history->oldest),
+      shell_printf (shell, "%6zu  %s\n",
+                    (size_t) (i - history->oldest),
                     shell_line_str (line));
     }
 }

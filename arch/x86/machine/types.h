@@ -18,10 +18,16 @@
 #ifndef X86_TYPES_H
 #define X86_TYPES_H
 
+#ifndef __ASSEMBLER__
+
 #ifdef CONFIG_X86_PAE
   typedef unsigned long long phys_addr_t;
 #else
   typedef unsigned long phys_addr_t;
 #endif
+
+typedef unsigned long cpu_flags_t;
+
+#endif   // __ASSEMBLER__
 
 #endif

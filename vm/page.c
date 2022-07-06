@@ -867,8 +867,8 @@ vm_page_info (struct stream *stream)
   for (uint32_t i = 0; i < vm_page_zones_size; ++i)
     {
       _Auto zone = &vm_page_zones[i];
-      unsigned long pages = (unsigned long) (zone->pages_end - zone->pages);
-      fmt_xprintf (stream, "vm_page: %s: pages: %lu (%luM), "
+      size_t pages = (size_t) (zone->pages_end - zone->pages);
+      fmt_xprintf (stream, "vm_page: %s: pages: %zu (%zuM), "
                    "free: %zu (%zuM)\n",
                    vm_page_zone_name (i), pages, pages >> (20 - PAGE_SHIFT),
                    zone->nr_free_pages,

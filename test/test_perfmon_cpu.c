@@ -87,7 +87,7 @@ test_event_report (struct test_event *event)
   uint64_t count = perfmon_event_read (&event->pm_event);
   int error = count ? 0 : EINVAL;
   error_check (error, __func__);
-  log_info ("test: %s: %llu", event->name, (unsigned long long)count);
+  log_info ("test: %s: %llu", event->name, count);
 }
 
 static void

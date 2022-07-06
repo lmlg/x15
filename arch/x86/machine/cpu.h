@@ -21,6 +21,7 @@
 #include <limits.h>
 
 #include <machine/page.h>
+#include <machine/types.h>
 
 // Architecture defined exception vectors.
 #define CPU_EXC_DE                  0    // Divide Error.
@@ -199,6 +200,7 @@ enum cpu_feature
   #define CPU_EXC_FRAME_FP        CPU_EXC_FRAME_RBP
   #define CPU_EXC_FRAME_SP        CPU_EXC_FRAME_RSP
   #define CPU_EXC_FRAME_PC        CPU_EXC_FRAME_RIP
+  #define CPU_EXC_FRAME_FLAGS     CPU_EXC_FRAME_RFLAGS
 #else
   #define CPU_EXC_FRAME_EAX       0
   #define CPU_EXC_FRAME_EBX       1
@@ -223,6 +225,7 @@ enum cpu_feature
   #define CPU_EXC_FRAME_FP        CPU_EXC_FRAME_EBP
   #define CPU_EXC_FRAME_SP        CPU_EXC_FRAME_ESP
   #define CPU_EXC_FRAME_PC        CPU_EXC_FRAME_EIP
+  #define CPU_EXC_FRAME_FLAGS     CPU_EXC_FRAME_EFLAGS
 #endif
 
 // EFLAGS register flags.
@@ -395,12 +398,11 @@ cpu_feature_map_test (const struct cpu_feature_map *map,
  *
  * Implies a compiler barrier.
  *
- * TODO Add cpu_flags_t type.
  */
-static __always_inline unsigned long
+static __always_inline cpu_flags_t
 cpu_get_eflags (void)
 {
-  unsigned long eflags;
+  cpu_flags_t eflags;
   asm volatile ("pushf\n"
                 "pop %0\n"
                 : "=r" (eflags)
@@ -469,16 +471,16 @@ struct cpu_seg_desc
  * TODO Break down.
  */
 #define CPU_DECL_GETSET_CR(name)   \
-static __always_inline unsigned long   \
-cpu_get_ ## name(void)   \
+static __always_inline uintptr_t   \
+CONCAT (cpu_get_, name) (void)   \
 {   \
-  unsigned long name;   \
+  uintptr_t name;   \
   asm volatile("mov %%" QUOTE (name) ", %0" : "=r" (name) : : "memory");   \
   return (name);   \
 }   \
 \
 static __always_inline void   \
-cpu_set_ ## name(unsigned long value)   \
+CONCAT (cpu_set_, name) (uintptr_t value)   \
 {   \
   asm volatile ("mov %0, %%" QUOTE (name) : : "r" (value) : "memory");   \
 }
@@ -525,7 +527,7 @@ cpu_intr_disable (void)
  * Implies a compiler barrier.
  */
 static __always_inline void
-cpu_intr_restore (unsigned long flags)
+cpu_intr_restore (cpu_flags_t flags)
 {
   asm volatile ("push %0\n"
                 "popf\n"
@@ -540,10 +542,16 @@ cpu_intr_restore (unsigned long flags)
  * Implies a compiler barrier.
  */
 static __always_inline void
-cpu_intr_save (unsigned long *flags)
+cpu_intr_save (cpu_flags_t *flags)
 {
   *flags = cpu_get_eflags ();
   cpu_intr_disable ();
+}
+
+static __always_inline bool
+cpu_flags_intr_enabled (cpu_flags_t flags)
+{
+  return ((flags & CPU_EFL_IF) != 0);
 }
 
 /*
@@ -551,13 +559,10 @@ cpu_intr_save (unsigned long *flags)
  *
  * Implies a compiler barrier.
  */
-static __always_inline int
+static __always_inline bool
 cpu_intr_enabled (void)
 {
-  unsigned long eflags;
-
-  eflags = cpu_get_eflags ();
-  return ((eflags & CPU_EFL_IF) ? 1 : 0);
+  return (cpu_flags_intr_enabled (cpu_get_eflags ()));
 }
 
 /*
@@ -768,7 +773,7 @@ cpu_tlb_flush_all (void)
     cpu_tlb_flush ();
   else
     {
-      unsigned long cr4 = cpu_get_cr4 ();
+      uintptr_t cr4 = cpu_get_cr4 ();
 
       if (!(cr4 & CPU_CR4_PGE))
         cpu_tlb_flush ();
@@ -849,7 +854,7 @@ void cpu_mp_setup (void);
 // CPU initialization on APs.
 void cpu_ap_setup (uint32_t ap_id);
 
-static inline unsigned int
+static inline uint32_t
 cpu_apic_id (uint32_t cpu)
 {
   return (cpu_from_id(cpu)->apic_id);

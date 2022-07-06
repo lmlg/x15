@@ -610,7 +610,10 @@ cpu_exc_page_fault (const struct cpu_exc_frame *frame)
    * can't cause another page fault while handling a page fault.
    */
   uintptr_t addr = cpu_get_cr2 ();
-  cpu_intr_enable ();
+
+  // Enable interrupts if the parent context allowed them.
+  if (cpu_flags_intr_enabled (frame->words[CPU_EXC_FRAME_FLAGS]))
+    cpu_intr_enable ();
 
   int prot = ((code & CPU_PF_WRITE) ? VM_PROT_WRITE : VM_PROT_READ) |
              ((code & CPU_PF_EXEC)  ? VM_PROT_EXEC  : 0);
@@ -628,7 +631,7 @@ cpu_exc_page_fault (const struct cpu_exc_frame *frame)
     { // TODO: Implement segfaults for userspace tasks.
       cpu_halt_broadcast ();
       printf ("trap: page fault error: %d, code %d at %#lx in task %s\n",
-              (int)error, code, (long)addr, self->task->name);
+              (int)error, code, addr, self->task->name);
 
       cpu_show_thread ();
       cpu_show_frame (frame);
@@ -1152,8 +1155,7 @@ cpu_log_info (const struct cpu *cpu)
               cpu->id, cpu->phys_addr_width, cpu->virt_addr_width);
 
   log_info ("cpu%u: frequency: %llu.%02llu MHz", cpu->id,
-            (unsigned long long) cpu_freq / 1000000,
-            (unsigned long long) cpu_freq % 1000000);
+            cpu_freq / 1000000, cpu_freq % 1000000);
 
 
   char features[60], *ptr = features;

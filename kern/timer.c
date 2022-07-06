@@ -87,7 +87,7 @@ struct timer_cpu_data
 static struct timer_cpu_data timer_cpu_data __percpu;
 
 static struct timer_cpu_data*
-timer_cpu_data_acquire (unsigned long *flags)
+timer_cpu_data_acquire (cpu_flags_t *flags)
 {
   thread_preempt_disable ();
   _Auto cpu_data = cpu_local_ptr (timer_cpu_data);
@@ -97,7 +97,7 @@ timer_cpu_data_acquire (unsigned long *flags)
 }
 
 static struct timer_cpu_data*
-timer_lock_cpu_data (struct timer *timer, unsigned long *flags)
+timer_lock_cpu_data (struct timer *timer, cpu_flags_t *flags)
 {
   while (1)
     {
@@ -117,7 +117,7 @@ timer_lock_cpu_data (struct timer *timer, unsigned long *flags)
 }
 
 static void
-timer_unlock_cpu_data (struct timer_cpu_data *cpu_data, unsigned long flags)
+timer_unlock_cpu_data (struct timer_cpu_data *cpu_data, cpu_flags_t flags)
 {
   spinlock_unlock_intr_restore (&cpu_data->lock, flags);
 }
@@ -250,7 +250,7 @@ timer_run (struct timer *timer)
   if (timer_detached (timer))
     return;
 
-  unsigned long cpu_flags;
+  cpu_flags_t cpu_flags;
   _Auto cpu_data = timer_lock_cpu_data (timer, &cpu_flags);
 
   /*
@@ -416,7 +416,7 @@ timer_init (struct timer *timer, timer_fn_t fn, int flags)
 void
 timer_schedule (struct timer *timer, uint64_t ticks)
 {
-  unsigned long cpu_flags;
+  cpu_flags_t cpu_flags;
   _Auto cpu_data = timer_lock_cpu_data (timer, &cpu_flags);
 
   if (! cpu_data)
@@ -451,7 +451,7 @@ timer_cancel (struct timer *timer)
 {
   assert (!timer_detached (timer));
 
-  unsigned long cpu_flags;
+  cpu_flags_t cpu_flags;
   _Auto cpu_data = timer_lock_cpu_data (timer, &cpu_flags);
 
   assert (!timer->joiner);

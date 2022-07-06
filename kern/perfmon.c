@@ -932,7 +932,7 @@ perfmon_event_load_thread (struct perfmon_event *event, struct thread *thread)
   _Auto td = thread_get_perfmon_td (thread);
   _Auto td_pmc = perfmon_td_get_pmc (td, pmc_index);
 
-  unsigned long flags;
+  cpu_flags_t flags;
   spinlock_lock_intr_save (&td->lock, &flags);
 
   if (perfmon_td_pmc_used (td_pmc))
@@ -992,7 +992,7 @@ perfmon_event_unload_thread (struct perfmon_event *event)
   _Auto td = thread_get_perfmon_td (event->thread);
   _Auto td_pmc = perfmon_td_get_pmc (td, pmc_index);
 
-  unsigned long flags;
+  cpu_flags_t flags;
   spinlock_lock_intr_save (&td->lock, &flags);
   perfmon_td_pmc_unref (td_pmc);
   spinlock_unlock_intr_restore (&td->lock, flags);
@@ -1190,8 +1190,7 @@ perfmon_compute_poll_interval (uint64_t pmc_width)
   if (time < PERFMON_MIN_POLL_INTERVAL)
     {
       log_warning ("perfmon: invalid poll interval %llu, forced to %llu",
-                   (unsigned long long)time,
-                   (unsigned long long)PERFMON_MIN_POLL_INTERVAL);
+                   time, PERFMON_MIN_POLL_INTERVAL);
       time = PERFMON_MIN_POLL_INTERVAL;
     }
 

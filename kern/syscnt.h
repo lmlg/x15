@@ -72,7 +72,7 @@ syscnt_read (const struct syscnt *syscnt)
 static inline void
 syscnt_set (struct syscnt *syscnt, uint64_t value)
 {
-  unsigned long flags;
+  cpu_flags_t flags;
   spinlock_lock_intr_save (&syscnt->lock, &flags);
   syscnt->value = value;
   spinlock_unlock_intr_restore (&syscnt->lock, flags);
@@ -81,7 +81,7 @@ syscnt_set (struct syscnt *syscnt, uint64_t value)
 static inline void
 syscnt_add (struct syscnt *syscnt, int64_t delta)
 {
-  unsigned long flags;
+  cpu_flags_t flags;
   spinlock_lock_intr_save (&syscnt->lock, &flags);
   syscnt->value += delta;
   spinlock_unlock_intr_restore (&syscnt->lock, flags);
@@ -90,7 +90,7 @@ syscnt_add (struct syscnt *syscnt, int64_t delta)
 static inline uint64_t
 syscnt_read (struct syscnt *syscnt)
 {
-  unsigned long flags;
+  cpu_flags_t flags;
   spinlock_lock_intr_save (&syscnt->lock, &flags);
 
   uint64_t value = syscnt->value;

@@ -548,14 +548,14 @@ sref_cache_get_delta (struct sref_cache *cache, size_t index)
 }
 
 static struct sref_cache*
-sref_cache_acquire (unsigned long *flags)
+sref_cache_acquire (cpu_flags_t *flags)
 {
   thread_preempt_disable_intr_save (flags);
   return (sref_get_local_cache ());
 }
 
 static void
-sref_cache_release (unsigned long flags)
+sref_cache_release (cpu_flags_t flags)
 {
   thread_preempt_enable_intr_restore (flags);
 }
@@ -657,7 +657,7 @@ sref_cache_end_epoch (struct sref_cache *cache)
 static void
 sref_cache_flush (struct sref_cache *cache, struct sref_queue *queue)
 {
-  unsigned long flags;
+  cpu_flags_t flags;
 
   while (1)
     {
@@ -697,7 +697,7 @@ sref_queue_review (struct sref_queue *queue, struct sref_cache *cache)
     {
       _Auto counter = sref_queue_pop (queue);
 
-      unsigned long flags;
+      cpu_flags_t flags;
       spinlock_lock_intr_save (&counter->lock, &flags);
 
 #ifdef SREF_VERIFY
@@ -773,7 +773,7 @@ static void
 sref_cache_manage (void *arg)
 {
   struct sref_cache *cache = arg;
-  unsigned long flags;
+  cpu_flags_t flags;
   thread_preempt_disable_intr_save (&flags);
 
   while (1)
@@ -944,7 +944,7 @@ sref_counter_inc_common (struct sref_counter *counter, struct sref_cache *cache)
 void
 sref_counter_inc (struct sref_counter *counter)
 {
-  unsigned long flags;
+  cpu_flags_t flags;
   _Auto cache = sref_cache_acquire (&flags);
   sref_counter_inc_common (counter, cache);
   sref_cache_release (flags);
@@ -953,7 +953,7 @@ sref_counter_inc (struct sref_counter *counter)
 void
 sref_counter_dec (struct sref_counter *counter)
 {
-  unsigned long flags;
+  cpu_flags_t flags;
   _Auto cache = sref_cache_acquire (&flags);
   sref_cache_set_dirty (cache);
   sref_delta_dec (sref_cache_take_delta (cache, counter));
@@ -963,7 +963,7 @@ sref_counter_dec (struct sref_counter *counter)
 struct sref_counter*
 sref_weakref_get (struct sref_weakref *weakref)
 {
-  unsigned long flags;
+  cpu_flags_t flags;
   _Auto cache = sref_cache_acquire (&flags);
   _Auto counter = sref_weakref_tryget (weakref);
 

@@ -35,6 +35,7 @@
 #include <stdint.h>
 
 #include <kern/init.h>
+#include <kern/types.h>
 
 struct sleepq;
 
@@ -65,14 +66,13 @@ void sleepq_release (struct sleepq *sleepq);
  */
 struct sleepq* sleepq_acquire_intr_save (const void *sync_obj,
                                          bool condition,
-                                         unsigned long *flags);
+                                         cpu_flags_t *flags);
 
 struct sleepq* sleepq_tryacquire_intr_save (const void *sync_obj,
                                             bool condition,
-                                            unsigned long *flags);
+                                            cpu_flags_t *flags);
 
-void sleepq_release_intr_restore (struct sleepq *sleepq,
-                                  unsigned long flags);
+void sleepq_release_intr_restore (struct sleepq *sleepq, cpu_flags_t flags);
 
 /*
  * Lend/return a sleep queue.
@@ -100,9 +100,9 @@ void sleepq_return (struct sleepq *sleepq);
  * interrupts.
  */
 struct sleepq* sleepq_lend_intr_save (const void *sync_obj, bool condition,
-                                      unsigned long *flags);
+                                      cpu_flags_t *flags);
 
-void sleepq_return_intr_restore (struct sleepq *sleepq, unsigned long flags);
+void sleepq_return_intr_restore (struct sleepq *sleepq, cpu_flags_t flags);
 
 /*
  * Return true if the given sleep queue has no waiters.

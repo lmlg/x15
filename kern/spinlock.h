@@ -187,7 +187,7 @@ spinlock_unlock (struct spinlock *lock)
  * CPU flags.
  */
 static inline int
-spinlock_trylock_intr_save (struct spinlock *lock, unsigned long *flags)
+spinlock_trylock_intr_save (struct spinlock *lock, cpu_flags_t *flags)
 {
   thread_preempt_disable_intr_save (flags);
   int error = spinlock_lock_fast (lock);
@@ -210,7 +210,7 @@ spinlock_trylock_intr_save (struct spinlock *lock, unsigned long *flags)
  * the caller are filled with the previous value of the CPU flags.
  */
 static inline void
-spinlock_lock_intr_save (struct spinlock *lock, unsigned long *flags)
+spinlock_lock_intr_save (struct spinlock *lock, cpu_flags_t *flags)
 {
   thread_preempt_disable_intr_save (flags);
   spinlock_lock_common (lock);
@@ -226,7 +226,7 @@ spinlock_lock_intr_save (struct spinlock *lock, unsigned long *flags)
  * flags which must have been obtained with a lock or trylock operation.
  */
 static inline void
-spinlock_unlock_intr_restore (struct spinlock *lock, unsigned long flags)
+spinlock_unlock_intr_restore (struct spinlock *lock, cpu_flags_t flags)
 {
   spinlock_unlock_common (lock);
   thread_preempt_enable_intr_restore (flags);
@@ -237,7 +237,7 @@ spinlock_unlock_intr_restore (struct spinlock *lock, unsigned long flags)
 struct spinlock_guard
 {
   struct spinlock *spinlock;
-  unsigned long flags;
+  cpu_flags_t flags;
   bool saved_flags;
 };
 
