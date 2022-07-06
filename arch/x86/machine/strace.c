@@ -38,14 +38,10 @@ strace_show_one (unsigned int index, uintptr_t ip)
 {
   const struct symbol *symbol = symbol_lookup (ip);
   if (! symbol)
-    printf ("#%02u [" STRACE_ADDR_FORMAT "]\n", index, (unsigned long) ip);
+    printf ("#%02u [" STRACE_ADDR_FORMAT "]\n", index, ip);
   else
-    {
-      uintptr_t offset = ip - symbol->addr;
-      printf ("#%02u [" STRACE_ADDR_FORMAT "] %s+%#lx/%#lx\n",
-              index, (unsigned long) ip, symbol->name,
-              (unsigned long)offset, (unsigned long)symbol->size);
-    }
+    printf ("#%02u [" STRACE_ADDR_FORMAT "] %s+%#lx/%#lx\n",
+            index, ip, symbol->name, ip - symbol->addr, symbol->size);
 }
 
 void
