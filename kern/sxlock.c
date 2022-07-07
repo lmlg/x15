@@ -20,42 +20,34 @@
 
 #include <machine/cpu.h>
 
-#define sxlock_lock_impl(try_lock, cond, label, obj)   \
+#define sxlock_lock_impl(try_lock, label, obj)   \
   do   \
     {   \
-      if (try_lock (obj) == 0)   \
-        return;   \
+      struct sleepq *sleepq = sleepq_lend ((obj), false);   \
+      atomic_or_rel (&(obj)->lock, 0x80000000u);   \
       \
-      uint32_t val = atomic_load_rlx (&(obj)->lock);   \
-      if (cond (val))   \
-        continue;   \
+      while (1)   \
+        {   \
+          if (try_lock (obj) == 0)   \
+            break;   \
+          \
+          sleepq_wait (sleepq, label);   \
+        }   \
       \
-      uint32_t tx = val | 0x80000000u;   \
-      atomic_add_rlx (&(obj)->waiters, 1);   \
-      atomic_cas_acq (&(obj)->lock, val, tx);   \
-      \
-      struct sleepq *sleepq = sleepq_lend (obj, false);   \
-      if (atomic_load_rlx (&(obj)->lock) == tx)   \
-        sleepq_wait (sleepq, label);   \
       sleepq_return (sleepq);   \
-      atomic_sub_rlx (&(obj)->waiters, 1);   \
     }   \
-  while (1)
+  while (0)
 
 void
 sxlock_exlock_slow (struct sxlock *sxp)
 {
-#define COND(x)   ((x) == 0)
-  sxlock_lock_impl (sxlock_tryexlock, COND, "sxlock/X", sxp);
-#undef COND
+  sxlock_lock_impl (sxlock_tryexlock, "sxlock/X", sxp);
 }
 
 void
 sxlock_shlock_slow (struct sxlock *sxp)
 {
-#define COND(x)   ((x) == 0 || (((x) & 0x7fffffffu) != 0x7fffffffu))
-  sxlock_lock_impl (sxlock_tryshlock, COND, "sxlock/S", sxp);
-#undef COND
+  sxlock_lock_impl (sxlock_tryshlock, "sxlock/S", sxp);
 }
 
 void
@@ -65,7 +57,6 @@ sxlock_unlock (struct sxlock *sxp)
     {
       uint32_t val = atomic_load_rlx (&sxp->lock),
                cnt = val & 0x7fffffffu,
-               waiters = atomic_load_rlx (&sxp->waiters),
                nval = (cnt == 0x7fffffffu || cnt == 1) ? 0 : val - 1;
 
       if (!atomic_cas_bool_rel (&sxp->lock, val, nval))
@@ -73,12 +64,12 @@ sxlock_unlock (struct sxlock *sxp)
           cpu_pause ();
           continue;
         }
-      else if (!nval && (waiters || (val & 0x80000000u)))
+      else if (!nval && (val & 0x80000000u))
         {
           struct sleepq *sleepq = sleepq_acquire (sxp, false);
           if (sleepq)
             {
-              (cnt > 1 ? sleepq_broadcast : sleepq_signal) (sleepq);
+              sleepq_broadcast (sleepq);
               sleepq_release (sleepq);
             }
         }

@@ -27,14 +27,12 @@
 struct sxlock
 {
   uint32_t lock;
-  uint32_t waiters;
 };
 
 static inline void
 sxlock_init (struct sxlock *sxp)
 {
   sxp->lock = 0;
-  sxp->waiters = 0;
 }
 
 static inline int
@@ -55,7 +53,7 @@ sxlock_exlock (struct sxlock *sxp)
 static inline int
 sxlock_tryshlock (struct sxlock *sxp)
 {
-  uint32_t val = atomic_load_rlx (&sxp->lock);
+  uint32_t val = atomic_load_rlx (&sxp->lock) & 0x7fffffffu;
   return (val != 0x7fffffffu &&
           atomic_cas_bool_acq (&sxp->lock, val, val + 1) ?
           0 : EBUSY);

@@ -1212,16 +1212,13 @@ pmap_enter_local (struct pmap *pmap, uintptr_t va, phys_addr_t pa,
           struct vm_page *page = NULL;
 
           if (is_kernel)
-            page = vm_page_alloc (0, VM_PAGE_SEL_DIRECTMAP, VM_PAGE_PMAP);
+            page = pmap_alloc_page ();
           else
             vm_page_array_alloc (&page, 0,
                                  VM_PAGE_SEL_DIRECTMAP, VM_PAGE_PMAP);
 
           if (page)
-            {
-              list_insert_tail (&cpu_table->pages, &page->node);
-              vm_page_set_type (page, 0, VM_PAGE_PMAP);
-            }
+            list_insert_tail (&cpu_table->pages, &page->node);
           else
             {
               log_warning ("pmap: page table allocation failure");
@@ -1385,7 +1382,7 @@ pmap_protect_single (struct pmap_cpu_table *table, uintptr_t addr,
   assert (pmap_pte_valid (*pte));
   pmap_pte_t bits = (is_kernel ? PMAP_PTE_G : PMAP_PTE_US) |
                     pmap_prot_table[prot & VM_PROT_ALL];
-  pmap_pte_set (pte, *pte & PMAP_PA_MASK, bits, pt_level);
+  pmap_pte_set (pte, *pte, bits, pt_level);
   return (0);
 }
 
@@ -1421,10 +1418,10 @@ pmap_protect (struct pmap *pmap, uintptr_t va, int prot,
   _Auto op = pmap_update_oplist_prev_op (oplist);
 
   if (op &&
-       op->operation == PMAP_UPDATE_OP_PROTECT &&
-       op->protect_args.end == va &&
-       op->protect_args.prot == prot &&
-       pmap_cpumap_eq (&op->cpumap, cpumap))
+      op->operation == PMAP_UPDATE_OP_PROTECT &&
+      op->protect_args.end == va &&
+      op->protect_args.prot == prot &&
+      pmap_cpumap_eq (&op->cpumap, cpumap))
     {
       op->protect_args.end = va + PAGE_SIZE;
       return (0);
