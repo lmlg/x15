@@ -259,7 +259,7 @@ lapic_ap_setup (void)
 static void
 lapic_ipi (uint32_t apic_id, uint32_t icr)
 {
-  unsigned long flags;
+  cpu_flags_t flags;
   cpu_intr_save (&flags);
 
   if (!(icr & LAPIC_ICR_DEST_MASK))

@@ -214,8 +214,8 @@ biosmem_unregister_boot_data (phys_addr_t start, phys_addr_t end)
     return;
 
   log_debug ("biosmem: unregister boot data: %llx:%llx",
-             (unsigned long long)biosmem_boot_data_array[i].start,
-             (unsigned long long)biosmem_boot_data_array[i].end);
+             (uint64_t)biosmem_boot_data_array[i].start,
+             (uint64_t)biosmem_boot_data_array[i].end);
 
   --biosmem_nr_boot_data;
   memmove (&biosmem_boot_data_array[i],
@@ -715,13 +715,13 @@ biosmem_map_show (void)
 
   for (; entry < end; ++entry)
     log_debug ("biosmem: %018llx:%018llx, %s",
-               (unsigned long long)entry->base_addr,
-               (unsigned long long)(entry->base_addr + entry->length),
+               (uint64_t)entry->base_addr,
+               (uint64_t)(entry->base_addr + entry->length),
                biosmem_type_desc (entry->type));
 
   log_debug ("biosmem: heap: %llx:%llx",
-             (unsigned long long) biosmem_heap_start,
-             (unsigned long long) biosmem_heap_end);
+             (uint64_t)biosmem_heap_start,
+             (uint64_t)biosmem_heap_end);
 }
 
 static void __init
@@ -741,8 +741,7 @@ biosmem_load_zone (struct biosmem_zone *zone, uint64_t max_phys_end)
         }
 
       log_warning ("biosmem: warning: zone %s truncated to %#llx",
-                   vm_page_zone_name (zone_index),
-                   (unsigned long long) max_phys_end);
+                   vm_page_zone_name (zone_index), (uint64_t)max_phys_end);
       phys_end = max_phys_end;
     }
 
@@ -804,8 +803,8 @@ static void __init
 biosmem_free_usable_range (phys_addr_t start, phys_addr_t end)
 {
   log_debug ("biosmem: release to vm_page: %llx:%llx (%lluk)",
-             (unsigned long long) start, (unsigned long long) end,
-             (unsigned long long) ((end - start) >> 10));
+             (uint64_t)start, (uint64_t)end,
+             (uint64_t)((end - start) >> 10));
 
   while (start < end)
     {

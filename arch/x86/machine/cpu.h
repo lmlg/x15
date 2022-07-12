@@ -489,8 +489,8 @@ CONCAT (cpu_set_, name) (uintptr_t value)   \
  * Access to the processor control registers. CR1 is reserved.
  *
  * The caller should assume that these functions are declared as :
- *  static inline unsigned long cpu_get_crX(void);
- *  static inline void cpu_set_crX(unsigned long);
+ *  static inline uintptr_t cpu_get_crX (void);
+ *  static inline void cpu_set_crX (uintptr_t);
  *
  * They all imply a compiler barrier.
  */
