@@ -120,7 +120,7 @@ struct pmap *pmap_current_ptr __percpu;
 #ifdef CONFIG_X86_PAE
 
   // Alignment required on page directory pointer tables.
-  #define PMAP_PDPT_ALIGN 32
+  #define PMAP_PDPT_ALIGN   32
 
   // "Hidden" kernel root page tables for PAE mode.
   static alignas (PMAP_PDPT_ALIGN) pmap_pte_t
@@ -438,7 +438,7 @@ pmap_setup_paging (void)
 
   pmap_pte_t *root_ptp =
 #ifdef CONFIG_X86_PAE
-    (void *) BOOT_VTOP ((uintptr_t) pmap_cpu_kpdpts[0]);
+    (void *)BOOT_VTOP ((uintptr_t) pmap_cpu_kpdpts[0]);
 #else
     biosmem_bootalloc (1);
 #endif
@@ -506,11 +506,7 @@ pmap_ap_setup_paging (uint32_t ap_id)
   struct pmap_cpu_table *cpu_table =
     (void *)BOOT_VTOP((uintptr_t) pmap->cpu_tables[ap_id]);
 
-#ifdef CONFIG_X86_PAE
-  return ((void *)(uint32_t)cpu_table->root_ptp_pa);
-#else
-  return ((void *)cpu_table->root_ptp_pa);
-#endif
+  return ((void *)(uintptr_t)cpu_table->root_ptp_pa);
 }
 
 static bool
