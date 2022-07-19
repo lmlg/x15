@@ -1036,12 +1036,11 @@ pmap_thread_cleanup (struct thread *thread)
 }
 
 int
-pmap_kextract (uintptr_t va, phys_addr_t *pap)
+pmap_extract (struct pmap *pmap, uintptr_t va, phys_addr_t *pap)
 {
   uint32_t level = PMAP_NR_LEVELS - 1;
-  _Auto kernel_pmap = pmap_get_kernel_pmap ();
   pmap_pte_t *pte, *ptp =
-    pmap_ptp_from_pa (kernel_pmap->cpu_tables[cpu_id ()]->root_ptp_pa);
+    pmap_ptp_from_pa (pmap->cpu_tables[cpu_id ()]->root_ptp_pa);
 
   while (1)
     {
@@ -1243,7 +1242,9 @@ pmap_enter (struct pmap *pmap, uintptr_t va, phys_addr_t pa,
 {
   va = vm_page_trunc (va);
   pa = vm_page_trunc (pa);
-  assert (pmap_range_valid (pmap, va, va + PAGE_SIZE));
+
+  if (!(flags & PMAP_NO_CHECK))
+    assert (pmap_range_valid (pmap, va, va + PAGE_SIZE));
 
   _Auto oplist = pmap_update_oplist_get ();
   int error = pmap_update_oplist_prepare (oplist, pmap);
@@ -1322,10 +1323,12 @@ pmap_cpumap_copy (struct cpumap *dst, const struct cpumap *src)
 }
 
 int
-pmap_remove (struct pmap *pmap, uintptr_t va, const struct cpumap *cpumap)
+pmap_remove (struct pmap *pmap, uintptr_t va, int flags,
+             const struct cpumap *cpumap)
 {
   va = vm_page_trunc (va);
-  assert (pmap_range_valid (pmap, va, va + PAGE_SIZE));
+  if (!(flags & PMAP_NO_CHECK))
+    assert (pmap_range_valid (pmap, va, va + PAGE_SIZE));
 
   _Auto oplist = pmap_update_oplist_get ();
   int error = pmap_update_oplist_prepare (oplist, pmap);
@@ -1400,10 +1403,11 @@ pmap_protect_local (struct pmap *pmap, uintptr_t start,
 
 int
 pmap_protect (struct pmap *pmap, uintptr_t va, int prot,
-              const struct cpumap *cpumap)
+              int flags, const struct cpumap *cpumap)
 {
   va = vm_page_trunc (va);
-  assert (pmap_range_valid (pmap, va, va + PAGE_SIZE));
+  if (!(flags & PMAP_NO_CHECK))
+    assert (pmap_range_valid (pmap, va, va + PAGE_SIZE));
 
   _Auto oplist = pmap_update_oplist_get ();
   int error = pmap_update_oplist_prepare (oplist, pmap);

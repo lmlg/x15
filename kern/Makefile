@@ -12,6 +12,7 @@ x15_SOURCES-y += \
         kern/fmt.c \
         kern/init.c \
         kern/intr.c \
+        kern/ipc.c \
         kern/kernel.c \
         kern/kmem.c \
         kern/log.c \

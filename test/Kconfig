@@ -15,6 +15,11 @@ config TEST_FMT
 	default n
 	select SYMTAB
 
+config TEST_IPC
+	bool "inter-process communication"
+	default n
+	select SYMTAB
+
 config TEST_MUTEX
 	bool "mutex API"
 	default n

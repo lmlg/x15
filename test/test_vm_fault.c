@@ -81,7 +81,7 @@ test_vm_fault_thread (void *arg __unused)
   assert (memcmp ((void *)(va + PAGE_SIZE / 2), "xxxx", 4) == 0);
 
   // Test that writing to read-only mappings fails with EACCES.
-  error = vm_copy ("???", (void *)va, 3);
+  error = vm_copy ((void *)va, "???", 3);
   assert (error == EACCES);
 
   struct vm_map_entry entry;
@@ -110,7 +110,7 @@ TEST_DEFERRED (vm_fault)
   thread_join (thread);
 
   int val;
-  error = vm_copy ((void *)0x1, &val, sizeof (val));
+  error = vm_copy (&val, (void *)0x1, sizeof (val));
   assert (error == EFAULT);
   assert (!thread_self()->fixup);
 

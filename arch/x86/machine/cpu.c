@@ -612,21 +612,20 @@ cpu_exc_page_fault (const struct cpu_exc_frame *frame)
   uintptr_t addr = cpu_get_cr2 ();
 
   // Enable interrupts if the parent context allowed them.
-  if (cpu_flags_intr_enabled (frame->words[CPU_EXC_FRAME_FLAGS]))
-    cpu_intr_enable ();
-
+  int flags = cpu_flags_intr_enabled (frame->words[CPU_EXC_FRAME_FLAGS]) ?
+              VM_MAP_FAULT_INTR : 0;
   int prot = ((code & CPU_PF_WRITE) ? VM_PROT_WRITE : VM_PROT_READ) |
              ((code & CPU_PF_EXEC)  ? VM_PROT_EXEC  : 0);
   struct thread *self = thread_self ();
   struct vm_map *map = self->task->map;
   int error = map == vm_map_get_kernel_map () ?
-              EFAULT : vm_map_fault (map, addr, prot);
+              EFAULT : vm_map_fault (map, addr, prot, flags);
   cpu_intr_disable ();
 
   if (! error)
     return;
   else if (self->fixup)
-    cpu_fixup_restore (self->fixup, (void *)frame->words, error);
+    cpu_fixup_restore (&self->fixup->env, (void *)frame->words, error);
   else
     { // TODO: Implement segfaults for userspace tasks.
       cpu_halt_broadcast ();

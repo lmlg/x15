@@ -565,6 +565,21 @@ cpu_intr_enabled (void)
   return (cpu_flags_intr_enabled (cpu_get_eflags ()));
 }
 
+// CPU interrupt guard.
+static inline void
+cpu_intr_guard_fini (void *ptr)
+{
+  cpu_intr_restore (*(cpu_flags_t *)ptr);
+}
+
+#define CPU_INTR_GUARD()   \
+  CLEANUP (cpu_intr_guard_fini) cpu_flags_t __unused UNIQ(cig) =   \
+    ({   \
+       cpu_flags_t flags_;   \
+       cpu_intr_save (&flags_);   \
+       flags_;   \
+     })
+
 /*
  * Spin-wait loop hint.
  *

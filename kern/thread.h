@@ -205,7 +205,7 @@ struct thread
   struct perfmon_td perfmon_td;   // ( )
 #endif
 
-  struct cpu_fixup *fixup;        // (-)
+  struct vm_fixup_t *fixup;       // (-)
 };
 
 #define THREAD_ATTR_DETACHED   0x1

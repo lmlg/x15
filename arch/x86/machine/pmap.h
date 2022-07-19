@@ -160,6 +160,7 @@
 
 // Mapping creation flags.
 #define PMAP_PEF_GLOBAL   0x1   // Create a mapping on all processors.
+#define PMAP_NO_CHECK     0x2   // Disable assertions.
 
 typedef phys_addr_t pmap_pte_t;
 
@@ -205,12 +206,20 @@ int pmap_thread_build (struct thread *thread);
 void pmap_thread_cleanup (struct thread *thread);
 
 /*
- * Extract a mapping from the kernel map.
+ * Extract a mapping from a physical map.
  *
  * This function walks the page tables to retrieve the physical address
  * mapped at the given virtual address.
  */
-int pmap_kextract (uintptr_t va, phys_addr_t *pap);
+
+int pmap_extract (struct pmap *pmap, uintptr_t va, phys_addr_t *pap);
+
+// Same as above, only for the kernel pmap.
+static inline int
+pmap_kextract (uintptr_t va, phys_addr_t *pap)
+{
+  return (pmap_extract (pmap_get_kernel_pmap (), va, pap));
+}
 
 // Create a pmap for a user task.
 int pmap_create (struct pmap **pmapp);
@@ -244,7 +253,7 @@ int pmap_enter (struct pmap *pmap, uintptr_t va, phys_addr_t pa,
  * This function may trigger an implicit update.
  */
 int pmap_remove (struct pmap *pmap, uintptr_t va,
-                 const struct cpumap *cpumap);
+                 int flags, const struct cpumap *cpumap);
 
 /*
  * Set the protection of a mapping in a physical map.
@@ -252,7 +261,7 @@ int pmap_remove (struct pmap *pmap, uintptr_t va,
  * This function may trigger an implicit update.
  */
 int pmap_protect (struct pmap *pmap, uintptr_t va, int prot,
-                  const struct cpumap *cpumap);
+                  int flags, const struct cpumap *cpumap);
 
 /*
  * Force application of pending modifications on a physical map.

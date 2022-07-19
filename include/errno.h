@@ -32,5 +32,6 @@
 #define EOVERFLOW           12
 #define EMSGSIZE            13
 #define EACCES              14
+#define EINTR               15
 
 #endif

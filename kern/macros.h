@@ -73,7 +73,7 @@
 #define DIV_CEIL(n, d)   (((n) + (d) - 1) / (d))
 
 #define P2ALIGNED(x, a)     (((x) & ((a) - 1)) == 0)
-#define ISP2(x)             P2ALIGNED(x, x)
+#define ISP2(x)             P2ALIGNED (x, x)
 #define P2ALIGN(x, a)       ((x) & -(a))        // decreases if not aligned
 #define P2ROUND(x, a)       (-(-(x) & -(a)))    // increases if not aligned
 #define P2END(x, a)         (-(~(x) & -(a)))    // always increases

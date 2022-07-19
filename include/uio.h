@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2017 Richard Braun.
+ * Copyright (c) 2022 Agustina Arzille.
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -13,17 +13,25 @@
  *
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
- *
- *
- * This file is a top header in the inclusion hierarchy, and shouldn't include
- * other headers that may cause circular dependencies.
  */
 
-#ifndef X86_PAGE_H
-#define X86_PAGE_H
+#ifndef UIO_H
+#define UIO_H
 
-#define PAGE_SHIFT  12
-#define PAGE_SIZE   (1 << PAGE_SHIFT)
-#define PAGE_MASK   (PAGE_SIZE - 1)
+#include <stddef.h>
+
+/* Type for scatter/gather IO.
+ * This structure must be in sync with user-space. */
+struct iovec
+{
+  void *iov_base;
+  size_t iov_len;
+};
+
+#define UIO_MAXIOV   128
+
+_Static_assert (__builtin_offsetof (struct iovec, iov_base) == 0 &&
+                __builtin_offsetof (struct iovec, iov_len) == sizeof (void *),
+                "Invalid offsets for struct iovec");
 
 #endif

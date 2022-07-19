@@ -1,6 +1,7 @@
 x15_SOURCES-$(CONFIG_TEST_ATOMIC)              += test/test_atomic.c
 x15_SOURCES-$(CONFIG_TEST_BULLETIN)            += test/test_bulletin.c
 x15_SOURCES-$(CONFIG_TEST_FMT)                 += test/test_fmt.c
+x15_SOURCES-$(CONFIG_TEST_IPC)                 += test/test_ipc.c
 x15_SOURCES-$(CONFIG_TEST_MUTEX)               += test/test_mutex.c
 x15_SOURCES-$(CONFIG_TEST_MUTEX_PI)            += test/test_mutex_pi.c
 x15_SOURCES-$(CONFIG_TEST_PERFMON_CPU)         += test/test_perfmon_cpu.c

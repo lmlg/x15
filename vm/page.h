@@ -95,9 +95,6 @@ struct vm_page
   uint64_t offset;
 };
 
-// Forward declaration for the object-page interface.
-struct vm_map;
-
 static inline uint16_t
 vm_page_type (const struct vm_page *page)
 {

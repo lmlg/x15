@@ -1719,8 +1719,8 @@ thread_alloc_stack (void)
   _Auto last_page = vm_page_lookup (last_pa);
   assert (last_page);
 
-  pmap_remove (kernel_pmap, va, cpumap_all ());
-  pmap_remove (kernel_pmap, va + PAGE_SIZE + stack_size, cpumap_all ());
+  pmap_remove (kernel_pmap, va, 0, cpumap_all ());
+  pmap_remove (kernel_pmap, va + PAGE_SIZE + stack_size, 0, cpumap_all ());
   pmap_update (kernel_pmap);
 
   return ((char *)va + PAGE_SIZE);

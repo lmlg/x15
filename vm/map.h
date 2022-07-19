@@ -60,6 +60,9 @@
 #define VM_MAP_INHERIT(flags)   (((flags) & 0xf00) >> 8)
 #define VM_MAP_ADVICE(flags)    (((flags) & 0xf000) >> 12)
 
+// Flags for vm_map_fault.
+#define VM_MAP_FAULT_INTR   0x01   // Enable interrupts.
+
 // Memory range descriptor.
 struct vm_map_entry
 {
@@ -95,6 +98,9 @@ vm_map_get_kernel_map (void)
   return (&vm_map_kernel_map);
 }
 
+// Get the kernel virtual address used in IPC routines.
+uintptr_t vm_map_ipc_addr (void);
+
 // Create a virtual mapping.
 int vm_map_enter (struct vm_map *map, uintptr_t *startp,
                   size_t size, size_t align, int flags,
@@ -116,32 +122,49 @@ int vm_map_create (struct vm_map **mapp);
 int vm_map_lookup (struct vm_map *map, uintptr_t addr,
                    struct vm_map_entry *entry);
 
+// Test that an address is valid with a particular protection.
+bool vm_map_check_valid (struct vm_map *map, uintptr_t addr, int prot);
+
 // Put back a previously returned entry.
 void vm_map_entry_put (struct vm_map_entry *entry);
 
 // Handle a page fault.
-int vm_map_fault (struct vm_map *map, uintptr_t addr, int prot);
+int vm_map_fault (struct vm_map *map, uintptr_t addr, int prot, int flags);
 
 // Destroy a VM map.
 void vm_map_destroy (struct vm_map *map);
 
 // Safely copy bytes to and from arbitrary buffers.
-int vm_copy (const void *src, void *dst, size_t size);
+int vm_copy (void *dst, const void *src, size_t size);
 
 // Display information about a memory map.
 void vm_map_info (struct vm_map *map, struct stream *stream);
 
 // VM fixups.
 
-static inline void
-vm_fixup_fini (void *p __unused)
+struct vm_fixup_t
 {
-  thread_self()->fixup = NULL;
+  struct cpu_fixup env;
+  struct vm_fixup_t *next;
+};
+
+static inline void
+vm_fixup_fini (void *p)
+{
+  thread_self()->fixup = ((struct vm_fixup_t *)p)->next;
 }
 
-#define vm_fixup   cpu_fixup CLEANUP (vm_fixup_fini)
+#define vm_fixup   vm_fixup_t CLEANUP (vm_fixup_fini)
 
-#define vm_fixup_save(fx)   cpu_fixup_save (thread_self()->fixup = (fx))
+#define vm_fixup_save(fx)   \
+  ({   \
+     struct vm_fixup_t *fx_ = (fx);   \
+     _Auto thr_ = thread_self ();   \
+     \
+     fx_->next = thr_->fixup;   \
+     thr_->fixup = fx_;   \
+     cpu_fixup_save (&fx_->env);   \
+   })
 
 /*
  * This init operation provides :
