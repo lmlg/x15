@@ -120,7 +120,7 @@ ipc_copy_iter_single (struct ipc_iterator *src_it, struct thread *src_thr,
     return (-EFAULT);
   else if (pmap_extract (dst_map->pmap, (uintptr_t)dst_ptr, &pa) != 0)
     { // Need to fault in the destination address.
-      int rv = vm_map_fault (dst_map, (uintptr_t)dst_ptr, VM_PROT_DEFAULT,
+      int rv = vm_map_fault (dst_map, (uintptr_t)dst_ptr, VM_PROT_RDWR,
                              cpu_flags_intr_enabled (env.flags) ?
                              VM_MAP_FAULT_INTR : 0);
       if (rv)
@@ -133,7 +133,7 @@ ipc_copy_iter_single (struct ipc_iterator *src_it, struct thread *src_thr,
     }
 
   uintptr_t va = vm_map_ipc_addr ();
-  pmap_enter (src_map->pmap, va, pa, VM_PROT_DEFAULT, PMAP_NO_CHECK);
+  pmap_enter (src_map->pmap, va, pa, VM_PROT_RDWR, PMAP_NO_CHECK);
   pmap_update (src_map->pmap);
 
   /* Schedule the removal now so that even if we get an address violation,

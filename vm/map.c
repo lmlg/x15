@@ -745,7 +745,7 @@ vm_map_setup (void)
 
   size_t size = PAGE_SIZE + cpu_count () * PAGE_SIZE * VM_MAP_MAX_FRAMES;
   if (vm_map_enter (&vm_map_kernel_map, &vm_map_ipc_va, size,
-                    0, VM_MAP_FLAGS (VM_PROT_DEFAULT, VM_PROT_DEFAULT,
+                    0, VM_MAP_FLAGS (VM_PROT_RDWR, VM_PROT_RDWR,
                                      VM_INHERIT_NONE, VM_ADV_DEFAULT, 0),
                     NULL, 0) != 0)
     panic ("could not create internal mappings");
@@ -848,7 +848,7 @@ vm_map_fault_get_data (struct vm_map *map, struct vm_object *object,
     {
       int error = pmap_enter (map->pmap, va + i * PAGE_SIZE,
                               vm_page_to_pa (frames[i]),
-                              VM_PROT_DEFAULT, PMAP_NO_CHECK);
+                              VM_PROT_RDWR, PMAP_NO_CHECK);
       if (unlikely (error))
         {
           vm_map_put_pagein_addr (map->pmap, va, i);
