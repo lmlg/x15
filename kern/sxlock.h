@@ -29,6 +29,8 @@ struct sxlock
   uint32_t lock;
 };
 
+#define SXLOCK_MASK   (0x7fffffffu)
+
 static inline void
 sxlock_init (struct sxlock *sxp)
 {
@@ -38,7 +40,9 @@ sxlock_init (struct sxlock *sxp)
 static inline int
 sxlock_tryexlock (struct sxlock *sxp)
 {
-  return (atomic_cas_bool_acq (&sxp->lock, 0, 0x7fffffffu) ? 0 : EBUSY);
+  uint32_t val = atomic_load_rlx (&sxp->lock) & SXLOCK_MASK;
+  return (!val && atomic_cas_bool_acq (&sxp->lock, val, val | SXLOCK_MASK) ?
+          0 : EBUSY);
 }
 
 void sxlock_exlock_slow (struct sxlock *sxp);
@@ -53,8 +57,8 @@ sxlock_exlock (struct sxlock *sxp)
 static inline int
 sxlock_tryshlock (struct sxlock *sxp)
 {
-  uint32_t val = atomic_load_rlx (&sxp->lock) & 0x7fffffffu;
-  return (val != 0x7fffffffu &&
+  uint32_t val = atomic_load_rlx (&sxp->lock) & SXLOCK_MASK;
+  return (val != SXLOCK_MASK &&
           atomic_cas_bool_acq (&sxp->lock, val, val + 1) ?
           0 : EBUSY);
 }
@@ -68,9 +72,29 @@ sxlock_shlock (struct sxlock *sxp)
     sxlock_shlock_slow (sxp);
 }
 
+void sxlock_unlock_slow (struct sxlock *sxp);
+
+static inline void
+sxlock_unlock (struct sxlock *sxp)
+{
+  uint32_t val = atomic_load_rlx (&sxp->lock);
+  int wake;
+
+  if ((val & SXLOCK_MASK) == SXLOCK_MASK)
+    {
+      atomic_swap_rel (&sxp->lock, 0);
+      wake = 1;
+    }
+  else
+    wake = (atomic_sub_rel (&sxp->lock, 1) << 1) == 2;
+
+  if (wake && (val & (SXLOCK_MASK + 1)))
+    sxlock_unlock_slow (sxp);
+}
+
 void sxlock_unlock (struct sxlock *sxp);
 
-// Shared-Exclusive guards.
+// Shared-Exclusive lock guards.
 
 static inline void
 sxlock_guard_fini (void *ptr)

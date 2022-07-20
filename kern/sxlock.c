@@ -24,7 +24,7 @@
   do   \
     {   \
       struct sleepq *sleepq = sleepq_lend ((obj), false);   \
-      atomic_or_rel (&(obj)->lock, 0x80000000u);   \
+      atomic_or_rel (&(obj)->lock, SXLOCK_MASK + 1);   \
       \
       while (1)   \
         {   \
@@ -51,29 +51,12 @@ sxlock_shlock_slow (struct sxlock *sxp)
 }
 
 void
-sxlock_unlock (struct sxlock *sxp)
+sxlock_unlock_slow (struct sxlock *sxp)
 {
-  while (1)
+  struct sleepq *sleepq = sleepq_acquire (sxp, false);
+  if (sleepq)
     {
-      uint32_t val = atomic_load_rlx (&sxp->lock),
-               cnt = val & 0x7fffffffu,
-               nval = (cnt == 0x7fffffffu || cnt == 1) ? 0 : val - 1;
-
-      if (!atomic_cas_bool_rel (&sxp->lock, val, nval))
-        {
-          cpu_pause ();
-          continue;
-        }
-      else if (!nval && (val & 0x80000000u))
-        {
-          struct sleepq *sleepq = sleepq_acquire (sxp, false);
-          if (sleepq)
-            {
-              sleepq_broadcast (sleepq);
-              sleepq_release (sleepq);
-            }
-        }
-
-      return;
+      sleepq_broadcast (sleepq);
+      sleepq_release (sleepq);
     }
 }

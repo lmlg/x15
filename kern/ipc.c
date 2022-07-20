@@ -93,7 +93,8 @@ static ssize_t
 ipc_copy_iter_single (struct ipc_iterator *src_it, struct thread *src_thr,
                       struct ipc_iterator *dst_it, struct thread *dst_thr)
 {
-  struct vm_map *src_map = src_thr->task->map, *dst_map = dst_thr->task->map;
+  struct vm_map *src_map = src_thr->task->map,
+                *dst_map = dst_thr->task->map;
   struct vm_fixup fixup;
   volatile struct ipc_env env = { .pintr = 0 };
 

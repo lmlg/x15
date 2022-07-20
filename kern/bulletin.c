@@ -57,10 +57,9 @@ bulletin_subscribe (struct bulletin *bulletin, struct bulletin_sub *sub,
 void
 bulletin_unsubscribe (struct bulletin *bulletin, struct bulletin_sub *sub)
 {
-  {
-    SPINLOCK_GUARD (&bulletin->lock, false);
-    list_rcu_remove (&sub->node);
-  }
+  spinlock_lock (&bulletin->lock);
+  list_rcu_remove (&sub->node);
+  spinlock_unlock (&bulletin->lock);
 
   rcu_wait ();
 }
