@@ -3,8 +3,10 @@
 Embedded symbol table generator.
 '''
 
+import re
 import sys
 
+neg_re = re.compile ("[^a-zA-Z0-9_]")
 symtab = []
 
 def valid_symbol (parts):
@@ -13,6 +15,7 @@ def valid_symbol (parts):
 
   sym = parts[3]
   if (sym.startswith ("__func__") or sym.startswith ("CSWTCH") or
+      neg_re.search (sym) or
       (parts[2] == 'r' and sym.startswith ("symbol_name_"))):
     return False
 
