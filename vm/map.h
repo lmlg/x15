@@ -89,6 +89,8 @@ struct vm_map
   uintptr_t find_cache;
   size_t find_cache_threshold;
   struct pmap *pmap;
+  uint32_t soft_faults;
+  uint32_t hard_faults;
 };
 
 static inline struct vm_map*

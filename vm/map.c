@@ -669,6 +669,8 @@ vm_map_init (struct vm_map *map, struct pmap *pmap,
   map->lookup_cache = NULL;
   vm_map_reset_find_cache (map);
   map->pmap = pmap;
+  map->soft_faults = 0;
+  map->hard_faults = 0;
 }
 
 #ifdef CONFIG_SHELL
@@ -772,22 +774,22 @@ vm_map_ipc_addr (void)
 static uintptr_t
 vm_map_get_pagein_addr (void)
 {
-  cpu_flags_t flags;
-  thread_preempt_disable_intr_save (&flags);
-
+  CPU_INTR_GUARD ();
   _Auto vp = cpu_local_ptr (vm_map_cpu_vas);
+
   if (!vp->bitmap)
     mutex_lock (&vp->lock);
 
   assert (vp->bitmap);
-  int idx = __builtin_ffs (vp->bitmap);
+  int idx = __builtin_ffs (vp->bitmap) - 1;
 
   uintptr_t ret = vp->vas[idx];
+  vp->vas[idx] = 0;
   vp->bitmap &= ~(1 << idx);
+
   if (!vp->bitmap)
     mutex_lock (&vp->lock);
 
-  thread_preempt_enable_intr_restore (flags);
   assert (vm_page_aligned (ret));
   return (ret);
 }
@@ -796,18 +798,19 @@ static void
 vm_map_put_pagein_addr (struct pmap *pmap, uintptr_t va, int n)
 {
   cpu_flags_t flags;
-  thread_preempt_disable_intr_save (&flags);
+  cpu_intr_save (&flags);
 
   _Auto vp = cpu_local_ptr (vm_map_cpu_vas);
   assert (vp->bitmap != (1 << VM_MAP_CPU_MAX_VAS) - 1);
 
   int idx = __builtin_ctz (~vp->bitmap);
+  assert (vp->vas[idx] == 0);
   vp->vas[idx] = va;
 
   uint32_t prev = vp->bitmap;
   vp->bitmap |= 1 << idx;
 
-  thread_preempt_enable_intr_restore (flags);
+  cpu_intr_restore (flags);
   if (! prev)
     mutex_unlock (&vp->lock);
 
@@ -899,6 +902,7 @@ retry:
           pmap_update (map->pmap);
 
         vm_page_unref (page);
+        atomic_add_rlx (&map->soft_faults, 1);
         return (0);
       }
 
@@ -951,6 +955,7 @@ retry:
     }
 
   pmap_update (map->pmap);
+  atomic_add_rlx (&map->hard_faults, 1);
   return (0);
 }
 
@@ -996,9 +1001,9 @@ vm_map_validate (struct vm_map *map, uintptr_t addr, int prot)
   _Auto ep = vm_map_lookup_nearest (map, vm_page_trunc (addr));
 
   if (!ep || addr < ep->start)
-    return (-EFAULT);
+    return (EFAULT);
   else if ((prot & VM_MAP_PROT (ep->flags)) != prot)
-    return (-EACCES);
+    return (EACCES);
   return (0);
 }
 
@@ -1006,7 +1011,7 @@ bool
 vm_map_check_valid (struct vm_map *map, uintptr_t addr, int prot)
 {
   int error = vm_map_validate (map, addr, prot);
-  if (error == -EFAULT)
+  if (error == EFAULT)
     // Test the kernel VM map as well.
     error = vm_map_validate (vm_map_get_kernel_map (), addr, prot);
 
