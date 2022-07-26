@@ -14,8 +14,7 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
- * This test module tests page faults and the retrieval of page data
- * from VM objects.
+ * This test module tests IPC between threads of different tasks.
  */
 
 #include <assert.h>
@@ -38,7 +37,7 @@ struct test_ipc_data
   struct semaphore recv_sem;
   char buf1[16];
   char buf2[24];
-  struct ipc_iterator *out;
+  struct ipc_iter *out;
   struct thread *receiver;
   ssize_t len;
 };
@@ -47,8 +46,7 @@ static struct test_ipc_data test_data;
 
 static void
 test_ipc_create (void (*fn) (void *), void *arg,
-                 const char *task_name,
-                 struct thread **thrp)
+                 const char *task_name, struct thread **thrp)
 {
   struct task *task;
   int error = task_create (&task, task_name);
@@ -75,15 +73,13 @@ test_ipc_sender (void *arg)
       { .iov_base = data->buf2, .iov_len = sizeof (data->buf2) }
     };
 
+  struct ipc_iter input;
+  ipc_iter_init_iov (&input, iovs, ARRAY_SIZE (iovs));
+  assert (ipc_iter_valid (&input));
+
   semaphore_wait (&data->send_sem);
-
-  struct ipc_iterator input;
-  ipc_iterator_init_iov (&input, iovs, ARRAY_SIZE (iovs));
-  assert (ipc_iterator_valid (&input));
-
   data->len = ipc_copy_iter (&input, thread_self (),
                              data->out, data->receiver);
-
   semaphore_post (&data->recv_sem);
 }
 
@@ -92,10 +88,10 @@ test_ipc_receiver (void *arg)
 {
   _Auto data = (struct test_ipc_data *)arg;
   char buf[64];
-  struct ipc_iterator it;
+  struct ipc_iter it;
 
-  ipc_iterator_init_buf (&it, buf, sizeof (buf));
-  assert (ipc_iterator_valid (&it));
+  ipc_iter_init_buf (&it, buf, sizeof (buf));
+  assert (ipc_iter_valid (&it));
   data->out = &it;
   data->receiver = thread_self ();
 

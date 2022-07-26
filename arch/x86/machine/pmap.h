@@ -310,6 +310,18 @@ pmap_current (void)
   return (cpu_local_read (pmap_current_ptr));
 }
 
+// Get the special PTE used for IPC.
+pmap_pte_t* pmap_ipc_pte_get (void);
+
+// Create a mapping for a special PTE used for IPC.
+pmap_pte_t* pmap_ipc_pte_map (struct pmap *pmap, uintptr_t va, phys_addr_t pa);
+
+// Reset the IPC pte to a different physical address.
+void pmap_ipc_pte_reset (pmap_pte_t *pte, uintptr_t old_va, phys_addr_t pa);
+
+// Invalidate the PTE used for IPC.
+void pmap_ipc_pte_clear (pmap_pte_t *pte, uintptr_t old_va);
+
 /*
  * This init operation provides :
  *  - kernel pmap operations

@@ -26,62 +26,73 @@
 
 #include <kern/types.h>
 
-struct ipc_iterator
+#define IPC_IOV_CACHE_SIZE   8
+
+struct ipc_iov_cache
+{
+  struct iovec iovs[IPC_IOV_CACHE_SIZE];
+  int idx;
+  int size;
+};
+
+struct ipc_iter
 {
   struct iovec *iovs;
   int cur_iov;
   int nr_iovs;
-  void *cur_ptr;
-  size_t cur_size;
+  struct iovec cur;
+  struct ipc_iov_cache cache;
 };
 
 static inline void
-ipc_iterator_set_invalid (struct ipc_iterator *it)
+ipc_iter_set_invalid (struct ipc_iter *it)
 {
   it->cur_iov = -1;
 }
 
 static inline bool
-ipc_iterator_valid (const struct ipc_iterator *it)
+ipc_iter_valid (const struct ipc_iter *it)
 {
   return (it->cur_iov >= 0);
 }
 
 static inline void
-ipc_iterator_init_buf (struct ipc_iterator *it, void *buf, size_t size)
+ipc_iter_init_buf (struct ipc_iter *it, void *buf, size_t size)
 {
   it->iovs = NULL;
   it->cur_iov = it->nr_iovs = 0;
-  it->cur_ptr = buf;
-  it->cur_size = size;
+  it->cur.iov_base = buf;
+  it->cur.iov_len = size;
+  it->cache.idx = it->cache.size = 0;
 
   if (! size)
-    ipc_iterator_set_invalid (it);
+    ipc_iter_set_invalid (it);
 }
 
 static inline size_t
-ipc_iterator_cur_size (const struct ipc_iterator *it)
+ipc_iter_cur_size (const struct ipc_iter *it)
 {
-  return (it->cur_size);
+  return (it->cur.iov_len);
 }
 
 static inline void*
-ipc_iterator_cur_ptr (const struct ipc_iterator *it)
+ipc_iter_cur_ptr (const struct ipc_iter *it)
 {
-  return ((void *)it->cur_ptr);
+  return ((void *)it->cur.iov_base);
 }
 
 struct thread;
 
 // Initialize an IPC iterator with a number of iovec's.
-int ipc_iterator_init_iov (struct ipc_iterator *it,
+int ipc_iter_init_iov (struct ipc_iter *it,
                            struct iovec *iovs, uint32_t nr_iovs);
 
 // Advance an IPC iterator by OFF bytes.
-int ipc_iterator_adv (struct ipc_iterator *it, size_t off);
+int ipc_iter_adv (struct ipc_iter *it, size_t off);
 
-// Copy data through iterators.
-ssize_t ipc_copy_iter (struct ipc_iterator *src_it, struct thread *src_thr,
-                       struct ipc_iterator *dst_it, struct thread *dst_thr);
+/* Copy data through iterators. Returns the number of bytes copied,
+ * or a negative value if there was an error. */
+ssize_t ipc_copy_iter (struct ipc_iter *src_it, struct thread *src_thr,
+                       struct ipc_iter *dst_it, struct thread *dst_thr);
 
 #endif

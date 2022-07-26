@@ -26,36 +26,82 @@
 struct ipc_env
 {
   cpu_flags_t flags;
-  int error;
-  int pintr;   // Whether interrupts were disabled.
 };
 
-static int
-ipc_iterator_next_iov (struct ipc_iterator *it)
+static inline void
+ipc_iter_bump_iovs (struct ipc_iter *it, int nr_iovs)
 {
-  for (; it->cur_iov < it->nr_iovs; ++it->cur_iov)
+  it->cur_iov += nr_iovs;
+  it->cache.idx = 0;
+  it->cache.size = nr_iovs;
+}
+
+static int
+ipc_iter_fill_cache_local (struct ipc_iter *it, int nr_iovs)
+{
+  struct vm_fixup fixup;
+  int error = vm_fixup_save (&fixup);
+
+  if (error)
+    return (error);
+
+  memcpy (it->cache.iovs, it->iovs + it->cur_iov,
+          nr_iovs * sizeof (struct iovec));
+  ipc_iter_bump_iovs (it, nr_iovs);
+  return (0);
+}
+
+static int
+ipc_iter_fill_cache (struct ipc_iter *it, struct thread *thr)
+{
+  int nr_iovs = MIN (IPC_IOV_CACHE_SIZE, it->nr_iovs - it->cur_iov);
+  if (! nr_iovs)
+    return (ENOMEM);
+  else if (! thr)
+    return (ipc_iter_fill_cache_local (it, nr_iovs));
+
+  /* Need to fetch iovecs from a remote address. Do an IPC copy
+   * call for simplicity's sake (this is only needed once in a
+   * while to replenish the cache). */
+  struct ipc_iter c_it, r_it;
+  ipc_iter_init_buf (&r_it, it->iovs + it->cur_iov,
+                     nr_iovs * sizeof (struct iovec));
+  ipc_iter_init_buf (&c_it, it->cache.iovs, sizeof (it->cache.iovs));
+
+  ssize_t ret = ipc_copy_iter (&r_it, thr, &c_it, thread_self ());
+  if (ret < 0)
+    return ((int)-ret);
+
+  assert ((ret % sizeof (struct iovec)) == 0);
+  ipc_iter_bump_iovs (it, ret / sizeof (struct iovec));
+  return (0);
+}
+
+static int
+ipc_iter_fetch_iov (struct ipc_iter *it, struct thread *thr)
+{
+  while (1)
     {
-      struct iovec tmp;
-      int error = vm_copy (&tmp, &it->iovs[it->cur_iov], sizeof (tmp));
+      if (it->cache.idx >= it->cache.size)
+        {
+          int error = ipc_iter_fill_cache (it, thr);
+          if (error)
+            {
+              ipc_iter_set_invalid (it);
+              return (error);
+            }
+        }
 
-      if (error)
-        return (error);
-      else if (unlikely (!tmp.iov_len))
-        // Skip empty iovec's.
-        continue;
-
-      it->cur_ptr = tmp.iov_base;
-      it->cur_size = tmp.iov_len;
-      return (0);
+      assert (it->cache.idx < it->cache.size);
+      it->cur = it->cache.iovs[it->cache.idx++];
+      if (likely (it->cur.iov_len))
+        return (0);
     }
-
-  ipc_iterator_set_invalid (it);
-  return (ENOMEM);
 }
 
 int
-ipc_iterator_init_iov (struct ipc_iterator *it,
-                       struct iovec *iovs, uint32_t nr_iovs)
+ipc_iter_init_iov (struct ipc_iter *it,
+                   struct iovec *iovs, uint32_t nr_iovs)
 {
   it->iovs = iovs;
   it->cur_iov = 0;
@@ -64,22 +110,24 @@ ipc_iterator_init_iov (struct ipc_iterator *it,
     return (EOVERFLOW);
 
   it->nr_iovs = (int)nr_iovs;
-  return (ipc_iterator_next_iov (it));
+  it->cache.idx = it->cache.size = 0;
+  return (ipc_iter_fetch_iov (it, NULL));
+}
+
+static int
+ipc_iter_adv_impl (struct ipc_iter *it, size_t off, struct thread *thr)
+{
+  assert (off <= it->cur.iov_len);
+  it->cur.iov_base = (char *)it->cur.iov_base + off;
+  it->cur.iov_len -= off;
+
+  return (it->cur.iov_len ? 0 : ipc_iter_fetch_iov (it, thr));
 }
 
 int
-ipc_iterator_adv (struct ipc_iterator *it, size_t off)
+ipc_iter_adv (struct ipc_iter *it, size_t off)
 {
-  assert (off <= it->cur_size);
-  it->cur_ptr = (char *)it->cur_ptr + off;
-  it->cur_size -= off;
-
-  if (it->cur_size)
-    // Still more data in the current entry.
-    return (0);
-
-  ++it->cur_iov;
-  return (ipc_iterator_next_iov (it));
+  return (ipc_iter_adv_impl (it, off, NULL));
 }
 
 static bool
@@ -90,81 +138,98 @@ ipc_inside_stack (struct thread *thread, const void *ptr)
 }
 
 static ssize_t
-ipc_copy_iter_single (struct ipc_iterator *src_it, struct thread *src_thr,
-                      struct ipc_iterator *dst_it, struct thread *dst_thr)
+ipc_copy_iter_single (struct ipc_iter *l_it, struct ipc_iter *r_it,
+                      struct thread *r_thr, struct pmap *pmap, bool copy_into)
 {
-  struct vm_map *src_map = src_thr->task->map,
-                *dst_map = dst_thr->task->map;
   struct vm_fixup fixup;
-  volatile struct ipc_env env = { .pintr = 0 };
+  volatile struct ipc_env env;
 
-  env.error = vm_fixup_save (&fixup);
-  if (env.error)
+  int error = vm_fixup_save (&fixup);
+  if (unlikely (error))
     {
-      if (env.pintr)
-        cpu_intr_restore (env.flags);
-
-      pmap_update (src_map->pmap);
-      return (-env.error);
+      pmap_ipc_pte_clear (pmap_ipc_pte_get (), vm_map_ipc_addr ());
+      cpu_intr_restore (env.flags);
+      return (-error);
     }
 
   phys_addr_t pa;
-  void *dst_ptr = ipc_iterator_cur_ptr (dst_it);
-  size_t dst_size = ipc_iterator_cur_size (dst_it),
-         src_size = ipc_iterator_cur_size (src_it),
-         page_off = (uintptr_t)dst_ptr % PAGE_SIZE,
-         ret = MIN (PAGE_SIZE - page_off, MIN (dst_size, src_size));
+  int prot = copy_into ? VM_PROT_RDWR : VM_PROT_READ;
+  struct vm_map *r_map = r_thr->task->map;
+  void *r_ptr = ipc_iter_cur_ptr (r_it);
+  size_t r_size = ipc_iter_cur_size (r_it),
+         l_size = ipc_iter_cur_size (l_it),
+         page_off = (uintptr_t)r_ptr % PAGE_SIZE,
+         ret = MIN (PAGE_SIZE - page_off, MIN (r_size, l_size));
 
   cpu_intr_save ((cpu_flags_t *)&env.flags);
-  if (!vm_map_check_valid (dst_map, (uintptr_t)dst_ptr, VM_PROT_WRITE) &&
-      !ipc_inside_stack (dst_thr, dst_ptr))
-    return (-EFAULT);
-  else if (pmap_extract (dst_map->pmap, (uintptr_t)dst_ptr, &pa) != 0)
+  if (!vm_map_check_valid (r_map, (uintptr_t)r_ptr, prot) &&
+      !ipc_inside_stack (r_thr, r_ptr))
+    {
+      cpu_intr_restore (env.flags);
+      return (-EFAULT);
+    }
+  else if (pmap_extract (r_map->pmap, (uintptr_t)r_ptr, &pa) != 0)
     { // Need to fault in the destination address.
-      int rv = vm_map_fault (dst_map, (uintptr_t)dst_ptr, VM_PROT_RDWR,
-                             cpu_flags_intr_enabled (env.flags) ?
-                             VM_MAP_FAULT_INTR : 0);
-      if (rv)
+      error = vm_map_fault (r_map, (uintptr_t)r_ptr, prot,
+                            cpu_flags_intr_enabled (env.flags) ?
+                            VM_MAP_FAULT_INTR : 0);
+      if (error)
         {
           cpu_intr_restore (env.flags);
-          return (rv);
+          return (-error);
         }
 
-      pmap_extract (dst_map->pmap, (uintptr_t)dst_ptr, &pa);
+      pmap_extract (r_map->pmap, (uintptr_t)r_ptr, &pa);
     }
 
   uintptr_t va = vm_map_ipc_addr ();
-  pmap_enter (src_map->pmap, va, pa, VM_PROT_RDWR, PMAP_NO_CHECK);
-  pmap_update (src_map->pmap);
+  _Auto pte = pmap_ipc_pte_map (pmap, va, pa);
 
-  /* Schedule the removal now so that even if we get an address violation,
-   * we can maintain pmap consistency. */
-  pmap_remove (src_map->pmap, va, PMAP_NO_CHECK, NULL);
+  if (! pte)
+    return (-EINTR);
+  else if (copy_into)
+    memcpy ((void *)(va + page_off), ipc_iter_cur_ptr (l_it), ret);
+  else
+    memcpy (ipc_iter_cur_ptr (l_it), (void *)(va + page_off), ret);
 
-  // Also signal that interrupts have been disabled.
-  env.pintr = 1;
-
-  memcpy ((void *)(va + page_off), ipc_iterator_cur_ptr (src_it), ret);
+  pmap_ipc_pte_clear (pte, va);
   cpu_intr_restore (env.flags);
-
-  ipc_iterator_adv (src_it, ret);
-  ipc_iterator_adv (dst_it, ret);
 
   return ((ssize_t)ret);
 }
 
 ssize_t
-ipc_copy_iter (struct ipc_iterator *src_it, struct thread *src_thr,
-               struct ipc_iterator *dst_it, struct thread *dst_thr)
+ipc_copy_iter (struct ipc_iter *src_it, struct thread *src_thr,
+               struct ipc_iter *dst_it, struct thread *dst_thr)
 {
   ssize_t ret = 0;
+  struct ipc_iter *l_it = src_it, *r_it = dst_it;
+  bool copy_into = src_thr == thread_self ();
+  struct thread *r_thr = dst_thr;
 
-  while (ipc_iterator_valid (src_it) && ipc_iterator_valid (dst_it))
+  if (! copy_into)
     {
-      ssize_t tmp = ipc_copy_iter_single (src_it, src_thr, dst_it, dst_thr);
+      l_it = dst_it, r_it = src_it;
+      r_thr = src_thr;
+    }
 
+  struct pmap *pmap = thread_self()->task->map->pmap;
+  while (ipc_iter_valid (l_it) && ipc_iter_valid (r_it))
+    {
+      ssize_t tmp = ipc_copy_iter_single (l_it, r_it, r_thr, pmap, copy_into);
       if (tmp < 0)
         return (tmp);
+
+      /* Advance the iterators after the call because that may end up
+       * calling 'ipc_copy_iter' again and the stack may overflow. */
+
+      int error = ipc_iter_adv (l_it, tmp);
+      if (error && error != ENOMEM)
+        return (-error);
+
+      error = ipc_iter_adv_impl (r_it, tmp, r_thr);
+      if (error && error != ENOMEM)
+        return (-error);
       else if (unlikely ((ret += tmp) < 0))
         return (-EOVERFLOW);
     }

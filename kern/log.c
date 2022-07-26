@@ -40,7 +40,7 @@
 
 #define LOG_BUFFER_SIZE   16384
 
-#if !ISP2(LOG_BUFFER_SIZE)
+#if !ISP2 (LOG_BUFFER_SIZE)
   #error "log buffer size must be a power-of-two"
 #endif
 
@@ -157,7 +157,7 @@ log_run (void *arg __unused)
 
           if (! error)
             break;
-          else if (log_nr_overruns != 0)
+          else if (log_nr_overruns)
             {
               record.level = LOG_ERR;
               snprintf (record.msg, sizeof (record.msg),
@@ -167,7 +167,7 @@ log_run (void *arg __unused)
               break;
             }
 
-          if (!published)
+          if (! published)
             {
               spinlock_unlock_intr_restore (&log_lock, flags);
               bulletin_publish (&log_bulletin, 0);
@@ -403,8 +403,7 @@ log_puts (const struct log_record *record, int nr_chars)
     }
 
   char *ptr = strchr (record->msg, '\n');
-
-  if (ptr != NULL)
+  if (ptr)
     {
       *ptr = '\0';
       nr_chars = ptr - record->msg;

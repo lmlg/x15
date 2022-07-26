@@ -409,21 +409,21 @@ vm_map_try_merge_prev (struct vm_map *map, const struct vm_map_request *request,
 }
 
 static struct vm_map_entry*
-vm_map_try_merge_next (struct vm_map *map, const struct vm_map_request *request,
+vm_map_try_merge_next (struct vm_map *map, const struct vm_map_request *req,
                        struct vm_map_entry *entry)
 {
   assert (entry);
-  if (!vm_map_try_merge_compatible (request, entry))
+  if (!vm_map_try_merge_compatible (req, entry))
     return (NULL);
 
-  uintptr_t end = request->start + request->size;
+  uintptr_t end = req->start + req->size;
 
   if (end != entry->start)
     return (NULL);
 
   _Auto next = vm_map_next (map, entry);
   vm_map_unlink (map, entry);
-  entry->start = request->start;
+  entry->start = req->start;
   vm_map_link (map, entry, next);
   return (entry);
 }
@@ -504,6 +504,9 @@ vm_map_insert (struct vm_map *map, struct vm_map_entry *entry,
   entry->offset = request->offset;
   entry->flags = request->flags & VM_MAP_ENTRY_MASK;
   vm_map_link (map, entry, request->next);
+
+  if (entry->object)
+    vm_object_ref (entry->object);
 
 out:
   map->size += request->size;
@@ -745,7 +748,14 @@ vm_map_setup (void)
   kmem_cache_init (&vm_map_cache, "vm_map", sizeof (struct vm_map),
                    0, NULL, KMEM_CACHE_PAGE_ONLY);
 
-  size_t size = PAGE_SIZE + cpu_count () * PAGE_SIZE * VM_MAP_MAX_FRAMES;
+  /*
+   * The total size is computed as such:
+   * - One page for IPC operations (mapped by a special PTE in the pmap module)
+   * - One virtual mapping per CPU, which includes the maximum number of frames
+   *   needed to pagein data times the maximum number of mappings per cpu.
+   */
+  size_t size = PAGE_SIZE + cpu_count () * PAGE_SIZE *
+                VM_MAP_MAX_FRAMES * VM_MAP_CPU_MAX_VAS;
   if (vm_map_enter (&vm_map_kernel_map, &vm_map_ipc_va, size,
                     0, VM_MAP_FLAGS (VM_PROT_RDWR, VM_PROT_RDWR,
                                      VM_INHERIT_NONE, VM_ADV_DEFAULT, 0),
@@ -906,6 +916,7 @@ retry:
         return (0);
       }
 
+    // Prevent the VM object from going away as we drop the lock.
     vm_object_ref (object);
   }
 
@@ -1030,7 +1041,7 @@ int
 vm_copy (void *dst, const void *src, size_t size)
 {
   struct vm_fixup fixup;
-  volatile int res = vm_fixup_save (&fixup);
+  int res = vm_fixup_save (&fixup);
 
   if (res == 0)
     memcpy (dst, src, size);

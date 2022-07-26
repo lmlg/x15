@@ -28,7 +28,7 @@ struct iovec
   size_t iov_len;
 };
 
-#define UIO_MAXIOV   128
+#define UIO_MAXIOV   256
 
 _Static_assert (__builtin_offsetof (struct iovec, iov_base) == 0 &&
                 __builtin_offsetof (struct iovec, iov_len) == sizeof (void *),

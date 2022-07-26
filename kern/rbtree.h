@@ -338,7 +338,7 @@ MACRO_END
  * rbtree_lookup().
  */
 #define rbtree_lookup_slot(tree, key, cmp_fn, slot)   \
-MACRO_BEGIN                               \
+MACRO_BEGIN   \
   \
   struct rbtree_node *prev_ = NULL, *cur_ = (tree)->root;   \
   int index_ = 0;   \
