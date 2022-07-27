@@ -141,7 +141,7 @@ rdxtree_node_ctor (void *buf)
 static int
 rdxtree_node_create (struct rdxtree_node **nodep, unsigned short height)
 {
-  struct rdxtree_node *node = kmem_cache_alloc (&rdxtree_node_cache);
+  struct rdxtree_node *node = kmem_cache_salloc (&rdxtree_node_cache);
   if (! node)
     return (ENOMEM);
 
@@ -829,8 +829,7 @@ rdxtree_setup (void)
 {
   kmem_cache_init (&rdxtree_node_cache, "rdxtree_node",
                    sizeof (struct rdxtree_node), 0,
-                   rdxtree_node_ctor,
-                   KMEM_CACHE_PAGE_ONLY | KMEM_CACHE_SLEEPABLE);
+                   rdxtree_node_ctor, KMEM_CACHE_PAGE_ONLY);
   return (0);
 }
 

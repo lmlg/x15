@@ -46,11 +46,11 @@ static int test_pager_mapped;
 
 static int
 test_pager_get (struct vm_object *obj __unused, uint64_t off,
-                uint32_t nr_pages, void *dst)
+                size_t bytes, void *dst)
 {
   assert (! test_pager_mapped);
   assert (off == TEST_OFFSET);
-  memset (dst, 'x', nr_pages * PAGE_SIZE);
+  memset (dst, 'x', bytes);
   test_pager_mapped = 1;
   return (0);
 }

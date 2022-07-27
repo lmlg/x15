@@ -371,10 +371,9 @@ kmem_slab_create_verify (struct kmem_slab *slab, struct kmem_cache *cache)
  * The caller must drop all locks before calling this function.
  */
 static struct kmem_slab*
-kmem_slab_create (struct kmem_cache *cache, size_t color)
+kmem_slab_create (struct kmem_cache *cache, size_t color, bool sleep)
 {
-  void *slab_buf = kmem_pagealloc (cache->slab_size,
-                                   (cache->flags & KMEM_CACHE_SLEEPABLE) != 0);
+  void *slab_buf = kmem_pagealloc (cache->slab_size, sleep);
   if (! slab_buf)
     return (NULL);
 
@@ -607,8 +606,6 @@ kmem_cache_init (struct kmem_cache *cache, const char *name, size_t obj_size,
   if (flags & KMEM_CACHE_VERIFY)
     cache->flags |= KMEM_CF_VERIFY;
 
-  cache->flags |= flags & KMEM_CACHE_SLEEPABLE;
-
   if (align < KMEM_ALIGN_MIN)
     align = KMEM_ALIGN_MIN;
 
@@ -750,7 +747,7 @@ kmem_cache_lookup (struct kmem_cache *cache, void *buf)
 }
 
 static int
-kmem_cache_grow (struct kmem_cache *cache)
+kmem_cache_grow (struct kmem_cache *cache, bool sleep)
 {
   adaptive_lock_acquire (&cache->lock);
 
@@ -768,7 +765,7 @@ kmem_cache_grow (struct kmem_cache *cache)
 
   adaptive_lock_release (&cache->lock);
 
-  struct kmem_slab *slab = kmem_slab_create (cache, color);
+  struct kmem_slab *slab = kmem_slab_create (cache, color, sleep);
 
   adaptive_lock_acquire (&cache->lock);
 
@@ -900,8 +897,8 @@ kmem_cache_alloc_verify (struct kmem_cache *cache, void *buf, int construct)
     cache->ctor (buf);
 }
 
-void*
-kmem_cache_alloc (struct kmem_cache *cache)
+static void*
+kmem_cache_alloc_impl (struct kmem_cache *cache, bool sleep)
 {
 #ifdef KMEM_USE_CPU_LAYER
 
@@ -930,7 +927,7 @@ fast_alloc:
           adaptive_lock_release (&cpu_pool->lock);
           thread_unpin ();
 
-          if (!kmem_cache_grow (cache))
+          if (!kmem_cache_grow (cache, sleep))
             return (NULL);
 
           thread_pin ();
@@ -952,7 +949,7 @@ slab_alloc:
 
   if (! buf)
     {
-      if (!kmem_cache_grow (cache))
+      if (!kmem_cache_grow (cache, sleep))
         return (NULL);
 
       goto slab_alloc;
@@ -965,6 +962,18 @@ slab_alloc:
     cache->ctor (buf);
 
   return (buf);
+}
+
+void*
+kmem_cache_alloc (struct kmem_cache *cache)
+{
+  return (kmem_cache_alloc_impl (cache, false));
+}
+
+void*
+kmem_cache_salloc (struct kmem_cache *cache)
+{
+  return (kmem_cache_alloc_impl (cache, true));
 }
 
 static void

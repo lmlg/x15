@@ -123,7 +123,6 @@ struct kmem_cache
 #define KMEM_CACHE_NOOFFSLAB    0x1   // Don't allocate external slab data.
 #define KMEM_CACHE_PAGE_ONLY    0x2   // Allocate slabs from the page allocator.
 #define KMEM_CACHE_VERIFY       0x4   // Use debugging facilities.
-#define KMEM_CACHE_SLEEPABLE    0x8   // Allocations may sleep.
 
 /*
  * Initialize a cache.
@@ -137,6 +136,9 @@ void kmem_cache_init (struct kmem_cache *cache, const char *name,
 
 // Allocate an object from a cache.
 void* kmem_cache_alloc (struct kmem_cache *cache);
+
+// Same as above, only this function may sleep.
+void* kmem_cache_salloc (struct kmem_cache *cache);
 
 // Release an object to its cache.
 void kmem_cache_free (struct kmem_cache *cache, void *obj);
