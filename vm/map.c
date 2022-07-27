@@ -870,7 +870,8 @@ vm_map_fault_get_data (struct vm_map *map, struct vm_object *object,
     }
 
   int ret = pmap_update (map->pmap) != 0 ? EINTR :
-            vm_object_pager_get (object, offset, nr_pages, (void *)va);
+            vm_object_pager_get (object, offset,
+                                 nr_pages * PAGE_SIZE, (void *)va);
 
   vm_map_put_pagein_addr (map->pmap, va, nr_pages);
   return (ret);

@@ -31,7 +31,7 @@ struct vm_page;
 
 struct vm_object_pager
 {
-  int (*get) (struct vm_object *, uint64_t, uint32_t, void *);
+  int (*get) (struct vm_object *, uint64_t, size_t, void *);
   int (*put) (struct vm_object *, struct vm_page **, uint32_t);
 };
 
