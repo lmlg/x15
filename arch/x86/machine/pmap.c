@@ -1288,7 +1288,8 @@ void
 pmap_ipc_pte_clear (pmap_pte_t *pte, uintptr_t old_va)
 {
   cpu_tlb_flush_va (old_va);
-  pmap_pte_clear (pte);
+  if (pte)
+    pmap_pte_clear (pte);
 }
 
 int

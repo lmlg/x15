@@ -15,6 +15,7 @@ x15_SOURCES-y += \
         kern/ipc.c \
         kern/kernel.c \
         kern/kmem.c \
+        kern/kuid.c \
         kern/log.c \
         kern/mbuf.c \
         kern/mutex.c \

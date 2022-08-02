@@ -23,6 +23,9 @@
 
 #include <vm/map.h>
 
+#define IPC_COPY_FROM   0x01   // Direction of the copy.
+#define IPC_COPY_INTR   0x02   // Handle interrupts when faulting in.
+
 struct ipc_env
 {
   cpu_flags_t flags;
@@ -139,21 +142,10 @@ ipc_inside_stack (struct thread *thread, const void *ptr)
 
 static ssize_t
 ipc_copy_iter_single (struct ipc_iter *l_it, struct ipc_iter *r_it,
-                      struct thread *r_thr, struct pmap *pmap, bool copy_into)
+                      struct thread *r_thr, struct pmap *pmap, int flags)
 {
-  struct vm_fixup fixup;
-  volatile struct ipc_env env;
-
-  int error = vm_fixup_save (&fixup);
-  if (unlikely (error))
-    {
-      pmap_ipc_pte_clear (pmap_ipc_pte_get (), vm_map_ipc_addr ());
-      cpu_intr_restore (env.flags);
-      return (-error);
-    }
-
   phys_addr_t pa;
-  int prot = copy_into ? VM_PROT_RDWR : VM_PROT_READ;
+  int prot = (flags & IPC_COPY_FROM) ? VM_PROT_READ : VM_PROT_RDWR;
   struct vm_map *r_map = r_thr->task->map;
   void *r_ptr = ipc_iter_cur_ptr (r_it);
   size_t r_size = ipc_iter_cur_size (r_it),
@@ -161,23 +153,16 @@ ipc_copy_iter_single (struct ipc_iter *l_it, struct ipc_iter *r_it,
          page_off = (uintptr_t)r_ptr % PAGE_SIZE,
          ret = MIN (PAGE_SIZE - page_off, MIN (r_size, l_size));
 
-  cpu_intr_save ((cpu_flags_t *)&env.flags);
   if (!vm_map_check_valid (r_map, (uintptr_t)r_ptr, prot) &&
       !ipc_inside_stack (r_thr, r_ptr))
-    {
-      cpu_intr_restore (env.flags);
-      return (-EFAULT);
-    }
+    return (-EFAULT);
   else if (pmap_extract (r_map->pmap, (uintptr_t)r_ptr, &pa) != 0)
     { // Need to fault in the destination address.
-      error = vm_map_fault (r_map, (uintptr_t)r_ptr, prot,
-                            cpu_flags_intr_enabled (env.flags) ?
-                            VM_MAP_FAULT_INTR : 0);
+      int error = vm_map_fault (r_map, (uintptr_t)r_ptr, prot,
+                                (flags & IPC_COPY_INTR) ?
+                                VM_MAP_FAULT_INTR : 0);
       if (error)
-        {
-          cpu_intr_restore (env.flags);
-          return (-error);
-        }
+        return (-error);
 
       pmap_extract (r_map->pmap, (uintptr_t)r_ptr, &pa);
     }
@@ -187,13 +172,10 @@ ipc_copy_iter_single (struct ipc_iter *l_it, struct ipc_iter *r_it,
 
   if (! pte)
     return (-EINTR);
-  else if (copy_into)
+  else if (!(flags & IPC_COPY_FROM))
     memcpy ((void *)(va + page_off), ipc_iter_cur_ptr (l_it), ret);
   else
     memcpy (ipc_iter_cur_ptr (l_it), (void *)(va + page_off), ret);
-
-  pmap_ipc_pte_clear (pte, va);
-  cpu_intr_restore (env.flags);
 
   return ((ssize_t)ret);
 }
@@ -204,26 +186,42 @@ ipc_copy_iter (struct ipc_iter *src_it, struct thread *src_thr,
 {
   ssize_t ret = 0;
   struct ipc_iter *l_it = src_it, *r_it = dst_it;
-  bool copy_into = src_thr == thread_self ();
+  int flags = src_thr != thread_self () ? IPC_COPY_FROM : 0;
   struct thread *r_thr = dst_thr;
 
-  if (! copy_into)
+  if (flags)
     {
       l_it = dst_it, r_it = src_it;
       r_thr = src_thr;
     }
 
   struct pmap *pmap = thread_self()->task->map->pmap;
+  volatile struct ipc_env env;
+
+  struct vm_fixup fixup;
+  int error = vm_fixup_save (&fixup);
+
+  if (error)
+    {
+      pmap_ipc_pte_clear (pmap_ipc_pte_get (), vm_map_ipc_addr ());
+      cpu_intr_restore (env.flags);
+      return (-error);
+    }
+
+  flags |= cpu_intr_enabled () ? IPC_COPY_INTR : 0;
   while (ipc_iter_valid (l_it) && ipc_iter_valid (r_it))
     {
-      ssize_t tmp = ipc_copy_iter_single (l_it, r_it, r_thr, pmap, copy_into);
+      cpu_intr_save ((cpu_flags_t *)&env.flags);
+      ssize_t tmp = ipc_copy_iter_single (l_it, r_it, r_thr, pmap, flags);
+      cpu_intr_restore (env.flags);
+
       if (tmp < 0)
         return (tmp);
 
       /* Advance the iterators after the call because that may end up
        * calling 'ipc_copy_iter' again and the stack may overflow. */
 
-      int error = ipc_iter_adv (l_it, tmp);
+      error = ipc_iter_adv (l_it, tmp);
       if (error && error != ENOMEM)
         return (-error);
 

@@ -133,58 +133,6 @@ error:
   return (error);
 }
 
-int
-vm_object_insert_array (struct vm_object *object, struct vm_page **pages,
-                        int nr_pages, uint64_t offset)
-{
-  assert (vm_page_aligned (offset));
-
-  struct list pl;
-  list_init (&pl);
-
-  int error;
-
-  {
-    MUTEX_GUARD (&object->lock);
-
-    if (offset + (nr_pages - 1) * PAGE_SIZE >= object->size)
-      return (EINVAL);
-
-    for (int i = 0; i < nr_pages; ++i, offset += PAGE_SIZE)
-      {
-        error = rdxtree_insert (&object->pages, vm_page_btop (offset),
-                                pages[i]);
-        if (unlikely (error))
-          {
-            for (; i > 0; --i, offset -= PAGE_SIZE)
-              {
-                rdxtree_remove (&object->pages, vm_page_btop (offset));
-                list_insert_tail (&pl, &pages[i]->node);
-              }
-
-            goto fail;
-          }
-
-        vm_page_ref (pages[i]);
-        vm_page_link (pages[i], object, offset);
-      }
-
-    object->nr_pages += nr_pages;
-    return (0);
-  }
-
-fail:
-  list_for_each_safe (&pl, pnode, tmp)
-    {
-      struct vm_page *pg = list_entry (pnode, struct vm_page, node);
-      if (vm_page_referenced (pg))
-        list_remove (pnode);
-    }
-
-  vm_page_array_list_free (&pl);
-  return (error);
-}
-
 void
 vm_object_remove (struct vm_object *object, uint64_t start, uint64_t end)
 {

@@ -1525,7 +1525,8 @@ thread_init_booter (uint32_t cpu)
 {
   // Initialize only what's needed during bootstrap.
   struct thread *booter = &thread_booters[cpu];
-  booter->nr_refs = 0;   // Make sure booters aren't destroyed.
+  booter->kuid.id = 0;
+  booter->kuid.nr_refs = 0;   // Make sure booters aren't destroyed.
   booter->flags = 0;
   booter->intr_level = 0;
   booter->preempt_level = 1;
@@ -1596,7 +1597,7 @@ thread_init (struct thread *thread, void *stack,
 
   assert (attr->policy < ARRAY_SIZE (thread_policy_table));
 
-  thread->nr_refs = 1;
+  kuid_head_init (&thread->kuid);
   thread->flags = 0;
   thread->runq = NULL;
   thread->in_runq = false;
@@ -1650,10 +1651,18 @@ thread_init (struct thread *thread, void *stack,
 
   if (error)
     goto error_tcb;
+  else if (thread->task != task_get_kernel_task ())
+    {
+      error = kuid_alloc (&thread->kuid, THREAD_MAX_ID);
+      if (error)
+        goto error_kuid;
+    }
 
   task_add_thread (task, thread);
   return (0);
 
+error_kuid:
+  tcb_cleanup (&thread->tcb);
 error_tcb:
   turnstile_destroy (thread->priv_turnstile);
 error_turnstile:
@@ -2148,6 +2157,7 @@ thread_exit (void)
    * keeps the duration of that active wait minimum.
    */
   thread_preempt_disable ();
+  kuid_remove (&thread->kuid);
   thread_unref (thread);
 
   _Auto runq = thread_runq_local ();
