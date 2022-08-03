@@ -535,13 +535,13 @@ work_report_periodic_event (void)
 
   if (work_queue_nr_works (&queue))
     {
-      SPINLOCK_GUARD (&work_pool_main.lock, false);
+      SPINLOCK_GUARD (&work_pool_main.lock);
       work_pool_concat_queue (&work_pool_main, &queue);
     }
 
   if (work_queue_nr_works (&highprio_queue))
     {
-      SPINLOCK_GUARD (&work_pool_highprio.lock, false);
+      SPINLOCK_GUARD (&work_pool_highprio.lock);
       work_pool_concat_queue (&work_pool_highprio, &highprio_queue);
     }
 }

@@ -1632,7 +1632,7 @@ pmap_update (struct pmap *pmap)
       request->nr_mappings = pmap_update_oplist_count_mappings (oplist, cpu);
       request->shared = &shared;
 
-      SPINLOCK_GUARD (&queue->lock, false);
+      SPINLOCK_GUARD (&queue->lock);
       list_insert_tail (&queue->requests, &request->node);
       thread_wakeup (syncer->thread);
     }
@@ -1672,7 +1672,7 @@ pmap_sync (void *arg)
       int error = pmap_update_local (request->oplist, request->nr_mappings);
       _Auto shared = request->shared;
 
-      SPINLOCK_GUARD (&shared->lock, false);
+      SPINLOCK_GUARD (&shared->lock);
       if (unlikely (error && !shared->error))
         shared->error = error;
 

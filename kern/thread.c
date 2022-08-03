@@ -1806,7 +1806,7 @@ thread_join_common (struct thread *thread)
 
 void thread_terminate (struct thread *thread)
 {
-  SPINLOCK_GUARD (&thread->join_lock, false);
+  SPINLOCK_GUARD (&thread->join_lock);
   thread->terminating = true;
   thread_wakeup (thread->join_waiter);
 }

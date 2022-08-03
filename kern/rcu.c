@@ -686,7 +686,7 @@ rcu_waiter_wakeup (struct work *work)
 {
   _Auto waiter = structof (work, struct rcu_waiter, work);
 
-  SPINLOCK_GUARD (&waiter->lock, false);
+  SPINLOCK_GUARD (&waiter->lock);
   waiter->done = true;
   thread_wakeup (waiter->thread);
 }
@@ -704,7 +704,7 @@ static void
 rcu_waiter_wait (struct rcu_waiter *waiter)
 {
   rcu_defer (&waiter->work);
-  SPINLOCK_GUARD (&waiter->lock, false);
+  SPINLOCK_GUARD (&waiter->lock);
 
   while (!waiter->done)
     thread_sleep (&waiter->lock, waiter, "rcu_wait");

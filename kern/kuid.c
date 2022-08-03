@@ -42,6 +42,7 @@ kuid_data_pop_key (struct kuid_data *data, rdxtree_key_t *keyp)
   if (cbuf_pop (&data->cbuf, &id, &size) != 0)
     return (0);
 
+  assert (size == sizeof (id));
   *keyp = id;
   return (1);
 }
@@ -56,7 +57,7 @@ kuid_alloc (struct kuid_head *head, uint32_t max_id)
   {
     _Auto data = &kuid_data;
 
-    SPINLOCK_GUARD (&data->lock, false);
+    SPINLOCK_GUARD (&data->lock);
     int popped_key = kuid_data_pop_key (data, &key),
         error = popped_key ? rdxtree_insert (&data->tree, key, head) :
                              rdxtree_insert_alloc (&data->tree, head, &key);

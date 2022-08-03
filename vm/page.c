@@ -811,7 +811,7 @@ vm_page_array_free (struct vm_page **frames, uint32_t order)
   uint32_t n_frames = 1u << order, n_rel;
 
   {
-    SPINLOCK_GUARD (&vm_page_waiters_lock, true);
+    SPINLOCK_INTR_GUARD (&vm_page_waiters_lock);
     n_rel = vm_page_array_free_impl (frames, n_frames,
                                      &vm_page_waiters_list);
 

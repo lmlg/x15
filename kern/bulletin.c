@@ -50,7 +50,7 @@ bulletin_subscribe (struct bulletin *bulletin, struct bulletin_sub *sub,
                     bulletin_notif_fn_t notif_fn, void *arg)
 {
   bulletin_sub_init (sub, notif_fn, arg);
-  SPINLOCK_GUARD (&bulletin->lock, false);
+  SPINLOCK_GUARD (&bulletin->lock);
   list_rcu_insert_tail (&bulletin->subs, &sub->node);
 }
 
