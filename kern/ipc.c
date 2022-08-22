@@ -18,6 +18,7 @@
 #include <kern/ipc.h>
 #include <kern/task.h>
 #include <kern/thread.h>
+#include <kern/unwind.h>
 
 #include <machine/cpu.h>
 
@@ -42,8 +43,8 @@ ipc_iter_bump_iovs (struct ipc_iter *it, int nr_iovs)
 static int
 ipc_iter_fill_cache_local (struct ipc_iter *it, int nr_iovs)
 {
-  struct vm_fixup fixup;
-  int error = vm_fixup_save (&fixup);
+  struct unw_fixup fixup;
+  int error = unw_fixup_save (&fixup);
 
   if (error)
     return (error);
@@ -157,7 +158,7 @@ ipc_copy_iter_single (struct ipc_iter *l_it, struct ipc_iter *r_it,
       !ipc_inside_stack (r_thr, r_ptr))
     return (-EFAULT);
   else if (pmap_extract (r_map->pmap, (uintptr_t)r_ptr, &pa) != 0)
-    { // Need to fault in the destination address.
+    { // Need to fault in the remote address.
       int error = vm_map_fault (r_map, (uintptr_t)r_ptr, prot,
                                 (flags & IPC_COPY_INTR) ?
                                 VM_MAP_FAULT_INTR : 0);
@@ -198,10 +199,10 @@ ipc_copy_iter (struct ipc_iter *src_it, struct thread *src_thr,
   struct pmap *pmap = thread_self()->task->map->pmap;
   volatile struct ipc_env env;
 
-  struct vm_fixup fixup;
-  int error = vm_fixup_save (&fixup);
+  struct unw_fixup fixup;
+  int error = unw_fixup_save (&fixup);
 
-  if (error)
+  if (unlikely (error))
     {
       pmap_ipc_pte_clear (pmap_ipc_pte_get (), vm_map_ipc_addr ());
       cpu_intr_restore (env.flags);

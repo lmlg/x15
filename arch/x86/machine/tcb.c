@@ -16,12 +16,14 @@
  */
 
 #include <stdnoreturn.h>
+#include <string.h>
 
 #include <kern/init.h>
 #include <kern/thread.h>
+#include <kern/unwind.h>
+
 #include <machine/cpu.h>
 #include <machine/pmap.h>
-#include <machine/strace.h>
 #include <machine/tcb.h>
 
 noreturn void tcb_context_load (struct tcb *tcb);
@@ -57,9 +59,9 @@ tcb_stack_forge (struct tcb *tcb, void (*fn) (void *), void *arg)
 static void
 tcb_stack_forge (struct tcb *tcb, void (*fn) (void *), void *arg)
 {
-  tcb_stack_push (tcb, (uintptr_t) arg);
-  tcb_stack_push (tcb, (uintptr_t) fn);
-  tcb_stack_push (tcb, (uintptr_t) tcb_start);   // Return address.
+  tcb_stack_push (tcb, (uintptr_t)arg);
+  tcb_stack_push (tcb, (uintptr_t)fn);
+  tcb_stack_push (tcb, (uintptr_t)tcb_start);    // Return address.
   tcb_stack_push (tcb, 0);                       // EBX
   tcb_stack_push (tcb, 0);                       // EDI
   tcb_stack_push (tcb, 0);                       // ESI
@@ -98,7 +100,18 @@ tcb_load (struct tcb *tcb)
 void
 tcb_trace (const struct tcb *tcb)
 {
-  strace_show ((uintptr_t) tcb_context_restore, tcb->bp);
+  struct unw_mcontext mctx;
+  memset (&mctx, 0, sizeof (mctx));
+
+#ifdef __LP64__
+  mctx.regs[6] = tcb->bp;
+  mctx.regs[7] = tcb->sp;
+#else
+  mctx.regs[4] = tcb->sp;
+  mctx.regs[5] = tcb->bp;
+#endif
+  mctx.regs[CPU_UNWIND_PC_REG] = (uintptr_t)tcb_context_restore + 1;
+  unw_backtrace (&mctx);
 }
 
 static int __init

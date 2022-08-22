@@ -190,7 +190,7 @@
   popl %esi
   popl %edi
   addl $CPU_LEF_SEGS_VEC_ERR, %esp   /* skip segment registers,
-                                        vector and error */
+                                      * vector and error. */
 .endm
 
 .macro cpu_ll_exc_enter vector
@@ -234,19 +234,25 @@
 
 #define CPU_LL_EXC_HANDLER(vector, name)   \
 ASM_ENTRY (name)   \
+.cfi_startproc;   \
   push $0;   \
   cpu_ll_exc_handle vector;   \
-ASM_END(name)
+.cfi_endproc;   \
+ASM_END (name)
 
 #define CPU_LL_EXC_HANDLER_WITH_ERROR(vector, name)   \
 ASM_ENTRY (name)   \
+.cfi_startproc;   \
   cpu_ll_exc_handle vector;   \
+.cfi_endproc;   \
 ASM_END (name)
 
 #define CPU_LL_INTR_HANDLER(vector, name)   \
 ASM_ENTRY (name)   \
+.cfi_startproc;   \
   push $0;   \
   cpu_ll_intr_handle vector;   \
+.cfi_endproc;   \
 ASM_END (name)
 
 // Low level handlers for architectural exceptions.
@@ -785,98 +791,85 @@ ASM_DATA (cpu_ll_exc_handler_addrs)
 ASM_END (cpu_ll_exc_handler_addrs)
 
 ASM_ENTRY (cpu_load_gdt)
+.cfi_startproc
 #ifdef __LP64__
-    lgdt (%rdi)
-#else
-    movl 4(%esp), %eax
-    lgdt (%eax)
-#endif
-
-    movl $CPU_GDT_SEL_DATA, %eax
-    movl %eax, %ds
-    movl %eax, %es
-    movl %eax, %ss
-
-    // Alter the stack to reload the code segment using a far return.
-#ifdef __LP64__
-    popq %rax
-    pushq $CPU_GDT_SEL_CODE
-    pushq %rax
-    lretq
-#else
-    popl %eax
-    pushl $CPU_GDT_SEL_CODE
-    pushl %eax
-    lret
-#endif
-ASM_END (cpu_load_gdt)
-
-ASM_ENTRY (cpu_fixup_save)
-#ifdef __LP64__
-  movq %rbx, (%rdi)
-  movq %rbp, 8(%rdi)
-  movq %r12, 16(%rdi)
-  movq %r13, 24(%rdi)
-  movq %r14, 32(%rdi)
-  movq %r15, 40(%rdi)
-  leaq 8(%rsp), %rdx   // Previous RSP without the return address.
-  movq %rdx, 48(%rdi)
-  movq (%rsp), %rdx    // Previous return address as RIP.
-  movq %rdx, 56(%rdi)
-  xorq %rax, %rax      // Upon saving, return value is 0.
+  lgdt (%rdi)
 #else
   movl 4(%esp), %eax
-  movl %ebx, (%eax)
-  movl %esi, 4(%eax)
-  movl %edi, 8(%eax)
-  movl %ebp, 12(%eax)
+  lgdt (%eax)
+#endif
+
+  movl $CPU_GDT_SEL_DATA, %eax
+  movl %eax, %ds
+  movl %eax, %es
+  movl %eax, %ss
+
+ // Alter the stack to reload the code segment using a far return.
+#ifdef __LP64__
+  popq %rax
+  pushq $CPU_GDT_SEL_CODE
+  pushq %rax
+  lretq
+#else
+  popl %eax
+  pushl $CPU_GDT_SEL_CODE
+  pushl %eax
+  lret
+#endif
+.cfi_endproc
+ASM_END (cpu_load_gdt)
+
+ASM_ENTRY (cpu_unw_mctx_save)
+.cfi_startproc
+#ifdef __LP64__
+  movq %rbx, 24(%rdi)
+  movq %rbp, 48(%rdi)
+  movq %r12, 96(%rdi)
+  movq %r13, (13 * 8)(%rdi)
+  movq %r14, (14 * 8)(%rdi)
+  movq %r15, (15 * 8)(%rdi)
+  leaq 8(%rsp), %rdx
+  movq %rdx, 56(%rdi)
+  movq (%rsp), %rdx
+  movq %rdx, (16 * 8)(%rdi)
+#else
+  movl 4(%esp), %eax
+  movl %ebx, 12(%eax)
+  movl %esi, 24(%eax)
+  movl %edi, 28(%eax)
+  movl %ebp, 20(%eax)
   leal 4(%esp), %ecx
   movl %ecx, 16(%eax)
   movl (%esp), %ecx
-  movl %ecx, 20(%eax)
-  xorl %eax, %eax
+  movl %ecx, 32(%eax)
 #endif
   ret
-ASM_END (cpu_fixup_save)
+.cfi_endproc
+ASM_END (cpu_unw_mctx_save)
 
+ASM_ENTRY (cpu_unw_mctx_jmp)
+.cfi_startproc
 #ifdef __LP64__
-
-.macro cpu_fixup_restore_off in out
-  movq \in(%rdi), %rax
-  movq %rax, (\out * 8)(%rsi)
-.endm
-
+  movq %rsi, %rax
+  movq 24(%rdi), %rbx
+  movq 48(%rdi), %rbp
+  movq (12 * 8)(%rdi), %r12
+  movq (13 * 8)(%rdi), %r13
+  movq (14 * 8)(%rdi), %r14
+  movq (15 * 8)(%rdi), %r15
+  movq 56(%rdi), %rsp
+  movq (16 * 8)(%rdi), %rsi
+  jmp *%rsi
 #else
-
-.macro cpu_fixup_restore_off in out
-  movl \in (%ecx), %eax
-  movl %eax, (\out * 4)(%edx)
-.endm
-
-#endif
-
-ASM_ENTRY (cpu_fixup_restore)
-#ifdef __LP64__
-  cpu_fixup_restore_off  0 CPU_EXC_FRAME_RBX
-  cpu_fixup_restore_off  8 CPU_EXC_FRAME_RBP
-  cpu_fixup_restore_off 16 CPU_EXC_FRAME_R12
-  cpu_fixup_restore_off 24 CPU_EXC_FRAME_R13
-  cpu_fixup_restore_off 32 CPU_EXC_FRAME_R14
-  cpu_fixup_restore_off 40 CPU_EXC_FRAME_R15
-  cpu_fixup_restore_off 48 CPU_EXC_FRAME_RSP
-  cpu_fixup_restore_off 56 CPU_EXC_FRAME_RIP
-  movq %rdx, (CPU_EXC_FRAME_RAX * 8)(%rsi)   // Store return value.
-#else
+  movl 8(%esp), %eax
   movl 4(%esp), %ecx
-  movl 8(%esp), %edx
-  cpu_fixup_restore_off  0 CPU_EXC_FRAME_EBX
-  cpu_fixup_restore_off  4 CPU_EXC_FRAME_ESI
-  cpu_fixup_restore_off  8 CPU_EXC_FRAME_EDI
-  cpu_fixup_restore_off 12 CPU_EXC_FRAME_EBP
-  cpu_fixup_restore_off 16 CPU_EXC_FRAME_ESP
-  cpu_fixup_restore_off 20 CPU_EXC_FRAME_EIP
-  movl 12(%esp), %eax
-  movl %eax, (CPU_EXC_FRAME_EAX * 4)(%edx)
+  movl 12(%ecx), %ebx
+  movl 16(%ecx), %esp
+  movl 20(%ecx), %ebp
+  movl 24(%ecx), %esi
+  movl 28(%ecx), %edi
+  movl 32(%ecx), %ecx
+  jmp *%ecx
 #endif
-  ret
-ASM_END (cpu_fixup_restore)
+.cfi_endproc
+ASM_END (cpu_unw_mctx_jmp)

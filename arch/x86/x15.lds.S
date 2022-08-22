@@ -1,12 +1,12 @@
 #ifdef __LP64__
-OUTPUT_FORMAT("elf64-x86-64")
-OUTPUT_ARCH(i386:x86-64)
+OUTPUT_FORMAT ("elf64-x86-64")
+OUTPUT_ARCH (i386:x86-64)
 #else
-OUTPUT_FORMAT("elf32-i386")
-OUTPUT_ARCH(i386)
-#endif /* __LP64__ */
+OUTPUT_FORMAT ("elf32-i386")
+OUTPUT_ARCH (i386)
+#endif
 
-ENTRY(boot_start)
+ENTRY (boot_start)
 
 #include <kern/init.h>
 #include <machine/boot.h>
@@ -16,103 +16,118 @@ ENTRY(boot_start)
 
 PHDRS
 {
-    /* Flags are actually similar to classic Unix permissions */
-    boot    PT_LOAD FLAGS(7);
-    init    PT_LOAD FLAGS(7);
-    percpu  PT_LOAD FLAGS(6);
-    text    PT_LOAD FLAGS(5);
-    rodata  PT_LOAD FLAGS(4);
-    data    PT_LOAD FLAGS(6);
+  // Flags are actually similar to classic Unix permissions.
+  boot    PT_LOAD FLAGS (7);
+  init    PT_LOAD FLAGS (7);
+  percpu  PT_LOAD FLAGS (6);
+  text    PT_LOAD FLAGS (5);
+  rodata  PT_LOAD FLAGS (4);
+  data    PT_LOAD FLAGS (6);
+  unwind  PT_LOAD FLAGS (4);
 
 #ifdef CONFIG_SYMTAB
-    symbol  PT_LOAD FLAGS(6);
+  symbol  PT_LOAD FLAGS (4);
 #endif
 }
 
 SECTIONS
 {
-    . = BOOT_OFFSET;
-    _boot = .;
+  . = BOOT_OFFSET;
+  _boot = .;
 
-    .boot ALIGN(PAGE_SIZE) : {
-        *(.boot.hdr)
-        *(.boot.text)
-        *(.boot.data)
+  .boot ALIGN (PAGE_SIZE) :
+    {
+      *(.boot.hdr)
+      *(.boot.text)
+      *(.boot.data)
     } : boot
 
-    . = ALIGN(PAGE_SIZE);
-    _boot_end = .;
+  . = ALIGN (PAGE_SIZE);
+  _boot_end = .;
 
-    . += PMAP_KERNEL_OFFSET;
-    _init = .;
+  . += PMAP_KERNEL_OFFSET;
+  _init = .;
 
-    .init ALIGN(PAGE_SIZE) : AT(BOOT_VTOP(ADDR(.init))) {
-        *(.init.text)
-        *(.init.data)
+  .init ALIGN (PAGE_SIZE) : AT (BOOT_VTOP (ADDR (.init)))
+    {
+      *(.init.text)
+      *(.init.data)
 
-        . = ALIGN(INIT_OP_ALIGN);
-        _init_ops = .;
+      . = ALIGN (INIT_OP_ALIGN);
+      _init_ops = .;
         *(.init.ops)
-        _init_ops_end = .;
+      _init_ops_end = .;
 
     } : init
 
-    . = ALIGN(PAGE_SIZE);
-    _init_end = .;
-    _percpu = .;
+  . = ALIGN (PAGE_SIZE);
+  _init_end = .;
+  _percpu = .;
 
-    .percpu 0 : AT(BOOT_VTOP(_percpu)) {
-        *(.percpu*)
+  .percpu 0 : AT (BOOT_VTOP (_percpu))
+    {
+      *(.percpu*)
     } : percpu
 
-    . = _percpu + SIZEOF(.percpu);
-    . = ALIGN(PAGE_SIZE);
-    _percpu_end = .;
-    _text = .;
+  . = _percpu + SIZEOF (.percpu);
+  . = ALIGN (PAGE_SIZE);
+  _percpu_end = .;
+  _text = .;
 
-    .text ALIGN(PAGE_SIZE) : AT(BOOT_VTOP(ADDR(.text))) {
-        *(.text*)
+  .text ALIGN (PAGE_SIZE) : AT (BOOT_VTOP (ADDR (.text)))
+    {
+      *(.text*)
     } : text
 
-    . = ALIGN(PAGE_SIZE);
-    _rodata = .;
+  . = ALIGN (PAGE_SIZE);
+  _rodata = .;
 
-    .rodata ALIGN(PAGE_SIZE) : AT(BOOT_VTOP(ADDR(.rodata))) {
-        *(.rodata*)
+  .rodata ALIGN (PAGE_SIZE) : AT (BOOT_VTOP (ADDR (.rodata)))
+    {
+      *(.rodata*)
     } : rodata
 
-    . = ALIGN(PAGE_SIZE);
-    _data = .;
+  . = ALIGN (PAGE_SIZE);
+  _data = .;
 
-    .data ALIGN(PAGE_SIZE) : AT(BOOT_VTOP(ADDR(.data))) {
-        . = ALIGN(CPU_L1_SIZE);
-        *(.data.read_mostly)
-        . = ALIGN(CPU_L1_SIZE);
-        *(.data*)
+  .data ALIGN (PAGE_SIZE) : AT (BOOT_VTOP (ADDR (.data)))
+    {
+      . = ALIGN (CPU_L1_SIZE);
+      *(.data.read_mostly)
+      . = ALIGN (CPU_L1_SIZE);
+      *(.data*)
     } : data
 
-    .bss ALIGN(CPU_DATA_ALIGN) : AT(BOOT_VTOP(ADDR(.bss))) {
-        *(.bss*)
+  .bss ALIGN (CPU_DATA_ALIGN) : AT (BOOT_VTOP (ADDR (.bss)))
+    {
+      *(.bss*)
     } : data
+
+  /*
+   * Including the dynamic tables (unwind and symbol) last should reliably
+   * prevent the second link from changing the addresses of the kernel symbols.
+   *
+   * In addition, use a program header different from data to make
+   * sure the linker doesn't include the .bss section in the output file.
+   */
+
+  .unwind ALIGN (PAGE_SIZE) : AT (BOOT_VTOP (ADDR (.unwind)))
+    {
+      *(.unwind*)
+    } : unwind
 
 #ifdef CONFIG_SYMTAB
-    /*
-     * Including the embedded symbol table last should reliably prevent
-     * the second link from changing the addresses of the kernel symbols.
-     *
-     * In addition, use a program header different from data to make
-     * sure the linker doesn't include the .bss section in the output file.
-     */
-    .symbol ALIGN(PAGE_SIZE) : AT(BOOT_VTOP(ADDR(.symbol))) {
-        *(.symbol*)
+  .symbol ALIGN (PAGE_SIZE) : AT (BOOT_VTOP (ADDR (.symbol)))
+    {
+      *(.symbol*)
     } : symbol
-#endif /* CONFIG_SYMTAB */
+#endif
 
-    . = ALIGN(PAGE_SIZE);
-    _end = .;
+  . = ALIGN (PAGE_SIZE);
+  _end = .;
 
-    /DISCARD/ : {
-        *(.eh_frame*)
-        *(.note*)
+  /DISCARD/ :
+    {
+      *(.note*)
     }
 }

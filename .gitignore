@@ -5,6 +5,7 @@ tags
 cscope.out
 x15.lds
 /include/generated
+/tools/__pycache__
 /x15
 /doc/*\.[1-9]
 /doc/*\.[1-9]\.html

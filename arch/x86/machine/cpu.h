@@ -910,20 +910,25 @@ void cpu_register_intr (uint32_t vector, cpu_intr_handler_fn_t fn);
  * running the interrupt handler), so that it's restored afterwards.
 */
 
-struct cpu_fixup
-{
 #ifdef __LP64__
-  uintptr_t regs[8];
+  #define CPU_UNWIND_REGISTERS   17
 #else
-  uintptr_t regs[6];
+  #define CPU_UNWIND_REGISTERS    9
 #endif
-};
 
-// Save the context of a CPU fixup.
-int cpu_fixup_save (struct cpu_fixup *cf);
+#define CPU_UNWIND_PC_REG   (CPU_UNWIND_REGISTERS - 1)
 
-// Restore the (previously saved) CPU fixup context into a memory area.
-void cpu_fixup_restore (const struct cpu_fixup *cf, void *area, int retval);
+// Initialize an unwind context from a saved frame.
+void cpu_unw_mctx_from_frame (uintptr_t *regs, const void *area);
+
+// Save the CPU state into an unwind context.
+void cpu_unw_mctx_save (uintptr_t *regs);
+
+// Restore the CPU context from an unwind frame into a memory area.
+void cpu_unw_mctx_set_frame (const uintptr_t *regs, void *area, int retval);
+
+// Set the CPU context to the unwind context.
+void cpu_unw_mctx_jmp (const uintptr_t *regs, int retval);
 
 /*
  * This init operation provides :

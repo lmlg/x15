@@ -1969,7 +1969,7 @@ thread_shell_trace (struct shell *shell, int argc, char **argv)
   const char *task_name = argv[1], *thread_name = argv[2];
   struct task *task = task_lookup (task_name);
 
-  if (task == NULL)
+  if (! task)
     {
       fmt_xprintf (shell->stream, "thread_trace: task not found: %s\n",
                    task_name);

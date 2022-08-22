@@ -69,7 +69,7 @@ test_vm_fault_thread (void *arg __unused)
 
   uintptr_t va = PMAP_END_ADDRESS - PAGE_SIZE * 10;
   int flags = VM_MAP_FLAGS (VM_PROT_READ, VM_PROT_READ, VM_INHERIT_NONE,
-                            VM_ADV_DEFAULT, VM_MAP_FIXED);
+                            VM_ADV_DEFAULT, 0);
   struct vm_map *map = thread_self()->task->map;
   error = vm_map_enter (map, &va, PAGE_SIZE, 0, flags,
                         test_obj, TEST_OFFSET);

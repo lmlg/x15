@@ -51,6 +51,7 @@
 #include <kern/rcu_types.h>
 #include <kern/spinlock_types.h>
 #include <kern/turnstile_types.h>
+#include <kern/unwind.h>
 
 #include <machine/cpu.h>
 #include <machine/tcb.h>
@@ -209,7 +210,7 @@ struct thread
   struct perfmon_td perfmon_td;   // ( )
 #endif
 
-  struct vm_fixup_t *fixup;       // (-)
+  struct unw_fixup_t *fixup;      // (-)
 };
 
 #define THREAD_ATTR_DETACHED   0x1

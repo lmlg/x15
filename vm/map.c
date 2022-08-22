@@ -38,6 +38,7 @@
 #include <kern/shell.h>
 #include <kern/spinlock.h>
 #include <kern/task.h>
+#include <kern/unwind.h>
 
 #include <machine/page.h>
 #include <machine/pmap.h>
@@ -1033,8 +1034,8 @@ vm_map_check_valid (struct vm_map *map, uintptr_t addr, int prot)
 int
 vm_copy (void *dst, const void *src, size_t size)
 {
-  struct vm_fixup fixup;
-  int res = vm_fixup_save (&fixup);
+  struct unw_fixup fixup;
+  int res = unw_fixup_save (&fixup);
 
   if (res == 0)
     memcpy (dst, src, size);
