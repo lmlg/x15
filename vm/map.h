@@ -124,9 +124,6 @@ int vm_map_create (struct vm_map **mapp);
 int vm_map_lookup (struct vm_map *map, uintptr_t addr,
                    struct vm_map_entry *entry);
 
-// Test that an address is valid with a particular protection.
-bool vm_map_check_valid (struct vm_map *map, uintptr_t addr, int prot);
-
 // Put back a previously returned entry.
 void vm_map_entry_put (struct vm_map_entry *entry);
 

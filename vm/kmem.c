@@ -113,7 +113,7 @@ vm_kmem_alloc (size_t size)
         goto error;
 
       int error = pmap_enter (kernel_pmap, start, vm_page_to_pa (page),
-                              VM_PROT_READ | VM_PROT_WRITE, PMAP_PEF_GLOBAL);
+                              VM_PROT_RDWR, PMAP_PEF_GLOBAL);
 
       if (error || start - va == vm_page_ptob (1000))
         goto error;
@@ -160,7 +160,7 @@ vm_kmem_map_pa (phys_addr_t pa, size_t size,
 
   for (uintptr_t offset = 0; offset < map_size; offset += PAGE_SIZE)
     if (pmap_enter (kernel_pmap, map_va + offset, start + offset,
-                    VM_PROT_READ | VM_PROT_WRITE, PMAP_PEF_GLOBAL) != 0)
+                    VM_PROT_RDWR, PMAP_PEF_GLOBAL) != 0)
       goto error;
 
   if (pmap_update (kernel_pmap) != 0)

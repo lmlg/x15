@@ -23,9 +23,14 @@
 
 #include <vm/map.h>
 
-struct ipc_env
+struct ipc_data
 {
-  cpu_flags_t flags;
+  /* The following are volatile to avoid them being clobbered
+   * by fixup jumps.*/
+  volatile cpu_flags_t cpu_flags;
+  volatile uintptr_t va;
+  int prot;
+  bool copy_into;
 };
 
 static inline void
@@ -130,71 +135,46 @@ ipc_iter_adv (struct ipc_iter *it, size_t off)
   return (ipc_iter_adv_impl (it, off, NULL));
 }
 
-static bool
-ipc_inside_stack (struct thread *thread, const void *ptr)
+static size_t
+ipc_compute_size (size_t page_off, const struct ipc_iter *it1,
+                  const struct ipc_iter *it2)
 {
-  return (ptr < thread->stack &&
-          (const char *)ptr >= (char *)thread->stack - PAGE_SIZE);
+  return (MIN (PAGE_SIZE - page_off,
+               MIN (ipc_iter_cur_size (it1), ipc_iter_cur_size (it2))));
 }
 
 static ssize_t
 ipc_copy_iter_single (struct ipc_iter *l_it, struct ipc_iter *r_it,
-                      struct thread *r_thr, struct pmap *pmap, bool copy_into)
+                      struct vm_map *r_map, struct pmap *pmap,
+                      struct ipc_data *data)
 {
-  struct vm_fixup fixup;
-  volatile struct ipc_env env;
-
-  int error = vm_fixup_save (&fixup);
-  if (unlikely (error))
-    {
-      pmap_ipc_pte_clear (pmap_ipc_pte_get (), vm_map_ipc_addr ());
-      cpu_intr_restore (env.flags);
-      return (-error);
-    }
-
   phys_addr_t pa;
-  int prot = copy_into ? VM_PROT_RDWR : VM_PROT_READ;
-  struct vm_map *r_map = r_thr->task->map;
   void *r_ptr = ipc_iter_cur_ptr (r_it);
-  size_t r_size = ipc_iter_cur_size (r_it),
-         l_size = ipc_iter_cur_size (l_it),
-         page_off = (uintptr_t)r_ptr % PAGE_SIZE,
-         ret = MIN (PAGE_SIZE - page_off, MIN (r_size, l_size));
+  size_t page_off = (uintptr_t)r_ptr % PAGE_SIZE,
+         ret = ipc_compute_size (page_off, l_it, r_it);
 
-  cpu_intr_save ((cpu_flags_t *)&env.flags);
-  if (!vm_map_check_valid (r_map, (uintptr_t)r_ptr, prot) &&
-      !ipc_inside_stack (r_thr, r_ptr))
-    {
-      cpu_intr_restore (env.flags);
-      return (-EFAULT);
-    }
-  else if (pmap_extract (r_map->pmap, (uintptr_t)r_ptr, &pa) != 0)
+  if (pmap_extract (r_map->pmap, (uintptr_t)r_ptr, &pa) != 0)
     { // Need to fault in the destination address.
-      error = vm_map_fault (r_map, (uintptr_t)r_ptr, prot,
-                            cpu_flags_intr_enabled (env.flags) ?
-                            VM_MAP_FAULT_INTR : 0);
+      int error = vm_map_fault (r_map, (uintptr_t)r_ptr, data->prot,
+                                cpu_flags_intr_enabled (data->cpu_flags) ?
+                                VM_MAP_FAULT_INTR : 0);
       if (error)
-        {
-          cpu_intr_restore (env.flags);
-          return (-error);
-        }
+        return (-error);
 
       pmap_extract (r_map->pmap, (uintptr_t)r_ptr, &pa);
     }
 
-  uintptr_t va = vm_map_ipc_addr ();
+  uintptr_t va = data->va;
   _Auto pte = pmap_ipc_pte_map (pmap, va, pa);
 
   if (! pte)
     return (-EINTR);
-  else if (copy_into)
+  else if (data->copy_into)
     memcpy ((void *)(va + page_off), ipc_iter_cur_ptr (l_it), ret);
   else
     memcpy (ipc_iter_cur_ptr (l_it), (void *)(va + page_off), ret);
 
   pmap_ipc_pte_clear (pte, va);
-  cpu_intr_restore (env.flags);
-
   return ((ssize_t)ret);
 }
 
@@ -204,26 +184,44 @@ ipc_copy_iter (struct ipc_iter *src_it, struct thread *src_thr,
 {
   ssize_t ret = 0;
   struct ipc_iter *l_it = src_it, *r_it = dst_it;
-  bool copy_into = src_thr == thread_self ();
   struct thread *r_thr = dst_thr;
+  struct ipc_data data = { .copy_into = src_thr == thread_self (),
+                           .prot = VM_PROT_READ, .va = vm_map_ipc_addr () };
 
-  if (! copy_into)
+  if (!data.copy_into)
     {
       l_it = dst_it, r_it = src_it;
       r_thr = src_thr;
     }
+  else
+    data.prot = VM_PROT_RDWR;
 
+  struct vm_map *r_map = r_thr->task->map;
   struct pmap *pmap = thread_self()->task->map->pmap;
+
+  struct vm_fixup fixup;
+  int error = vm_fixup_save (&fixup);
+
+  if (error)
+    {
+      pmap_ipc_pte_clear (pmap_ipc_pte_get (), data.va);
+      cpu_intr_restore (data.cpu_flags);
+      return (-error);
+    }
+
   while (ipc_iter_valid (l_it) && ipc_iter_valid (r_it))
     {
-      ssize_t tmp = ipc_copy_iter_single (l_it, r_it, r_thr, pmap, copy_into);
+      cpu_intr_save ((cpu_flags_t *)&data.cpu_flags);
+      ssize_t tmp = ipc_copy_iter_single (l_it, r_it, r_map, pmap, &data);
+      cpu_intr_restore (data.cpu_flags);
+
       if (tmp < 0)
         return (tmp);
 
       /* Advance the iterators after the call because that may end up
        * calling 'ipc_copy_iter' again and the stack may overflow. */
 
-      int error = ipc_iter_adv (l_it, tmp);
+      error = ipc_iter_adv (l_it, tmp);
       if (error && error != ENOMEM)
         return (-error);
 

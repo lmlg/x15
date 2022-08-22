@@ -1006,30 +1006,6 @@ vm_map_lookup (struct vm_map *map, uintptr_t addr,
   return (0);
 }
 
-static int
-vm_map_validate (struct vm_map *map, uintptr_t addr, int prot)
-{
-  SXLOCK_SHGUARD (&map->lock);
-  _Auto ep = vm_map_lookup_nearest (map, vm_page_trunc (addr));
-
-  if (!ep || addr < ep->start)
-    return (EFAULT);
-  else if ((prot & VM_MAP_PROT (ep->flags)) != prot)
-    return (EACCES);
-  return (0);
-}
-
-bool
-vm_map_check_valid (struct vm_map *map, uintptr_t addr, int prot)
-{
-  int error = vm_map_validate (map, addr, prot);
-  if (error == EFAULT)
-    // Test the kernel VM map as well.
-    error = vm_map_validate (vm_map_get_kernel_map (), addr, prot);
-
-  return (error == 0);
-}
-
 void
 vm_map_entry_put (struct vm_map_entry *entry)
 {
