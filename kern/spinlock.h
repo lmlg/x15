@@ -269,9 +269,13 @@ spinlock_guard_fini (void *ptr)
     spinlock_unlock (guard->spinlock);
 }
 
-#define SPINLOCK_GUARD(spinlock, save_flags)   \
+#define SPINLOCK_GUARD_IMPL(spinlock, save_flags)   \
   CLEANUP (spinlock_guard_fini) _Auto __unused UNIQ (sg) =   \
     spinlock_guard_make ((spinlock), (save_flags))
+
+#define SPINLOCK_INTR_GUARD(spinlock)   SPINLOCK_GUARD_IMPL ((spinlock), true)
+
+#define SPINLOCK_GUARD(spinlock)   SPINLOCK_GUARD_IMPL ((spinlock), false)
 
 /*
  * This init operation provides :

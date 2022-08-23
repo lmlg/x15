@@ -34,6 +34,7 @@
 #include <kern/shutdown.h>
 #include <kern/task.h>
 #include <kern/thread.h>
+#include <kern/unwind.h>
 #include <kern/xcall.h>
 
 #include <machine/acpi.h>
@@ -46,7 +47,6 @@
 #include <machine/pit.h>
 #include <machine/pmap.h>
 #include <machine/ssp.h>
-#include <machine/strace.h>
 
 #include <vm/defs.h>
 #include <vm/map.h>
@@ -428,13 +428,19 @@ cpu_show_frame (const struct cpu_exc_frame *frame)
 
 #else   // __LP64__
 
+static inline bool
+cpu_kernel_frame (const struct cpu_exc_frame *frame)
+{
+  return (!(frame->words[CPU_EXC_FRAME_CS] & CPU_PL_USER) &&
+          frame->words[CPU_EXC_FRAME_VECTOR] != CPU_EXC_DF);
+}
+
 static void
 cpu_show_frame (const struct cpu_exc_frame *frame)
 {
   uintptr_t esp, ss;
 
-  if ((frame->words[CPU_EXC_FRAME_CS] & CPU_PL_USER) ||
-      frame->words[CPU_EXC_FRAME_VECTOR] == CPU_EXC_DF)
+  if (!cpu_kernel_frame (frame))
     {
       esp = frame->words[CPU_EXC_FRAME_ESP];
       ss = frame->words[CPU_EXC_FRAME_SS];
@@ -476,7 +482,9 @@ cpu_show_frame (const struct cpu_exc_frame *frame)
 static void
 cpu_show_stack (const struct cpu_exc_frame *frame)
 {
-  strace_show (frame->words[CPU_EXC_FRAME_PC], frame->words[CPU_EXC_FRAME_FP]);
+  struct unw_mcontext mctx;
+  cpu_unw_mctx_from_frame (mctx.regs, frame);
+  unw_backtrace (&mctx);
 }
 
 static void
@@ -488,7 +496,7 @@ cpu_exc_double_fault (const struct cpu_exc_frame *frame)
   struct cpu_exc_frame frame_store;
 
   /*
-   * Double faults are catched through a task gate, which makes the given
+   * Double faults are caught through a task gate, which makes the given
    * frame useless. The interrupted state is automatically saved in the
    * main TSS by the processor. Build a proper exception frame from there.
    */
@@ -624,19 +632,99 @@ cpu_exc_page_fault (const struct cpu_exc_frame *frame)
 
   if (! error)
     return;
-  else if (self->fixup)
-    cpu_fixup_restore (&self->fixup->env, (void *)frame->words, error);
-  else
-    { // TODO: Implement segfaults for userspace tasks.
-      cpu_halt_broadcast ();
-      printf ("trap: page fault error: %d, code %d at %#lx in task %s\n",
-              (int)error, code, addr, self->task->name);
+  else if (self->fixup &&
+      unw_fixup_restore (self->fixup, (void *)frame->words, error) == 0)
+    return;
 
-      cpu_show_thread ();
-      cpu_show_frame (frame);
-      cpu_show_stack (frame);
-      cpu_halt ();
+  // TODO: Implement segfaults for userspace tasks.
+  cpu_halt_broadcast ();
+  printf ("trap: page fault error: %d, code %d at %#lx in task %s\n",
+          (int)error, code, addr, self->task->name);
+
+  cpu_show_thread ();
+  cpu_show_frame (frame);
+  cpu_show_stack (frame);
+  cpu_halt ();
+}
+
+// DWARF register mapping.
+
+#define R_(i)   CPU_EXC_FRAME_##i
+
+#ifdef __LP64__
+
+static const uint8_t CPU_DWARF_MAP[] =
+{
+  R_(RAX), R_(RDX), R_(RCX), R_(RBX), R_(RSI), R_(RDI), R_(RBP), R_(RSP),
+  R_(R8), R_(R9), R_(R10), R_(R11), R_(R12), R_(R13), R_(R14), R_(R15), R_(RIP)
+};
+
+static const uint8_t CPU_DWARF_SAVED_REGS[] =
+{
+  3, 6, 7, 12, 13, 14, 15, 16
+};
+
+#else
+
+static const uint8_t CPU_DWARF_MAP[] =
+{
+  R_(EAX), R_(ECX), R_(EDX), R_(EBX), R_(ESP),
+  R_(EBP), R_(ESI), R_(EDI), R_(EIP)
+};
+
+#endif
+
+#undef R_
+
+void
+cpu_unw_mctx_from_frame (uintptr_t *regp, const void *area)
+{
+  const struct cpu_exc_frame *frame = area;
+  for (size_t i = 0; i < ARRAY_SIZE (CPU_DWARF_MAP); ++i)
+    regp[i] = frame->words[CPU_DWARF_MAP[i]];
+#ifndef __LP64__
+  /* When an exception occurs within the kernel, the SS and
+   * ESP registers are not pushed. */
+  if (cpu_kernel_frame (frame))
+    regp[4] = (uintptr_t)(frame->words + CPU_EXC_FRAME_ESP);
+#endif
+}
+
+#ifndef __LP64__
+
+static void
+cpu_clear_intr (void)
+{
+  asm volatile ("pushfl\n"
+                "pushl %%cs\n"
+                "pushl $1f\n"
+                "iret\n"
+                "1:"
+                : : : "memory");
+}
+
+#endif
+
+void
+cpu_unw_mctx_set_frame (const uintptr_t *regp, void *area __unused, int retval)
+{
+#ifndef __LP64__
+  /* We can't simply overwrite the frame registers and let the exception
+   * mechanism restore the state, because the stack pointer isn't saved
+   * on i386. As such, we need to clear the interrupt state and manually
+   * jump into the new context. */
+  cpu_clear_intr ();
+  cpu_unw_mctx_jmp (regp, retval);
+#else
+  struct cpu_exc_frame *frame = area;
+  for (size_t i = 0; i < ARRAY_SIZE (CPU_DWARF_SAVED_REGS); ++i)
+    {
+      uint32_t rx = CPU_DWARF_SAVED_REGS[i];
+      frame->words[CPU_DWARF_MAP[rx]] = regp[rx];
     }
+
+  frame->words[CPU_EXC_FRAME_RAX] = retval;
+#endif
 }
 
 static void __init

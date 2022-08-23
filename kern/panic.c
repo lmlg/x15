@@ -20,8 +20,9 @@
 
 #include <kern/atomic.h>
 #include <kern/panic.h>
+#include <kern/unwind.h>
+
 #include <machine/cpu.h>
-#include <machine/strace.h>
 
 static int panic_done;
 
@@ -42,7 +43,7 @@ panic (const char *format, ...)
   va_start (list, format);
   vprintf (format, list);
   printf ("\n");
-  strace_dump ();
+  unw_backtrace (NULL);
 
   cpu_halt ();
   __builtin_unreachable ();

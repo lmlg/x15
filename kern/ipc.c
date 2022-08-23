@@ -18,6 +18,7 @@
 #include <kern/ipc.h>
 #include <kern/task.h>
 #include <kern/thread.h>
+#include <kern/unwind.h>
 
 #include <machine/cpu.h>
 
@@ -44,8 +45,8 @@ ipc_iter_bump_iovs (struct ipc_iter *it, int nr_iovs)
 static int
 ipc_iter_fill_cache_local (struct ipc_iter *it, int nr_iovs)
 {
-  struct vm_fixup fixup;
-  int error = vm_fixup_save (&fixup);
+  struct unw_fixup fixup;
+  int error = unw_fixup_save (&fixup);
 
   if (error)
     return (error);
@@ -199,10 +200,10 @@ ipc_copy_iter (struct ipc_iter *src_it, struct thread *src_thr,
   struct vm_map *r_map = r_thr->task->map;
   struct pmap *pmap = thread_self()->task->map->pmap;
 
-  struct vm_fixup fixup;
-  int error = vm_fixup_save (&fixup);
+  struct unw_fixup fixup;
+  int error = unw_fixup_save (&fixup);
 
-  if (error)
+  if (unlikely (error))
     {
       pmap_ipc_pte_clear (pmap_ipc_pte_get (), data.va);
       cpu_intr_restore (data.cpu_flags);

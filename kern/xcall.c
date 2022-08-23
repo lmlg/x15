@@ -184,7 +184,7 @@ xcall_async_work (struct work *work)
   _Auto async = structof (work, struct xcall_async, work);
   xcall_call (async->fn, async->arg, async->cpu);
 
-  SPINLOCK_GUARD (&async->lock, false);
+  SPINLOCK_GUARD (&async->lock);
   async->done = true;
   if (async->waiter)
     thread_wakeup (async->waiter);
@@ -212,7 +212,7 @@ xcall_async_call (struct xcall_async *async)
 void
 xcall_async_wait (struct xcall_async *async)
 {
-  SPINLOCK_GUARD (&async->lock, true);
+  SPINLOCK_INTR_GUARD (&async->lock);
   if (!async->done)
     {
       async->waiter = thread_self ();
@@ -225,7 +225,7 @@ xcall_async_timedwait (struct xcall_async *async, uint64_t ticks, bool abs)
 {
   int ret = 0;
 
-  SPINLOCK_GUARD (&async->lock, true);
+  SPINLOCK_INTR_GUARD (&async->lock);
   if (!async->done)
     {
       async->waiter = thread_self ();

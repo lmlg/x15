@@ -155,7 +155,7 @@ console_intr (struct console *console, const char *s)
   if (*s == '\0')
     return;
 
-  SPINLOCK_GUARD (&console->lock, false);
+  SPINLOCK_GUARD (&console->lock);
 
   for (; *s; ++s)
     {

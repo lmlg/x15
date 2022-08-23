@@ -450,7 +450,7 @@ sref_counter_add (struct sref_counter *counter, unsigned long delta,
 {
   assert (!cpu_intr_enabled ());
 
-  SPINLOCK_GUARD (&counter->lock, false);
+  SPINLOCK_GUARD (&counter->lock);
   counter->value += delta;
 
   if (counter->value)

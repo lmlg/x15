@@ -49,6 +49,7 @@ kuid_data_pop_key (struct kuid_data *data, rdxtree_key_t *keyp)
     return (-1);
 
   data->stamp = 0;
+  assert (size == sizeof (id));
   *keyp = id;
   return (0);
 }
@@ -85,7 +86,7 @@ kuid_alloc (struct kuid_head *head, uint32_t max_id)
 
   {
     _Auto data = &kuid_data;
-    SPINLOCK_GUARD (&data->lock, false);
+    SPINLOCK_GUARD (&data->lock);
 
     if (kuid_data_alloc_radix (data, head, &key) != 0)
       return (EAGAIN);

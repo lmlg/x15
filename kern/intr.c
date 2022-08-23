@@ -231,7 +231,7 @@ intr_entry_lookup_handler (const struct intr_entry *entry, intr_handler_fn_t fn)
 static int
 intr_entry_add (struct intr_entry *entry, struct intr_handler *handler)
 {
-  SPINLOCK_GUARD (&entry->lock, true);
+  SPINLOCK_INTR_GUARD (&entry->lock);
 
   if (intr_entry_empty (entry))
     {
@@ -250,7 +250,7 @@ intr_entry_add (struct intr_entry *entry, struct intr_handler *handler)
 static struct intr_handler*
 intr_entry_remove (struct intr_entry *entry, intr_handler_fn_t fn)
 {
-  SPINLOCK_GUARD (&entry->lock, true);
+  SPINLOCK_INTR_GUARD (&entry->lock);
 
   _Auto handler = intr_entry_lookup_handler (entry, fn);
   if (! handler)
@@ -363,7 +363,7 @@ intr_handle (uint32_t intr)
   assert (thread_check_intr_context ());
 
   _Auto entry = intr_get_entry (intr);
-  SPINLOCK_GUARD (&entry->lock, false);
+  SPINLOCK_GUARD (&entry->lock);
 
   if (intr_entry_empty (entry))
     {

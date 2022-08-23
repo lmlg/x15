@@ -245,7 +245,7 @@ ioapic_enable (void *priv, uint32_t intr, uint32_t cpu)
   ioapic_compute_entry (&high, &low, cpu_apic_id (cpu), intr,
                         active_high, edge_triggered);
 
-  SPINLOCK_GUARD (&ioapic->lock, true);
+  SPINLOCK_INTR_GUARD (&ioapic->lock);
   ioapic_write_entry_high (ioapic, id, high);
   ioapic_write_entry_low (ioapic, id, low);
 }
@@ -256,7 +256,7 @@ ioapic_disable (void *priv, uint32_t intr)
   struct ioapic *ioapic = priv;
   uint32_t id = ioapic_compute_id (ioapic, intr);
 
-  SPINLOCK_GUARD (&ioapic->lock, true);
+  SPINLOCK_INTR_GUARD (&ioapic->lock);
   ioapic_write_entry_low (ioapic, id, IOAPIC_ENTLOW_INTRMASK);
 }
 

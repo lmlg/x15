@@ -146,35 +146,6 @@ int vm_copy (void *dst, const void *src, size_t size);
 // Display information about a memory map.
 void vm_map_info (struct vm_map *map, struct stream *stream);
 
-// VM fixups.
-
-struct vm_fixup_t
-{
-  struct cpu_fixup env;
-  struct vm_fixup_t **prev;
-  struct vm_fixup_t *next;
-};
-
-static inline void
-vm_fixup_fini (void *p)
-{
-  struct vm_fixup_t *fx = p;
-  *fx->prev = fx->next;
-}
-
-#define vm_fixup   vm_fixup_t CLEANUP (vm_fixup_fini)
-
-#define vm_fixup_save(fx)   \
-  ({   \
-     struct vm_fixup_t *fx_ = (fx);   \
-     _Auto thr_ = thread_self ();   \
-     \
-     fx_->prev = &thr_->fixup;   \
-     fx_->next = *fx_->prev;   \
-     *fx_->prev = fx_;   \
-     cpu_fixup_save (&fx_->env);   \
-   })
-
 /*
  * This init operation provides :
  *  - kernel mapping operations

@@ -1806,7 +1806,7 @@ thread_join_common (struct thread *thread)
 
 void thread_terminate (struct thread *thread)
 {
-  SPINLOCK_GUARD (&thread->join_lock, false);
+  SPINLOCK_GUARD (&thread->join_lock);
   thread->terminating = true;
   thread_wakeup (thread->join_waiter);
 }
@@ -1969,7 +1969,7 @@ thread_shell_trace (struct shell *shell, int argc, char **argv)
   const char *task_name = argv[1], *thread_name = argv[2];
   struct task *task = task_lookup (task_name);
 
-  if (task == NULL)
+  if (! task)
     {
       fmt_xprintf (shell->stream, "thread_trace: task not found: %s\n",
                    task_name);

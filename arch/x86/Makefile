@@ -21,14 +21,6 @@ endef
 XBUILD_CFLAGS += -mno-sse -mno-mmx -mno-sse2 -mno-3dnow
 XBUILD_CFLAGS += $(call cc-option,-mno-avx,)
 
-# Store unwind information in .debug_frame instead of .eh_frame. Unwind
-# tables aren't used at runtime, so using a debug section reduces the kernel
-# code size.
-XBUILD_CFLAGS += -fno-asynchronous-unwind-tables
-
-# For now, use frame pointers for convenient stack tracing.
-XBUILD_CFLAGS += -fno-omit-frame-pointer
-
 XBUILD_LDFLAGS += -Wl,-z,max-page-size=4096 -Wl,-z,common-page-size=4096
 
 ifeq ($(CONFIG_X86_32),y)
@@ -56,7 +48,6 @@ x15_SOURCES-y += \
         arch/x86/machine/pit.c \
         arch/x86/machine/pmap.c \
         arch/x86/machine/ssp.c \
-        arch/x86/machine/strace.c \
         arch/x86/machine/string.c \
         arch/x86/machine/tcb_asm.S \
         arch/x86/machine/tcb.c \

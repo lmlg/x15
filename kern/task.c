@@ -162,12 +162,12 @@ task_destroy (struct task *task)
 struct task*
 task_lookup (const char *name)
 {
-  SPINLOCK_GUARD (&task_list_lock, false);
+  SPINLOCK_GUARD (&task_list_lock);
 
   struct task *task;
   list_for_each_entry (&task_list, task, node)
     {
-      SPINLOCK_GUARD (&task->lock, false);
+      SPINLOCK_GUARD (&task->lock);
       if (strcmp (task->name, name) == 0)
         {
           task_ref (task);
@@ -181,7 +181,7 @@ task_lookup (const char *name)
 void
 task_add_thread (struct task *task, struct thread *thread)
 {
-  SPINLOCK_GUARD (&task->lock, false);
+  SPINLOCK_GUARD (&task->lock);
   list_insert_tail (&task->threads, &thread->task_node);
 }
 
@@ -200,7 +200,7 @@ task_remove_thread (struct task *task, struct thread *thread)
 struct thread*
 task_lookup_thread (struct task *task, const char *name)
 {
-  SPINLOCK_GUARD (&task->lock, false);
+  SPINLOCK_GUARD (&task->lock);
 
   struct thread *thread;
   list_for_each_entry (&task->threads, thread, task_node)
@@ -218,14 +218,14 @@ task_info (struct task *task, struct stream *stream)
 {
   if (! task)
     {
-      SPINLOCK_GUARD (&task_list_lock, false);
+      SPINLOCK_GUARD (&task_list_lock);
       list_for_each_entry (&task_list, task, node)
         task_info (task, stream);
 
       return;
     }
 
-  SPINLOCK_GUARD (&task->lock, false);
+  SPINLOCK_GUARD (&task->lock);
   fmt_xprintf (stream, "task: name: %s, threads:\n", task->name);
 
   if (list_empty (&task->threads))
