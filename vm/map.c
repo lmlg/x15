@@ -1006,14 +1006,6 @@ vm_map_lookup (struct vm_map *map, uintptr_t addr,
   return (0);
 }
 
-void
-vm_map_entry_put (struct vm_map_entry *entry)
-{
-  struct vm_object *obj = entry->object;
-  if (obj)
-    vm_object_unref (obj);
-}
-
 int
 vm_copy (void *dst, const void *src, size_t size)
 {

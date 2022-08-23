@@ -26,7 +26,7 @@
 struct ipc_data
 {
   /* The following are volatile to avoid them being clobbered
-   * by fixup jumps.*/
+   * by fixup jumps. */
   volatile cpu_flags_t cpu_flags;
   volatile uintptr_t va;
   int prot;

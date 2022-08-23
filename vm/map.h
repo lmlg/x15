@@ -33,6 +33,7 @@
 #include <machine/pmap.h>
 
 #include <vm/defs.h>
+#include <vm/object.h>
 
 /*
  * Mapping flags.
@@ -125,7 +126,13 @@ int vm_map_lookup (struct vm_map *map, uintptr_t addr,
                    struct vm_map_entry *entry);
 
 // Put back a previously returned entry.
-void vm_map_entry_put (struct vm_map_entry *entry);
+static inline void
+vm_map_entry_put (struct vm_map_entry *entry)
+{
+  struct vm_object *obj = entry->object;
+  if (obj)
+    vm_object_unref (obj);
+}
 
 // Handle a page fault.
 int vm_map_fault (struct vm_map *map, uintptr_t addr, int prot, int flags);
@@ -144,13 +151,15 @@ void vm_map_info (struct vm_map *map, struct stream *stream);
 struct vm_fixup_t
 {
   struct cpu_fixup env;
+  struct vm_fixup_t **prev;
   struct vm_fixup_t *next;
 };
 
 static inline void
 vm_fixup_fini (void *p)
 {
-  thread_self()->fixup = ((struct vm_fixup_t *)p)->next;
+  struct vm_fixup_t *fx = p;
+  *fx->prev = fx->next;
 }
 
 #define vm_fixup   vm_fixup_t CLEANUP (vm_fixup_fini)
@@ -160,8 +169,9 @@ vm_fixup_fini (void *p)
      struct vm_fixup_t *fx_ = (fx);   \
      _Auto thr_ = thread_self ();   \
      \
-     fx_->next = thr_->fixup;   \
-     thr_->fixup = fx_;   \
+     fx_->prev = &thr_->fixup;   \
+     fx_->next = *fx_->prev;   \
+     *fx_->prev = fx_;   \
      cpu_fixup_save (&fx_->env);   \
    })
 

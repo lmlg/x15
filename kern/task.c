@@ -50,7 +50,7 @@ static struct spinlock task_list_lock;
 static void
 task_init (struct task *task, const char *name, struct vm_map *map)
 {
-  task->nr_refs = 1;
+  kuid_head_init (&task->kuid);
   spinlock_init (&task->lock);
   list_init (&task->threads);
   task->map = map;
@@ -132,6 +132,9 @@ task_create (struct task **taskp, const char *name)
     goto error_map;
 
   task_init (task, name, map);
+  error = kuid_alloc (&task->kuid, TASK_MAX_ID);
+  if (error)
+    goto error_kuid;
 
   spinlock_lock (&task_list_lock);
   list_insert_tail (&task_list, &task->node);
@@ -140,6 +143,8 @@ task_create (struct task **taskp, const char *name)
   *taskp = task;
   return (0);
 
+error_kuid:
+  vm_map_destroy (task->map);
 error_map:
   kmem_cache_free (&task_cache, task);
   return (error);

@@ -44,6 +44,7 @@
 #include <kern/init.h>
 #include <kern/cpumap.h>
 #include <kern/kernel.h>
+#include <kern/kuid.h>
 #include <kern/list_types.h>
 #include <kern/macros.h>
 #include <kern/perfmon_types.h>
@@ -76,8 +77,8 @@ struct thread_runq;
 struct thread_fs_runq;
 
 // Thread flags.
-#define THREAD_YIELD    0x1UL   // Must yield the processor ASAP.
-#define THREAD_DETACHED 0x2UL   // Resources automatically released on exit.
+#define THREAD_YIELD      0x1UL   // Must yield the processor ASAP.
+#define THREAD_DETACHED   0x2UL   // Resources automatically released on exit.
 
 // Scheduling data for a real-time thread.
 struct thread_rt_data
@@ -96,6 +97,9 @@ struct thread_fs_data
   uint16_t weight;
   uint16_t work;
 };
+
+// We reserve 2 bits to mark additional status on a thread ID.
+#define THREAD_MAX_ID   0x3fffffff
 
 /*
  * Thread structure.
@@ -123,8 +127,8 @@ struct thread
 {
   __cacheline_aligned struct tcb tcb;   // (r)
 
-  size_t nr_refs;         // (a)
-  unsigned long flags;    // (a)
+  struct kuid_head kuid;   // (a)
+  unsigned long flags;     // (a)
 
   // Sleep/wake-up synchronization members.
   struct thread_runq *runq;   // (r,*)
@@ -468,14 +472,14 @@ void thread_pi_setscheduler (struct thread *thread, uint8_t policy,
 static inline void
 thread_ref (struct thread *thread)
 {
-  size_t nr_refs = atomic_add_rlx (&thread->nr_refs, 1);
+  size_t nr_refs = atomic_add_rlx (&thread->kuid.nr_refs, 1);
   assert (nr_refs != (size_t)-1);
 }
 
 static inline void
 thread_unref (struct thread *thread)
 {
-  size_t nr_refs = atomic_sub_acq_rel (&thread->nr_refs, 1);
+  size_t nr_refs = atomic_sub_acq_rel (&thread->kuid.nr_refs, 1);
   assert (nr_refs);
 
   if (nr_refs == 1)
@@ -857,6 +861,13 @@ int thread_get_affinity (const struct thread *thread, struct cpumap *cpumap);
 
 // Set the CPU affinity mask for the specified thread.
 int thread_set_affinity (struct thread *thread, const struct cpumap *cpumap);
+
+// Look up a thread by its KUID.
+static inline struct thread*
+thread_by_kuid (uint32_t kuid)
+{
+  return (kuid_find_type (kuid, struct thread, kuid));
+}
 
 /*
  * This init operation provides :

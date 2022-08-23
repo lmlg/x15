@@ -20,6 +20,7 @@
 
 #include <kern/atomic.h>
 #include <kern/init.h>
+#include <kern/kuid.h>
 #include <kern/list.h>
 #include <kern/log.h>
 #include <kern/spinlock.h>
@@ -31,10 +32,13 @@
 // Task name buffer size.
 #define TASK_NAME_SIZE   32
 
+// Maximum value for a task ID.
+#define TASK_MAX_ID   0x7fffffff
+
 // Task structure.
 struct task
 {
-  size_t nr_refs;
+  struct kuid_head kuid;
   struct spinlock lock;
   struct list node;
   struct list threads;
@@ -49,10 +53,16 @@ task_get_kernel_task (void)
   return (&task_kernel_task);
 }
 
+static inline uint32_t
+task_get_kuid (const struct task *task)
+{
+  return (task->kuid.id);
+}
+
 static inline void
 task_ref (struct task *task)
 {
-  size_t nr_refs = atomic_add_rlx (&task->nr_refs, 1);
+  size_t nr_refs = atomic_add_rlx (&task->kuid.nr_refs, 1);
   assert (nr_refs != (size_t)-1);
 }
 
@@ -61,7 +71,7 @@ void task_destroy (struct task *task);
 static inline void
 task_unref (struct task *task)
 {
-  size_t nr_refs = atomic_sub_acq_rel (&task->nr_refs, 1);
+  size_t nr_refs = atomic_sub_acq_rel (&task->kuid.nr_refs, 1);
   assert (nr_refs);
 
   if (nr_refs == 1)
@@ -100,6 +110,13 @@ void task_remove_thread (struct task *task, struct thread *thread);
  * This function is meant for debugging only.
  */
 struct thread* task_lookup_thread (struct task *task, const char *name);
+
+// Look up a task by its KUID.
+static inline struct task*
+task_by_kuid (uint32_t kuid)
+{
+  return (kuid_find_type (kuid, struct task, kuid));
+}
 
 /*
  * Display task information.

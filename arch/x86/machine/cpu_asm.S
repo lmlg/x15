@@ -525,7 +525,7 @@ CPU_LL_INTR_HANDLER (255, cpu_ll_exc_255)
 .section INIT_DATA_SECTION
 
 // See the C declaration.
-ASM_DATA(cpu_ll_exc_handler_addrs)
+ASM_DATA (cpu_ll_exc_handler_addrs)
   CPU_LL_EXC_HANDLER_ADDR (cpu_ll_exc_divide_error)
   CPU_LL_EXC_HANDLER_ADDR (cpu_ll_exc_debug)
   CPU_LL_EXC_HANDLER_ADDR (cpu_ll_exc_nmi)
