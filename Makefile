@@ -99,11 +99,11 @@ endef
 
 define xbuild_gen_unwind
 	$(call xbuild_action,GEN,$@) \
-		$(XBUILD_GEN_UNWIND) $(x15_NO_SYMTAB) > $@
+		$(XBUILD_GEN_UNWIND) $(x15_PRELIM) > $@
 endef
 
 define xbuild_clean
-	$(Q)rm -f x15 $(x15_NO_SYMTAB) \
+	$(Q)rm -f x15 $(x15_PRELIM) \
 	$(x15_OBJDEPS) $(x15_OBJECTS) \
 	$(x15_SYMTAB_C) $(x15_SYMTAB_D) $(x15_SYMTAB_O) \
 	$(x15_UNWIND_C) $(x15_UNWIND_D) $(x15_UNWIND_O) \
@@ -277,6 +277,7 @@ endif
 XBUILD_CFLAGS += -fsigned-char
 XBUILD_CFLAGS += -fno-common
 XBUILD_CFLAGS += -funwind-tables
+XBUILD_CFLAGS += -fasynchronous-unwind-tables
 
 # XXX Some assemblers consider the / symbol to denote comments. The --divide
 # option suppresses that behavior.
@@ -324,7 +325,7 @@ COMPILE := $(CC) $(XBUILD_CPPFLAGS) $(XBUILD_CFLAGS)
 
 # Don't change preprocessor and compiler flags from this point
 
-x15_NO_SYMTAB := .x15.prelim
+x15_PRELIM := .x15.prelim
 x15_SOURCES := $(x15_SOURCES-y)
 x15_OBJDEPS := $(call xbuild_replace_source_suffix,d,$(x15_SOURCES))
 x15_OBJECTS := $(call xbuild_replace_source_suffix,o,$(x15_SOURCES))
@@ -378,16 +379,16 @@ x15_SYMTAB_DEP :=
 x15_SYMTAB_OBJ :=
 endif
 
-$(x15_NO_SYMTAB): $(x15_OBJECTS) $(x15_DEPS)
+$(x15_PRELIM): $(x15_OBJECTS) $(x15_DEPS)
 	$(call xbuild_link,$(x15_OBJECTS))
 
-$(x15_SYMTAB_C): $(x15_NO_SYMTAB) $(XBUILD_GEN_SYMTAB_DEPS)
+$(x15_SYMTAB_C): $(x15_PRELIM) $(XBUILD_GEN_SYMTAB_DEPS)
 	$(call xbuild_gen_symtab)
 
-$(x15_UNWIND_C): $(x15_NO_SYMTAB) $(XBUILD_GEN_SYMTAB_DEPS)
+$(x15_UNWIND_C): $(x15_PRELIM) $(XBUILD_GEN_SYMTAB_DEPS)
 	$(call xbuild_gen_unwind)
 
-x15: $(x15_NO_SYMTAB) $(x15_SYMTAB_OBJ) $(x15_UNWIND_O)
+x15: $(x15_PRELIM) $(x15_SYMTAB_OBJ) $(x15_UNWIND_O)
 	$(call xbuild_link,$(x15_OBJECTS) $(x15_SYMTAB_OBJ) $(x15_UNWIND_O))
 
 .PHONY: install-x15

@@ -33,6 +33,10 @@ DW_EH_PE_pcrel	= 0x10
 DW_EH_PE_indirect = 0x80
 DW_EH_PE_aligned = 0x50
 
+def unpack_1 (fmt, bx, ix):
+  "Convenience wrapper to unpack only the first value."
+  return unpack_from(fmt, bx, ix)[0]
+
 def encode_uleb (value):
   "Generate the byte sequence for an ULEB-128 value."
   while True:
@@ -97,7 +101,7 @@ def read_encptr (bx, ix, enc, pc):
   elif enc == DW_EH_PE_aligned:
     size = WORD_SIZE
     new_ix = (ix + size - 1) & ~(size - 1)
-    ret = unpack_from("=Q" if LP64 else "=I", bx, new_ix)[0]
+    ret = unpack_1 ("=Q" if LP64 else "=I", bx, new_ix)
     return ret, size + new_ix - ix
 
   xe = enc & 0x70
@@ -113,7 +117,7 @@ def read_encptr (bx, ix, enc, pc):
 
   data = ENCPTR_FORMATS.get (enc & 0xf)
   if data:
-    ret = unpack_from(data[0], bx, ix)[0]
+    ret = unpack_1 (data[0], bx, ix)
     off = data[1]
   elif xe == DW_EH_PE_uleb128:
     ret, off = read_uleb (bx, ix)
@@ -129,7 +133,7 @@ def read_encptr (bx, ix, enc, pc):
   ret += base
   if (enc & DW_EH_PE_indirect) != 0:
     new_off = ret - BASE_ADDR
-    ret = unpack_from("=Q" if LP64 else "=I", bx, new_off)[0]
+    ret = unpack_1 ("=Q" if LP64 else "=I", bx, new_off)
   return ret, off
 
 
@@ -273,7 +277,7 @@ def process_dwarf (bx):
   state = DwarfState ()
   while ix < end:
     start = ix
-    ulen = unpack_from("=I", bx, ix)[0]
+    ulen = unpack_1 ("=I", bx, ix)
     if ulen == 0:
       break
 
@@ -283,15 +287,15 @@ def process_dwarf (bx):
 
     if ulen == U32_MAX:
       lp64 = True
-      initlen = unpack_from ("=Q", bx, ix)[0]
+      initlen = unpack_1 ("=Q", bx, ix)
       ix += 8
 
     new_ix = ix + initlen
     if lp64:
-      cie_id = unpack_from("=Q", bx, ix)[0]
+      cie_id = unpack_1 ("=Q", bx, ix)
       ix += 8
     else:
-      cie_id = unpack_from("=I", bx, ix)[0]
+      cie_id = unpack_1 ("=I", bx, ix)
       ix += 4
       if cie_id == U32_MAX:
         cie_id = U64_MAX

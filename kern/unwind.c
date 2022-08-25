@@ -22,9 +22,10 @@
 #include <kern/unwind.h>
 
 #include <machine/cpu.h>
+#include <machine/pmap.h>
 
 // Miscelaneous constants used by the DWARF unwinder.
-#define DW_EH_PE_absptr        0
+#define DW_EH_PE_absptr     0x00
 #define DW_EH_PE_signed     0x09
 #define DW_EH_PE_pcrel      0x10
 #define DW_EH_PE_aligned    0x50
@@ -290,12 +291,16 @@ unw_fixup_save (struct unw_fixup_t *fx)
   return (0);
 }
 
-static void
+static int
 unw_cursor_set_column (struct unw_cursor *cursor, size_t column,
                        int rule, uintptr_t val)
 {
+  if (column >= ARRAY_SIZE (cursor->cols.rules))
+    return (-EFAULT);
+
   cursor->cols.rules[column] = rule;
   cursor->cols.values[column].reg = val;
+  return (0);
 }
 
 static uintptr_t
@@ -321,6 +326,16 @@ unw_cursor_set_sp (struct unw_cursor *cursor, uintptr_t sp)
 {
   cursor->mctx->regs[UNW_SP_REGISTER] = sp;
 }
+
+#define UNW_CURSOR_SET_COLUMN(cursor, column, rule, val)   \
+  do   \
+    {   \
+      int error_ = unw_cursor_set_column (cursor, column, rule,   \
+                                          (uintptr_t)(val));   \
+      if (error_)   \
+        return (error_);   \
+    }   \
+  while (0)
 
 static int
 unw_run_dw (struct unw_cursor *cursor, const struct unw_cie *cie,
@@ -397,21 +412,21 @@ unw_run_dw (struct unw_cursor *cursor, const struct unw_cie *cie,
           case DW_CFA_offset:
             arg = unw_read_uleb (&ops);
             unw_cursor_set_column (cursor, operand, DW_RULE_OFFSET,
-                                   (uintptr_t)(arg * cie->data_align));
+                                   arg * cie->data_align);
             break;
 
           case DW_CFA_offset_extended:
             regno = unw_read_uleb (&ops);
             arg = unw_read_uleb (&ops);
             unw_cursor_set_column (cursor, regno, DW_RULE_OFFSET,
-                                   (uintptr_t)(arg * cie->data_align));
+                                   arg * cie->data_align);
             break;
 
           case DW_CFA_offset_extended_sf:
             regno = unw_read_uleb (&ops);
             sarg = unw_read_sleb (&ops);
             unw_cursor_set_column (cursor, regno, DW_RULE_OFFSET,
-                                   (uintptr_t)(sarg * cie->data_align));
+                                   sarg * cie->data_align);
             break;
 
           case DW_CFA_undefined:
@@ -472,17 +487,29 @@ unw_run_dw (struct unw_cursor *cursor, const struct unw_cie *cie,
 }
 
 static int
+unw_read_safe (uintptr_t addr, uintptr_t *out)
+{
+  phys_addr_t pa;
+  if (unlikely (pmap_kextract (addr, &pa) != 0))
+    return (-EFAULT);
+
+  *out = *(uintptr_t *)addr;
+  return (0);
+}
+
+static int
 unw_apply_regs (struct unw_cursor *cursor, const struct unw_cie *cie)
 {
-  uintptr_t *regs = cursor->mctx->regs;
   _Auto cols = &cursor->cols;
-  uintptr_t cfa;
 
   // Compute the CFA first, as further expressions may depend on it.
-  if (cols->cfa.rule == DW_RULE_REG)
-    cfa = regs[cols->cfa.reg] + cols->cfa.off;
-  else
+  if (cols->cfa.reg >= ARRAY_SIZE (cursor->mctx->regs))
+    return (-EFAULT);
+  else if (cols->cfa.rule != DW_RULE_REG)
     return (-EINVAL);
+
+  uintptr_t *regs = cursor->mctx->regs,
+            cfa = regs[cols->cfa.reg] + cols->cfa.off;
 
   for (size_t i = 0; i < ARRAY_SIZE (cols->rules); ++i)
     switch (cols->rules[i])
@@ -491,16 +518,26 @@ unw_apply_regs (struct unw_cursor *cursor, const struct unw_cie *cie)
         case DW_RULE_SAME:
           break;
         case DW_RULE_OFFSET:
-          regs[i] = *(uintptr_t *)(cfa + cols->values[i].off);
+          if (unw_read_safe (cfa + cols->values[i].off, &regs[i]) != 0)
+            return (-EFAULT);
           break;
         case DW_RULE_REG:
-          regs[i] = *(uintptr_t *)regs[cols->values[i].reg];
-          break;
+          {
+            _Auto rx = cols->values[i].reg;
+            if (unlikely (rx >= ARRAY_SIZE (cursor->mctx->regs)) ||
+                unw_read_safe (regs[rx], &regs[i]) != 0)
+              return (-EFAULT);
+
+            break;
+          }
+
         default:
           return (-EINVAL);
       }
 
-  if (cols->rules[cie->ret_addr] == DW_RULE_UNDEF)
+  if (cie->ret_addr >= ARRAY_SIZE (cols->rules))
+    return (-EINVAL);
+  else if (cols->rules[cie->ret_addr] == DW_RULE_UNDEF)
     {
       unw_cursor_set_pc (cursor, 0);
       return (0);
