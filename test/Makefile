@@ -9,6 +9,7 @@ x15_SOURCES-$(CONFIG_TEST_PERFMON_THREAD)      += test/test_perfmon_thread.c
 x15_SOURCES-$(CONFIG_TEST_PERFMON_TORTURE)     += test/test_perfmon_torture.c
 x15_SOURCES-$(CONFIG_TEST_PMAP_UPDATE_MP)      += test/test_pmap_update_mp.c
 x15_SOURCES-$(CONFIG_TEST_RCU_DEFER)           += test/test_rcu_defer.c
+x15_SOURCES-$(CONFIG_TEST_RDXTREE)             += test/test_rdxtree.c
 x15_SOURCES-$(CONFIG_TEST_SEMAPHORE)           += test/test_semaphore.c
 x15_SOURCES-$(CONFIG_TEST_SLEEPQ_BROADCAST)    += test/test_sleepq_broadcast.c
 x15_SOURCES-$(CONFIG_TEST_SREF_DIRTY_ZEROES)   += test/test_sref_dirty_zeroes.c

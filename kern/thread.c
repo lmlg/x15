@@ -705,7 +705,7 @@ thread_sched_rt_remove (struct thread_runq *runq, struct thread *thread)
   list_remove (&thread->rt_data.node);
 
   if (list_empty (threads))
-    rt_runq->bitmap &= ~ (1ULL << thread_real_priority (thread));
+    rt_runq->bitmap &= ~(1ULL << thread_real_priority (thread));
 }
 
 static void

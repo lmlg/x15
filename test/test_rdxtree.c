@@ -65,14 +65,14 @@ TEST_DEFERRED (rdxtree)
 
   rdxtree_key_t key;
   error = rdxtree_insert_alloc (&tree, val, &key);
+  assert (key == 33);
   assert (! error);
-  assert (key >= RDXTREE_SIZE);
   ++val;
 
   void **slot;
   error = rdxtree_insert_alloc_slot (&tree, val, &key, &slot);
   assert (! error);
-  assert (key > RDXTREE_SIZE);
+  assert (key >= RDXTREE_SIZE);
   assert (rdxtree_load_slot (slot) == val);
 
   ptr = rdxtree_replace_slot (slot, val + 1);

@@ -55,6 +55,11 @@ config TEST_RCU_DEFER
 	default n
 	select SYMTAB
 
+config TEST_RDXTREE
+	bool "radix tree API"
+	default n
+	select SYMTAB
+
 config TEST_SEMAPHORE
 	bool "semaphore"
 	default n

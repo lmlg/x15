@@ -55,29 +55,29 @@ enum
 };
 
 // DWARF opcodes.
-#define DW_CFA_advance_loc        0x40
-#define DW_CFA_offset             0x80
-#define DW_CFA_restore            0xc0
-#define DW_CFA_nop                0x0
-#define DW_CFA_set_loc            0x1
-#define DW_CFA_advance_loc1       0x2
-#define DW_CFA_advance_loc2       0x3
-#define DW_CFA_advance_loc4       0x4
-#define DW_CFA_offset_extended    0x5
-#define DW_CFA_undefined          0x7
-#define DW_CFA_same_value         0x8
-#define DW_CFA_register           0x9
-#define DW_CFA_remember_state     0xa
-#define DW_CFA_restore_state      0xb
-#define DW_CFA_def_cfa            0xc
-#define DW_CFA_def_cfa_register   0xd
-#define DW_CFA_def_cfa_offset     0xe
-#define DW_CFA_offset_extended_sf 0x11
-#define DW_CFA_def_cfa_sf         0x12
-#define DW_CFA_def_cfa_offset_sf  0x13
-#define DW_CFA_val_offset         0x14
-#define DW_CFA_val_offset_sf      0x15
-#define DW_CFA_GNU_args_size      0x2e
+#define DW_CFA_nop                  0x00
+#define DW_CFA_set_loc              0x01
+#define DW_CFA_advance_loc1         0x02
+#define DW_CFA_advance_loc2         0x03
+#define DW_CFA_advance_loc4         0x04
+#define DW_CFA_offset_extended      0x05
+#define DW_CFA_undefined            0x07
+#define DW_CFA_same_value           0x08
+#define DW_CFA_register             0x09
+#define DW_CFA_remember_state       0x0a
+#define DW_CFA_restore_state        0x0b
+#define DW_CFA_def_cfa              0x0c
+#define DW_CFA_def_cfa_register     0x0d
+#define DW_CFA_def_cfa_offset       0x0e
+#define DW_CFA_offset_extended_sf   0x11
+#define DW_CFA_def_cfa_sf           0x12
+#define DW_CFA_def_cfa_offset_sf    0x13
+#define DW_CFA_val_offset           0x14
+#define DW_CFA_val_offset_sf        0x15
+#define DW_CFA_GNU_args_size        0x2e
+#define DW_CFA_advance_loc          0x40
+#define DW_CFA_offset               0x80
+#define DW_CFA_restore              0xc0
 
 #define UNW_SP_REGISTER   __builtin_dwarf_sp_column ()
 #define UNW_RA(x)   __builtin_extract_return_addr ((void *)(x))
@@ -475,6 +475,8 @@ unw_run_dw (struct unw_cursor *cursor, const struct unw_cie *cie,
             }
 
           case DW_CFA_restore:
+            if (operand >= ARRAY_SIZE (cursor->cols.rules))
+              return (-EFAULT);
             cursor->cols.rules[operand] = DW_RULE_SAME;
             break;
 

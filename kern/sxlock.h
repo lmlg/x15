@@ -92,8 +92,6 @@ sxlock_unlock (struct sxlock *sxp)
     sxlock_unlock_slow (sxp);
 }
 
-void sxlock_unlock (struct sxlock *sxp);
-
 // Shared-Exclusive lock guards.
 
 static inline void
