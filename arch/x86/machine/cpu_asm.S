@@ -132,7 +132,6 @@
   movq CPU_LEF_EXC_RBX(%rbx), %rbx         // for stack switching.
   pushq $\vector                           // complete exception frame.
   cpu_ll_exc_store_registers
-  xorq %rbp, %rbp                          // block stack tracing.
   movq %rsp, %rbx                          // save frame.
 .endm
 
@@ -144,6 +143,7 @@
 .endm
 
 .macro cpu_ll_exc_handle vector
+.cfi_undefined 16
   cpu_ll_exc_enter \vector
   movq %rbx, %rdi
   andq $(~(CPU_DATA_ALIGN - 1)), %rsp
@@ -196,7 +196,6 @@
 .macro cpu_ll_exc_enter vector
   pushl $\vector
   cpu_ll_exc_store_registers
-  xorl %ebp, %ebp   // block stack tracing.
   movl %esp, %ebx   // save frame.
 .endm
 
@@ -213,6 +212,7 @@
 .endm
 
 .macro cpu_ll_exc_handle vector
+.cfi_undefined 8
   cpu_ll_exc_enter \vector
   cpu_ll_exc_align_stack 1
   pushl %ebx
