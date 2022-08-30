@@ -90,9 +90,9 @@ struct vm_page* vm_object_lookup (struct vm_object *object, uint64_t offset);
 // Fetch pages' contents from an external pager in a VM object.
 static inline int
 vm_object_pager_get (struct vm_object *object, uint64_t offset,
-                     uint32_t nr_pages, void *dst)
+                     uint32_t bytes, void *dst)
 {
-  return (object->pager->get (object, offset, nr_pages, dst));
+  return (object->pager->get (object, offset, bytes, dst));
 }
 
 // Pageout the pages' contents in an external pager for a VM object.

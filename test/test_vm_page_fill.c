@@ -61,7 +61,7 @@ test_write_pages (void)
         break;
 
       uintptr_t va = 0;
-      int flags = VM_MAP_FLAGS (VM_PROT_ALL, VM_PROT_ALL, VM_INHERIT_NONE,
+      int flags = VM_MAP_FLAGS (VM_PROT_RDWR, VM_PROT_RDWR, VM_INHERIT_NONE,
                                 VM_ADV_DEFAULT, 0);
       int error = vm_map_enter (kernel_map, &va, PAGE_SIZE, 0, flags, NULL, 0);
       error_check (error, __func__);
@@ -93,7 +93,7 @@ test_reset_pages (void)
       list_remove (&page->node);
 
       uintptr_t va = 0;
-      int flags = VM_MAP_FLAGS (VM_PROT_ALL, VM_PROT_ALL, VM_INHERIT_NONE,
+      int flags = VM_MAP_FLAGS (VM_PROT_RDWR, VM_PROT_RDWR, VM_INHERIT_NONE,
                                 VM_ADV_DEFAULT, 0);
       int  error = vm_map_enter (kernel_map, &va, PAGE_SIZE,
                                  0, flags, NULL, 0);

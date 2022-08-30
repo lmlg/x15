@@ -71,7 +71,7 @@ vm_kmem_alloc_va (size_t size)
   assert (vm_kmem_alloc_check (size) == 0);
 
   uintptr_t va = 0;
-  int flags = VM_MAP_FLAGS (VM_PROT_ALL, VM_PROT_ALL, VM_INHERIT_NONE,
+  int flags = VM_MAP_FLAGS (VM_PROT_RDWR, VM_PROT_RDWR, VM_INHERIT_NONE,
                             VM_ADV_DEFAULT, 0);
   int error = vm_map_enter (vm_map_get_kernel_map (), &va, size,
                             0, flags, NULL, 0);

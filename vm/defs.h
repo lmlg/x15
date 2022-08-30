@@ -38,7 +38,6 @@
 #define VM_PROT_WRITE     2
 #define VM_PROT_EXEC      4
 #define VM_PROT_RDWR      (VM_PROT_READ | VM_PROT_WRITE)
-#define VM_PROT_ALL   \
-  (VM_PROT_READ | VM_PROT_WRITE | VM_PROT_EXEC)
+#define VM_PROT_ALL       (VM_PROT_RDWR | VM_PROT_EXEC)
 
 #endif

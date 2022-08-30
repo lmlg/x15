@@ -884,7 +884,7 @@ vm_map_fault (struct vm_map *map, uintptr_t addr, int prot, int flags)
   assert (map != vm_map_get_kernel_map ());
   addr = vm_page_trunc (addr);
 
-  struct vm_map_entry *entry;
+  struct vm_map_entry *entry, tmp;
   struct vm_object *object;
   uint64_t offset;
 
@@ -919,7 +919,8 @@ retry:
       }
 
     // Prevent the VM object from going away as we drop the lock.
-    vm_object_ref (object);
+    vm_map_entry_assign (&tmp, entry);
+    entry = &tmp;
   }
 
   if (flags & VM_MAP_FAULT_INTR)
