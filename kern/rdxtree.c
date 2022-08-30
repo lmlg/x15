@@ -139,7 +139,7 @@ rdxtree_node_ctor (void *buf)
 }
 
 static int
-rdxtree_node_create (struct rdxtree_node **nodep, unsigned short height)
+rdxtree_node_create (struct rdxtree_node **nodep, uint16_t height)
 {
   struct rdxtree_node *node = kmem_cache_salloc (&rdxtree_node_cache);
   if (! node)
@@ -158,9 +158,8 @@ rdxtree_node_destroy (struct rdxtree_node *node)
   // See rdxtree_shrink().
   if (node->nr_entries)
     {
-      assert (node->nr_entries == 1);
       assert (node->entries[0]);
-      node->entries[0] = NULL;
+      memset (node->entries, 0, node->nr_entries * sizeof (*node->entries));
       node->nr_entries = 0;
       node->alloc_bm = RDXTREE_BM_FULL;
     }
@@ -228,7 +227,7 @@ rdxtree_node_insert_node (struct rdxtree_node *node, uint16_t index,
 }
 
 static inline void
-rdxtree_node_remove (struct rdxtree_node *node, unsigned short index)
+rdxtree_node_remove (struct rdxtree_node *node, uint16_t index)
 {
   assert (index < ARRAY_SIZE (node->entries));
   assert (node->entries[index]);
@@ -278,7 +277,7 @@ rdxtree_node_bm_empty (struct rdxtree_node *node)
   return (node->alloc_bm == RDXTREE_BM_EMPTY);
 }
 
-static inline unsigned short
+static inline uint16_t
 rdxtree_node_bm_first (struct rdxtree_node *node)
 {
   return (rdxtree_ffs (node->alloc_bm) - 1);
@@ -553,7 +552,7 @@ rdxtree_insert_alloc_common (struct rdxtree *tree, void *ptr,
       prev = node;
       index = rdxtree_node_bm_first (node);
 
-      if (index == (unsigned short)-1)
+      if (index == UINT16_MAX)
         goto grow;
 
       key |= (rdxtree_key_t)index << shift;
@@ -584,7 +583,7 @@ out:
 }
 
 static void
-rdxtree_remove_bm_set (struct rdxtree_node *node, unsigned short index)
+rdxtree_remove_bm_set (struct rdxtree_node *node, uint16_t index)
 {
   do
     {
@@ -663,7 +662,7 @@ rdxtree_lookup_common (const struct rdxtree *tree, rdxtree_key_t key,
   if (key > rdxtree_max_key (height))
     return (NULL);
   else if (! height)
-    return (!node ? NULL : (get_slot ? (void *)&tree->root : node));
+    return (node && get_slot ? (void *)&tree->root : node);
 
   uint16_t index, shift = (height - 1) * RDXTREE_RADIX;
   struct rdxtree_node *prev;
@@ -682,7 +681,7 @@ rdxtree_lookup_common (const struct rdxtree *tree, rdxtree_key_t key,
     }
   while (height > 0);
 
-  return (!node ? NULL : (get_slot ? (void *)&prev->entries[index] : node));
+  return (node && get_slot ? (void *)&prev->entries[index] : node);
 }
 
 void*

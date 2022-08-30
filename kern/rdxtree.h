@@ -86,7 +86,7 @@ void* rdxtree_walk (struct rdxtree *tree, struct rdxtree_iter *iter);
 
 // Initialize a tree.
 static inline void
-rdxtree_init (struct rdxtree *tree, unsigned short flags)
+rdxtree_init (struct rdxtree *tree, uint16_t flags)
 {
   assert ((flags & ~RDXTREE_KEY_ALLOC) == 0);
 
