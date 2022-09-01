@@ -99,9 +99,6 @@ struct thread_fs_data
   uint16_t work;
 };
 
-// We reserve 2 bits to mark additional status on a thread ID.
-#define THREAD_MAX_ID   0x3fffffff
-
 /*
  * Thread structure.
  *
@@ -867,7 +864,7 @@ int thread_set_affinity (struct thread *thread, const struct cpumap *cpumap);
 static inline struct thread*
 thread_by_kuid (uint32_t kuid)
 {
-  return (kuid_find_type (kuid, struct thread, kuid));
+  return (kuid_find_type (kuid, struct thread, kuid, KUID_THREAD));
 }
 
 /*

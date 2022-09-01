@@ -32,9 +32,6 @@
 // Task name buffer size.
 #define TASK_NAME_SIZE   32
 
-// Maximum value for a task ID.
-#define TASK_MAX_ID   0x7fffffff
-
 // Task structure.
 struct task
 {
@@ -115,7 +112,7 @@ struct thread* task_lookup_thread (struct task *task, const char *name);
 static inline struct task*
 task_by_kuid (uint32_t kuid)
 {
-  return (kuid_find_type (kuid, struct task, kuid));
+  return (kuid_find_type (kuid, struct task, kuid, KUID_TASK));
 }
 
 /*

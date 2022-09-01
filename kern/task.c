@@ -132,7 +132,7 @@ task_create (struct task **taskp, const char *name)
     goto error_map;
 
   task_init (task, name, map);
-  error = kuid_alloc (&task->kuid, TASK_MAX_ID);
+  error = kuid_alloc (&task->kuid, KUID_TASK);
   if (error)
     goto error_kuid;
 
@@ -156,6 +156,7 @@ task_destroy (struct task *task)
   spinlock_lock (&task_list_lock);
   list_remove (&task->node);
   spinlock_unlock (&task_list_lock);
+  kuid_remove (&task->kuid, KUID_TASK);
   kmem_cache_free (&task_cache, task);
 }
 

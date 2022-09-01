@@ -1653,7 +1653,7 @@ thread_init (struct thread *thread, void *stack,
     goto error_tcb;
   else if (thread->task != task_get_kernel_task ())
     {
-      error = kuid_alloc (&thread->kuid, THREAD_MAX_ID);
+      error = kuid_alloc (&thread->kuid, KUID_THREAD);
       if (error)
         goto error_kuid;
     }
@@ -2157,7 +2157,7 @@ thread_exit (void)
    * keeps the duration of that active wait minimum.
    */
   thread_preempt_disable ();
-  kuid_remove (&thread->kuid);
+  kuid_remove (&thread->kuid, KUID_THREAD);
   thread_unref (thread);
 
   _Auto runq = thread_runq_local ();
