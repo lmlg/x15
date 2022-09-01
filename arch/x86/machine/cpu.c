@@ -659,11 +659,6 @@ static const uint8_t CPU_DWARF_MAP[] =
   R_(R8), R_(R9), R_(R10), R_(R11), R_(R12), R_(R13), R_(R14), R_(R15), R_(RIP)
 };
 
-static const uint8_t CPU_DWARF_SAVED_REGS[] =
-{
-  3, 6, 7, 12, 13, 14, 15, 16
-};
-
 #else
 
 static const uint8_t CPU_DWARF_MAP[] =
@@ -690,41 +685,18 @@ cpu_unw_mctx_from_frame (uintptr_t *regp, const void *area)
 #endif
 }
 
-#ifndef __LP64__
-
-static void
-cpu_clear_intr (void)
-{
-  asm volatile ("pushfl\n"
-                "pushl %%cs\n"
-                "pushl $1f\n"
-                "iret\n"
-                "1:"
-                : : : "memory");
-}
-
-#endif
-
 void
-cpu_unw_mctx_set_frame (const uintptr_t *regp, void *area __unused, int retval)
+cpu_unw_mctx_set_frame (const uintptr_t *regs, int retval)
 {
-#ifndef __LP64__
   /* We can't simply overwrite the frame registers and let the exception
    * mechanism restore the state, because the stack pointer isn't saved
    * on i386. As such, we need to clear the interrupt state and manually
-   * jump into the new context. */
+   * jump into the new context.
+   *
+   * We do this on AMD64 as well, for symmetry.
+   */
   cpu_clear_intr ();
-  cpu_unw_mctx_jmp (regp, retval);
-#else
-  struct cpu_exc_frame *frame = area;
-  for (size_t i = 0; i < ARRAY_SIZE (CPU_DWARF_SAVED_REGS); ++i)
-    {
-      uint32_t rx = CPU_DWARF_SAVED_REGS[i];
-      frame->words[CPU_DWARF_MAP[rx]] = regp[rx];
-    }
-
-  frame->words[CPU_EXC_FRAME_RAX] = retval;
-#endif
+  cpu_unw_mctx_jmp (regs, retval);
 }
 
 static void __init

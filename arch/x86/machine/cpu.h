@@ -901,6 +901,43 @@ cpu_send_thread_schedule (uint32_t cpu)
  */
 void cpu_register_intr (uint32_t vector, cpu_intr_handler_fn_t fn);
 
+// Clear the interrupt state, set when an exception occurs.
+
+#ifdef __LP64__
+
+static inline void
+cpu_clear_intr (void)
+{
+  uint32_t tmp;
+
+  asm volatile ("mov %%ss, %0\n"
+                "pushq %q0\n"
+                "pushq %%rsp\n"
+                "addq $8, (%%rsp)\n"
+                "pushfq\n"
+                "mov %%cs, %0\n"
+                "pushq %q0\n"
+                "pushq $1f\n"
+                "iretq\n"
+                "1:"
+                : "=&r" (tmp) : : "cc", "memory");
+}
+
+#else
+
+static inline void
+cpu_clear_intr (void)
+{
+  asm volatile ("pushfl\n"
+                "pushl %%cs\n"
+                "pushl $1f\n"
+                "iret\n"
+                "1:"
+                : : : "memory");
+}
+
+#endif
+
 /*
  * CPU fixups, used to safely perform operations on memory that may fault.
  *
@@ -924,11 +961,11 @@ void cpu_unw_mctx_from_frame (uintptr_t *regs, const void *area);
 // Save the CPU state into an unwind context.
 void cpu_unw_mctx_save (uintptr_t *regs);
 
-// Restore the CPU context from an unwind frame into a memory area.
-void cpu_unw_mctx_set_frame (const uintptr_t *regs, void *area, int retval);
-
 // Set the CPU context to the unwind context.
 void cpu_unw_mctx_jmp (const uintptr_t *regs, int retval);
+
+// Restore the CPU context from an unwind frame with a return value.
+void cpu_unw_mctx_set_frame (const uintptr_t *regs, int retval);
 
 /*
  * This init operation provides :

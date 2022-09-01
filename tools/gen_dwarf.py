@@ -18,20 +18,20 @@ LP64 = None
 BASE_ADDR = None
 
 # DWARF constants used below.
-DW_EH_PE_absptr	= 0x00
-DW_EH_PE_omit	= 0xff
-DW_EH_PE_uleb128 = 0x01
-DW_EH_PE_udata2	= 0x02
-DW_EH_PE_udata4	= 0x03
-DW_EH_PE_udata8	= 0x04
-DW_EH_PE_sleb128 = 0x09
-DW_EH_PE_sdata2	= 0x0a
-DW_EH_PE_sdata4	= 0x0b
-DW_EH_PE_sdata8	= 0x0c
-DW_EH_PE_signed	= 0x09
-DW_EH_PE_pcrel	= 0x10
+DW_EH_PE_absptr	  = 0x00
+DW_EH_PE_omit	  = 0xff
+DW_EH_PE_uleb128  = 0x01
+DW_EH_PE_udata2	  = 0x02
+DW_EH_PE_udata4	  = 0x03
+DW_EH_PE_udata8	  = 0x04
+DW_EH_PE_sleb128  = 0x09
+DW_EH_PE_sdata2	  = 0x0a
+DW_EH_PE_sdata4	  = 0x0b
+DW_EH_PE_sdata8	  = 0x0c
+DW_EH_PE_signed	  = 0x09
+DW_EH_PE_pcrel	  = 0x10
 DW_EH_PE_indirect = 0x80
-DW_EH_PE_aligned = 0x50
+DW_EH_PE_aligned  = 0x50
 
 def unpack_1 (fmt, bx, ix):
   "Convenience wrapper to unpack only the first value."
@@ -187,6 +187,9 @@ class DwarfState:
     self.ops_len = 0
 
   def add_opcodes (self, bx):
+    if all (byte == 0 for byte in bx):
+      bx = b'\0'
+
     ops = self.ops
     pos = ops.get (bx)
     if pos is None:
@@ -345,20 +348,18 @@ def output_dwarf (state):
 
   print ("#include <kern/unwind.h>\n")
   # Output CIE's.
-  print ("static const struct unw_cie unw_cies[] __unwind =\n{\n", end = "")
+  print ("static const struct unw_cie unw_cies[] __unwind =\n{")
   for cie in state.raw_cies:
-    print ("  { 0x%x, 0x%x, %d, %d, %d },\n" % (cie.code_align, cie.ret_addr,
+    print ("  { 0x%x, 0x%x, %d, %d, %d }," % (cie.code_align, cie.ret_addr,
                                                 cie.data_align, cie.code_enc,
-                                                cie.opcodes_idx),
-           end = "")
-  print ("};\n\n", end = "")
+                                                cie.opcodes_idx))
+  print ("};\n")
 
   # Output FDE's.
-  print ("static const struct unw_fde unw_fdes[] __unwind =\n{\n", end = "")
+  print ("static const struct unw_fde unw_fdes[] __unwind =\n{")
   for pc in pcs:
-    print ("  { 0x%x, 0x%x, 0x%x },\n" % (pc[0] - lo_pc, pc[1], pc[2]),
-           end = "")
-  print ("};\n\n", end = "")
+    print ("  { 0x%x, 0x%x, 0x%x }," % (pc[0] - lo_pc, pc[1], pc[2]))
+  print ("};\n")
 
   # Output opcodes shared by both CIE's and FDE's.
   i = 0
@@ -379,11 +380,11 @@ def output_dwarf (state):
 
   # Output global data.
   print ("const struct unw_globals unw_globals __unwind =\n{")
-  print ("  .nr_fdes = %d,\n" % len (state.pc), end = "")
-  print ("  .fdes = unw_fdes,\n", end = "")
-  print ("  .cies = unw_cies,\n", end = "")
-  print ("  .ops = unw_opcodes,\n", end = "")
-  print ("  .base_addr = 0x%xul\n" % lo_pc, end = "")
+  print ("  .nr_fdes = %d," % len (state.pc))
+  print ("  .fdes = unw_fdes,")
+  print ("  .cies = unw_cies,")
+  print ("  .ops = unw_opcodes,")
+  print ("  .base_addr = 0x%xul" % lo_pc)
   print ("};\n")
 
   print ("const struct unw_globals *unw_globals_ptr = &unw_globals;\n")

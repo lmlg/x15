@@ -95,6 +95,11 @@ config TEST_THREAD_SUSPEND
 	default n
 	select SYMTAB
 
+config TEST_UNWIND
+	bool "unwind API"
+	default n
+	select SYMTAB
+
 config TEST_VM_PAGE_FILL
 	bool "vm page filling"
 	default n
