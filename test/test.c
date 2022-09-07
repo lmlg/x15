@@ -25,9 +25,9 @@
 #include <kern/symbol.h>
 #include <kern/thread.h>
 
-#include <test/test.h>
+#include <machine/pmap.h>
 
-#include <vm/kmem.h>
+#include <test/test.h>
 
 #define PREFIX_LEN   (sizeof (QUOTE (TEST_PREFIX)) - 1)
 

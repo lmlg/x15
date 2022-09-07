@@ -962,10 +962,10 @@ void cpu_unw_mctx_from_frame (uintptr_t *regs, const void *area);
 void cpu_unw_mctx_save (uintptr_t *regs);
 
 // Set the CPU context to the unwind context.
-void cpu_unw_mctx_jmp (const uintptr_t *regs, int retval);
+noreturn void cpu_unw_mctx_jmp (const uintptr_t *regs, int retval);
 
 // Restore the CPU context from an unwind frame with a return value.
-void cpu_unw_mctx_set_frame (const uintptr_t *regs, int retval);
+noreturn void cpu_unw_mctx_set_frame (const uintptr_t *regs, int retval);
 
 /*
  * This init operation provides :

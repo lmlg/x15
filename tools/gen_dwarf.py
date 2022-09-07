@@ -121,7 +121,7 @@ def read_encptr (bx, ix, enc, pc):
     off = data[1]
   elif xe == DW_EH_PE_uleb128:
     ret, off = read_uleb (bx, ix)
-  elif xe == DW_EH_PE_slen128:
+  elif xe == DW_EH_PE_sleb128:
     ret, off = read_sleb (bx, ix)
   else:
     raise ValueError ("unsupported data encoding")
@@ -215,7 +215,7 @@ class DwarfState:
 
 
 def process_cie (bx, state, ix, rlen, start):
-  "Add a CIE to the dwarf state."
+  "Add a CIE to the DWARF state."
   cie = CIE (start)
   ver = bx[ix]
   ix += 1
@@ -260,7 +260,7 @@ def process_cie (bx, state, ix, rlen, start):
   state.add_cie (cie)
 
 def process_fde (bx, state, ix, cie_id, lp64, rlen):
-  "Add an FDE to the dwarf state."
+  "Add an FDE to the DWARF state."
   cie_id = ix - cie_id - (8 if lp64 else 4)
   cie = state.get_cie (cie_id)
   initial_loc, off = read_encptr (bx, ix, cie.code_enc, ix)
@@ -318,8 +318,8 @@ def gen_dwarf (stdin):
   data regarding base load address and others.
   """
   global BASE_ADDR
-  rx = re.compile ('0x[0-9a-fA-F]* ([0-9a-fA-f]*) ' +
-                   '([0-9a-fA-f]*) ([0-9a-fA-f]*) ([0-9a-fA-f]*)')
+  rx = re.compile (('0x[0-9a-fA-F]* ([0-9a-fA-f]*) '
+                   '([0-9a-fA-f]*) ([0-9a-fA-f]*) ([0-9a-fA-f]*)'))
   bx = io.BytesIO ()
   for line in stdin:
     line = line.lstrip ()
@@ -402,8 +402,7 @@ def main (path):
     else:
       raise ValueError ("could not find ELF class in file")
 
-    rv = process_dwarf (gen_dwarf (stdin))
-    output_dwarf (rv)
+    output_dwarf (process_dwarf (gen_dwarf (stdin)))
 
 if __name__ == "__main__":
   main (sys.argv[1])

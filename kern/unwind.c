@@ -269,8 +269,8 @@ unw_read_encptr (uint8_t enc, const unsigned char **ptr,
 
   if (enc & DW_EH_PE_indirect)
     {
-      *ptr = (const unsigned char *)(uintptr_t)ret;
-      memcpy (&ret, *ptr, sizeof (ret));
+      p = (const unsigned char *)(uintptr_t)ret;
+      memcpy (&ret, p, sizeof (ret));
     }
 
   *ptr = p;
@@ -610,7 +610,7 @@ unw_fixup_restore (struct unw_fixup_t *fixup, void *area, int retval)
   /* No need to set the SP, as it should already be equal to
    * the value stored in the fixup structure. */
   cpu_unw_mctx_set_frame (cursor.mctx->regs, retval);
-  return (0);
+  __builtin_unreachable ();
 }
 
 void

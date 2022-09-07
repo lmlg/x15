@@ -1050,8 +1050,7 @@ pmap_extract (struct pmap *pmap, uintptr_t va, phys_addr_t *pap)
 
       if (!pmap_pte_valid (*pte))
         return (EFAULT);
-
-      if (!level || pmap_pte_large (*pte))
+      else if (!level || pmap_pte_large (*pte))
         break;
 
       --level;

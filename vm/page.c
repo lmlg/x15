@@ -76,6 +76,9 @@
  */
 #define VM_PAGE_CPU_POOL_TRANSFER_RATIO   2
 
+// Order of pages to accumulate before freeing.
+#define VM_PAGE_LIST_FREE_ORDER   4
+
 // Per-processor cache of pages.
 struct vm_page_cpu_pool
 {
@@ -828,7 +831,7 @@ vm_page_array_free (struct vm_page **frames, uint32_t order)
 void
 vm_page_array_list_free (struct list *pages)
 {
-  struct vm_page *frames[1u << 4];
+  struct vm_page *frames[1u << VM_PAGE_LIST_FREE_ORDER];
   uint32_t nr_frames = 0;
 
   list_for_each_safe (pages, page, tmp)
@@ -836,7 +839,7 @@ vm_page_array_list_free (struct list *pages)
       frames[nr_frames] = list_entry (page, struct vm_page, node);
       if (++nr_frames == ARRAY_SIZE (frames))
         {
-          vm_page_array_free (frames, 4);
+          vm_page_array_free (frames, VM_PAGE_LIST_FREE_ORDER);
           nr_frames = 0;
         }
     }
