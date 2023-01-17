@@ -73,7 +73,7 @@ struct unw_mcontext
 };
 
 // Save the information needed to perform stack unwinding up to that point.
-int unw_fixup_save (struct unw_fixup_t *fixup);
+int unw_fixup_save (struct unw_fixup_t *fixup) __attribute__ ((returns_twice));
 
 // Restore the program state, initializing the context from a CPU frame.
 int unw_fixup_restore (struct unw_fixup_t *fixup, void *area, int retval);

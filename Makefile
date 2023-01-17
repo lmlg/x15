@@ -291,6 +291,9 @@ XBUILD_CFLAGS += -Wstrict-prototypes
 
 # XXX Temporary, until a single solution is adopted to silence these warnings.
 XBUILD_CFLAGS += -Wno-unneeded-internal-declaration
+ifeq ($(CC),gcc)
+XBUILD_CFLAGS += -Wno-clobbered
+endif
 
 XBUILD_CFLAGS += $(call xbuild_check_cc_option,-fno-PIE)
 XBUILD_CFLAGS += $(call xbuild_check_cc_option,-Qunused-arguments)
