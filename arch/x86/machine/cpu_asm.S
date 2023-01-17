@@ -850,26 +850,33 @@ ASM_END (cpu_unw_mctx_save)
 ASM_ENTRY (cpu_unw_mctx_jmp)
 .cfi_startproc
 #ifdef __LP64__
-  movq %rsi, %rax
+  movq 56(%rdi), %rsp         # Restore stack pointer.
+  movq (16 * 8)(%rdi), %rcx   # New PC.
+  pushq %rcx
+  movq %rsi, %rax             # New return value.
+  movq 8(%rdi),  %rdx
+  movq 16(%rdi), %rcx
   movq 24(%rdi), %rbx
+  movq 32(%rdi), %rsi
   movq 48(%rdi), %rbp
   movq (12 * 8)(%rdi), %r12
   movq (13 * 8)(%rdi), %r13
   movq (14 * 8)(%rdi), %r14
   movq (15 * 8)(%rdi), %r15
-  movq 56(%rdi), %rsp
-  movq (16 * 8)(%rdi), %rsi
-  jmp *%rsi
+  movq 40(%rdi), %rdi
 #else
-  movl 8(%esp), %eax
-  movl 4(%esp), %ecx
+  movl 8(%esp), %eax    # New return value.
+  movl 4(%esp), %ecx    # Pointer to the stack frame.
+  movl 16(%ecx), %esp   # Restore stack pointer.
+  movl 32(%ecx), %ebx   # New PC.
+  pushl %ebx
+  movl 8(%ecx), %edx
   movl 12(%ecx), %ebx
-  movl 16(%ecx), %esp
   movl 20(%ecx), %ebp
   movl 24(%ecx), %esi
   movl 28(%ecx), %edi
-  movl 32(%ecx), %ecx
-  jmp *%ecx
+  movl 4(%ecx), %ecx
 #endif
+  ret
 .cfi_endproc
 ASM_END (cpu_unw_mctx_jmp)

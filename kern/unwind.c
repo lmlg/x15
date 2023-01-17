@@ -96,14 +96,14 @@ struct unw_frame_regs
   uint8_t rules[CPU_UNWIND_REGISTERS];
   union
     {
-      uint32_t reg;
-      int32_t off;
+      uint16_t reg;
+      int16_t off;
     } values[CPU_UNWIND_REGISTERS];
   struct
     {
       int rule;
-      uint32_t reg;
-      uint32_t off;
+      uint16_t reg;
+      int16_t off;
     } cfa;
   struct unw_frame_regs *prev;
 };
