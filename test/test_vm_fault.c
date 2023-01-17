@@ -46,7 +46,7 @@ static int test_pager_mapped;
 
 static int
 test_pager_get (struct vm_object *obj __unused, uint64_t off,
-                size_t bytes, void *dst)
+                size_t bytes, int prot __unused, void *dst)
 {
   assert (! test_pager_mapped);
   assert (off == TEST_OFFSET);
@@ -64,7 +64,7 @@ static void
 test_vm_fault_thread (void *arg __unused)
 {
   struct vm_object *test_obj;
-  int error = vm_object_create (&test_obj, PAGE_SIZE * 4, &test_obj_pager);
+  int error = vm_object_create (&test_obj, PAGE_SIZE * 4, 0, &test_obj_pager);
   assert (! error);
 
   uintptr_t va = PMAP_END_ADDRESS - PAGE_SIZE * 10;

@@ -62,7 +62,7 @@ INIT_OP_DEFINE (vm_object_setup,
 
 void __init
 vm_object_init (struct vm_object *object, uint64_t size,
-                const struct vm_object_pager *pager)
+                int flags, const void *ctx)
 {
   assert (vm_page_aligned (size));
 
@@ -71,18 +71,24 @@ vm_object_init (struct vm_object *object, uint64_t size,
   object->size = size;
   object->nr_pages = 0;
   object->refcount = 1;
-  object->pager = pager;
+  if (flags & VM_OBJECT_EXTERNAL)
+    // XXX: Maybe acquire a reference here ?
+    object->capability = (void *)ctx;
+  else
+    object->pager = ctx;
+
+  object->flags = flags;
 }
 
 int
 vm_object_create (struct vm_object **objp, uint64_t size,
-                  const struct vm_object_pager *pager)
+                  int flags, const void *ctx)
 {
   struct vm_object *ret = kmem_cache_alloc (&vm_object_cache);
   if (! ret)
     return (ENOMEM);
 
-  vm_object_init (ret, size, pager);
+  vm_object_init (ret, size, flags, ctx);
   *objp = ret;
   return (0);
 }

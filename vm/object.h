@@ -30,10 +30,34 @@
 #include <kern/init.h>
 #include <kern/rdxtree.h>
 
-#include <vm/object_types.h>
 #include <vm/page.h>
 
 struct vm_object;
+struct vm_page;
+
+struct vm_object_pager
+{
+  int (*get) (struct vm_object *, uint64_t, size_t, int, void *);
+  int (*put) (struct vm_object *, struct vm_page **, uint32_t);
+};
+
+#define VM_OBJECT_PAGEOUT    0x01   // VM object supports pageouts.
+#define VM_OBJECT_EXTERNAL   0x02   // Paging requires IPC to remote task.
+
+struct vm_object
+{
+  struct mutex lock;
+  struct rdxtree pages;
+  uint64_t size;
+  size_t nr_pages;
+  size_t refcount;
+  union
+    {
+      const struct vm_object_pager *pager;
+      void *capability;
+    };
+  int flags;
+};
 
 static inline struct vm_object*
 vm_object_get_kernel_object (void)
@@ -44,11 +68,11 @@ vm_object_get_kernel_object (void)
 
 // Initialize a VM object.
 void vm_object_init (struct vm_object *object, uint64_t size,
-                     const struct vm_object_pager *pager);
+                     int flags, const void *ctx);
 
 // Create a VM object.
 int vm_object_create (struct vm_object **objp, uint64_t size,
-                      const struct vm_object_pager *pager);
+                      int flags, const void *ctx);
 
 /*
  * Insert a page into a VM object.
@@ -90,17 +114,9 @@ struct vm_page* vm_object_lookup (struct vm_object *object, uint64_t offset);
 // Fetch pages' contents from an external pager in a VM object.
 static inline int
 vm_object_pager_get (struct vm_object *object, uint64_t offset,
-                     uint32_t bytes, void *dst)
+                     size_t bytes, int prot, void *dst)
 {
-  return (object->pager->get (object, offset, bytes, dst));
-}
-
-// Pageout the pages' contents in an external pager for a VM object.
-static inline int
-vm_object_pager_put (struct vm_object *object, struct vm_page **pages,
-                     uint32_t nr_pages)
-{
-  return (object->pager->put (object, pages, nr_pages));
+  return (object->pager->get (object, offset, bytes, prot, dst));
 }
 
 // Destroy a VM object.

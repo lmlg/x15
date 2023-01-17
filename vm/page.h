@@ -42,8 +42,6 @@
 #include <machine/pmem.h>
 #include <machine/types.h>
 
-#include <vm/object_types.h>
-
 /*
  * Byte/page conversion and rounding macros (not inline functions to
  * be easily usable on both virtual and physical addresses, which may not
@@ -78,6 +76,8 @@
 #define VM_PAGE_KMEM        4   // Page is a direct-mapped kmem slab.
 #define VM_PAGE_OBJECT      5   // Page is part of a VM object.
 #define VM_PAGE_KERNEL      6   // Type for generic kernel allocations.
+
+struct vm_object;
 
 // Physical page descriptor.
 struct vm_page

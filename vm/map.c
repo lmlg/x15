@@ -853,7 +853,8 @@ vm_map_cleanup_object (void *ptr)
 
 static int
 vm_map_fault_get_data (struct vm_map *map, struct vm_object *object,
-                       uint64_t offset, struct vm_page **frames, int nr_pages)
+                       uint64_t offset, struct vm_page **frames,
+                       int prot, int nr_pages)
 {
   THREAD_PIN_GUARD ();
   uintptr_t va = vm_map_get_pagein_addr ();
@@ -872,7 +873,7 @@ vm_map_fault_get_data (struct vm_map *map, struct vm_object *object,
 
   int ret = pmap_update (map->pmap) != 0 ? EINTR :
             vm_object_pager_get (object, offset,
-                                 nr_pages * PAGE_SIZE, (void *)va);
+                                 nr_pages * PAGE_SIZE, prot, (void *)va);
 
   vm_map_put_pagein_addr (map->pmap, va, nr_pages);
   return (ret);
@@ -937,7 +938,8 @@ retry:
     return (0);
 
   n_pages = 1 << n_pages;
-  int error = vm_map_fault_get_data (map, object, offset, frames, n_pages);
+  int error = vm_map_fault_get_data (map, object, offset, frames,
+                                     prot, n_pages);
 
   if (flags & VM_MAP_FAULT_INTR)
     cpu_intr_disable ();
