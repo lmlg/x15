@@ -52,7 +52,7 @@ test_pager_get (struct vm_object *obj __unused, uint64_t off,
   assert (off == TEST_OFFSET);
   memset (dst, 'x', bytes);
   test_pager_mapped = 1;
-  return (0);
+  return ((int)(bytes >> PAGE_SHIFT));
 }
 
 static const struct vm_object_pager test_obj_pager =

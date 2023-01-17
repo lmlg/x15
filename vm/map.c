@@ -67,6 +67,13 @@ struct vm_map_cpu_va
   uint32_t bitmap;
 };
 
+// How much to pagein when a fault occurs (expressed in bytes).
+struct vm_map_page_target
+{
+  uint64_t front;
+  uint64_t back;
+};
+
 static struct vm_map_cpu_va vm_map_cpu_vas __percpu;
 
 /*
@@ -733,12 +740,12 @@ INIT_OP_DEFINE (vm_map_bootstrap,
                 INIT_OP_DEP (kmem_bootstrap, true),
                 INIT_OP_DEP (thread_bootstrap, true));
 
-// How many pages (expressed as an order) to cache per policy.
-static const uint8_t vm_pagein_targets[] =
+// Paging cluster parameters (Expressed in bytes).
+static const struct vm_map_page_target vm_map_page_targets[] =
 {
-  [VM_ADV_NORMAL]   = 2,
-  [VM_ADV_RANDOM]   = 0,
-  [VM_ADV_WILLNEED] = VM_MAP_MAX_FRAMES_ORDER
+  [VM_ADV_NORMAL]     = { .front = PAGE_SIZE, .back = 3 * PAGE_SIZE },
+  [VM_ADV_RANDOM]     = { .front = 0, .back = 0 },
+  [VM_ADV_SEQUENTIAL] = { .front = 0, .back = 8 * PAGE_SIZE }
 };
 
 static uintptr_t vm_map_ipc_va;
@@ -834,15 +841,22 @@ INIT_OP_DEFINE (vm_map_setup,
                 INIT_OP_DEP (printf_setup, true),
                 INIT_OP_DEP (vm_map_bootstrap, true));
 
-static inline uint32_t
-vm_map_entry_order (const struct vm_map_entry *entry, uintptr_t addr)
+static int
+vm_map_alloc_fault_pages (struct vm_map_entry *entry, struct vm_page **frames,
+                          uint64_t offset, uintptr_t addr, uint64_t *startp)
 {
-  uint32_t room = (entry->end - addr) / PAGE_SIZE;
-  if (! room)
-    return (1);
+  size_t adv = VM_MAP_ADVICE (entry->flags);
+  assert (adv < ARRAY_SIZE (vm_map_page_targets));
+  _Auto target = &vm_map_page_targets[adv];
 
-  uint32_t target = vm_pagein_targets[VM_MAP_ADVICE (entry->flags)];
-  return (MIN (log2 (room), target));
+  // Mind overflows when computing the offsets.
+  *startp = MIN (addr - entry->start, target->front);
+  uint64_t last_off = MIN (entry->end - addr, target->back);
+  uint32_t order = (uint32_t)(log2 ((last_off + *startp) >> PAGE_SHIFT));
+
+  *startp = offset - *startp;
+  return (vm_page_array_alloc (frames, order,
+                               VM_PAGE_SEL_HIGHMEM, VM_PAGE_OBJECT));
 }
 
 static inline void
@@ -867,11 +881,11 @@ vm_map_fault_get_data (struct vm_map *map, struct vm_object *object,
       if (unlikely (error))
         {
           vm_map_put_pagein_addr (map->pmap, va, i);
-          return (EINTR);
+          return (-EINTR);
         }
     }
 
-  int ret = pmap_update (map->pmap) != 0 ? EINTR :
+  int ret = pmap_update (map->pmap) != 0 ? -EINTR :
             vm_object_pager_get (object, offset,
                                  nr_pages * PAGE_SIZE, prot, (void *)va);
 
@@ -929,35 +943,45 @@ retry:
 
   CLEANUP (vm_map_cleanup_object) __unused _Auto objg = object;
   struct vm_page *frames[VM_MAP_MAX_FRAMES];
-  int n_pages = vm_page_array_alloc_range (frames, 0,
-                                           vm_map_entry_order (entry, addr),
-                                           VM_PAGE_SEL_HIGHMEM, VM_PAGE_OBJECT);
+  uint64_t start_off;
+  int n_pages = vm_map_alloc_fault_pages (entry, frames, offset,
+                                          addr, &start_off);
 
   if (n_pages < 0)
-    // Allocation was interrupted. Let userspace handle things.
-    return (0);
+    { // Allocation was interrupted. Let userspace handle things.
+      if (flags & VM_MAP_FAULT_INTR)
+        cpu_intr_disable ();
 
-  n_pages = 1 << n_pages;
-  int error = vm_map_fault_get_data (map, object, offset, frames,
-                                     prot, n_pages);
+      return (0);
+    }
+
+  n_pages = vm_map_fault_get_data (map, object, offset, frames,
+                                     prot, 1 << n_pages);
 
   if (flags & VM_MAP_FAULT_INTR)
     cpu_intr_disable ();
 
-  if (unlikely (error))
-    return (error == EINTR ? 0 : error);
+  if (n_pages < 0)
+    return (n_pages == -EINTR ? 0 : -n_pages);
+  else if (start_off + n_pages * PAGE_SIZE < offset)
+    /* We didn't cover the faulting page. This is probably due to a truncated
+     * object. Return an error that maps to SIGBUS. */
+    return (EIO);
 
   SXLOCK_EXGUARD (&map->lock);
   _Auto e2 = vm_map_lookup_nearest (map, addr);
 
   if (!(e2 && e2->object == entry->object &&
-        addr >= e2->start && addr + n_pages * PAGE_SIZE <= e2->end))
+        addr >= e2->start &&
+        addr - (uintptr_t)(offset - start_off) + n_pages * PAGE_SIZE <= e2->end))
     {
       vm_page_array_free (frames, log2 (n_pages));
       goto retry;
     }
 
   prot = VM_MAP_PROT (e2->flags);
+  addr -= offset - start_off;
+
   for (uint32_t i = 0; i < (uint32_t)n_pages; ++i)
     {
       struct vm_page *page = frames[i];
