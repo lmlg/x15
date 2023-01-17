@@ -826,7 +826,7 @@ vm_map_put_pagein_addr (struct pmap *pmap, uintptr_t va, int n)
     mutex_unlock (&vp->lock);
 
   for (int i = 0; i < n; ++i, va += PAGE_SIZE)
-    pmap_remove (pmap, va, PMAP_NO_CHECK, NULL);
+    pmap_remove (pmap, va, NULL);
 }
 
 INIT_OP_DEFINE (vm_map_setup,

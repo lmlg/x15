@@ -137,7 +137,7 @@ vm_kmem_free (void *addr, size_t size)
   _Auto kernel_pmap = pmap_get_kernel_pmap();
 
   for (; va < end; va += PAGE_SIZE)
-    pmap_remove (kernel_pmap, va, 0, cpumap);
+    pmap_remove (kernel_pmap, va, cpumap);
 
   pmap_update (kernel_pmap);
   vm_object_remove (vm_object_get_kernel_object (),
@@ -187,7 +187,7 @@ vm_kmem_unmap_pa (uintptr_t map_va, size_t map_size)
   uintptr_t end = map_va + map_size;
 
   for (uintptr_t va = map_va; va < end; va += PAGE_SIZE)
-    pmap_remove (kernel_pmap, va, 0, cpumap);
+    pmap_remove (kernel_pmap, va, cpumap);
 
   pmap_update (kernel_pmap);
   vm_kmem_free_va ((void *) map_va, map_size);

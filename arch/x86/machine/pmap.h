@@ -252,8 +252,15 @@ int pmap_enter (struct pmap *pmap, uintptr_t va, phys_addr_t pa,
  *
  * This function may trigger an implicit update.
  */
-int pmap_remove (struct pmap *pmap, uintptr_t va,
-                 int flags, const struct cpumap *cpumap);
+
+int pmap_remove_range (struct pmap *pmap, uintptr_t start, uintptr_t end,
+                       const struct cpumap *cpumap);
+
+static inline int
+pmap_remove (struct pmap *pmap, uintptr_t va, const struct cpumap *cpumap)
+{
+  return (pmap_remove_range (pmap, va, va + PAGE_SIZE, cpumap));
+}
 
 /*
  * Set the protection of a mapping in a physical map.

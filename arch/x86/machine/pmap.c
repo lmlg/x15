@@ -1377,15 +1377,13 @@ pmap_cpumap_copy (struct cpumap *dst, const struct cpumap *src)
 }
 
 int
-pmap_remove (struct pmap *pmap, uintptr_t va, int flags,
-             const struct cpumap *cpumap)
+pmap_remove_range (struct pmap *pmap, uintptr_t start, uintptr_t end,
+                   const struct cpumap *cpumap)
 {
-  va = vm_page_trunc (va);
-  if (!(flags & PMAP_NO_CHECK))
-    assert (pmap_range_valid (pmap, va, va + PAGE_SIZE));
-
+  start = vm_page_trunc (start);
   _Auto oplist = pmap_update_oplist_get ();
   int error = pmap_update_oplist_prepare (oplist, pmap);
+
   if (error)
     return (error);
 
@@ -1394,18 +1392,19 @@ pmap_remove (struct pmap *pmap, uintptr_t va, int flags,
 
   if (op &&
       op->operation == PMAP_UPDATE_OP_REMOVE &&
-      op->remove_args.end == va &&
+      start >= op->remove_args.start &&
+      start <= op->remove_args.end &&
       pmap_cpumap_eq (&op->cpumap, cpumap))
     {
-      op->remove_args.end = va + PAGE_SIZE;
+      op->remove_args.end = MAX (end, op->remove_args.end);
       return (0);
     }
 
   op = pmap_update_oplist_prepare_op (oplist);
   pmap_cpumap_copy (&op->cpumap, cpumap);
   op->operation = PMAP_UPDATE_OP_REMOVE;
-  op->remove_args.start = va;
-  op->remove_args.end = va + PAGE_SIZE;
+  op->remove_args.start = start;
+  op->remove_args.end = end;
   pmap_update_oplist_finish_op (oplist);
   return (0);
 }
