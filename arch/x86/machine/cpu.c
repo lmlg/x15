@@ -632,9 +632,8 @@ cpu_exc_page_fault (const struct cpu_exc_frame *frame)
 
   if (! error)
     return;
-  else if (self->fixup &&
-      unw_fixup_restore (self->fixup, (void *)frame->words, error) == 0)
-    return;
+  else if (self->fixup)
+    unw_fixup_restore (self->fixup, (void *)frame->words, error);
 
   // TODO: Implement segfaults for userspace tasks.
   cpu_halt_broadcast ();
