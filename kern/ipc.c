@@ -26,10 +26,8 @@
 
 struct ipc_data
 {
-  /* The following are volatile to avoid them being clobbered
-   * by fixup jumps. */
-  volatile cpu_flags_t cpu_flags;
-  volatile uintptr_t va;
+  cpu_flags_t cpu_flags;
+  uintptr_t va;
   int prot;
   bool copy_into;
 };
@@ -144,6 +142,13 @@ ipc_compute_size (size_t page_off, const struct ipc_iter *it1,
                MIN (ipc_iter_cur_size (it1), ipc_iter_cur_size (it2))));
 }
 
+static void
+ipc_data_fini (struct ipc_data *data)
+{
+  pmap_ipc_pte_clear (pmap_ipc_pte_get (), data->va);
+  cpu_intr_restore (data->cpu_flags);
+}
+
 static ssize_t
 ipc_copy_iter_single (struct ipc_iter *l_it, struct ipc_iter *r_it,
                       struct vm_map *r_map, struct pmap *pmap,
@@ -205,14 +210,13 @@ ipc_copy_iter (struct ipc_iter *src_it, struct thread *src_thr,
 
   if (unlikely (error))
     {
-      pmap_ipc_pte_clear (pmap_ipc_pte_get (), data.va);
-      cpu_intr_restore (data.cpu_flags);
+      ipc_data_fini (&data);
       return (-error);
     }
 
   while (ipc_iter_valid (l_it) && ipc_iter_valid (r_it))
     {
-      cpu_intr_save ((cpu_flags_t *)&data.cpu_flags);
+      cpu_intr_save (&data.cpu_flags);
       ssize_t tmp = ipc_copy_iter_single (l_it, r_it, r_map, pmap, &data);
       cpu_intr_restore (data.cpu_flags);
 
