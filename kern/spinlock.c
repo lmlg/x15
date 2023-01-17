@@ -105,7 +105,7 @@ struct spinlock_qnode
   int locked;
 };
 
-/* TODO NMI support */
+// TODO NMI support.
 enum
 {
   SPINLOCK_CTX_THREAD,
@@ -124,15 +124,14 @@ struct spinlock_cpu_data
 static struct spinlock_cpu_data spinlock_cpu_data __percpu;
 
 static struct spinlock_qnode*
-spinlock_cpu_data_get_qnode (struct spinlock_cpu_data *cpu_data,
-                             unsigned int ctx)
+spinlock_cpu_data_get_qnode (struct spinlock_cpu_data *cpu_data, uint32_t ctx)
 {
   assert (ctx < ARRAY_SIZE (cpu_data->qnodes));
   return (&cpu_data->qnodes[ctx]);
 }
 
 static uint32_t
-spinlock_qid_build (unsigned int ctx, unsigned int cpu)
+spinlock_qid_build (uint32_t ctx, uint32_t cpu)
 {
   assert (ctx <= SPINLOCK_QID_CTX_MASK);
   assert (cpu <= SPINLOCK_QID_CPU_MASK);
@@ -140,13 +139,13 @@ spinlock_qid_build (unsigned int ctx, unsigned int cpu)
   return ((cpu << SPINLOCK_QID_CPU_SHIFT) | (ctx << SPINLOCK_QID_CTX_SHIFT));
 }
 
-static unsigned int
+static uint32_t
 spinlock_qid_ctx (uint32_t qid)
 {
   return ((qid >> SPINLOCK_QID_CTX_SHIFT) & SPINLOCK_QID_CTX_MASK);
 }
 
-static unsigned int
+static uint32_t
 spinlock_qid_cpu (uint32_t qid)
 {
   return ((qid >> SPINLOCK_QID_CPU_SHIFT) & SPINLOCK_QID_CPU_MASK);
@@ -182,7 +181,8 @@ spinlock_qnode_wait_next (const struct spinlock_qnode *qnode)
 }
 
 static void
-spinlock_qnode_set_next (struct spinlock_qnode *qnode, struct spinlock_qnode *next)
+spinlock_qnode_set_next (struct spinlock_qnode *qnode,
+                         struct spinlock_qnode *next)
 {
   assert (next);
   atomic_store_rel (&qnode->next, next);
@@ -216,7 +216,7 @@ static void
 spinlock_get_local_qnode (struct spinlock_qnode **qnode, uint32_t *qid)
 {
   _Auto cpu_data = cpu_local_ptr (spinlock_cpu_data);
-  unsigned int ctx = thread_interrupted () ?
+  uint32_t ctx = thread_interrupted () ?
     SPINLOCK_CTX_INTR : SPINLOCK_CTX_THREAD;
 
   *qnode = spinlock_cpu_data_get_qnode (cpu_data, ctx);

@@ -58,8 +58,8 @@ struct intr_ctl
   struct list node;
   const struct intr_ops *ops;
   void *priv;
-  unsigned int first_intr;
-  unsigned int last_intr;
+  uint32_t first_intr;
+  uint32_t last_intr;
 };
 
 /*
@@ -74,7 +74,7 @@ struct intr_entry
 {
   __cacheline_aligned struct spinlock lock;
   struct intr_ctl *ctl;
-  unsigned int cpu;
+  uint32_t cpu;
   struct list handlers;
 };
 
@@ -86,7 +86,7 @@ static struct list intr_ctls;
 
 static struct kmem_cache intr_handler_cache;
 
-static unsigned int
+static uint32_t
 intr_select_cpu (void)
 {
   /*
@@ -131,7 +131,7 @@ intr_handler_run (struct intr_handler *handler)
 
 static struct intr_ctl* __init
 intr_ctl_create (const struct intr_ops *ops, void *priv,
-                 unsigned int first_intr, unsigned int last_intr)
+                 uint32_t first_intr, uint32_t last_intr)
 {
   assert (ops);
   assert (first_intr < last_intr);
@@ -148,31 +148,31 @@ intr_ctl_create (const struct intr_ops *ops, void *priv,
 }
 
 static bool
-intr_ctl_has_intr (const struct intr_ctl *ctl, unsigned int intr)
+intr_ctl_has_intr (const struct intr_ctl *ctl, uint32_t intr)
 {
   return (intr >= ctl->first_intr && intr <= ctl->last_intr);
 }
 
 static void
-intr_ctl_enable (struct intr_ctl *ctl, unsigned int intr, unsigned int cpu)
+intr_ctl_enable (struct intr_ctl *ctl, uint32_t intr, uint32_t cpu)
 {
   ctl->ops->enable (ctl->priv, intr, cpu);
 }
 
 static void
-intr_ctl_disable (struct intr_ctl *ctl, unsigned int intr)
+intr_ctl_disable (struct intr_ctl *ctl, uint32_t intr)
 {
   ctl->ops->disable (ctl->priv, intr);
 }
 
 static void
-intr_ctl_eoi (struct intr_ctl *ctl, unsigned int intr)
+intr_ctl_eoi (struct intr_ctl *ctl, uint32_t intr)
 {
   ctl->ops->eoi (ctl->priv, intr);
 }
 
-static struct intr_ctl *
-intr_lookup_ctl (unsigned int intr)
+static struct intr_ctl*
+intr_lookup_ctl (uint32_t intr)
 {
   struct intr_ctl *ctl;
   list_for_each_entry (&intr_ctls, ctl, node)
@@ -195,7 +195,7 @@ intr_entry_empty (const struct intr_entry *entry)
   return (list_empty (&entry->handlers));
 }
 
-static unsigned int
+static uint32_t
 intr_entry_get_intr (const struct intr_entry *entry)
 {
   size_t id = entry - intr_table;
@@ -204,7 +204,7 @@ intr_entry_get_intr (const struct intr_entry *entry)
 }
 
 static void
-intr_entry_enable (struct intr_entry *entry, struct intr_ctl *ctl, unsigned int cpu)
+intr_entry_enable (struct intr_entry *entry, struct intr_ctl *ctl, uint32_t cpu)
 {
   entry->ctl = ctl;
   entry->cpu = cpu;
@@ -239,8 +239,7 @@ intr_entry_add (struct intr_entry *entry, struct intr_handler *handler)
       if (! ctl)
         return (ENODEV);
 
-      uint32_t cpu = intr_select_cpu ();
-      intr_entry_enable (entry, ctl, cpu);
+      intr_entry_enable (entry, ctl, intr_select_cpu ());
     }
 
   list_insert_tail (&entry->handlers, &handler->node);
@@ -265,14 +264,14 @@ intr_entry_remove (struct intr_entry *entry, intr_handler_fn_t fn)
 }
 
 static void
-intr_entry_eoi (struct intr_entry *entry, unsigned int intr)
+intr_entry_eoi (struct intr_entry *entry, uint32_t intr)
 {
   assert (entry->ctl != NULL);
   intr_ctl_eoi (entry->ctl, intr);
 }
 
 static struct intr_entry*
-intr_get_entry (unsigned int intr)
+intr_get_entry (uint32_t intr)
 {
   assert (intr < ARRAY_SIZE (intr_table));
   return (&intr_table[intr]);
@@ -328,7 +327,7 @@ intr_register_ctl (const struct intr_ops *ops, void *priv,
 }
 
 int
-intr_register (unsigned int intr, intr_handler_fn_t fn, void *arg)
+intr_register (uint32_t intr, intr_handler_fn_t fn, void *arg)
 {
   struct intr_handler *handler;
   int error = intr_handler_create (&handler, fn, arg);
