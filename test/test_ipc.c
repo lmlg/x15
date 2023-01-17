@@ -87,10 +87,12 @@ static void
 test_ipc_receiver (void *arg)
 {
   _Auto data = (struct test_ipc_data *)arg;
-  char buf[64];
-  struct ipc_iter it;
+  size_t bufsize = 100;
+  char *buf = vm_map_anon_alloc (vm_map_self (), bufsize);
+  assert (buf);
 
-  ipc_iter_init_buf (&it, buf, sizeof (buf));
+  struct ipc_iter it;
+  ipc_iter_init_buf (&it, buf, bufsize);
   assert (ipc_iter_valid (&it));
   data->out = &it;
   data->receiver = thread_self ();

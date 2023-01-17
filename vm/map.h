@@ -42,6 +42,7 @@
  */
 #define VM_MAP_NOMERGE   0x10000
 #define VM_MAP_FIXED     0x20000   // Not an entry flag.
+#define VM_MAP_ANON      0x40000
 
 // Macro used to forge "packed" flags.
 #define VM_MAP_FLAGS(prot, maxprot, inherit, advice, mapflags)   \
@@ -53,7 +54,7 @@
  *
  * Map entry flags also use the packed format.
  */
-#define VM_MAP_ENTRY_MASK   (VM_MAP_NOMERGE | 0xffff)
+#define VM_MAP_ENTRY_MASK   (VM_MAP_NOMERGE | VM_MAP_ANON | 0xffff)
 
 // Macros used to extract specific properties out of packed flags.
 #define VM_MAP_PROT(flags)      ((flags) & 0xf)
@@ -89,6 +90,7 @@ struct vm_map
   struct vm_map_entry *lookup_cache;
   uintptr_t find_cache;
   size_t find_cache_threshold;
+  struct vm_object *priv_cache;
   struct pmap *pmap;
   uint32_t soft_faults;
   uint32_t hard_faults;
@@ -103,6 +105,9 @@ vm_map_get_kernel_map (void)
 
 // Get the kernel virtual address used in IPC routines.
 uintptr_t vm_map_ipc_addr (void);
+
+// Get the current task's VM map.
+#define vm_map_self()   ((struct vm_map *)thread_self()->task->map)
 
 // Create a virtual mapping.
 int vm_map_enter (struct vm_map *map, uintptr_t *startp,
@@ -142,6 +147,9 @@ void vm_map_destroy (struct vm_map *map);
 
 // Safely copy bytes to and from arbitrary buffers.
 int vm_copy (void *dst, const void *src, size_t size);
+
+// Allocate anonymous memory in a VM map.
+void* vm_map_anon_alloc (struct vm_map *map, size_t size);
 
 // Display information about a memory map.
 void vm_map_info (struct vm_map *map, struct stream *stream);

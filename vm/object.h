@@ -139,6 +139,9 @@ vm_object_unref (struct vm_object *object)
     vm_object_destroy (object);
 }
 
+// Create a VM object for anonymous mappings.
+int vm_object_anon_create (struct vm_object **objp);
+
 /*
  * This init operation provides :
  * - operations on the kernel VM object

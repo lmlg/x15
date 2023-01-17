@@ -509,7 +509,8 @@ vm_map_insert (struct vm_map *map, struct vm_map_entry *entry,
   entry->start = request->start;
   entry->end = request->start + request->size;
   entry->object = request->object;
-  entry->offset = request->offset;
+  entry->offset = (request->flags & VM_MAP_ANON) ?
+    (uint64_t)request->start : request->offset;
   entry->flags = request->flags & VM_MAP_ENTRY_MASK;
   vm_map_link (map, entry, request->next);
 
@@ -928,7 +929,8 @@ retry:
     object = entry->object;
     assert (object);   // Null vm-objects are kernel-only and always wired.
 
-    offset = entry->offset + (addr - entry->start);
+    offset = (entry->flags & VM_MAP_ANON) ? addr :
+             entry->offset + addr - entry->start;
     struct vm_page *page = vm_object_lookup (object, offset);
 
     if (page)
@@ -1017,16 +1019,22 @@ vm_map_create (struct vm_map **mapp)
 
   struct pmap *pmap;
   int error = pmap_copy (pmap_get_kernel_pmap (), &pmap);
-
   if (error)
-    {
-      kmem_cache_free (&vm_map_cache, map);
-      return (error);
-    }
+    goto error_pmap;
+
+  error = vm_object_anon_create (&map->priv_cache);
+  if (error)
+    goto error_priv;
 
   vm_map_init (map, pmap, PMAP_START_ADDRESS, PMAP_END_ADDRESS);
   *mapp = map;
   return (0);
+
+error_priv:
+  pmap_destroy (pmap);
+error_pmap:
+  kmem_cache_free (&vm_map_cache, map);
+  return (error);
 }
 
 int
@@ -1055,6 +1063,21 @@ vm_copy (void *dst, const void *src, size_t size)
   return (res);
 }
 
+void*
+vm_map_anon_alloc (struct vm_map *map, size_t size)
+{
+  if (!map->priv_cache)
+    return (NULL);
+
+  size = vm_page_round (size);
+  uintptr_t va = PAGE_SIZE * 50;
+  int flags = VM_MAP_FLAGS (VM_PROT_RDWR, VM_PROT_RDWR, VM_INHERIT_NONE,
+                            VM_ADV_DEFAULT, 0);
+  int error = vm_map_enter (map, &va, size, 0, flags | VM_MAP_ANON,
+                            map->priv_cache, 0);
+  return (error ? NULL : (void *)va);
+}
+
 static void
 vm_map_destroy_impl (struct vm_map *map)
 {
@@ -1068,6 +1091,7 @@ void
 vm_map_destroy (struct vm_map *map)
 {
   vm_map_destroy_impl (map);
+  vm_object_unref (map->priv_cache);
   kmem_cache_free (&vm_map_cache, map);
 }
 

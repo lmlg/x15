@@ -183,3 +183,23 @@ vm_object_lookup (struct vm_object *object, uint64_t offset)
         return (page);
     }
 }
+
+static int
+vm_object_anon_pager_get (struct vm_object *ap __unused, uint64_t off __unused,
+                          size_t size, int prot __unused, void *dst)
+{
+  memset (dst, 0, size);
+  return (size >> PAGE_SHIFT);
+}
+
+static const struct vm_object_pager vm_object_anon_pager =
+{
+  .get = vm_object_anon_pager_get
+};
+
+int
+vm_object_anon_create (struct vm_object **outp)
+{
+  return (vm_object_create (outp, vm_page_trunc (UINT64_MAX),
+                            0, &vm_object_anon_pager));
+}
