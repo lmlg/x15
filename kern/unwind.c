@@ -643,16 +643,12 @@ unw_backtrace (struct unw_mcontext *mctx)
     }
 
   unw_cursor_init_mctx (&cursor, mctx);
-
-  uintptr_t prev_pc = 0;
   for (uint32_t index = 0 ; ; ++index)
     {
       uintptr_t pc = unw_cursor_pc (&cursor);
       const struct symbol *sym = symbol_lookup (pc);
 
-      if (prev_pc == pc)
-        --index;   // Skip duplicated runs.
-      else if (! sym)
+      if (! sym)
         printf ("#%02u [%#010lx]\n", index, pc);
       else
         printf ("#%02u [%#010lx] %s+%#lx/%#lx\n", index, pc,
@@ -660,7 +656,5 @@ unw_backtrace (struct unw_mcontext *mctx)
 
       if (unw_cursor_step (&cursor) <= 0)
         break;
-
-      prev_pc = pc;
     }
 }
