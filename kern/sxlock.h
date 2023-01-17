@@ -81,14 +81,24 @@ sxlock_unlock (struct sxlock *sxp)
   int wake;
 
   if ((val & SXLOCK_MASK) == SXLOCK_MASK)
-    {
+    { // Exclusive lock.
       atomic_swap_rel (&sxp->lock, 0);
       wake = 1;
     }
   else
+    // Shared lock. Check that the count went to 0.
     wake = (atomic_sub_rel (&sxp->lock, 1) << 1) == 2;
 
   if (wake && (val & (SXLOCK_MASK + 1)))
+    sxlock_unlock_slow (sxp);
+}
+
+// Mutate an exclusive lock into a shared one.
+static inline void
+sxlock_share (struct sxlock *sxp)
+{
+  uint32_t prev = atomic_and (&sxp->lock, SXLOCK_MASK + 2, ATOMIC_ACQUIRE);
+  if (prev & (SXLOCK_MASK + 1))
     sxlock_unlock_slow (sxp);
 }
 

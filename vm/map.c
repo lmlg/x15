@@ -645,6 +645,15 @@ vm_map_remove_impl (struct vm_map *map, uintptr_t start,
 
   assert (list_empty (&alloc_entries));
   vm_map_reset_find_cache (map);
+
+  if (entry->object)
+    {
+      // Don't prevent lookups and page faults from here on.
+      sxlock_share (&map->lock);
+      pmap_remove_range (map->pmap, start, end, cpumap_all ());
+      pmap_update (map->pmap);
+    }
+
   return (0);
 }
 
@@ -968,7 +977,7 @@ retry:
      * object. Return an error that maps to SIGBUS. */
     return (EIO);
 
-  SXLOCK_EXGUARD (&map->lock);
+  SXLOCK_SHGUARD (&map->lock);
   _Auto e2 = vm_map_lookup_nearest (map, addr);
 
   if (!(e2 && e2->object == entry->object &&
@@ -987,7 +996,7 @@ retry:
       struct vm_page *page = frames[i];
       if (vm_object_insert (object, page, offset + i * PAGE_SIZE) != 0 ||
           pmap_enter (map->pmap, addr + i * PAGE_SIZE,
-                      vm_page_to_pa (page), prot, PMAP_PEF_GLOBAL) != 0)
+                      vm_page_to_pa (page), prot, 0) != 0)
         {
           vm_page_array_free (&frames[i], n_pages - i);
           break;
