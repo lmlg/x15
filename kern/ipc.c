@@ -251,7 +251,7 @@ ipc_bcopy (struct task *r_task, void *r_ptr, size_t r_size,
 
   for (ssize_t ret = 0 ; ; )
     {
-      if (!l_size || !r_size)
+      if (!r_v.iov_len || !l_v.iov_len)
         return (ret);
 
       ssize_t tmp = ipc_bcopyv_impl (r_task->map, &r_v, &l_v, &data);
