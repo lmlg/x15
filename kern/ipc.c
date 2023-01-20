@@ -299,7 +299,7 @@ ipc_page_iter_copy (struct task *r_task, struct ipc_page_iter *r_it,
   int error = unw_fixup_save (&fixup);
 
   if (unlikely (error))
-    return (error);
+    return (-error);
 
   ipc_data_init (&data, direction);
   phys_addr_t pa;
