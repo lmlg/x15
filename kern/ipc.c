@@ -111,6 +111,7 @@ static int
 ipc_map_addr (struct vm_map *map, const void *addr,
               struct ipc_data *data, phys_addr_t *pap)
 {
+  ipc_data_set (data);
   if (pmap_extract (map->pmap, (uintptr_t)addr, pap))
     { // Need to fault in the destination address.
       int error = vm_map_fault (map, (uintptr_t)addr, data->prot,
@@ -146,6 +147,7 @@ ipc_bcopyv_impl (struct vm_map *r_map, struct iovec *r_v,
     memcpy (l_v->iov_base, (void *)(data->va + page_off), ret);
 
   pmap_ipc_pte_put (data->ipc_pte, data->va);
+  ipc_data_reset (data);
   return ((ssize_t)ret);
 }
 
@@ -217,9 +219,7 @@ ipc_iov_iter_copy (struct task *r_task, struct ipc_iov_iter *r_it,
       if (!lv || !rv)
         return (ret);
 
-      ipc_data_set (&data);
       ssize_t tmp = ipc_bcopyv_impl (r_task->map, rv, lv, &data);
-      ipc_data_reset (&data);
 
       if (tmp < 0)
         return (tmp);
@@ -304,8 +304,6 @@ ipc_page_iter_copy (struct task *r_task, struct ipc_page_iter *r_it,
     return (error);
 
   ipc_data_init (&data, direction);
-  ipc_data_set (&data);
-
   phys_addr_t pa;
   error = ipc_map_addr (r_task->map, r_it->begin + r_it->cur, &data, &pa);
 
@@ -324,7 +322,6 @@ ipc_page_iter_copy (struct task *r_task, struct ipc_page_iter *r_it,
     {
       if (! elems_pp)
         {
-          ipc_data_set (&data);
           error = ipc_map_addr (r_task->map, r_it->begin + r_it->cur,
                                 &data, &pa);
           if (error)
