@@ -30,6 +30,7 @@ struct ipc_data
   uintptr_t va;
   int prot;
   bool copy_into;
+  struct pmap_ipc_pte *ipc_pte;
 };
 
 static inline void
@@ -145,14 +146,20 @@ ipc_compute_size (size_t page_off, const struct ipc_iter *it1,
 static void
 ipc_data_fini (struct ipc_data *data)
 {
-  pmap_ipc_pte_clear (pmap_ipc_pte_get (), data->va);
+  pmap_ipc_pte_put (data->ipc_pte, data->va);
   cpu_intr_restore (data->cpu_flags);
+}
+
+static void
+ipc_data_pte_map (struct ipc_data *data, phys_addr_t pa)
+{
+  data->ipc_pte = pmap_ipc_pte_get ();
+  pmap_ipc_pte_set (data->ipc_pte, data->va, pa);
 }
 
 static ssize_t
 ipc_copy_iter_single (struct ipc_iter *l_it, struct ipc_iter *r_it,
-                      struct vm_map *r_map, struct pmap *pmap,
-                      struct ipc_data *data)
+                      struct vm_map *r_map, struct ipc_data *data)
 {
   phys_addr_t pa;
   void *r_ptr = ipc_iter_cur_ptr (r_it);
@@ -170,17 +177,14 @@ ipc_copy_iter_single (struct ipc_iter *l_it, struct ipc_iter *r_it,
       pmap_extract (r_map->pmap, (uintptr_t)r_ptr, &pa);
     }
 
-  uintptr_t va = data->va;
-  _Auto pte = pmap_ipc_pte_map (pmap, va, pa);
+  ipc_data_pte_map (data, pa);
 
-  if (! pte)
-    return (-EINTR);
-  else if (data->copy_into)
-    memcpy ((void *)(va + page_off), ipc_iter_cur_ptr (l_it), ret);
+  if (data->copy_into)
+    memcpy ((void *)(data->va + page_off), ipc_iter_cur_ptr (l_it), ret);
   else
-    memcpy (ipc_iter_cur_ptr (l_it), (void *)(va + page_off), ret);
+    memcpy (ipc_iter_cur_ptr (l_it), (void *)(data->va + page_off), ret);
 
-  pmap_ipc_pte_clear (pte, va);
+  pmap_ipc_pte_put (data->ipc_pte, data->va);
   return ((ssize_t)ret);
 }
 
@@ -203,8 +207,6 @@ ipc_copy_iter (struct ipc_iter *src_it, struct thread *src_thr,
     data.prot = VM_PROT_RDWR;
 
   struct vm_map *r_map = r_thr->task->map;
-  struct pmap *pmap = thread_self()->task->map->pmap;
-
   struct unw_fixup fixup;
   int error = unw_fixup_save (&fixup);
 
@@ -217,7 +219,7 @@ ipc_copy_iter (struct ipc_iter *src_it, struct thread *src_thr,
   while (ipc_iter_valid (l_it) && ipc_iter_valid (r_it))
     {
       cpu_intr_save (&data.cpu_flags);
-      ssize_t tmp = ipc_copy_iter_single (l_it, r_it, r_map, pmap, &data);
+      ssize_t tmp = ipc_copy_iter_single (l_it, r_it, r_map, &data);
       cpu_intr_restore (data.cpu_flags);
 
       if (tmp < 0)

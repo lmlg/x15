@@ -778,7 +778,7 @@ vm_map_setup (void)
                     0, VM_MAP_FLAGS (VM_PROT_RDWR, VM_PROT_RDWR,
                                      VM_INHERIT_NONE, VM_ADV_DEFAULT, 0),
                     NULL, 0) != 0)
-    panic ("could not create internal mappings");
+    panic ("vm-map: could not create internal mappings");
 
   uintptr_t va = vm_map_ipc_va + PAGE_SIZE;
   for (uint32_t i = 0; i < cpu_count (); ++i)

@@ -50,6 +50,7 @@
 
 #include <vm/defs.h>
 #include <vm/kmem.h>
+#include <vm/map.h>
 #include <vm/page.h>
 
 // Properties of a page translation level.
@@ -79,7 +80,6 @@ struct pmap_cpu_table
 {
   struct list pages;
   phys_addr_t root_ptp_pa;
-  pmap_pte_t *ipc_pte;
 };
 
 struct pmap
@@ -114,9 +114,16 @@ union pmap_global
     } full;
 };
 
+struct pmap_ipc_pte
+{
+  pmap_pte_t *pte;
+  phys_addr_t prev;
+};
+
 union pmap_global pmap_global_pmap;
 struct pmap *pmap_kernel_pmap;
 struct pmap *pmap_current_ptr __percpu;
+static struct pmap_ipc_pte pmap_ipc_ptes __percpu;
 
 #ifdef CONFIG_X86_PAE
 
@@ -492,7 +499,6 @@ pmap_setup_paging (void)
   struct pmap_cpu_table *cpu_table =
     (void *)BOOT_VTOP ((uintptr_t)&pmap_kernel_cpu_tables[0]);
   cpu_table->root_ptp_pa = (uintptr_t)root_ptp;
-  cpu_table->ipc_pte = NULL;
 
   return (root_ptp);
 }
@@ -974,6 +980,8 @@ pmap_copy_cpu_table (uint32_t cpu)
   pmap_copy_cpu_table_recursive (sptp, level, dptp, PMAP_START_ADDRESS);
 }
 
+static int pmap_setup_ipc_ptes (uintptr_t);
+
 void __init
 pmap_mp_setup (void)
 {
@@ -1014,6 +1022,9 @@ pmap_mp_setup (void)
     pmap_copy_cpu_table (cpu);
 
   pmap_do_remote_updates = 1;
+
+  if (pmap_setup_ipc_ptes (vm_map_ipc_addr ()) != 0)
+    panic ("pmap: unable to create IPC PTEs");
 }
 
 int
@@ -1040,25 +1051,25 @@ int
 pmap_extract (struct pmap *pmap, uintptr_t va, phys_addr_t *pap)
 {
   uint32_t level = PMAP_NR_LEVELS - 1;
-  pmap_pte_t *pte, *ptp =
+  pmap_pte_t *ptp =
     pmap_ptp_from_pa (pmap->cpu_tables[cpu_id ()]->root_ptp_pa);
 
   while (1)
     {
       const _Auto pt_level = &pmap_pt_levels[level];
-      pte = &ptp[pmap_pte_index (va, pt_level)];
+      pmap_pte_t *pte = &ptp[pmap_pte_index (va, pt_level)];
 
       if (!pmap_pte_valid (*pte))
         return (EFAULT);
       else if (!level || pmap_pte_large (*pte))
-        break;
+        {
+          *pap = *pte & PMAP_PA_MASK;
+          return (0);
+        }
 
       --level;
       ptp = pmap_pte_next (*pte);
     }
-
-  *pap = *pte & PMAP_PA_MASK;
-  return (0);
 }
 
 static void
@@ -1066,7 +1077,6 @@ pmap_cpu_table_init (struct pmap_cpu_table *table)
 {
   list_init (&table->pages);
   table->root_ptp_pa = 0;
-  table->ipc_pte = NULL;
 }
 
 int
@@ -1178,11 +1188,10 @@ pmap_destroy (struct pmap *pmap)
 }
 
 static int
-pmap_enter_local_impl (struct pmap *pmap, uintptr_t va,
+pmap_enter_local_impl (struct pmap_cpu_table *cpu_table, uintptr_t va,
                        pmap_pte_t pte_bits, pmap_pte_t **outp)
 {
   uint32_t level = PMAP_NR_LEVELS - 1;
-  _Auto cpu_table = pmap->cpu_tables[cpu_id ()];
   pmap_pte_t *ptp = pmap_ptp_from_pa (cpu_table->root_ptp_pa);
 
   while (1)
@@ -1237,7 +1246,8 @@ pmap_enter_local (struct pmap *pmap, uintptr_t va, phys_addr_t pa,
     pte_bits |= PMAP_PTE_US;
 
   pmap_pte_t *pte;
-  int error = pmap_enter_local_impl (pmap, va, pte_bits, &pte);
+  int error = pmap_enter_local_impl (pmap->cpu_tables[cpu_id ()],
+                                     va, pte_bits, &pte);
 
   if (error)
     return (error);
@@ -1249,45 +1259,57 @@ pmap_enter_local (struct pmap *pmap, uintptr_t va, phys_addr_t pa,
   return (0);
 }
 
-pmap_pte_t*
-pmap_ipc_pte_get (void)
+static int
+pmap_setup_ipc_ptes (uintptr_t va)
 {
-  return (pmap_current()->cpu_tables[cpu_id ()]->ipc_pte);
-}
+  struct pmap *pmap = pmap_get_kernel_pmap ();
 
-pmap_pte_t*
-pmap_ipc_pte_map (struct pmap *pmap, uintptr_t va, phys_addr_t pa)
-{
-  _Auto pte_ptr = &pmap->cpu_tables[cpu_id ()]->ipc_pte;
-  pmap_pte_t *pte = *pte_ptr;
-
-  if (! pte)
+  for (uint32_t i = 0; i < cpu_count (); ++i)
     {
-      int error = pmap_enter_local_impl (pmap, va,
-                                         PMAP_PTE_RW | PMAP_PTE_US, &pte);
+      _Auto ptr = percpu_ptr (pmap_ipc_ptes, i);
+      int error = pmap_enter_local_impl (pmap->cpu_tables[i],
+                                         va, PMAP_PTE_RW, &ptr->pte);
       if (error)
-        return (NULL);
+        return (error);
 
-      *pte_ptr = pte;
+      ptr->prev = 1;
+      pmap_pte_clear (ptr->pte);
     }
 
-  pmap_ipc_pte_reset (pte, va, pa);
-  return (pte);
+  // Probably un-needed, but just to be safe.
+  cpu_tlb_flush_all ();
+  return (0);
+}
+
+struct pmap_ipc_pte*
+pmap_ipc_pte_get (void)
+{
+  _Auto ret = cpu_local_ptr (pmap_ipc_ptes);
+  ret->prev = pmap_pte_valid (*ret->pte) ?
+    (*ret->pte & PMAP_PA_MASK) : 1;
+  return (ret);
 }
 
 void
-pmap_ipc_pte_reset (pmap_pte_t *pte, uintptr_t old_va, phys_addr_t pa)
+pmap_ipc_pte_set (struct pmap_ipc_pte *pte, uintptr_t va, phys_addr_t pa)
 {
-  cpu_tlb_flush_va (old_va);
-  pmap_pte_set (pte, pa, PMAP_PTE_RW | PMAP_PTE_G, &pmap_pt_levels[0]);
+  cpu_tlb_flush_va (va);
+  // We can assume the lowest level since we don't use huge pages for this.
+  pmap_pte_set (pte->pte, pa, PMAP_PTE_G | PMAP_PTE_RW, &pmap_pt_levels[0]);
 }
 
 void
-pmap_ipc_pte_clear (pmap_pte_t *pte, uintptr_t old_va)
+pmap_ipc_pte_put (struct pmap_ipc_pte *pte, uintptr_t va)
 {
-  cpu_tlb_flush_va (old_va);
-  if (pte)
-    pmap_pte_clear (pte);
+  cpu_tlb_flush_va (va);
+
+  if (pte->prev == 1)
+    pmap_pte_clear (pte->pte);
+  else
+    {
+      pmap_pte_set (pte->pte, pte->prev, PMAP_PTE_RW, &pmap_pt_levels[0]);
+      pte->prev = 1;
+    }
 }
 
 int
