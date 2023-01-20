@@ -25,8 +25,6 @@
 #include <vm/map.h>
 #include <vm/page.h>
 
-#include <stdio.h>
-
 struct ipc_data
 {
   cpu_flags_t cpu_flags;

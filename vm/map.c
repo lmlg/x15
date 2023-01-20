@@ -56,25 +56,11 @@
 #define VM_MAP_MAX_FRAMES_ORDER   3
 #define VM_MAP_MAX_FRAMES         (1 << VM_MAP_MAX_FRAMES_ORDER)
 
-// Temporary virtual mappings used to retrieve pager data.
-
-#define VM_MAP_CPU_MAX_VAS   3
-
-struct vm_map_cpu_va
-{
-  struct mutex lock;
-  uintptr_t vas[VM_MAP_CPU_MAX_VAS];
-  uint32_t bitmap;
-};
-
-// How much to pagein when a fault occurs (expressed in bytes).
 struct vm_map_page_target
 {
   uint64_t front;
   uint64_t back;
 };
-
-static struct vm_map_cpu_va vm_map_cpu_vas __percpu;
 
 /*
  * Mapping request.
@@ -766,29 +752,12 @@ vm_map_setup (void)
   kmem_cache_init (&vm_map_cache, "vm_map", sizeof (struct vm_map),
                    0, NULL, KMEM_CACHE_PAGE_ONLY);
 
-  /*
-   * The total size is computed as such:
-   * - One page for IPC operations (mapped by a special PTE in the pmap module)
-   * - One virtual mapping per CPU, which includes the maximum number of frames
-   *   needed to pagein data times the maximum number of mappings per cpu.
-   */
-  size_t size = PAGE_SIZE + cpu_count () * PAGE_SIZE *
-                VM_MAP_MAX_FRAMES * VM_MAP_CPU_MAX_VAS;
-  if (vm_map_enter (&vm_map_kernel_map, &vm_map_ipc_va, size,
+  // Allocate a page for IPC mapping purposes.
+  if (vm_map_enter (&vm_map_kernel_map, &vm_map_ipc_va, PAGE_SIZE,
                     0, VM_MAP_FLAGS (VM_PROT_RDWR, VM_PROT_RDWR,
                                      VM_INHERIT_NONE, VM_ADV_DEFAULT, 0),
                     NULL, 0) != 0)
-    panic ("vm-map: could not create internal mappings");
-
-  uintptr_t va = vm_map_ipc_va + PAGE_SIZE;
-  for (uint32_t i = 0; i < cpu_count (); ++i)
-    {
-      _Auto vp = percpu_ptr (vm_map_cpu_vas, i);
-      mutex_init (&vp->lock);
-      vp->bitmap = (1 << VM_MAP_CPU_MAX_VAS) - 1;
-      for (uint32_t j = 0; j < ARRAY_SIZE (vp->vas); ++j, va += PAGE_SIZE)
-        vp->vas[j] = va;
-    }
+    panic ("vm-map: could not create internal IPC mapping");
 
   return (0);
 }
@@ -797,53 +766,6 @@ uintptr_t
 vm_map_ipc_addr (void)
 {
   return (vm_map_ipc_va);
-}
-
-static uintptr_t
-vm_map_get_pagein_addr (void)
-{
-  CPU_INTR_GUARD ();
-  _Auto vp = cpu_local_ptr (vm_map_cpu_vas);
-
-  if (!vp->bitmap)
-    mutex_lock (&vp->lock);
-
-  assert (vp->bitmap);
-  int idx = __builtin_ffs (vp->bitmap) - 1;
-
-  uintptr_t ret = vp->vas[idx];
-  vp->vas[idx] = 0;
-  vp->bitmap &= ~(1 << idx);
-
-  if (!vp->bitmap)
-    mutex_lock (&vp->lock);
-
-  assert (vm_page_aligned (ret));
-  return (ret);
-}
-
-static void
-vm_map_put_pagein_addr (struct pmap *pmap, uintptr_t va, int n)
-{
-  cpu_flags_t flags;
-  cpu_intr_save (&flags);
-
-  _Auto vp = cpu_local_ptr (vm_map_cpu_vas);
-  assert (vp->bitmap != (1 << VM_MAP_CPU_MAX_VAS) - 1);
-
-  int idx = __builtin_ctz (~vp->bitmap);
-  assert (vp->vas[idx] == 0);
-  vp->vas[idx] = va;
-
-  uint32_t prev = vp->bitmap;
-  vp->bitmap |= 1 << idx;
-
-  cpu_intr_restore (flags);
-  if (! prev)
-    mutex_unlock (&vp->lock);
-
-  for (int i = 0; i < n; ++i, va += PAGE_SIZE)
-    pmap_remove (pmap, va, NULL);
 }
 
 INIT_OP_DEFINE (vm_map_setup,
@@ -876,30 +798,34 @@ vm_map_cleanup_object (void *ptr)
 }
 
 static int
-vm_map_fault_get_data (struct vm_map *map, struct vm_object *object,
-                       uint64_t offset, struct vm_page **frames,
-                       int prot, int nr_pages)
+vm_map_fault_get_data (struct vm_object *obj, uint64_t off,
+                       struct vm_page **pages, int prot, int nr_pages)
 {
-  THREAD_PIN_GUARD ();
-  uintptr_t va = vm_map_get_pagein_addr ();
+  int ret = -EINTR;
 
-  for (int i = 0; i < nr_pages; ++i)
-    {
-      int error = pmap_enter (map->pmap, va + i * PAGE_SIZE,
-                              vm_page_to_pa (frames[i]),
-                              VM_PROT_RDWR, PMAP_NO_CHECK);
-      if (unlikely (error))
+  if (!(obj->flags & VM_OBJECT_EXTERNAL))
+    { // Simple callback-based object.
+      uintptr_t va = vm_map_ipc_addr ();
+      THREAD_PIN_GUARD ();
+      _Auto pte = pmap_ipc_pte_get ();
+
+      for (ret = 0; ret < nr_pages; ++ret)
         {
-          vm_map_put_pagein_addr (map->pmap, va, i);
-          return (-EINTR);
+          pmap_ipc_pte_set (pte, va, vm_page_to_pa (pages[ret]));
+          int tmp = obj->pager->get (obj, off + ret * PAGE_SIZE,
+                                     PAGE_SIZE, prot, (void *)va);
+          if (tmp < 0)
+            {
+              ret = tmp;
+              break;
+            }
         }
+
+      pmap_ipc_pte_put (pte, va);
+      return (ret);
     }
 
-  int ret = pmap_update (map->pmap) != 0 ? -EINTR :
-            vm_object_pager_get (object, offset,
-                                 nr_pages * PAGE_SIZE, prot, (void *)va);
-
-  vm_map_put_pagein_addr (map->pmap, va, nr_pages);
+  // XXX: Implement for external pagers.
   return (ret);
 }
 
@@ -966,8 +892,8 @@ retry:
       return (0);
     }
 
-  n_pages = vm_map_fault_get_data (map, object, offset, frames,
-                                     prot, 1 << n_pages);
+  n_pages = vm_map_fault_get_data (object, offset, frames,
+                                   prot, 1 << n_pages);
 
   if (flags & VM_MAP_FAULT_INTR)
     cpu_intr_disable ();
