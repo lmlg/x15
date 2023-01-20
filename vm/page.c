@@ -134,8 +134,7 @@ struct vm_page_waiter
   struct thread *thread;
   struct plist_node node;
   struct vm_page **frames;
-  uint32_t min_order;
-  uint32_t max_order;
+  uint32_t order;
   uint32_t selector;
   int received;
 };
@@ -725,18 +724,12 @@ vm_page_free (struct vm_page *page, uint32_t order)
 }
 
 static int
-vm_page_array_tryalloc (struct vm_page **frames, uint32_t min_order,
-                        uint32_t max_order, uint32_t selector, uint16_t type)
+vm_page_array_tryalloc (struct vm_page **frames, uint32_t order,
+                        uint32_t selector, uint16_t type)
 {
-  uint32_t order = max_order;
   struct vm_page *pages = vm_page_alloc (order, selector, type);
   if (! pages)
-    {
-      order = min_order;
-      pages = vm_page_alloc (order, selector, type);
-      if (! pages)
-        return (-1);
-    }
+    return (-1);
 
   for (uint32_t i = 0; i < (1u << order); ++i)
     frames[i] = pages + i;
@@ -745,13 +738,11 @@ vm_page_array_tryalloc (struct vm_page **frames, uint32_t min_order,
 }
 
 int
-vm_page_array_alloc_range (struct vm_page **frames, uint32_t min_order,
-                           uint32_t max_order, uint32_t selector,
-                           uint16_t type)
+vm_page_array_alloc (struct vm_page **frames, uint32_t order,
+                     uint32_t selector, uint16_t type)
 {
   // TODO: Restrict how many pages each task can allocate.
-  int ret = vm_page_array_tryalloc (frames, min_order, max_order,
-                                    selector, type);
+  int ret = vm_page_array_tryalloc (frames, order, selector, type);
   if (likely (ret >= 0))
     return (ret);
 
@@ -759,8 +750,7 @@ vm_page_array_alloc_range (struct vm_page **frames, uint32_t min_order,
     {
       .thread = thread_self (),
       .frames = frames,
-      .min_order = min_order,
-      .max_order = max_order,
+      .order = order,
       .selector = selector
     };
 
@@ -768,7 +758,7 @@ vm_page_array_alloc_range (struct vm_page **frames, uint32_t min_order,
 
   // TODO: Interruptible wait (and possibly page evictions).
   spinlock_lock (&vm_page_waiters_lock);
-  ret = vm_page_array_tryalloc (frames, min_order, max_order, selector, type);
+  ret = vm_page_array_tryalloc (frames, order, selector, type);
   if (ret < 0)
     {
       plist_add (&vm_page_waiters_list, &pw.node);
@@ -791,11 +781,11 @@ vm_page_array_free_impl (struct vm_page **frames, uint32_t n_frames,
     {
       _Auto waiter = plist_entry (pnode, struct vm_page_waiter, node);
 
-      if ((1u << waiter->min_order) > n_frames ||
+      if ((1u << waiter->order) > n_frames ||
           selector > waiter->selector)
         continue;
 
-      uint32_t n = MIN (n_frames, 1u << waiter->max_order);
+      uint32_t n = MIN (n_frames, 1u << waiter->order);
       for (uint32_t i = 0; i < n; ++i)
         waiter->frames[i] = frames[i];
 

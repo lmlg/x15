@@ -225,16 +225,8 @@ void vm_page_free (struct vm_page *page, uint32_t order);
  * lower and upper bound of the needed allocation.
  */
 
-int vm_page_array_alloc_range (struct vm_page **pages, uint32_t min_order,
-                               uint32_t max_order, uint32_t selector,
-                               uint16_t type);
-
-static inline int
-vm_page_array_alloc (struct vm_page **pages, uint32_t order,
-                     uint32_t selector, uint16_t type)
-{
-  return (vm_page_array_alloc_range (pages, order, order, selector, type));
-}
+int vm_page_array_alloc (struct vm_page **pages, uint32_t order,
+                         uint32_t selector, uint16_t type);
 
 void vm_page_array_free (struct vm_page **pages, uint32_t order);
 
