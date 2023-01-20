@@ -26,73 +26,163 @@
 
 #include <kern/types.h>
 
-#define IPC_IOV_CACHE_SIZE   8
-
-struct ipc_iov_cache
+struct ipc_msg_page
 {
-  struct iovec iovs[IPC_IOV_CACHE_SIZE];
-  int idx;
-  int size;
+  uintptr_t addr;
+  size_t size;
+  int prot;
 };
 
-struct ipc_iter
+struct ipc_msg_cap
 {
+  int cap;
+  int flags;
+};
+
+#define IPC_IOV_ITER_CACHE_SIZE   8
+
+struct ipc_iov_iter
+{
+  struct iovec cache[IPC_IOV_ITER_CACHE_SIZE];
+  uint32_t cache_idx;
+  struct iovec head;
+  struct iovec *begin;
+  uint32_t cur;
+  uint32_t end;
+};
+
+struct ipc_cap_iter
+{
+  struct ipc_msg_cap *begin;
+  uint32_t cur;
+  uint32_t end;
+};
+
+struct ipc_page_iter
+{
+  struct ipc_msg_page *begin;
+  uint32_t cur;
+  uint32_t end;
+};
+
+struct ipc_msg
+{
+  size_t size;
   struct iovec *iovs;
-  int cur_iov;
-  int nr_iovs;
-  struct iovec cur;
-  struct ipc_iov_cache cache;
+  uint32_t iov_cnt;
+  struct ipc_msg_page *pages;
+  uint32_t page_cnt;
+  struct ipc_msg_cap *caps;
+  uint32_t cap_cnt;
 };
+
+struct ipc_msg_data
+{
+  size_t size;
+  int task_id;
+  int thread_id;
+  uintptr_t tag;
+  size_t nbytes;
+  uint32_t pages_sent;
+  uint32_t pages_recv;
+  uint32_t caps_sent;
+  uint32_t caps_recv;
+};
+
+struct task;
+
+// Direction of the binary copy, relative to the remote task.
+#define IPC_COPY_FROM   0
+#define IPC_COPY_TO     1
+
+/*
+ * IPC iterator functions.
+ *
+ * These come in 3 flavors: iovec, capabilities and pages. The former works
+ * by simply copying data; the other 2 by transfering objects across tasks.
+ */
 
 static inline void
-ipc_iter_set_invalid (struct ipc_iter *it)
+ipc_cap_iter_init (struct ipc_cap_iter *it,
+                   struct ipc_msg_cap *msg, uint32_t nr_msgs)
 {
-  it->cur_iov = -1;
+  it->begin = msg;
+  it->cur = 0, it->end = nr_msgs;
+}
+
+static inline int
+ipc_cap_iter_size (const struct ipc_cap_iter *it)
+{
+  return ((int)(it->end - it->cur));
+}
+
+static inline void
+ipc_page_iter_init (struct ipc_page_iter *it,
+                    struct ipc_msg_page *msg, uint32_t nr_msgs)
+{
+  it->begin = msg;
+  it->cur = 0, it->end = nr_msgs;
+}
+
+static inline int
+ipc_page_iter_size (const struct ipc_page_iter *it)
+{
+  return ((int)(it->end - it->cur));
+}
+
+static inline void
+ipc_iov_iter_init_buf (struct ipc_iov_iter *it, void *buf, size_t size)
+{
+  it->head = (struct iovec) { .iov_base = buf, .iov_len = size };
+  it->cache_idx = IPC_IOV_ITER_CACHE_SIZE;
+  it->begin = NULL;
+  it->cur = it->end = 0;
 }
 
 static inline bool
-ipc_iter_valid (const struct ipc_iter *it)
+ipc_iov_iter_empty (const struct ipc_iov_iter *it)
 {
-  return (it->cur_iov >= 0);
+  return (it->cur >= it->end && !it->head.iov_len &&
+          it->cache_idx >= IPC_IOV_ITER_CACHE_SIZE);
 }
 
 static inline void
-ipc_iter_init_buf (struct ipc_iter *it, void *buf, size_t size)
+ipc_iov_iter_init (struct ipc_iov_iter *it, struct iovec *vecs, uint32_t cnt)
 {
-  it->iovs = NULL;
-  it->cur_iov = it->nr_iovs = 0;
-  it->cur.iov_base = buf;
-  it->cur.iov_len = size;
-  it->cache.idx = it->cache.size = 0;
-
-  if (! size)
-    ipc_iter_set_invalid (it);
+  it->head.iov_len = 0;
+  it->begin = vecs;
+  it->cur = 0, it->end = cnt;
+  it->cache_idx = IPC_IOV_ITER_CACHE_SIZE;
 }
 
-static inline size_t
-ipc_iter_cur_size (const struct ipc_iter *it)
-{
-  return (it->cur.iov_len);
-}
+// Copy bytes between a local and a remote task.
+ssize_t ipc_bcopy (struct task *r_task, void *r_ptr, size_t r_size,
+                   void *l_ptr, size_t l_size, int direction);
 
-static inline void*
-ipc_iter_cur_ptr (const struct ipc_iter *it)
-{
-  return ((void *)it->cur.iov_base);
-}
+// Copy bytes in iovecs between a local and a remote task.
+ssize_t ipc_bcopyv (struct task *r_task, struct iovec *r_v, uint32_t n_rv,
+                    struct iovec *l_v, uint32_t n_lv, int direction);
 
-struct thread;
+// Copy bytes in iterators between a local and a remote task.
+ssize_t ipc_iov_iter_copy (struct task *r_task, struct ipc_iov_iter *r_it,
+                           struct ipc_iov_iter *l_it, int direction);
 
-// Initialize an IPC iterator with a number of iovec's.
-int ipc_iter_init_iov (struct ipc_iter *it,
-                           struct iovec *iovs, uint32_t nr_iovs);
+// Transfer capabilities between a remote and a local task.
+int ipc_copy_caps (struct task *r_task, struct ipc_msg_cap *r_caps,
+                   uint32_t r_ncaps, struct ipc_msg_cap *l_caps,
+                   uint32_t l_ncaps, int direction);
 
-// Advance an IPC iterator by OFF bytes.
-int ipc_iter_adv (struct ipc_iter *it, size_t off);
+// Transfer capabilities in iterators between a local and a remote task.
+int ipc_cap_iter_copy (struct task *r_task, struct ipc_cap_iter *r_it,
+                       struct ipc_cap_iter *l_it, int direction);
 
-/* Copy data through iterators. Returns the number of bytes copied,
- * or a negative value if there was an error. */
-ssize_t ipc_copy_iter (struct ipc_iter *src_it, struct thread *src_thr,
-                       struct ipc_iter *dst_it, struct thread *dst_thr);
+// Transfer pages in iterators between a local and a remote task.
+int ipc_page_iter_copy (struct task *r_task, struct ipc_page_iter *r_it,
+                        struct ipc_page_iter *l_it, int direction);
+
+// Transfer pages between a remote and a local task.
+int ipc_copy_pages (struct task *r_task, struct ipc_msg_page *r_pages,
+                    uint32_t r_npages, struct ipc_msg_page *l_pages,
+                    uint32_t l_npages, int direction);
 
 #endif

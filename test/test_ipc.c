@@ -30,16 +30,19 @@
 #include <test/test.h>
 
 #include <vm/map.h>
+#include <vm/page.h>
+
+#define TEST_IPC_DATA_SIZE   128
 
 struct test_ipc_data
 {
   struct semaphore send_sem;
   struct semaphore recv_sem;
-  char buf1[16];
-  char buf2[24];
-  struct ipc_iter *out;
-  struct thread *receiver;
+  struct ipc_iov_iter *iovs;
+  struct ipc_page_iter *pgs;
+  struct task *receiver;
   ssize_t len;
+  int nr_pages;
 };
 
 static struct test_ipc_data test_data;
@@ -67,43 +70,66 @@ static void
 test_ipc_sender (void *arg)
 {
   _Auto data = (struct test_ipc_data *)arg;
+  char *mem = vm_map_anon_alloc (vm_map_self (), PAGE_SIZE * 2);
+  memset (mem, '-', TEST_IPC_DATA_SIZE);
+  size_t half = TEST_IPC_DATA_SIZE / 2;
+
   struct iovec iovs[] =
     {
-      { .iov_base = data->buf1, .iov_len = sizeof (data->buf1) },
-      { .iov_base = data->buf2, .iov_len = sizeof (data->buf2) }
+      { .iov_base = mem, .iov_len = half },
+      { .iov_base = mem + half, .iov_len = half }
     };
 
-  struct ipc_iter input;
-  ipc_iter_init_iov (&input, iovs, ARRAY_SIZE (iovs));
-  assert (ipc_iter_valid (&input));
+  struct ipc_iov_iter it;
+  ipc_iov_iter_init (&it, iovs, 2);
+  assert (!ipc_iov_iter_empty (&it));
+
+  struct ipc_page_iter pg;
+  struct ipc_msg_page mp =
+    { .addr = (uintptr_t)mem + PAGE_SIZE, .size = PAGE_SIZE,
+      .prot = VM_PROT_RDWR };
+
+  ipc_page_iter_init (&pg, &mp, 1);
+  *(char *)mp.addr = '+';
 
   semaphore_wait (&data->send_sem);
-  data->len = ipc_copy_iter (&input, thread_self (),
-                             data->out, data->receiver);
+  data->len = ipc_iov_iter_copy (data->receiver, data->iovs,
+                                 &it, IPC_COPY_TO);
+  data->nr_pages = ipc_page_iter_copy (data->receiver, data->pgs,
+                                       &pg, IPC_COPY_TO);
   semaphore_post (&data->recv_sem);
+  semaphore_wait (&data->send_sem);
 }
 
 static void
 test_ipc_receiver (void *arg)
 {
   _Auto data = (struct test_ipc_data *)arg;
-  size_t bufsize = 100;
-  char *buf = vm_map_anon_alloc (vm_map_self (), bufsize);
-  assert (buf);
+  char buf[TEST_IPC_DATA_SIZE - 10];
+  struct ipc_iov_iter it;
+  struct ipc_page_iter pg;
+  struct ipc_msg_page mp = { .addr = PAGE_SIZE * 10 };
 
-  struct ipc_iter it;
-  ipc_iter_init_buf (&it, buf, bufsize);
-  assert (ipc_iter_valid (&it));
-  data->out = &it;
-  data->receiver = thread_self ();
+  ipc_iov_iter_init_buf (&it, buf, sizeof (buf));
+  assert (!ipc_iov_iter_empty (&it));
+
+  ipc_page_iter_init (&pg, &mp, 1);
+
+  data->iovs = &it;
+  data->pgs = &pg;
+  data->receiver = thread_self()->task;
 
   semaphore_post (&data->send_sem);
   semaphore_wait (&data->recv_sem);
 
-  assert (data->len == sizeof (data->buf1) + sizeof (data->buf2));
-  assert (memcmp (data->buf1, buf, sizeof (data->buf1)) == 0);
-  assert (memcmp (data->buf2, buf + sizeof (data->buf1),
-                  sizeof (data->buf2)) == 0);
+  assert (data->len == sizeof (buf));
+  assert (buf[0] == '-');
+  assert (buf[sizeof (buf) - 1] == '-');
+  assert (data->nr_pages == 1);
+  assert (*(char *)mp.addr == '+');
+
+  *(char *)mp.addr = '*';
+  semaphore_post (&data->send_sem);
 }
 
 TEST_DEFERRED (ipc)
@@ -112,11 +138,7 @@ TEST_DEFERRED (ipc)
   semaphore_init (&data->send_sem, 0, 0xff);
   semaphore_init (&data->recv_sem, 0, 0xff);
 
-  memset (data->buf1, '-', sizeof (data->buf1));
-  memset (data->buf2, '.', sizeof (data->buf2));
-
   struct thread *sender, *receiver;
-
   test_ipc_create (test_ipc_sender, data, "sender", &sender);
   test_ipc_create (test_ipc_receiver, data, "receiver", &receiver);
 

@@ -199,9 +199,8 @@
   movl %esp, %ebx   // save frame.
 .endm
 
-.macro cpu_ll_exc_align_stack nr_args
+.macro cpu_ll_exc_align_stack
   andl $(~(CPU_DATA_ALIGN - 1)), %esp
-  addl $((\nr_args * CPU_WORD_SIZE) % CPU_DATA_ALIGN), %esp
 .endm
 
 .macro cpu_ll_exc_leave
@@ -214,7 +213,7 @@
 .macro cpu_ll_exc_handle vector
 .cfi_undefined 8
   cpu_ll_exc_enter \vector
-  cpu_ll_exc_align_stack 1
+  cpu_ll_exc_align_stack
   pushl %ebx
   call cpu_exc_main
   cpu_ll_exc_leave
@@ -224,7 +223,6 @@
   cpu_ll_exc_enter \vector
   call cpu_get_intr_stack_ptr
   movl %eax, %esp   // switch to interrupt stack.
-  cpu_ll_exc_align_stack 1
   pushl %ebx
   call cpu_intr_main
   cpu_ll_exc_leave
@@ -850,33 +848,26 @@ ASM_END (cpu_unw_mctx_save)
 ASM_ENTRY (cpu_unw_mctx_jmp)
 .cfi_startproc
 #ifdef __LP64__
-  movq 56(%rdi), %rsp         # Restore stack pointer.
-  movq (16 * 8)(%rdi), %rcx   # New PC.
-  pushq %rcx
-  movq %rsi, %rax             # New return value.
-  movq 8(%rdi),  %rdx
-  movq 16(%rdi), %rcx
+  movq %rsi, %rax
   movq 24(%rdi), %rbx
-  movq 32(%rdi), %rsi
   movq 48(%rdi), %rbp
   movq (12 * 8)(%rdi), %r12
   movq (13 * 8)(%rdi), %r13
   movq (14 * 8)(%rdi), %r14
   movq (15 * 8)(%rdi), %r15
-  movq 40(%rdi), %rdi
+  movq 56(%rdi), %rsp
+  movq (16 * 8)(%rdi), %rsi
+  jmp *%rsi
 #else
-  movl 8(%esp), %eax    # New return value.
-  movl 4(%esp), %ecx    # Pointer to the stack frame.
-  movl 16(%ecx), %esp   # Restore stack pointer.
-  movl 32(%ecx), %ebx   # New PC.
-  pushl %ebx
-  movl 8(%ecx), %edx
+  movl 8(%esp), %eax
+  movl 4(%esp), %ecx
   movl 12(%ecx), %ebx
+  movl 16(%ecx), %esp
   movl 20(%ecx), %ebp
   movl 24(%ecx), %esi
   movl 28(%ecx), %edi
-  movl 4(%ecx), %ecx
+  movl 32(%ecx), %ecx
+  jmp *%ecx
 #endif
-  ret
 .cfi_endproc
 ASM_END (cpu_unw_mctx_jmp)
