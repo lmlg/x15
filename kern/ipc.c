@@ -64,6 +64,15 @@ ipc_data_reset (struct ipc_data *data)
 }
 
 static void
+ipc_data_page_ref (struct ipc_data *data, phys_addr_t pa)
+{
+  struct vm_page *page = vm_page_lookup (pa);
+  assert (page);
+  vm_page_ref (page);
+  data->page = page;
+}
+
+static void
 ipc_data_fini (void *arg)
 {
   struct ipc_data *data = arg;
@@ -211,10 +220,12 @@ ipc_iov_iter_copy (struct task *r_task, struct ipc_iov_iter *r_it,
 
   for (ssize_t ret = 0 ; ; )
     {
-      struct iovec *lv = ipc_iov_iter_next (l_it),
-                   *rv = ipc_iov_iter_next_remote (r_it, r_task, &ret);
+      struct iovec *lv = ipc_iov_iter_next (l_it);
+      if (! lv)
+        return (ret);
 
-      if (!lv || !rv)
+      struct iovec *rv = ipc_iov_iter_next_remote (r_it, r_task, &ret);
+      if (! rv)
         return (ret);
 
       ssize_t tmp = ipc_bcopyv_impl (r_task->map, rv, lv, &data);
@@ -309,14 +320,15 @@ ipc_page_iter_copy (struct task *r_task, struct ipc_page_iter *r_it,
     return (error);
 
   ipc_data_pte_map (&data, pa);
-  vm_page_ref (data.page = vm_page_lookup (pa));
+  ipc_data_page_ref (&data, pa);
   ipc_data_reset (&data);
 
-  _Auto elems_pp = ((uintptr_t)r_it->cur % PAGE_SIZE) / sizeof (*r_it->begin);
-  int i;
+  _Auto elems_pp = ((uintptr_t)&r_it->begin[r_it->cur] % PAGE_SIZE) /
+                   sizeof (*r_it->begin);
+  int i, nmax = (int)MIN (ipc_page_iter_size (it_in),
+                          ipc_page_iter_size (it_out));
 
-  for (i = 0; i < MIN (ipc_page_iter_size (it_in),
-                       ipc_page_iter_size (it_out)); ++i)
+  for (i = 0; i < nmax; ++i)
     {
       if (! elems_pp)
         {
@@ -327,7 +339,7 @@ ipc_page_iter_copy (struct task *r_task, struct ipc_page_iter *r_it,
 
           pmap_ipc_pte_set (data.ipc_pte, data.va, pa);
           vm_page_unref (data.page);
-          vm_page_ref (data.page = vm_page_lookup (pa));
+          ipc_data_page_ref (&data, pa);
           ipc_data_reset (&data);
 
           elems_pp = PAGE_SIZE / sizeof (*r_it->begin);

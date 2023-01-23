@@ -220,9 +220,8 @@ void vm_page_free (struct vm_page *page, uint32_t order);
  * (De)allocate an array of pages.
  *
  * Unlike the above versions, these functions operate on arrays of
- * pages that may not be physically contiguous. They also may sleep
- * when not enough pages are free, and allow callers to specify a
- * lower and upper bound of the needed allocation.
+ * pages that may not be physically contiguous and they also may
+ * sleep when not enough pages are free.
  */
 
 int vm_page_array_alloc (struct vm_page **pages, uint32_t order,

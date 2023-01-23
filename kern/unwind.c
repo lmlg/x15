@@ -287,8 +287,7 @@ unw_fixup_save (struct unw_fixup_t *fx)
   struct thread *self = thread_self ();
   fx->prev = &self->fixup;
   fx->next = *fx->prev;
-
-  atomic_store_rel (&self->fixup, fx);
+  self->fixup = fx;
   return (0);
 }
 

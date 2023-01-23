@@ -28,7 +28,6 @@
 #include <kern/rbtree.h>
 #include <kern/stream.h>
 #include <kern/sxlock.h>
-#include <kern/thread.h>
 
 #include <machine/pmap.h>
 
