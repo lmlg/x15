@@ -200,10 +200,10 @@ vm_map_lookup_nearest (struct vm_map *map, uintptr_t addr)
                                       vm_map_entry_cmp_lookup, RBTREE_RIGHT);
   if (node)
     {
-      entry = rbtree_entry (node, struct vm_map_entry, tree_node);
-      assert (addr < entry->end);
-      map->lookup_cache = entry;
-      return (entry);
+      _Auto e2 = rbtree_entry (node, struct vm_map_entry, tree_node);
+      assert (addr < e2->end);
+      atomic_cas_rlx (&map->lookup_cache, entry, e2);
+      return (e2);
     }
 
   return (NULL);
@@ -338,6 +338,7 @@ vm_map_unlink (struct vm_map *map, struct vm_map_entry *entry)
 {
   assert (entry->start < entry->end);
 
+  // No need for atomics here as this is done under an exclusive lock.
   if (map->lookup_cache == entry)
     map->lookup_cache = NULL;
 
