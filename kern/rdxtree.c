@@ -159,7 +159,9 @@ rdxtree_node_destroy (struct rdxtree_node *node)
   if (node->nr_entries)
     {
       assert (node->entries[0]);
-      memset (node->entries, 0, node->nr_entries * sizeof (*node->entries));
+      for (uint32_t i = 0; i < node->nr_entries; ++i)
+        node->entries[i] = NULL;
+
       node->nr_entries = 0;
       node->alloc_bm = RDXTREE_BM_FULL;
     }
@@ -437,13 +439,12 @@ rdxtree_insert_common (struct rdxtree *tree, rdxtree_key_t key,
 
   if (unlikely (! height))
     {
+      if (slotp)
+        *slotp = &tree->root;
       if (tree->root)
         return (EBUSY);
 
       rcu_store (&tree->root, ptr);
-
-      if (slotp)
-        *slotp = &tree->root;
 
       return (0);
     }
@@ -485,6 +486,9 @@ rdxtree_insert_common (struct rdxtree *tree, rdxtree_key_t key,
     }
   while (height > 0);
 
+  if (slotp)
+    *slotp = &prev->entries[index];
+
   if (unlikely (node))
     return (EBUSY);
 
@@ -492,9 +496,6 @@ rdxtree_insert_common (struct rdxtree *tree, rdxtree_key_t key,
 
   if (rdxtree_key_alloc_enabled (tree))
     rdxtree_insert_bm_clear (prev, index);
-
-  if (slotp)
-    *slotp = &prev->entries[index];
 
   return (0);
 }
