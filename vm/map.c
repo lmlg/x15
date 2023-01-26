@@ -58,8 +58,8 @@
 
 struct vm_map_page_target
 {
-  uint64_t front;
-  uint64_t back;
+  uintptr_t front;
+  uintptr_t back;
 };
 
 /*
@@ -783,11 +783,11 @@ vm_map_alloc_fault_pages (struct vm_map_entry *entry, struct vm_page **frames,
   _Auto target = &vm_map_page_targets[adv];
 
   // Mind overflows when computing the offsets.
-  *startp = MIN (addr - entry->start, target->front);
-  uint64_t last_off = MIN (entry->end - addr, target->back);
-  uint32_t order = (uint32_t)(log2 ((last_off + *startp) >> PAGE_SHIFT));
+  uintptr_t start_off = MIN (addr - entry->start, target->front),
+            last_off = MIN (entry->end - addr, target->back);
+  uint32_t order = (uint32_t)(log2 ((last_off + start_off) >> PAGE_SHIFT));
 
-  *startp = offset - *startp;
+  *startp = offset - start_off;
   return (vm_page_array_alloc (frames, order,
                                VM_PAGE_SEL_HIGHMEM, VM_PAGE_OBJECT));
 }
@@ -902,7 +902,7 @@ retry:
 
   if (n_pages < 0)
     return (n_pages == -EINTR ? 0 : -n_pages);
-  else if (start_off + n_pages * PAGE_SIZE < offset)
+  else if (unlikely (start_off + n_pages * PAGE_SIZE < offset))
     /* We didn't cover the faulting page. This is probably due to a truncated
      * object. Return an error that maps to SIGBUS. */
     return (EIO);
