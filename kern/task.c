@@ -60,7 +60,7 @@ task_init (struct task *task, const char *name, struct vm_map *map)
 #ifdef CONFIG_SHELL
 
 static void
-task_shell_info (struct shell *shell __unused, int argc, char **argv)
+task_shell_info (struct shell *shell, int argc, char **argv)
 {
   if (argc == 1)
     {
@@ -156,6 +156,7 @@ task_destroy (struct task *task)
   spinlock_lock (&task_list_lock);
   list_remove (&task->node);
   spinlock_unlock (&task_list_lock);
+  vm_map_destroy (task->map);
   kuid_remove (&task->kuid, KUID_TASK);
   kmem_cache_free (&task_cache, task);
 }
