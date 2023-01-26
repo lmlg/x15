@@ -808,7 +808,8 @@ vm_map_fault_get_data (struct vm_object *obj, uint64_t off,
     { // Simple callback-based object.
       uintptr_t va = vm_map_ipc_addr ();
       THREAD_PIN_GUARD ();
-      _Auto pte = pmap_ipc_pte_get ();
+      phys_addr_t prev;
+      _Auto pte = pmap_ipc_pte_get (&prev);
 
       for (ret = 0; ret < nr_pages; ++ret)
         {
@@ -822,7 +823,7 @@ vm_map_fault_get_data (struct vm_object *obj, uint64_t off,
             }
         }
 
-      pmap_ipc_pte_put (pte, va);
+      pmap_ipc_pte_put (pte, va, prev);
       return (ret);
     }
 

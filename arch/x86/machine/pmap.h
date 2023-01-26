@@ -318,13 +318,13 @@ pmap_current (void)
 }
 
 // Get the special PTE used for IPC.
-struct pmap_ipc_pte* pmap_ipc_pte_get (void);
+void* pmap_ipc_pte_get (phys_addr_t *prev);
 
 // Make the special PTE map a physical address.
-void pmap_ipc_pte_set (struct pmap_ipc_pte *pte, uintptr_t va, phys_addr_t pa);
+void pmap_ipc_pte_set (void *pte, uintptr_t va, phys_addr_t pa);
 
 // Put back the special PTE.
-void pmap_ipc_pte_put (struct pmap_ipc_pte *pte, uintptr_t va);
+void pmap_ipc_pte_put (void *pte, uintptr_t va, phys_addr_t prev);
 
 /*
  * This init operation provides :

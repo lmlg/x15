@@ -114,16 +114,10 @@ union pmap_global
     } full;
 };
 
-struct pmap_ipc_pte
-{
-  pmap_pte_t *pte;
-  phys_addr_t prev;
-};
-
 union pmap_global pmap_global_pmap;
 struct pmap *pmap_kernel_pmap;
 struct pmap *pmap_current_ptr __percpu;
-static struct pmap_ipc_pte pmap_ipc_ptes __percpu;
+static pmap_pte_t* pmap_ipc_ptes __percpu;
 
 #ifdef CONFIG_X86_PAE
 
@@ -1268,48 +1262,42 @@ pmap_setup_ipc_ptes (uintptr_t va)
     {
       _Auto ptr = percpu_ptr (pmap_ipc_ptes, i);
       int error = pmap_enter_local_impl (pmap->cpu_tables[i],
-                                         va, PMAP_PTE_RW, &ptr->pte);
+                                         va, PMAP_PTE_RW, ptr);
       if (error)
         return (error);
 
-      ptr->prev = 1;
-      pmap_pte_clear (ptr->pte);
+      pmap_pte_clear (*ptr);
     }
 
-  // Probably un-needed, but just to be safe.
-  cpu_tlb_flush_all ();
   return (0);
 }
 
-struct pmap_ipc_pte*
-pmap_ipc_pte_get (void)
+void*
+pmap_ipc_pte_get (phys_addr_t *prev)
 {
-  _Auto ret = cpu_local_ptr (pmap_ipc_ptes);
-  ret->prev = pmap_pte_valid (*ret->pte) ?
-    (*ret->pte & PMAP_PA_MASK) : 1;
+  _Auto ret = cpu_local_var (pmap_ipc_ptes);
+  *prev = pmap_pte_valid (*ret) ? (*ret & PMAP_PA_MASK) : 1;
   return (ret);
 }
 
 void
-pmap_ipc_pte_set (struct pmap_ipc_pte *pte, uintptr_t va, phys_addr_t pa)
+pmap_ipc_pte_set (void *pte, uintptr_t va, phys_addr_t pa)
 {
   cpu_tlb_flush_va (va);
   // We can assume the lowest level since we don't use huge pages for this.
-  pmap_pte_set (pte->pte, pa, PMAP_PTE_G | PMAP_PTE_RW, &pmap_pt_levels[0]);
+  pmap_pte_set ((pmap_pte_t *)pte, pa, PMAP_PTE_G | PMAP_PTE_RW,
+                &pmap_pt_levels[0]);
 }
 
 void
-pmap_ipc_pte_put (struct pmap_ipc_pte *pte, uintptr_t va)
+pmap_ipc_pte_put (void *pte, uintptr_t va, phys_addr_t prev)
 {
-  cpu_tlb_flush_va (va);
+  if (likely (prev == 1))
+    return;   // Will be reset on next use.
 
-  if (pte->prev == 1)
-    pmap_pte_clear (pte->pte);
-  else
-    {
-      pmap_pte_set (pte->pte, pte->prev, PMAP_PTE_RW, &pmap_pt_levels[0]);
-      pte->prev = 1;
-    }
+  cpu_tlb_flush_va (va);
+  pmap_pte_set ((pmap_pte_t *)pte, prev, PMAP_PTE_RW,
+                &pmap_pt_levels[0]);
 }
 
 int

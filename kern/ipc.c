@@ -33,7 +33,8 @@ struct ipc_data
   int prot;
   int fault_intr;
   bool nintr;
-  struct pmap_ipc_pte *ipc_pte;
+  void *ipc_pte;
+  phys_addr_t prev;
   struct vm_page *page;
 };
 
@@ -77,7 +78,7 @@ ipc_data_fini (void *arg)
 {
   struct ipc_data *data = arg;
   if (data->ipc_pte)
-    pmap_ipc_pte_put (data->ipc_pte, data->va);
+    pmap_ipc_pte_put (data->ipc_pte, data->va, data->prev);
   if (data->page)
     vm_page_unref (data->page);
   if (data->nintr)
@@ -87,7 +88,7 @@ ipc_data_fini (void *arg)
 static void
 ipc_data_pte_map (struct ipc_data *data, phys_addr_t pa)
 {
-  data->ipc_pte = pmap_ipc_pte_get ();
+  data->ipc_pte = pmap_ipc_pte_get (&data->prev);
   pmap_ipc_pte_set (data->ipc_pte, data->va, pa);
 }
 
@@ -153,7 +154,7 @@ ipc_bcopyv_impl (struct vm_map *r_map, struct iovec *r_v,
   else
     memcpy (l_v->iov_base, (void *)(data->va + page_off), ret);
 
-  pmap_ipc_pte_put (data->ipc_pte, data->va);
+  pmap_ipc_pte_put (data->ipc_pte, data->va, data->prev);
   ipc_data_reset (data);
   return ((ssize_t)ret);
 }
