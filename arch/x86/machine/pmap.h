@@ -160,7 +160,6 @@
 
 // Mapping creation flags.
 #define PMAP_PEF_GLOBAL   0x1   // Create a mapping on all processors.
-#define PMAP_NO_CHECK     0x2   // Disable assertions.
 
 typedef phys_addr_t pmap_pte_t;
 
@@ -267,8 +266,16 @@ pmap_remove (struct pmap *pmap, uintptr_t va, const struct cpumap *cpumap)
  *
  * This function may trigger an implicit update.
  */
-int pmap_protect (struct pmap *pmap, uintptr_t va, int prot,
-                  int flags, const struct cpumap *cpumap);
+
+int pmap_protect_range (struct pmap *pmap, uintptr_t start, uintptr_t end,
+                        int flags, const struct cpumap *cpumap);
+
+static inline int
+pmap_protect (struct pmap *pmap, uintptr_t va, int prot,
+              const struct cpumap *cpumap)
+{
+  return (pmap_protect_range (pmap, va, va + PAGE_SIZE, prot, cpumap));
+}
 
 /*
  * Force application of pending modifications on a physical map.

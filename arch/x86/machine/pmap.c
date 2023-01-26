@@ -1306,9 +1306,7 @@ pmap_enter (struct pmap *pmap, uintptr_t va, phys_addr_t pa,
 {
   va = vm_page_trunc (va);
   pa = vm_page_trunc (pa);
-
-  if (!(flags & PMAP_NO_CHECK))
-    assert (pmap_range_valid (pmap, va, va + PAGE_SIZE));
+  assert (pmap_range_valid (pmap, va, va + PAGE_SIZE));
 
   _Auto oplist = pmap_update_oplist_get ();
   int error = pmap_update_oplist_prepare (oplist, pmap);
@@ -1386,6 +1384,12 @@ pmap_cpumap_copy (struct cpumap *dst, const struct cpumap *src)
     cpumap_copy (dst, src);
 }
 
+static int
+pmap_range_overlap (uintptr_t s1, uintptr_t e1, uintptr_t s2, uintptr_t e2)
+{
+  return (s1 <= e2 && s2 <= e1);
+}
+
 int
 pmap_remove_range (struct pmap *pmap, uintptr_t start, uintptr_t end,
                    const struct cpumap *cpumap)
@@ -1402,10 +1406,11 @@ pmap_remove_range (struct pmap *pmap, uintptr_t start, uintptr_t end,
 
   if (op &&
       op->operation == PMAP_UPDATE_OP_REMOVE &&
-      start >= op->remove_args.start &&
-      start <= op->remove_args.end &&
+      pmap_range_overlap (start, end, op->remove_args.start,
+                          op->remove_args.end) &&
       pmap_cpumap_eq (&op->cpumap, cpumap))
     {
+      op->remove_args.start = MIN (start, op->remove_args.start);
       op->remove_args.end = MAX (end, op->remove_args.end);
       return (0);
     }
@@ -1465,12 +1470,11 @@ pmap_protect_local (struct pmap *pmap, uintptr_t start,
 }
 
 int
-pmap_protect (struct pmap *pmap, uintptr_t va, int prot,
-              int flags, const struct cpumap *cpumap)
+pmap_protect_range (struct pmap *pmap, uintptr_t start, uintptr_t end,
+                    int prot, const struct cpumap *cpumap)
 {
-  va = vm_page_trunc (va);
-  if (!(flags & PMAP_NO_CHECK))
-    assert (pmap_range_valid (pmap, va, va + PAGE_SIZE));
+  start = vm_page_trunc (start);
+  end = vm_page_trunc (end);
 
   _Auto oplist = pmap_update_oplist_get ();
   int error = pmap_update_oplist_prepare (oplist, pmap);
@@ -1482,19 +1486,21 @@ pmap_protect (struct pmap *pmap, uintptr_t va, int prot,
 
   if (op &&
       op->operation == PMAP_UPDATE_OP_PROTECT &&
-      op->protect_args.end == va &&
       op->protect_args.prot == prot &&
+      pmap_range_overlap (start, end, op->protect_args.start,
+                          op->protect_args.end) &&
       pmap_cpumap_eq (&op->cpumap, cpumap))
     {
-      op->protect_args.end = va + PAGE_SIZE;
+      op->protect_args.start = MIN (start, op->protect_args.start);
+      op->protect_args.end = MAX (end, op->protect_args.end);
       return (0);
     }
 
   op = pmap_update_oplist_prepare_op (oplist);
   pmap_cpumap_copy (&op->cpumap, cpumap);
   op->operation = PMAP_UPDATE_OP_PROTECT;
-  op->protect_args.start = va;
-  op->protect_args.end = va + PAGE_SIZE;
+  op->protect_args.start = start;
+  op->protect_args.end = end;
   op->protect_args.prot = prot;
   pmap_update_oplist_finish_op (oplist);
   return (0);
