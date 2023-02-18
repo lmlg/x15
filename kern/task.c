@@ -20,6 +20,7 @@
 #include <stdio.h>
 #include <string.h>
 
+#include <kern/cspace.h>
 #include <kern/init.h>
 #include <kern/kmem.h>
 #include <kern/list.h>
@@ -136,6 +137,8 @@ task_create (struct task **taskp, const char *name)
   if (error)
     goto error_kuid;
 
+  cspace_init (&task->caps);
+
   spinlock_lock (&task_list_lock);
   list_insert_tail (&task_list, &task->node);
   spinlock_unlock (&task_list_lock);
@@ -157,6 +160,7 @@ task_destroy (struct task *task)
   list_remove (&task->node);
   spinlock_unlock (&task_list_lock);
   vm_map_destroy (task->map);
+  cspace_destroy (&task->caps);
   kuid_remove (&task->kuid, KUID_TASK);
   kmem_cache_free (&task_cache, task);
 }

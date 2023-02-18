@@ -213,6 +213,9 @@ void pmap_thread_cleanup (struct thread *thread);
 
 int pmap_extract (struct pmap *pmap, uintptr_t va, phys_addr_t *pap);
 
+int pmap_extract_check (struct pmap *pmap, uintptr_t va,
+                        bool rdwr, phys_addr_t *pap);
+
 // Same as above, only for the kernel pmap.
 static inline int
 pmap_kextract (uintptr_t va, phys_addr_t *pap)

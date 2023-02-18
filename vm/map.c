@@ -857,8 +857,7 @@ retry:
     object = entry->object;
     assert (object);   // Null vm-objects are kernel-only and always wired.
 
-    offset = (entry->flags & VM_MAP_ANON) ? addr :
-             entry->offset + addr - entry->start;
+    offset = entry->offset + addr - entry->start;
     struct vm_page *page = vm_object_lookup (object, offset);
 
     if (page)

@@ -61,6 +61,15 @@
 #define VM_MAP_INHERIT(flags)   (((flags) & 0xf00) >> 8)
 #define VM_MAP_ADVICE(flags)    (((flags) & 0xf000) >> 12)
 
+// Macros used to set specific properties in packed flags.
+#define VM_MAP_SET_PROT(flagp, prot)    \
+  do   \
+    {   \
+      _Auto flagp_ = (flagp);   \
+      *flagp_ = (*flagp_ & ~0xf) | ((prot) & 0xf);   \
+    }   \
+  while (0)
+
 // Flags for vm_map_fault.
 #define VM_MAP_FAULT_INTR   0x01   // Enable interrupts.
 

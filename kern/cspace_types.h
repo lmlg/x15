@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018-2019 Richard Braun.
+ * Copyright (c) 2023 Agustina Arzille.
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -13,27 +13,20 @@
  *
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
- */
+ *
+ * Isolated type definition used to avoid inclusion circular dependencies. 
+*/
 
-#ifndef ERRNO_H
-#define ERRNO_H
+#ifndef CSPACE_TYPES_H
+#define CSPACE_TYPES_H
 
-#define ENOMEM              1
-#define EAGAIN              2
-#define EINVAL              3
-#define EBUSY               4
-#define EFAULT              5
-#define ENODEV              6
-#define EEXIST              7
-#define EIO                 8
-#define ESRCH               9
-#define ETIMEDOUT           10
-#define ENOENT              11
-#define EOVERFLOW           12
-#define EMSGSIZE            13
-#define EACCES              14
-#define EINTR               15
-#define EBADF               16
-#define E2BIG               17
+#include <kern/adaptive_lock.h>
+#include <kern/rdxtree.h>
+
+struct cspace
+{
+  struct rdxtree tree;
+  struct adaptive_lock lock;
+};
 
 #endif

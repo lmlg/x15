@@ -62,7 +62,6 @@
  *
  * TODO Sub-tick accounting.
  *
- *
  * TODO Take into account the underlying CPU topology (and adjust load
  * balancing to access the global highest round less frequently on large
  * processor groups, perhaps by applying the load balancing algorithm in a
@@ -189,6 +188,10 @@ struct thread_rt_runq
 
 // Round slice base unit for fair-scheduling threads.
 #define THREAD_FS_ROUND_SLICE_BASE   (CLOCK_FREQ / 10)
+
+static const char THREAD_SEND_BLOCK[] = "ipc-send";
+static const char THREAD_RECV_BLOCK[] = "ipc-recv";
+static const char THREAD_REPLY_BLOCK[] = "ipc-reply";
 
 // Group of threads sharing the same weight.
 struct thread_fs_group
@@ -576,6 +579,39 @@ thread_runq_schedule_unload (struct thread *thread __unused)
 #endif
 }
 
+static void
+thread_context_switch (struct thread_runq **runqp,
+                       struct thread *prev, struct thread *next)
+{
+  if (unlikely (prev == next))
+    return;
+
+  thread_runq_schedule_unload (prev);
+  rcu_report_context_switch (thread_rcu_reader (prev));
+  spinlock_transfer_owner (&(*runqp)->lock, next);
+
+  /*
+   * This is where the true context switch occurs. The next thread must
+   * unlock the run queue and reenable preemption. Note that unlocking
+   * and locking the run queue again is equivalent to a full memory
+   * barrier.
+   */
+  tcb_switch (&prev->tcb, &next->tcb);
+
+  /*
+   * The thread is dispatched on a processor once again.
+   *
+   * Keep in mind the system state may have changed a lot since this
+   * function was called. In particular :
+   *  - The next thread may have been destroyed, and must not be
+   *    referenced any more.
+   *  - The current thread may have been migrated to another processor.
+   */
+  barrier ();
+  thread_runq_schedule_load (prev);
+  *runqp = thread_runq_local ();
+}
+
 static struct thread_runq*
 thread_runq_schedule (struct thread_runq *runq)
 {
@@ -607,38 +643,7 @@ thread_runq_schedule (struct thread_runq *runq)
   assert (next != runq->idler || !runq->nr_threads);
   assert (next->preempt_level == THREAD_SUSPEND_PREEMPT_LEVEL);
 
-  if (likely (prev != next))
-    {
-      thread_runq_schedule_unload (prev);
-
-      rcu_report_context_switch (thread_rcu_reader (prev));
-      spinlock_transfer_owner (&runq->lock, next);
-
-      /*
-       * That's where the true context switch occurs. The next thread must
-       * unlock the run queue and reenable preemption. Note that unlocking
-       * and locking the run queue again is equivalent to a full memory
-       * barrier.
-       */
-      tcb_switch (&prev->tcb, &next->tcb);
-
-      /*
-       * The thread is dispatched on a processor once again.
-       *
-       * Keep in mind the system state may have changed a lot since this
-       * function was called. In particular :
-       *  - The next thread may have been destroyed, and must not be
-       *    referenced any more.
-       *  - The current thread may have been migrated to another processor.
-       */
-      barrier ();
-      thread_runq_schedule_load (prev);
-
-      next = NULL;
-      runq = thread_runq_local ();
-    }
-  else
-    next = NULL;
+  thread_context_switch (&runq, prev, next);
 
   assert (prev->preempt_level == THREAD_SUSPEND_PREEMPT_LEVEL);
   assert (!cpu_intr_enabled ());
@@ -1509,15 +1514,11 @@ static void
 thread_reset_real_priority (struct thread *thread)
 {
   thread->real_sched_data = thread->user_sched_data;
-
-  _Auto user = &thread->user_sched_data;
-  _Auto real = &thread->real_sched_data;
-  *real = *user;
   thread->boosted = false;
 
   const _Auto ops = thread_get_user_sched_ops (thread);
   if (ops->reset_priority)
-    ops->reset_priority (thread, real->priority);
+    ops->reset_priority (thread, thread->real_sched_data.priority);
 }
 
 static void __init
@@ -1639,6 +1640,8 @@ thread_init (struct thread *thread, void *stack,
   thread->stack = stack;
   strlcpy (thread->name, attr->name, sizeof (thread->name));
   thread->fixup = NULL;
+  thread->cur_rcvid = 0;
+  thread->cur_peer = NULL;
 
 #ifdef CONFIG_PERFMON
   perfmon_td_init (thread_get_perfmon_td (thread));
@@ -1671,7 +1674,7 @@ error_sleepq:
   return (error);
 }
 
-static struct thread_runq*
+struct thread_runq*
 thread_lock_runq (struct thread *thread, cpu_flags_t *flags)
 {
   while (1)
@@ -1686,7 +1689,7 @@ thread_lock_runq (struct thread *thread, cpu_flags_t *flags)
     }
 }
 
-static void
+void
 thread_unlock_runq (struct thread_runq *runq, cpu_flags_t flags)
 {
   spinlock_unlock_intr_restore (&runq->lock, flags);
@@ -1808,6 +1811,7 @@ void thread_terminate (struct thread *thread)
 {
   SPINLOCK_GUARD (&thread->join_lock);
   thread->terminating = true;
+  kuid_remove (&thread->kuid, KUID_THREAD);
   thread_wakeup (thread->join_waiter);
 }
 
@@ -2157,7 +2161,6 @@ thread_exit (void)
    * keeps the duration of that active wait minimum.
    */
   thread_preempt_disable ();
-  kuid_remove (&thread->kuid, KUID_THREAD);
   thread_unref (thread);
 
   _Auto runq = thread_runq_local ();
@@ -2576,24 +2579,19 @@ out:
   turnstile_td_propagate_priority (td);
 }
 
-void
-thread_pi_setscheduler (struct thread *thread, uint8_t policy,
-                        uint16_t priority)
+static void
+thread_pi_setsched_impl (struct thread_runq *runq, struct thread *thread,
+                         uint8_t policy, uint16_t prio)
 {
-  _Auto td = thread_turnstile_td (thread);
-  assert (turnstile_td_locked (td));
-
-  const _Auto ops = thread_get_sched_ops (thread_policy_to_class (policy));
-  uint32_t global_priority = ops->get_global_priority (priority);
-
-  cpu_flags_t flags;
-  _Auto runq = thread_lock_runq (thread, &flags);
+  assert (turnstile_td_locked (thread_turnstile_td (thread)));
 
   if (thread_real_sched_policy (thread) == policy &&
-      thread_real_priority (thread) == priority)
-    goto out;
+      thread_real_priority (thread) == prio)
+    return;
 
-  syscnt_inc (&runq->sc_boosts);
+  const _Auto ops = thread_get_sched_ops (thread_policy_to_class (policy));
+  uint32_t global_prio = ops->get_global_priority (prio);
+
   bool current, requeue = thread->in_runq;
 
   if (! requeue)
@@ -2611,21 +2609,22 @@ thread_pi_setscheduler (struct thread *thread, uint8_t policy,
       thread_runq_remove (runq, thread);
     }
 
-  if (global_priority <= thread_user_global_priority (thread))
+  if (global_prio <= thread_user_global_priority (thread))
     thread_reset_real_priority (thread);
   else
     {
       if (thread_real_sched_policy (thread) == policy)
-        thread_update_real_priority (thread, priority);
+        thread_update_real_priority (thread, prio);
       else
         {
           thread_set_real_sched_policy (thread, policy);
           thread_set_real_sched_class (thread,
                                        thread_policy_to_class (policy));
-          thread_set_real_priority (thread, priority);
+          thread_set_real_priority (thread, prio);
         }
 
       thread->boosted = true;
+      syscnt_inc (&runq->sc_boosts);
     }
 
   if (requeue)
@@ -2634,8 +2633,15 @@ thread_pi_setscheduler (struct thread *thread, uint8_t policy,
       if (current)
         thread_runq_set_next (runq, thread);
     }
+}
 
-out:
+void
+thread_pi_setscheduler (struct thread *thread, uint8_t policy, uint16_t prio)
+{
+  cpu_flags_t flags;
+  _Auto runq = thread_lock_runq (thread, &flags);
+
+  thread_pi_setsched_impl (runq, thread, policy, prio);
   thread_unlock_runq (runq, flags);
 }
 
@@ -2741,4 +2747,129 @@ thread_set_affinity (struct thread *thread, const struct cpumap *cpumap)
   thread_unlock_runq (runq, flags);
   thread_preempt_enable ();
   return (error);
+}
+
+int
+thread_send_block (struct spinlock *lock, void *data,
+                   struct thread_sched_state *stp)
+{
+  thread_sched_state_save (thread_self (), stp);
+  thread_sleep (lock, data, THREAD_SEND_BLOCK);
+  return (0);
+}
+
+int
+thread_recv_block (struct spinlock *lock, void *data)
+{
+  thread_sleep (lock, data, THREAD_RECV_BLOCK);
+  return (0);
+}
+
+#define thread_sched_state_cpy(dst, src, cls)   \
+  do   \
+    {   \
+      if ((cls) == THREAD_SCHED_CLASS_FS)   \
+        {   \
+          (dst)->fs_data.fs_runq = (src)->fs_data.fs_runq;   \
+          (dst)->fs_data.round = (src)->fs_data.round;   \
+          (dst)->fs_data.weight = (src)->fs_data.weight;   \
+          (dst)->fs_data.work = (src)->fs_data.work;   \
+        }   \
+      else if ((cls) == THREAD_SCHED_CLASS_RT)   \
+        (dst)->rt_data.time_slice = (src)->rt_data.time_slice;   \
+    }   \
+  while (0)
+
+void
+thread_sched_state_save (struct thread *thr, struct thread_sched_state *stp)
+{
+  stp->cls = thr->user_sched_data.sched_class;
+  stp->policy = thr->user_sched_data.sched_policy;
+  stp->priority = thr->user_sched_data.priority;
+  thread_sched_state_cpy (stp, thr, stp->cls);
+}
+
+void
+thread_handoff (struct thread *src, struct thread *dst, void *data,
+                struct thread_sched_state *sched)
+{
+  assert (dst->state == THREAD_SLEEPING);
+  assert (dst->wchan_desc == THREAD_RECV_BLOCK);
+  assert (!dst->in_runq);
+
+  _Auto td = thread_turnstile_td (dst);
+  turnstile_td_lock (td);
+
+  cpu_flags_t flags;
+  _Auto runq = thread_lock_runq (src, &flags);
+
+  /* Save the scheduling state of the source thread and mark it
+   * as being reply-blocked. */
+  thread_sched_state_save (src, sched);
+  thread_set_wchan (src, data, THREAD_REPLY_BLOCK);
+  atomic_store_rlx (&src->state, THREAD_SLEEPING);
+
+  // Make the destination thread inherit the scheduling context.
+  thread_pi_setsched_impl (runq, dst, sched->policy, sched->priority);
+  turnstile_td_unlock (td);
+
+  // Do all the bookeeping needed to switch to the destination thread.
+  thread_preempt_disable ();
+  thread_clear_flag (src, THREAD_YIELD);
+  thread_runq_put_prev (runq, src);
+  thread_runq_remove (runq, src);
+  thread_runq_add (runq, dst);
+
+  thread_clear_wchan (dst);
+  atomic_store_rlx (&dst->state, THREAD_RUNNING);
+  thread_runq_set_next (runq, dst);
+  thread_context_switch (&runq, src, dst);
+
+  // We're back.
+  thread_preempt_enable ();
+  thread_unlock_runq (runq, flags);
+}
+
+void
+thread_adopt (struct thread *src, struct thread *dst)
+{
+  // Mark the source thread as reply blocked.
+  src->wchan_desc = THREAD_REPLY_BLOCK;
+
+  // Make the destination thread inherit the scheduling context.
+  _Auto td = thread_turnstile_td (dst);
+  turnstile_td_lock (td);
+
+  thread_pi_setscheduler (dst, thread_user_sched_policy (src),
+                          thread_user_priority (src));
+  turnstile_td_unlock (td);
+}
+
+bool
+thread_send_reply_blocked (struct thread *thread)
+{
+  return (thread_state (thread) == THREAD_SLEEPING &&
+          (thread->wchan_desc == THREAD_SEND_BLOCK ||
+           thread->wchan_desc == THREAD_REPLY_BLOCK));
+}
+
+void
+thread_sched_state_load (struct thread *thr,
+                         const struct thread_sched_state *stp)
+{
+  thread_sched_state_cpy (thr, stp, stp->cls);
+  thread_setscheduler (thr, stp->policy, stp->priority);
+}
+
+int
+thread_apply (struct thread *thread, int (*fn) (struct thread *, void *),
+              void *ctx)
+{
+  cpu_flags_t flags;
+  _Auto runq = thread_lock_runq (thread, &flags);
+
+  int ret = fn (thread, ctx);
+
+  thread_unlock_runq (runq, flags);
+  return (ret);
 }

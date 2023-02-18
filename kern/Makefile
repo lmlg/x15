@@ -3,6 +3,7 @@ x15_SOURCES-y += \
         kern/arg.c \
         kern/bitmap.c \
         kern/bulletin.c \
+        kern/capability.c \
         kern/cbuf.c \
         kern/clock.c \
         kern/condition.c \

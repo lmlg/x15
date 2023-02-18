@@ -19,6 +19,7 @@
 #define KERN_TASK_H
 
 #include <kern/atomic.h>
+#include <kern/cspace_types.h>
 #include <kern/init.h>
 #include <kern/kuid.h>
 #include <kern/list.h>
@@ -40,6 +41,7 @@ struct task
   struct list node;
   struct list threads;
   struct vm_map *map;
+  struct cspace caps;
   char name[TASK_NAME_SIZE];
 };
 
@@ -79,6 +81,12 @@ static inline struct vm_map*
 task_get_vm_map (const struct task *task)
 {
   return (task->map);
+}
+
+static inline struct task*
+task_self (void)
+{
+  return (thread_self()->task);
 }
 
 // Create a task.

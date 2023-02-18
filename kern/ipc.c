@@ -15,6 +15,8 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+#include <kern/capability.h>
+#include <kern/cspace.h>
 #include <kern/ipc.h>
 #include <kern/task.h>
 #include <kern/thread.h>
@@ -32,7 +34,6 @@ struct ipc_data
   int direction;
   int prot;
   int fault_intr;
-  bool nintr;
   void *ipc_pte;
   phys_addr_t prev;
   struct vm_page *page;
@@ -46,27 +47,25 @@ ipc_data_init (struct ipc_data *data, int direction)
   data->va = vm_map_ipc_addr ();
   data->fault_intr = cpu_intr_enabled () ? VM_MAP_FAULT_INTR : 0;
   data->ipc_pte = NULL;
-  data->nintr = false;
   data->page = NULL;
 }
 
 static void
-ipc_data_set (struct ipc_data *data)
+ipc_data_intr_save (struct ipc_data *data)
 {
   cpu_intr_save (&data->cpu_flags);
-  data->nintr = true;
 }
 
 static void
-ipc_data_reset (struct ipc_data *data)
+ipc_data_intr_restore (struct ipc_data *data)
 {
   cpu_intr_restore (data->cpu_flags);
-  data->nintr = false;
 }
 
 static void
 ipc_data_page_ref (struct ipc_data *data, phys_addr_t pa)
 {
+  assert (!data->page);
   struct vm_page *page = vm_page_lookup (pa);
   assert (page);
   vm_page_ref (page);
@@ -74,22 +73,42 @@ ipc_data_page_ref (struct ipc_data *data, phys_addr_t pa)
 }
 
 static void
-ipc_data_fini (void *arg)
+ipc_data_page_unref (struct ipc_data *data)
 {
-  struct ipc_data *data = arg;
-  if (data->ipc_pte)
-    pmap_ipc_pte_put (data->ipc_pte, data->va, data->prev);
-  if (data->page)
-    vm_page_unref (data->page);
-  if (data->nintr)
-    cpu_intr_restore (data->cpu_flags);
+  assert (data->page);
+  vm_page_unref (data->page);
+  data->page = NULL;
+}
+
+static void
+ipc_data_pte_get (struct ipc_data *data)
+{
+  thread_pin ();
+  data->ipc_pte = pmap_ipc_pte_get (&data->prev);
 }
 
 static void
 ipc_data_pte_map (struct ipc_data *data, phys_addr_t pa)
 {
-  data->ipc_pte = pmap_ipc_pte_get (&data->prev);
   pmap_ipc_pte_set (data->ipc_pte, data->va, pa);
+}
+
+static void
+ipc_data_pte_put (struct ipc_data *data)
+{
+  pmap_ipc_pte_put (data->ipc_pte, data->va, data->prev);
+  thread_unpin ();
+  data->ipc_pte = NULL;
+}
+
+static void
+ipc_data_fini (void *arg)
+{
+  struct ipc_data *data = arg;
+  if (data->ipc_pte)
+    ipc_data_pte_put (data);
+  if (data->page)
+    vm_page_unref (data->page);
 }
 
 static int
@@ -100,10 +119,9 @@ ipc_iov_iter_refill (struct task *task, struct ipc_iov_iter *it)
            bsize = cnt * sizeof (struct iovec);
   ssize_t ret = ipc_bcopy (task, it->begin + it->cur, bsize,
                            &it->cache[off], bsize, IPC_COPY_FROM);
-  if (ret < 0)
+  if (ret < 0 || (ret % sizeof (struct iovec)) != 0)
     return (-EFAULT);
 
-  assert ((ret % sizeof (struct iovec)) == 0);
   it->cur += cnt;
   it->cache_idx = off;
   return (0);
@@ -119,13 +137,20 @@ static int
 ipc_map_addr (struct vm_map *map, const void *addr,
               struct ipc_data *data, phys_addr_t *pap)
 {
-  ipc_data_set (data);
-  if (pmap_extract (map->pmap, (uintptr_t)addr, pap))
+  ipc_data_intr_save (data);
+  int error = pmap_extract_check (map->pmap, (uintptr_t)addr,
+                                  data->prot & VM_PROT_WRITE, pap);
+  if (error == EACCES)
+    return (-error);
+  else if (error)
     { // Need to fault in the destination address.
-      int error = vm_map_fault (map, (uintptr_t)addr, data->prot,
-                                data->fault_intr);
+      error = vm_map_fault (map, (uintptr_t)addr, data->prot,
+                            data->fault_intr);
       if (error)
-        return (-error);
+        {
+          ipc_data_intr_restore (data);
+          return (-error);
+        }
 
       /* Since we're running with interrupts disabled, and the address
        * has been faulted in, this call cannot fail. */
@@ -136,26 +161,29 @@ ipc_map_addr (struct vm_map *map, const void *addr,
 }
 
 static ssize_t
-ipc_bcopyv_impl (struct vm_map *r_map, struct iovec *r_v,
-                 struct iovec *l_v, struct ipc_data *data)
+ipc_bcopyv_impl (struct vm_map *r_map, const struct iovec *r_v,
+                 const struct iovec *l_v, struct ipc_data *data)
 {
+  size_t page_off = (uintptr_t)r_v->iov_base % PAGE_SIZE,
+         ret = MIN (PAGE_SIZE - page_off, MIN (r_v->iov_len, l_v->iov_len));
+
   phys_addr_t pa;
   int error = ipc_map_addr (r_map, r_v->iov_base, data, &pa);
   if (error)
     return (error);
 
-  size_t page_off = (uintptr_t)r_v->iov_base % PAGE_SIZE,
-         ret = MIN (PAGE_SIZE - page_off, MIN (r_v->iov_len, l_v->iov_len));
-
+  ipc_data_pte_get (data);
+  ipc_data_page_ref (data, pa);
   ipc_data_pte_map (data, pa);
+  ipc_data_intr_restore (data);
 
   if (data->direction == IPC_COPY_TO)
     memcpy ((void *)(data->va + page_off), l_v->iov_base, ret);
   else
-    memcpy (l_v->iov_base, (void *)(data->va + page_off), ret);
+    memcpy ((void *)l_v->iov_base, (void *)(data->va + page_off), ret);
 
-  pmap_ipc_pte_put (data->ipc_pte, data->va, data->prev);
-  ipc_data_reset (data);
+  ipc_data_pte_put (data);
+  ipc_data_page_unref (data);
   return ((ssize_t)ret);
 }
 
@@ -293,7 +321,7 @@ ipc_page_iter_copy (struct task *r_task, struct ipc_page_iter *r_it,
 {
   struct vm_map *map_in, *map_out;
   struct ipc_page_iter *it_in, *it_out;
-  _Auto l_map = thread_self()->task->map;
+  _Auto l_map = vm_map_self ();
 
   if (direction == IPC_COPY_FROM)
     {
@@ -320,9 +348,10 @@ ipc_page_iter_copy (struct task *r_task, struct ipc_page_iter *r_it,
   if (error)
     return (error);
 
+  ipc_data_pte_get (&data);
   ipc_data_pte_map (&data, pa);
   ipc_data_page_ref (&data, pa);
-  ipc_data_reset (&data);
+  ipc_data_intr_restore (&data);
 
   _Auto elems_pp = ((uintptr_t)&r_it->begin[r_it->cur] % PAGE_SIZE) /
                    sizeof (*r_it->begin);
@@ -338,16 +367,16 @@ ipc_page_iter_copy (struct task *r_task, struct ipc_page_iter *r_it,
           if (error)
             return (error);
 
-          pmap_ipc_pte_set (data.ipc_pte, data.va, pa);
-          vm_page_unref (data.page);
+          ipc_data_pte_map (&data, pa);
+          ipc_data_page_unref (&data);
           ipc_data_page_ref (&data, pa);
-          ipc_data_reset (&data);
+          ipc_data_intr_restore (&data);
 
           elems_pp = PAGE_SIZE / sizeof (*r_it->begin);
         }
 
       _Auto page = it_in->begin[it_in->cur++];
-      uintptr_t end = page.addr + page.size;
+      uintptr_t end = page.addr + vm_page_round (page.size);
 
       do
         {
@@ -357,7 +386,7 @@ ipc_page_iter_copy (struct task *r_task, struct ipc_page_iter *r_it,
           error = vm_map_lookup (map_in, page.addr, &entry);
 
           if (error)
-            return (error);
+            return (-error);
           else if ((VM_MAP_MAXPROT (entry.flags) & page.prot) != page.prot)
             return (-EACCES);
           else if (entry.flags & VM_MAP_ANON)
@@ -367,10 +396,14 @@ ipc_page_iter_copy (struct task *r_task, struct ipc_page_iter *r_it,
             }
 
           size_t size = MIN (end - page.addr, page.size);
+          if (! size)
+            return (-EINVAL);
+
+          VM_MAP_SET_PROT (&entry.flags, page.prot);
           error = vm_map_enter (map_out, &outp->addr, size,
                                 0, entry.flags, entry.object, entry.offset);
           if (error)
-            return (error);
+            return (-error);
 
           outp->prot = page.prot;
           outp->size = size;
@@ -394,4 +427,83 @@ ipc_copy_pages (struct task *r_task, struct ipc_msg_page *r_pages,
   ipc_page_iter_init (&r_it, r_pages, r_npages);
   ipc_page_iter_init (&l_it, l_pages, l_npages);
   return (ipc_page_iter_copy (r_task, &r_it, &l_it, direction));
+}
+
+int
+ipc_cap_iter_copy (struct task *r_task, struct ipc_cap_iter *r_it,
+                   struct ipc_cap_iter *l_it, int direction)
+{
+  struct ipc_cap_iter *it_in, *it_out;
+  struct cspace *sp_in, *sp_out;
+  _Auto l_caps = cspace_self ();
+
+  if (direction == IPC_COPY_FROM)
+    {
+      it_in = r_it, it_out = l_it;
+      sp_in = &r_task->caps, sp_out = l_caps;
+    }
+  else
+    {
+      it_in = l_it, it_out = r_it;
+      sp_in = l_caps, sp_out = &r_task->caps;
+    }
+
+  struct ipc_data data CLEANUP (ipc_data_fini);
+  ipc_data_init (&data, direction);
+
+  struct unw_fixup fixup;
+  int error = unw_fixup_save (&fixup);
+  if (unlikely (error))
+    return (-error);
+
+  ipc_data_init (&data, direction);
+  phys_addr_t pa;
+  error = ipc_map_addr (r_task->map, r_it->begin + r_it->cur, &data, &pa);
+
+  if (error)
+    return (error);
+
+  ipc_data_pte_get (&data);
+  ipc_data_pte_map (&data, pa);
+  ipc_data_page_ref (&data, pa);
+  ipc_data_intr_restore (&data);
+
+  _Auto elems_pp = ((uintptr_t)&r_it->begin[r_it->cur] % PAGE_SIZE) /
+                   sizeof (*r_it->begin);
+  int i, nmax = (int)MIN (ipc_cap_iter_size (it_in),
+                          ipc_cap_iter_size (it_out));
+
+  for (i = 0; i < nmax; ++i)
+    {
+      if (! elems_pp)
+        {
+          error = ipc_map_addr (r_task->map, r_it->begin + r_it->cur,
+                                &data, &pa);
+          if (error)
+            return (error);
+
+          ipc_data_pte_map (&data, pa);
+          ipc_data_page_unref (&data);
+          ipc_data_page_ref (&data, pa);
+          ipc_data_intr_restore (&data);
+
+          elems_pp = PAGE_SIZE / sizeof (*r_it->begin);
+        }
+
+      _Auto in_cap = cspace_get (sp_in, it_in->begin[it_in->cur++].cap);
+      if (! in_cap)
+        return (-EBADF);
+
+      _Auto out_cap = &it_out->begin[it_out->cur++];
+      int cap_idx = cspace_add_free (sp_out, in_cap, out_cap->flags);
+      cap_base_rel (in_cap);
+
+      if (cap_idx < 0)
+        return (cap_idx);
+
+      out_cap->cap = cap_idx;
+      --elems_pp;
+    }
+
+  return (i);
 }

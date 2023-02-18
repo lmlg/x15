@@ -99,6 +99,27 @@ struct thread_fs_data
   uint16_t work;
 };
 
+struct thread_sched_state
+{
+  uint8_t policy;
+  uint8_t cls;
+  uint16_t priority;
+  union
+    {
+      struct
+        {
+          struct thread_fs_runq *fs_runq;
+          size_t round;
+          uint16_t weight;
+          uint16_t work;
+        } fs_data;
+      struct
+        {
+          uint16_t time_slice;
+        } rt_data;
+    };
+};
+
 /*
  * Thread structure.
  *
@@ -146,10 +167,10 @@ struct thread
   // True if priority must be propagated when preemption is reenabled.
   bool propagate_priority;    // (-)
 
-  // Preemption level, preemption is enabled if 0
+  // Preemption level, preemption is enabled if 0.
   uint16_t preempt_level;   // (-)
 
-  // Pin level, migration is allowed if 0,
+  // Pin level, migration is allowed if 0.
   uint16_t pin_level;       // (-)
 
   // Interrupt level, in thread context if 0.
@@ -208,6 +229,8 @@ struct thread
 #endif
 
   struct unw_fixup_t *fixup;      // (-)
+  int64_t cur_rcvid;              // (-)
+  struct thread *cur_peer;        // (-)
 };
 
 #define THREAD_ATTR_DETACHED   0x1
@@ -316,13 +339,13 @@ thread_attr_set_task (struct thread_attr *attr, struct task *task)
 }
 
 static inline void
-thread_attr_set_policy (struct thread_attr *attr, unsigned char policy)
+thread_attr_set_policy (struct thread_attr *attr, uint8_t policy)
 {
   attr->policy = policy;
 }
 
 static inline void
-thread_attr_set_priority (struct thread_attr *attr, unsigned short priority)
+thread_attr_set_priority (struct thread_attr *attr, uint16_t priority)
 {
   attr->priority = priority;
 }
@@ -334,9 +357,7 @@ thread_attr_set_priority (struct thread_attr *attr, unsigned short priority)
  */
 void thread_main (void (*fn) (void *), void *arg);
 
-/*
- * Initialization of the thread module on APs.
- */
+// Initialization of the thread module on APs.
 void thread_ap_setup (void);
 
 /*
@@ -352,14 +373,10 @@ void thread_ap_setup (void);
 int thread_create (struct thread **threadp, const struct thread_attr *attr,
                    void (*fn) (void *), void *arg);
 
-/*
- * Terminate the calling thread.
- */
+// Terminate the calling thread.
 noreturn void thread_exit (void);
 
-/*
- * Wait for the given thread to terminate and release its resources.
- */
+// Wait for the given thread to terminate and release its resources.
 void thread_join (struct thread *thread);
 
 /*
@@ -866,6 +883,40 @@ thread_by_kuid (uint32_t kuid)
 {
   return (kuid_find_type (kuid, struct thread, kuid, KUID_THREAD));
 }
+
+// Lock a thread's run queue.
+struct thread_runq* thread_lock_runq (struct thread *thr, cpu_flags_t *flags);
+
+// Unlock a previously acquired run queue.
+void thread_unlock_runq (struct thread_runq *runq, cpu_flags_t flags);
+
+// Make the current thread send-blocked.
+int thread_send_block (struct spinlock *lock, void *data,
+                       struct thread_sched_state *sched);
+
+// Make the current thread receive-blocked.
+int thread_recv_block (struct spinlock *lock, void *data);
+
+// Hand off scheduling to a specific thread.
+void thread_handoff (struct thread *src, struct thread *dst, void *data,
+                     struct thread_sched_state *sched);
+
+// Adopt the scheduling parameters of another thread.
+void thread_adopt (struct thread *src, struct thread *dst);
+
+// Save the scheduling state of a thread.
+void thread_sched_state_save (struct thread *thr,
+                              struct thread_sched_state *stp);
+
+// Set the scheduling state for a thread.
+void thread_sched_state_load (struct thread *thr,
+                              const struct thread_sched_state *stp);
+
+// Test that a thread is either send-blocked or reply-blocked.
+bool thread_send_reply_blocked (struct thread *thread);
+
+int thread_apply (struct thread *thread, int (*fn) (struct thread *, void *),
+                  void *ctx);
 
 /*
  * This init operation provides :

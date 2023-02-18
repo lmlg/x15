@@ -10,6 +10,11 @@ config TEST_BULLETIN
 	default n
 	select SYMTAB
 
+config TEST_CAPABILITY
+	bool "capability API"
+	default n
+	select SYMTAB
+
 config TEST_FMT
 	bool "formatted I/O"
 	default n

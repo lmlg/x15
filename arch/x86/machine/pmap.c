@@ -1041,8 +1041,8 @@ pmap_thread_cleanup (struct thread *thread)
     pmap_update_oplist_destroy (oplist);
 }
 
-int
-pmap_extract (struct pmap *pmap, uintptr_t va, phys_addr_t *pap)
+static pmap_pte_t*
+pmap_extract_impl (struct pmap *pmap, uintptr_t va)
 {
   uint32_t level = PMAP_NR_LEVELS - 1;
   pmap_pte_t *ptp =
@@ -1054,16 +1054,38 @@ pmap_extract (struct pmap *pmap, uintptr_t va, phys_addr_t *pap)
       pmap_pte_t *pte = &ptp[pmap_pte_index (va, pt_level)];
 
       if (!pmap_pte_valid (*pte))
-        return (EFAULT);
+        return (NULL);
       else if (!level || pmap_pte_large (*pte))
-        {
-          *pap = *pte & PMAP_PA_MASK;
-          return (0);
-        }
+        return (pte);
 
       --level;
       ptp = pmap_pte_next (*pte);
     }
+}
+
+int
+pmap_extract (struct pmap *pmap, uintptr_t va, phys_addr_t *pap)
+{
+  pmap_pte_t *pte = pmap_extract_impl (pmap, va);
+  if (! pte)
+    return (EFAULT);
+
+  *pap = *pte & PMAP_PA_MASK;
+  return (0);
+}
+
+int
+pmap_extract_check (struct pmap *pmap, uintptr_t va,
+                    bool rdwr, phys_addr_t *pap)
+{
+  pmap_pte_t *pte = pmap_extract_impl (pmap, va);
+  if (! pte)
+    return (EFAULT);
+  else if (rdwr && !(*pte & PMAP_PTE_RW))
+    return (EACCES);
+
+  *pap = *pte & PMAP_PA_MASK;
+  return (0);
 }
 
 static void
