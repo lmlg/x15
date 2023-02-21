@@ -686,31 +686,46 @@ thread_pinned (void)
 }
 
 static inline void
+thread_pin_level (uint16_t *lvlp)
+{
+  ++*lvlp;
+  assert (*lvlp);
+  barrier ();
+}
+
+static inline void
+thread_unpin_level (uint16_t *lvlp)
+{
+  barrier ();
+  assert (*lvlp);
+  --*lvlp;
+}
+
+static inline void
 thread_pin (void)
 {
-  struct thread *thread = thread_self ();
-  ++thread->pin_level;
-  assert (thread->pin_level);
-  barrier ();
+  thread_pin_level (&thread_self()->pin_level);
 }
 
 static inline void
 thread_unpin (void)
 {
-  barrier ();
-  struct thread *thread = thread_self();
-  assert (thread->pin_level);
-  --thread->pin_level;
-}
-
-static inline void
-thread_pin_guard_fini (void *ptr __unused)
-{
-  thread_unpin ();
+  thread_unpin_level (&thread_self()->pin_level);
 }
 
 #define THREAD_PIN_GUARD()   \
-  CLEANUP (thread_pin_guard_fini) int __unused UNIQ (tpg) = (thread_pin (), 0)
+  CLEANUP (thread_pin_guard_fini) uint16_t *UNIQ(tpg) =   \
+    ({   \
+       uint16_t *p_ = &thread_self()->pin_level;   \
+       thread_pin_level (p_);   \
+       p_;   \
+     })
+
+static inline void
+thread_pin_guard_fini (void *ptr)
+{
+  thread_unpin_level (*(uint16_t **)ptr);
+}
 
 /*
  * Preemption control functions.
@@ -794,37 +809,49 @@ thread_check_intr_context (void)
 }
 
 static inline void
-thread_intr_enter (void)
+thread_intr_enter_level (uint16_t *lvlp)
 {
-  struct thread *thread = thread_self ();
-
-  if (++thread->intr_level == 1)
+  if (++*lvlp == 1)
     thread_preempt_disable ();
 
-  assert (thread->intr_level);
+  assert (*lvlp);
   barrier ();
+}
+
+static inline void
+thread_intr_leave_level (uint16_t *lvlp)
+{
+  barrier ();
+  assert (*lvlp);
+  if (--*lvlp == 0)
+    thread_preempt_enable_no_resched ();
+}
+
+static inline void
+thread_intr_enter (void)
+{
+  thread_intr_enter_level (&thread_self()->intr_level);
 }
 
 static inline void
 thread_intr_leave (void)
 {
-  barrier ();
-  struct thread *thread = thread_self ();
-  assert (thread->intr_level);
-
-  if (--thread->intr_level == 0)
-    thread_preempt_enable_no_resched ();
+  thread_intr_leave_level (&thread_self()->intr_level);
 }
 
 static inline void
-thread_intr_guard_fini (void *ptr __unused)
+thread_intr_guard_fini (void *ptr)
 {
-  thread_intr_leave ();
+  thread_intr_leave_level (*(uint16_t **)ptr);
 }
 
 #define THREAD_INTR_GUARD()   \
-  CLEANUP (thread_intr_guard_fini) int __unused UNIQ (tig) =   \
-    (thread_intr_enter (), 0)
+  CLEANUP (thread_intr_guard_fini) uint16_t *UNIQ(tig) =   \
+    ({   \
+       uint16_t *p_ = &thread_self()->intr_level;   \
+       thread_intr_enter_level (p_);   \
+       p_;   \
+     })
 
 // RCU functions.
 
@@ -914,9 +941,6 @@ void thread_sched_state_load (struct thread *thr,
 
 // Test that a thread is either send-blocked or reply-blocked.
 bool thread_send_reply_blocked (struct thread *thread);
-
-int thread_apply (struct thread *thread, int (*fn) (struct thread *, void *),
-                  void *ctx);
 
 /*
  * This init operation provides :

@@ -2860,16 +2860,3 @@ thread_sched_state_load (struct thread *thr,
   thread_sched_state_cpy (thr, stp, stp->cls);
   thread_setscheduler (thr, stp->policy, stp->priority);
 }
-
-int
-thread_apply (struct thread *thread, int (*fn) (struct thread *, void *),
-              void *ctx)
-{
-  cpu_flags_t flags;
-  _Auto runq = thread_lock_runq (thread, &flags);
-
-  int ret = fn (thread, ctx);
-
-  thread_unlock_runq (runq, flags);
-  return (ret);
-}
