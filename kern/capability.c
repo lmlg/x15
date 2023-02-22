@@ -75,12 +75,6 @@ struct cap_receiver
   rcvid_t rcvid;
 };
 
-struct cap_thread_validation_ctx
-{
-  void *flow;
-  struct thread *handler;
-};
-
 struct cap_intr_data
 {
   BITMAP_DECLARE (pending, CPU_INTR_TABLE_SIZE);
