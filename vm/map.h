@@ -157,7 +157,7 @@ void vm_map_destroy (struct vm_map *map);
 int vm_copy (void *dst, const void *src, size_t size);
 
 // Allocate anonymous memory in a VM map.
-void* vm_map_anon_alloc (struct vm_map *map, size_t size);
+int vm_map_anon_alloc (void **outp, struct vm_map *map, size_t size);
 
 // Display information about a memory map.
 void vm_map_info (struct vm_map *map, struct stream *stream);

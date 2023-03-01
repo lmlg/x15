@@ -35,5 +35,7 @@
 #define EINTR               15
 #define EBADF               16
 #define E2BIG               17
+#define EINPROGRESS         18
+#define EALREADY            19
 
 #endif

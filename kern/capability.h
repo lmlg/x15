@@ -32,6 +32,8 @@
 #include <kern/spinlock.h>
 #include <kern/sref.h>
 
+#include <machine/cpu.h>
+
 struct task;
 struct thread;
 
@@ -69,6 +71,13 @@ enum
 struct cap_intr_data;
 struct cap_alert_node;
 
+struct cap_intr_data
+{
+  BITMAP_DECLARE (pending, CPU_INTR_TABLE_SIZE);
+  uint32_t nr_pending;
+  struct list entries;
+};
+
 #define CAPABILITY   struct cap_base base
 
 struct cap_flow
@@ -78,7 +87,7 @@ struct cap_flow
   struct plist senders;
   struct list receivers;
   uint32_t flags;
-  struct cap_intr_data *intrs;
+  struct cap_intr_data intr;
   struct slist alert_list;
   struct cap_alert_node *alnodes;
   uintptr_t tag;
@@ -208,6 +217,15 @@ ssize_t cap_pull_msg (rcvid_t rcvid, struct ipc_msg *msg,
 
 ssize_t cap_push_msg (rcvid_t rcvid, const struct ipc_msg *msg,
                       struct ipc_msg_data *mdata);
+
+// Register a flow for interrupt handling.
+int cap_intr_register (struct cap_flow *flow, uint32_t irq);
+
+// Unregister a flow for interrupt handling.
+int cap_intr_unregister (struct cap_flow *flow, uint32_t irq);
+
+// Mark an interrupt for a flow as handled.
+int cap_intr_eoi (struct cap_flow *flow, uint32_t irq);
 
 // Inlined versions of the above.
 

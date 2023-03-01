@@ -129,6 +129,7 @@ vm_object_insert (struct vm_object *object, struct vm_page *page,
   vm_page_link (page, object, offset);
   ++object->nr_pages;
   assert (object->nr_pages != 0);
+  vm_object_ref (object);
 
   mutex_unlock (&object->lock);
   return (0);
@@ -149,6 +150,8 @@ vm_object_remove (struct vm_object *object, uint64_t start, uint64_t end)
   struct list pages;
   list_init (&pages);
 
+  size_t cnt = 0;
+
   {
     MUTEX_GUARD (&object->lock);
     for (uint64_t offset = start; offset < end; offset += PAGE_SIZE)
@@ -164,10 +167,12 @@ vm_object_remove (struct vm_object *object, uint64_t start, uint64_t end)
           list_insert_tail (&pages, &page->node);
 
         assert (object->nr_pages != 0);
+        ++cnt;
         --object->nr_pages;
       }
   }
 
+  vm_object_unref_many (object, cnt);
   vm_page_array_list_free (&pages);
 }
 

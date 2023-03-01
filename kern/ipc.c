@@ -45,7 +45,7 @@ ipc_data_init (struct ipc_data *data, int direction)
   data->direction = direction;
   data->prot = direction == IPC_COPY_FROM ? VM_PROT_READ : VM_PROT_RDWR;
   data->va = vm_map_ipc_addr ();
-  data->fault_intr = cpu_intr_enabled () ? VM_MAP_FAULT_INTR : 0;
+  data->fault_intr = cpu_intr_enabled () ? 0 : VM_MAP_FAULT_INTR;
   data->ipc_pte = NULL;
   data->page = NULL;
 }
@@ -90,6 +90,7 @@ ipc_data_pte_get (struct ipc_data *data)
 static void
 ipc_data_pte_map (struct ipc_data *data, phys_addr_t pa)
 {
+  assert (thread_pinned () || !cpu_intr_enabled ());
   pmap_ipc_pte_set (data->ipc_pte, data->va, pa);
 }
 
@@ -319,9 +320,8 @@ int
 ipc_page_iter_copy (struct task *r_task, struct ipc_page_iter *r_it,
                     struct ipc_page_iter *l_it, int direction)
 {
-  struct vm_map *map_in, *map_out;
+  struct vm_map *map_in, *map_out, *l_map = vm_map_self ();
   struct ipc_page_iter *it_in, *it_out;
-  _Auto l_map = vm_map_self ();
 
   if (direction == IPC_COPY_FROM)
     {

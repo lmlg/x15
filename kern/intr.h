@@ -60,6 +60,9 @@ void intr_unregister (uint32_t intr, intr_handler_fn_t fn);
 // Handle an interrupt.
 void intr_handle (uint32_t intr);
 
+// Set an interrupt as handled.
+void intr_eoi (uint32_t intr);
+
 /*
  * This init operation provides :
  *  - registration of interrupt controllers and handlers

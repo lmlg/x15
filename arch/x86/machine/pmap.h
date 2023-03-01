@@ -226,9 +226,6 @@ pmap_kextract (uintptr_t va, phys_addr_t *pap)
 // Create a pmap for a user task.
 int pmap_create (struct pmap **pmapp);
 
-// Create a copy of a pmap.
-int pmap_copy (const struct pmap *src, struct pmap **dst);
-
 // Destroy a pmap allocated for a user task.
 void pmap_destroy (struct pmap *pmap);
 

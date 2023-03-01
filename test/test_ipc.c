@@ -48,30 +48,13 @@ struct test_ipc_data
 static struct test_ipc_data test_data;
 
 static void
-test_ipc_create (void (*fn) (void *), void *arg,
-                 const char *task_name, struct thread **thrp)
-{
-  struct task *task;
-  int error = task_create (&task, task_name);
-  assert (! error);
-
-  char tname[32];
-  sprintf (tname, "%s/0", task_name);
-
-  struct thread_attr attr;
-  thread_attr_init (&attr, tname);
-  thread_attr_set_task (&attr, task);
-
-  error = thread_create (thrp, &attr, fn, arg);
-  assert (! error);
-}
-
-static void
 test_ipc_sender (void *arg)
 {
   _Auto data = (struct test_ipc_data *)arg;
-  char *mem = vm_map_anon_alloc (vm_map_self (), PAGE_SIZE * 2);
-  memset (mem, '-', TEST_IPC_DATA_SIZE);
+  void *ptr;
+  int error = vm_map_anon_alloc (&ptr, vm_map_self (), PAGE_SIZE * 2);
+  assert (! error);
+  char *mem = memset (ptr, '-', TEST_IPC_DATA_SIZE);
   size_t half = TEST_IPC_DATA_SIZE / 2;
 
   struct iovec iovs[] =
@@ -117,7 +100,7 @@ test_ipc_receiver (void *arg)
 
   data->iovs = &it;
   data->pgs = &pg;
-  data->receiver = thread_self()->task;
+  data->receiver = task_self ();
 
   semaphore_post (&data->send_sem);
   semaphore_wait (&data->recv_sem);
@@ -139,8 +122,13 @@ TEST_DEFERRED (ipc)
   semaphore_init (&data->recv_sem, 0, 0xff);
 
   struct thread *sender, *receiver;
-  test_ipc_create (test_ipc_sender, data, "sender", &sender);
-  test_ipc_create (test_ipc_receiver, data, "receiver", &receiver);
+  int error = test_util_create_thr (&sender, test_ipc_sender,
+                                    data, "ipc_sender");
+  assert (! error);
+
+  error = test_util_create_thr (&receiver, test_ipc_receiver,
+                                data, "ipc_receiver");
+  assert (! error);
 
   thread_join (sender);
   thread_join (receiver);

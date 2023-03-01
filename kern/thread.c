@@ -706,6 +706,7 @@ static void
 thread_sched_rt_remove (struct thread_runq *runq, struct thread *thread)
 {
   struct thread_rt_runq *rt_runq = &runq->rt_runq;
+  assert (thread_real_priority (thread) < ARRAY_SIZE (rt_runq->threads));
   struct list *threads = &rt_runq->threads[thread_real_priority (thread)];
   list_remove (&thread->rt_data.node);
 
@@ -728,6 +729,7 @@ thread_sched_rt_get_next (struct thread_runq *runq)
 
   uint32_t priority = THREAD_SCHED_RT_PRIO_MAX -
                       __builtin_clz (rt_runq->bitmap);
+  assert (priority < ARRAY_SIZE (rt_runq->threads));
   struct list *threads = &rt_runq->threads[priority];
   assert (!list_empty (threads));
   _Auto thread = list_first_entry (threads, struct thread, rt_data.node);
@@ -1081,6 +1083,7 @@ thread_sched_fs_get_next (struct thread_runq *runq)
     }
 
   fs_runq->current = group;
+  assert (!list_empty (&group->threads));
   node = list_first (&group->threads);
   _Auto thread = list_entry (node, struct thread, fs_data.group_node);
   list_remove (node);
@@ -2272,7 +2275,6 @@ thread_sleep_common (struct spinlock *interlock, const void *wchan_addr,
     }
 
   _Auto runq = thread_runq_local ();
-
   cpu_flags_t flags;
   spinlock_lock_intr_save (&runq->lock, &flags);
 
@@ -2287,7 +2289,6 @@ thread_sleep_common (struct spinlock *interlock, const void *wchan_addr,
 
   runq = thread_runq_schedule (runq);
   assert (thread->state == THREAD_RUNNING);
-
   spinlock_unlock_intr_restore (&runq->lock, flags);
 
   if (timed)
@@ -2811,6 +2812,8 @@ thread_handoff (struct thread *src, struct thread *dst, void *data,
 
   // Make the destination thread inherit the scheduling context.
   thread_pi_setsched_impl (runq, dst, sched->policy, sched->priority);
+  thread_runq_add (runq, dst);
+  thread_runq_set_next (runq, dst);
   turnstile_td_unlock (td);
 
   // Do all the bookeeping needed to switch to the destination thread.
@@ -2818,11 +2821,9 @@ thread_handoff (struct thread *src, struct thread *dst, void *data,
   thread_clear_flag (src, THREAD_YIELD);
   thread_runq_put_prev (runq, src);
   thread_runq_remove (runq, src);
-  thread_runq_add (runq, dst);
 
   thread_clear_wchan (dst);
   atomic_store_rlx (&dst->state, THREAD_RUNNING);
-  thread_runq_set_next (runq, dst);
   thread_context_switch (&runq, src, dst);
 
   // We're back.
@@ -2859,4 +2860,17 @@ thread_sched_state_load (struct thread *thr,
 {
   thread_sched_state_cpy (thr, stp, stp->cls);
   thread_setscheduler (thr, stp->policy, stp->priority);
+}
+
+int
+thread_apply (struct thread *thread, int (*fn) (struct thread *, void *),
+              void *ctx)
+{
+  cpu_flags_t flags;
+  _Auto runq = thread_lock_runq (thread, &flags);
+
+  int ret = fn (thread, ctx);
+
+  thread_unlock_runq (runq, flags);
+  return (ret);
 }

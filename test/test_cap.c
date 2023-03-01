@@ -22,6 +22,7 @@
 
 #include <kern/clock.h>
 #include <kern/cspace.h>
+#include <kern/intr.h>
 #include <kern/semaphore.h>
 #include <kern/task.h>
 #include <kern/thread.h>
@@ -39,25 +40,6 @@ struct test_cap_data
 };
 
 static struct test_cap_data test_cap_data;
-
-static void
-test_cap_create (void (*fn) (void *), void *arg,
-                 const char *name, struct thread **outp)
-{
-  struct task *task;
-  int error = task_create (&task, name);
-  assert (! error);
-
-  char tname[TASK_NAME_SIZE];
-  sprintf (tname, "%s/0", name);
-
-  struct thread_attr attr;
-  thread_attr_init (&attr, tname);
-  thread_attr_set_task (&attr, task);
-
-  error = thread_create (outp, &attr, fn, arg);
-  assert (! error);
-}
 
 static int
 test_cap_alloc_task (void)
@@ -111,7 +93,7 @@ test_cap_sender (void *arg)
   uint32_t bufsize;
   struct iovec iov = { .iov_base = &bufsize, .iov_len = sizeof (bufsize) };
 
-  struct ipc_msg_page mpage;
+  struct ipc_msg_page mpage = { .addr = PAGE_SIZE * 10 };
   struct ipc_msg_cap mcap;
   struct ipc_msg msg =
     {
@@ -133,7 +115,7 @@ test_cap_sender (void *arg)
 
   {
     ssize_t nb = cap_pull_bytes (rcvid, buf, bufsize, &mdata);
-    assert (nb == bufsize);
+    assert (nb == (ssize_t)bufsize);
     assert (memcmp (buf, "hello", 5) == 0);
   }
 
@@ -143,9 +125,9 @@ test_cap_sender (void *arg)
 
     assert (! error);
     assert (VM_MAP_PROT (entry.flags) == VM_PROT_READ);
-    vm_map_entry_put (&entry);
-
     assert (*(char *)mpage.addr == 'x');
+
+    vm_map_entry_put (&entry);
   }
 
   {
@@ -160,8 +142,9 @@ test_cap_sender (void *arg)
   ssize_t nb = cap_push_bytes (rcvid, &bufsize, sizeof (bufsize), &mdata);
   assert (nb == sizeof (bufsize));
 
-  void *mem = vm_map_anon_alloc (vm_map_self (), 100);
-  assert (mem != NULL);
+  void *mem;
+  error = vm_map_anon_alloc (&mem, vm_map_self (), 101);
+  assert (! error);
   memset (mem, 'z', 100);
 
   mpage.addr = (uintptr_t)mem;
@@ -192,9 +175,11 @@ test_cap_receiver (void *arg)
   assert (! error);
   assert (tag == data->sender_tag);
 
-  void *mem = vm_map_anon_alloc (vm_map_self (), 100);
-  assert (mem);
+  void *mem;
+  error = vm_map_anon_alloc (&mem, vm_map_self (), 100);
+  assert (! error);
   memset (mem, 'x', PAGE_SIZE);
+
   struct ipc_msg_page mpage =
     {
       .addr = (uintptr_t)mem,
@@ -248,8 +233,12 @@ TEST_DEFERRED (cap)
   semaphore_init (&data->recv_sem, 0, 0xff);
 
   struct thread *sender, *receiver;
-  test_cap_create (test_cap_sender, data, "sender", &sender);
-  test_cap_create (test_cap_receiver, data, "receiver", &receiver);
+  int error = test_util_create_thr (&sender, test_cap_sender,
+                                    data, "cap_sender");
+  assert (! error);
+
+  error = test_util_create_thr (&receiver, test_cap_receiver,
+                                data, "cap_receiver");
 
   thread_join (sender);
   thread_join (receiver);

@@ -131,12 +131,18 @@ vm_object_ref (struct vm_object *object)
 }
 
 static inline void
+vm_object_unref_many (struct vm_object *object, size_t n)
+{
+  size_t prev = atomic_sub_acq_rel (&object->refcount, n);
+  assert (prev >= n);
+  if (prev == n)
+    vm_object_destroy (object);
+}
+
+static inline void
 vm_object_unref (struct vm_object *object)
 {
-  size_t prev = atomic_sub_acq_rel (&object->refcount, 1);
-  assert (prev != 0);
-  if (prev == 1)
-    vm_object_destroy (object);
+  vm_object_unref_many (object, 1);
 }
 
 // Create a VM object for anonymous mappings.

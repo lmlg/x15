@@ -328,6 +328,14 @@ list_remove (struct list *node)
        !list_end (list, &entry->member);   \
        entry = tmp, tmp = list_prev_entry (entry, member))
 
+// Pop an element from a list.
+#define list_pop(lst, type, member)   \
+  ({   \
+     _Auto tmp_ = list_first_entry (lst, type, member);   \
+     list_remove (&tmp_->member);   \
+     tmp_;   \
+   })
+
 /*
  * Lockless variants
  *

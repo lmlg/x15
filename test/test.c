@@ -23,6 +23,7 @@
 #include <kern/log.h>
 #include <kern/macros.h>
 #include <kern/symbol.h>
+#include <kern/task.h>
 #include <kern/thread.h>
 
 #include <machine/pmap.h>
@@ -107,4 +108,27 @@ test_setup (void)
       if (thread_create (NULL, &attr, test_thread_run, (void *)sym) != 0)
         log_err ("failed to run test: %s", attr.name);
     }
+}
+
+int
+test_util_create_thr (struct thread **out, void (*fn) (void *),
+                      void *arg, const char *name)
+{
+  struct task *task;
+  int error = task_create (&task, name);
+  if (error)
+    return (error);
+
+  char tname[TASK_NAME_SIZE];
+  sprintf (tname, "%s/0", name);
+
+  struct thread_attr attr;
+  thread_attr_init (&attr, tname);
+  thread_attr_set_task (&attr, task);
+
+  error = thread_create (out, &attr, fn, arg);
+  if (error)
+    task_destroy (task);
+
+  return (error);
 }

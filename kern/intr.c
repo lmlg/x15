@@ -37,6 +37,7 @@
 #include <kern/panic.h>
 #include <kern/spinlock.h>
 #include <kern/thread.h>
+
 #include <machine/boot.h>
 #include <machine/cpu.h>
 
@@ -336,10 +337,9 @@ intr_register (uint32_t intr, intr_handler_fn_t fn, void *arg)
     return (error);
 
   error = intr_entry_add (intr_get_entry (intr), handler);
-  if (! error)
-    return (0);
+  if (error)
+    intr_handler_destroy (handler);
 
-  intr_handler_destroy (handler);
   return (error);
 }
 
@@ -371,9 +371,23 @@ intr_handle (uint32_t intr)
     }
 
   struct intr_handler *handler;
-  list_for_each_entry (&entry->handlers, handler, node)
-    if (intr_handler_run (handler) == 0)
-      break;
+  int rv = 0;
 
+  list_for_each_entry (&entry->handlers, handler, node)
+    {
+      int tmp = intr_handler_run (handler);
+      if (tmp == EINPROGRESS)
+        rv = tmp;
+    }
+
+  if (rv != EINPROGRESS)
+    intr_entry_eoi (entry, intr);
+}
+
+void
+intr_eoi (uint32_t intr)
+{
+  _Auto entry = intr_get_entry (intr);
+  SPINLOCK_GUARD (&entry->lock);
   intr_entry_eoi (entry, intr);
 }

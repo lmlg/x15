@@ -661,7 +661,7 @@ vm_map_remove (struct vm_map *map, uintptr_t start, uintptr_t end)
 
 static void
 vm_map_init (struct vm_map *map, struct pmap *pmap,
-             uintptr_t start, uintptr_t end)
+             uintptr_t start, uintptr_t end, struct vm_object *priv)
 {
   assert (vm_page_aligned (start));
   assert (vm_page_aligned (end));
@@ -677,6 +677,7 @@ vm_map_init (struct vm_map *map, struct pmap *pmap,
   map->lookup_cache = NULL;
   vm_map_reset_find_cache (map);
   map->pmap = pmap;
+  map->priv_cache = priv;
   map->soft_faults = 0;
   map->hard_faults = 0;
 }
@@ -725,7 +726,7 @@ static int __init
 vm_map_bootstrap (void)
 {
   vm_map_init (vm_map_get_kernel_map (), pmap_get_kernel_pmap (),
-               PMAP_START_KMEM_ADDRESS, PMAP_END_KMEM_ADDRESS);
+               PMAP_START_KMEM_ADDRESS, PMAP_END_KMEM_ADDRESS, NULL);
   kmem_cache_init (&vm_map_entry_cache, "vm_map_entry",
                    sizeof (struct vm_map_entry), 0, NULL,
                    KMEM_CACHE_PAGE_ONLY);
@@ -945,15 +946,16 @@ vm_map_create (struct vm_map **mapp)
     return (ENOMEM);
 
   struct pmap *pmap;
-  int error = pmap_copy (pmap_get_kernel_pmap (), &pmap);
+  int error = pmap_create (&pmap);
   if (error)
     goto error_pmap;
 
-  error = vm_object_anon_create (&map->priv_cache);
+  struct vm_object *priv;
+  error = vm_object_anon_create (&priv);
   if (error)
     goto error_priv;
 
-  vm_map_init (map, pmap, PMAP_START_ADDRESS, PMAP_END_ADDRESS);
+  vm_map_init (map, pmap, PMAP_START_ADDRESS, PMAP_END_ADDRESS, priv);
   *mapp = map;
   return (0);
 
@@ -990,19 +992,21 @@ vm_copy (void *dst, const void *src, size_t size)
   return (res);
 }
 
-void*
-vm_map_anon_alloc (struct vm_map *map, size_t size)
+int
+vm_map_anon_alloc (void **outp, struct vm_map *map, size_t size)
 {
   if (!map->priv_cache)
-    return (NULL);
+    return (EINVAL);
 
-  size = vm_page_round (size);
   uintptr_t va = PAGE_SIZE * 50;
   int flags = VM_MAP_FLAGS (VM_PROT_RDWR, VM_PROT_RDWR, VM_INHERIT_NONE,
-                            VM_ADV_DEFAULT, 0);
-  int error = vm_map_enter (map, &va, size, 0, flags | VM_MAP_ANON,
+                            VM_ADV_DEFAULT, VM_MAP_ANON);
+  int error = vm_map_enter (map, &va, vm_page_round (size), 0, flags,
                             map->priv_cache, 0);
-  return (error ? NULL : (void *)va);
+  if (! error)
+    *outp = (void *)va;
+
+  return (error);
 }
 
 static void

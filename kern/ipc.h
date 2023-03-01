@@ -76,11 +76,15 @@ struct ipc_msg
   uint32_t cap_cnt;
 };
 
+// Bits for the 'flags' member of a IPC message metadata.
+#define IPC_MSG_INTR   0x01
+
 struct ipc_msg_data
 {
   size_t size;
   int task_id;
   int thread_id;
+  uint32_t flags;
   uintptr_t tag;
   size_t nbytes;
   uint32_t pages_sent;

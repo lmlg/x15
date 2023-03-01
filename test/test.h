@@ -50,4 +50,11 @@ void __init test_setup (void);
 #define TEST_DEFERRED(name)   \
   int __init CONCAT (TEST_PREFIX, CONCAT (_, name)) (void)
 
+// Utilities for the test module.
+
+struct thread;
+
+int test_util_create_thr (struct thread **out, void (*fn) (void *),
+                          void *arg, const char *name);
+
 #endif
