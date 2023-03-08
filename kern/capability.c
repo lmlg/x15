@@ -174,11 +174,29 @@ cap_channel_create (struct cap_channel **outp, struct cap_base *flow,
   return (0);
 }
 
+static int cap_intr_rem (uint32_t intr, struct list *node, bool eoi);
+
 static void
 cap_flow_fini (struct sref_counter *sref)
 {
   _Auto flow = CAP_FROM_SREF (sref, struct cap_flow);
-  // TODO: Handle pending interrupts.
+  BITMAP_DECLARE (pending, CPU_INTR_TABLE_SIZE);
+
+  {
+    SPINLOCK_GUARD (&flow->lock);
+    bitmap_copy (pending, flow->intr.pending, CPU_INTR_TABLE_SIZE);
+    // This makes interrupt notification always be marked as spurious.
+    bitmap_fill (flow->intr.pending, CPU_INTR_TABLE_SIZE);
+  }
+
+  if (unlikely (flow->intr.nr_pending))
+    {
+      struct cap_intr_entry *entry, *tmp;
+      list_for_each_entry_safe (&flow->intr.entries, entry, tmp, cap_node)
+        cap_intr_rem (entry->irq, &entry->intr_node,
+                      bitmap_test (pending, entry->irq));
+    }
+
   kmem_cache_free (&cap_flow_cache, flow);
 }
 
@@ -458,8 +476,8 @@ cap_sender_impl (struct cap_sender *sender, struct cap_flow *flow)
         plist_add (&flow->senders, &sender->node);
         cap_mark_pnode_msg (&sender->node);
         // TODO: Priority inheritance.
-        int error = thread_send_block (&flow->lock, sender,
-                                       &sender->sender_sched);
+        thread_sched_state_save (sender->thread, &sender->sender_sched);
+        int error = thread_send_block (&flow->lock, sender);
         if (error)
           {
             plist_remove (&flow->senders, &sender->node);
@@ -602,6 +620,12 @@ ssize_t
   return (cap_send_small (recv, abuf, sizeof (abuf), 0));
 }
 
+static struct cap_sender*
+cap_thread_sender (struct thread *thr)
+{
+  return ((void *)thread_wchan_addr (thr));
+}
+
 /* A receive ID is a 64-bit integer, composed of a capability index
  * and a thread ID. When decoding it, the following invariants must apply:
  *
@@ -625,7 +649,7 @@ cap_thread_validate (struct thread *thr, void *flow, struct thread *self)
   if (!thread_send_reply_blocked (thr))
     return (-EINVAL);
 
-  _Auto sender = (struct cap_sender *)thread_wchan_addr (thr);
+  _Auto sender = cap_thread_sender (thr);
   if (!sender || sender->flow != flow)
     return (-EINVAL);
   else if (!sender->handler)
@@ -678,12 +702,6 @@ cap_rcvid_decode (rcvid_t rcvid, struct thread *self,
   *xcap = cap;
   *thrp = thread;
   return (0);
-}
-
-static struct cap_sender*
-cap_thread_sender (struct thread *thr)
-{
-  return ((void *)thread_wchan_addr (thr));
 }
 
 static void
@@ -957,20 +975,17 @@ cap_handle (rcvid_t rcvid)
   struct thread *self = thread_self ();
   if (self->cur_rcvid == rcvid)
     return (0);
-  else if (! rcvid)
-    {
-      if (!self->cur_peer)
-        return (EINVAL);
+  else if (rcvid)
+    return (cap_rcvid_acq_sender (self, rcvid));
+  else if (!self->cur_peer)
+    return (EINVAL);
 
-      _Auto sender = cap_thread_sender (self->cur_peer);
-      self->cur_rcvid = 0;
-      self->cur_peer = NULL;
-      thread_sched_state_save (self, &sender->sender_sched);
-      thread_sched_state_load (self, &sender->recv_sched);
-      return (0);
-    }
-
-  return (cap_rcvid_acq_sender (self, rcvid));
+  _Auto sender = cap_thread_sender (self->cur_peer);
+  self->cur_rcvid = 0;
+  self->cur_peer = NULL;
+  thread_sched_state_save (self, &sender->sender_sched);
+  thread_sched_state_load (self, &sender->recv_sched);
+  return (0);
 }
 
 static ssize_t
@@ -1184,7 +1199,7 @@ ealready:
 int
 cap_intr_unregister (struct cap_flow *flow, uint32_t irq)
 {
-  struct list *node = NULL;
+  struct cap_intr_entry *entry = NULL;
   CPU_INTR_GUARD ();
 
   {
@@ -1194,15 +1209,14 @@ cap_intr_unregister (struct cap_flow *flow, uint32_t irq)
     list_for_each_entry (&flow->intr.entries, tmp, cap_node)
       if (tmp->irq == irq)
         {
-          node = &tmp->intr_node;
+          entry = tmp;
+          list_remove (&entry->cap_node);
           break;
         }
   }
 
-  if (! node)
-    return (EINVAL);
-
-  return (cap_intr_rem (irq, node,
+  return (!entry ? EINVAL :
+          cap_intr_rem (irq, &entry->intr_node,
                         bitmap_test (flow->intr.pending, irq)));
 }
 

@@ -2752,10 +2752,8 @@ thread_set_affinity (struct thread *thread, const struct cpumap *cpumap)
 }
 
 int
-thread_send_block (struct spinlock *lock, void *data,
-                   struct thread_sched_state *stp)
+thread_send_block (struct spinlock *lock, void *data)
 {
-  thread_sched_state_save (thread_self (), stp);
   thread_sleep (lock, data, THREAD_SEND_BLOCK);
   return (0);
 }

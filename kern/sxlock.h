@@ -82,7 +82,7 @@ sxlock_unlock (struct sxlock *sxp)
 
   if ((val & SXLOCK_MASK) == SXLOCK_MASK)
     { // Exclusive lock.
-      atomic_swap_rel (&sxp->lock, 0);
+      atomic_store_rel (&sxp->lock, 0);
       wake = 1;
     }
   else

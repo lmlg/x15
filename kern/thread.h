@@ -910,8 +910,7 @@ struct thread_runq* thread_lock_runq (struct thread *thr, cpu_flags_t *flags);
 void thread_unlock_runq (struct thread_runq *runq, cpu_flags_t flags);
 
 // Make the current thread send-blocked.
-int thread_send_block (struct spinlock *lock, void *data,
-                       struct thread_sched_state *sched);
+int thread_send_block (struct spinlock *lock, void *data);
 
 // Make the current thread receive-blocked.
 int thread_recv_block (struct spinlock *lock, void *data);
