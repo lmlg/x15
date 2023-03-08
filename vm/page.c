@@ -134,9 +134,9 @@ struct vm_page_waiter
   struct thread *thread;
   struct plist_node node;
   struct vm_page **frames;
-  uint32_t order;
+  uint32_t needed;
   uint32_t selector;
-  int received;
+  uint16_t type;
 };
 
 static int vm_page_is_ready __read_mostly;
@@ -737,6 +737,18 @@ vm_page_array_tryalloc (struct vm_page **frames, uint32_t order,
   return ((int)order);
 }
 
+static void
+vm_page_waiter_init (struct vm_page_waiter *pw, struct vm_page **frames,
+                     uint32_t order, uint32_t selector, uint16_t type)
+{
+  pw->thread = thread_self ();
+  pw->frames = frames;
+  pw->needed = 1u << order;
+  pw->selector = selector;
+  pw->type = type;
+  plist_node_init (&pw->node, thread_real_global_priority (pw->thread));
+}
+
 int
 vm_page_array_alloc (struct vm_page **frames, uint32_t order,
                      uint32_t selector, uint16_t type)
@@ -746,15 +758,8 @@ vm_page_array_alloc (struct vm_page **frames, uint32_t order,
   if (likely (ret >= 0))
     return (ret);
 
-  struct vm_page_waiter pw =
-    {
-      .thread = thread_self (),
-      .frames = frames,
-      .order = order,
-      .selector = selector
-    };
-
-  plist_node_init (&pw.node, thread_real_global_priority (pw.thread));
+  struct vm_page_waiter pw;
+  vm_page_waiter_init (&pw, frames, order, selector, type);
 
   // TODO: Interruptible wait (and possibly page evictions).
   spinlock_lock (&vm_page_waiters_lock);
@@ -764,12 +769,11 @@ vm_page_array_alloc (struct vm_page **frames, uint32_t order,
       plist_add (&vm_page_waiters_list, &pw.node);
       thread_sleep (&vm_page_waiters_lock, &pw, "pages");
       plist_remove (&vm_page_waiters_list, &pw.node);
+      ret = (int)order;
     }
-  else
-    pw.received = ret;
 
   spinlock_unlock (&vm_page_waiters_lock);
-  return (pw.received);
+  return (ret);
 }
 
 static uint32_t
@@ -777,22 +781,30 @@ vm_page_array_free_impl (struct vm_page **frames, uint32_t n_frames,
                          struct plist *plist)
 {
   uint32_t released = 0, selector = frames[0]->zone_index;
-  plist_for_each_safe (plist, pnode, tmp)
+  plist_for_each_reverse_safe (plist, pnode, tmp)
     {
       _Auto waiter = plist_entry (pnode, struct vm_page_waiter, node);
 
-      if ((1u << waiter->order) > n_frames ||
-          selector > waiter->selector)
+      if (selector > waiter->selector)
+        // Can't service this request.
         continue;
 
-      uint32_t n = MIN (n_frames, 1u << waiter->order);
+      uint32_t n = MIN (waiter->needed, n_frames);
       for (uint32_t i = 0; i < n; ++i)
-        waiter->frames[i] = frames[i];
+        {
+          frames[i]->type = waiter->type;
+          waiter->frames[i] = frames[i];
+        }
+
+      waiter->needed -= n;
+      if (!waiter->needed)
+        // The request was fulfilled. Wake the thread.
+        thread_wakeup (waiter->thread);
+      else
+        waiter->frames += n;
 
       frames += n;
       released += n;
-      waiter->received = log2 (n);
-      thread_wakeup (waiter->thread);
     }
 
   return (released);
