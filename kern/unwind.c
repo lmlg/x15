@@ -105,7 +105,6 @@ struct unw_frame_regs
       uint16_t reg;
       int16_t off;
     } cfa;
-  struct unw_frame_regs *prev;
 };
 
 struct unw_cursor
@@ -337,11 +336,14 @@ unw_cursor_set_sp (struct unw_cursor *cursor, uintptr_t sp)
     }   \
   while (0)
 
+#define UNW_NUM_FREE_FRAMES   4
+
 static int
 unw_run_dw (struct unw_cursor *cursor, const struct unw_cie *cie,
             const unsigned char *ops, uintptr_t pc)
 {
-  struct unw_frame_regs *free_regs = NULL;
+  struct unw_frame_regs free_regs[UNW_NUM_FREE_FRAMES];
+  uint32_t free_idx = 0;
   intptr_t sarg;
   uintptr_t regno, arg = unw_read_uleb (&ops);
   _Auto ops_end = ops + arg;
@@ -450,29 +452,18 @@ unw_run_dw (struct unw_cursor *cursor, const struct unw_cie *cie,
             break;
 
           case DW_CFA_remember_state:
-            {
-              struct unw_frame_regs *nrp;
-              if (free_regs)
-                {
-                  nrp = free_regs;
-                  free_regs = free_regs->prev;
-                }
-              else
-                nrp = alloca (sizeof (*nrp));
+            if (free_idx >= ARRAY_SIZE (free_regs))
+              return (-ENOMEM);
 
-              *nrp = cursor->cols;
-              cursor->cols.prev = nrp;
-              break;
-            }
+            free_regs[free_idx++] = cursor->cols;
+            break;
 
           case DW_CFA_restore_state:
-            {
-              struct unw_frame_regs *prev = cursor->cols.prev;
-              cursor->cols = *prev;
-              prev->prev = free_regs;
-              free_regs = prev;
-              break;
-            }
+            if (! free_idx)
+              return (-EINVAL);
+
+            cursor->cols = free_regs[--free_idx];
+            break;
 
           case DW_CFA_restore:
             if (operand >= ARRAY_SIZE (cursor->cols.rules))
@@ -491,8 +482,8 @@ unw_run_dw (struct unw_cursor *cursor, const struct unw_cie *cie,
 static int
 unw_read_safe (uintptr_t addr, uintptr_t *out)
 {
-  phys_addr_t pa;
-  if (unlikely (pmap_kextract (addr, &pa) != 0))
+  if (addr < PMAP_START_KERNEL_ADDRESS ||
+      addr > PMAP_END_KERNEL_ADDRESS)
     return (-EFAULT);
 
   *out = *(uintptr_t *)addr;

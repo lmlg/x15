@@ -24,9 +24,7 @@
 #include <machine/multiboot.h>
 #include <machine/types.h>
 
-/*
- * BIOS Data Area.
- */
+// BIOS Data Area.
 #define BIOSMEM_BDA_ADDR    0x400
 #define BIOSMEM_BDA_SIZE    0x100
 
@@ -87,7 +85,7 @@ void biosmem_bootstrap (const struct multiboot_raw_info *mbi);
  *
  * This function is called before paging is enabled.
  */
-void * biosmem_bootalloc (unsigned int nr_pages);
+void* biosmem_bootalloc (unsigned int nr_pages);
 
 /*
  * Return a pointer to a copy of the BIOS Data Area.
@@ -95,7 +93,7 @@ void * biosmem_bootalloc (unsigned int nr_pages);
  * The region denoted by the returned address is of size BIOSMEM_BDA_SIZE,
  * and is only valid during initialization.
  */
-const void * biosmem_get_bda (void);
+const void* biosmem_get_bda (void);
 
 /*
  * Return the limit of physical memory that can be directly mapped.
@@ -108,4 +106,4 @@ phys_addr_t biosmem_directmap_end (void);
  */
 INIT_OP_DECLARE (biosmem_setup);
 
-#endif /* X86_BIOSMEM_H */
+#endif

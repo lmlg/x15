@@ -638,9 +638,8 @@ cap_thread_sender (struct thread *thr)
  *   the new handler thread if needed.
  *
  * The thread's runq lock must be held when accessing the object the thread
- * is waiting on (The 'wait channel address'). However, since the capability
- * module has no knowledge of run queues, we provide a callback that the thread
- * can safely execute while holding such lock.
+ * is waiting on (The 'wait channel address'), since that member is otherwise
+ * only set by the owner thread.
 */
 
 static int
