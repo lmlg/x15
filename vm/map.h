@@ -96,8 +96,6 @@ struct vm_map
   uintptr_t end;
   size_t size;
   struct vm_map_entry *lookup_cache;
-  uintptr_t find_cache;
-  size_t find_cache_threshold;
   struct vm_object *priv_cache;
   struct pmap *pmap;
   uint32_t soft_faults;

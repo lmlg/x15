@@ -934,9 +934,6 @@ void thread_sched_state_load (struct thread *thr,
 // Test that a thread is either send-blocked or reply-blocked.
 bool thread_send_reply_blocked (struct thread *thread);
 
-int thread_apply (struct thread *thread, int (*fn) (struct thread *, void *),
-                  void *ctx);
-
 /*
  * This init operation provides :
  *  - a dummy thread context for the BSP, allowing the use of thread_self()

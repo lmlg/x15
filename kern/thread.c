@@ -1036,6 +1036,7 @@ static void
 thread_sched_fs_put_prev (struct thread_runq *runq, struct thread *thread)
 {
   _Auto fs_runq = runq->fs_runq_active;
+  assert (thread_real_priority (thread) < ARRAY_SIZE (fs_runq->group_array));
   _Auto group = &fs_runq->group_array[thread_real_priority (thread)];
   list_insert_tail (&group->threads, &thread->fs_data.group_node);
 
@@ -1082,11 +1083,11 @@ thread_sched_fs_get_next (struct thread_runq *runq)
                            struct thread_fs_group, node);
     }
 
+  if (list_empty (&group->threads))
+    return (NULL);
+
   fs_runq->current = group;
-  assert (!list_empty (&group->threads));
-  node = list_first (&group->threads);
-  _Auto thread = list_entry (node, struct thread, fs_data.group_node);
-  list_remove (node);
+  _Auto thread = list_pop (&group->threads, struct thread, fs_data.group_node);
   return (thread);
 }
 
@@ -2812,9 +2813,12 @@ thread_handoff (struct thread *src, struct thread *dst, void *data,
 
   // Make the destination thread inherit the scheduling context.
   thread_pi_setsched_impl (runq, dst, sched->policy, sched->priority);
+  turnstile_td_unlock (td);
+
+  thread_clear_wchan (dst);
+  atomic_store_rlx (&dst->state, THREAD_RUNNING);
   thread_runq_add (runq, dst);
   thread_runq_set_next (runq, dst);
-  turnstile_td_unlock (td);
 
   // Do all the bookeeping needed to switch to the destination thread.
   thread_preempt_disable ();
@@ -2822,8 +2826,6 @@ thread_handoff (struct thread *src, struct thread *dst, void *data,
   thread_runq_put_prev (runq, src);
   thread_runq_remove (runq, src);
 
-  thread_clear_wchan (dst);
-  atomic_store_rlx (&dst->state, THREAD_RUNNING);
   thread_context_switch (&runq, src, dst);
 
   // We're back.
@@ -2860,17 +2862,4 @@ thread_sched_state_load (struct thread *thr,
 {
   thread_sched_state_cpy (thr, stp, stp->cls);
   thread_setscheduler (thr, stp->policy, stp->priority);
-}
-
-int
-thread_apply (struct thread *thread, int (*fn) (struct thread *, void *),
-              void *ctx)
-{
-  cpu_flags_t flags;
-  _Auto runq = thread_lock_runq (thread, &flags);
-
-  int ret = fn (thread, ctx);
-
-  thread_unlock_runq (runq, flags);
-  return (ret);
 }

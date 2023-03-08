@@ -125,9 +125,7 @@ static struct vm_map_entry*
 vm_map_entry_pop (struct list *list)
 {
   assert (!list_empty (list));
-  _Auto ret = list_first_entry (list, struct vm_map_entry, list_node);
-  list_remove (&ret->list_node);
-  return (ret);
+  return (list_pop (list, struct vm_map_entry, list_node));
 }
 
 static void
@@ -209,13 +207,6 @@ vm_map_lookup_nearest (struct vm_map *map, uintptr_t addr)
   return (NULL);
 }
 
-static void
-vm_map_reset_find_cache (struct vm_map *map)
-{
-  map->find_cache = 0;
-  map->find_cache_threshold = VM_MAP_NO_FIND_CACHE;
-}
-
 static int
 vm_map_find_fixed (struct vm_map *map, struct vm_map_request *request)
 {
@@ -255,24 +246,7 @@ vm_map_find_avail (struct vm_map *map, struct vm_map_request *request)
     return (0);
 
   size_t size = request->size, align = request->align;
-  uintptr_t base, start;
-
-  if (size > map->find_cache_threshold)
-    base = map->find_cache;
-  else
-    {
-      base = map->start;
-
-      /*
-       * Searching from the map start means the area which size is the
-       * threshold (or a smaller one) may be selected, making the threshold
-       * invalid. Reset it.
-       */
-      map->find_cache_threshold = 0;
-    }
-
-retry:
-  start = base;
+  uintptr_t start = map->start;
   _Auto next = vm_map_lookup_nearest (map, start);
 
   while (1)
@@ -282,36 +256,19 @@ retry:
       if (align)
         start = P2ROUND (start, align);
 
-      /*
-       * The end of the map has been reached, and no space could be found.
-       * If the search didn't start at map->start, retry from there in case
-       * space is available below the previous start address.
-       */
       if (map->end - start < size)
-        {
-          if (base != map->start)
-            {
-              base = map->start;
-              map->find_cache_threshold = 0;
-              goto retry;
-            }
-
-          return (ENOMEM);
-        }
+        // The end of the map has been reached and no space could be found.
+        return (ENOMEM);
 
       size_t space = !next ? map->end - start :
                      (start >= next->start ? 0 : next->start - start);
 
       if (space >= size)
         {
-          map->find_cache = start + size;
           request->start = start;
           request->next = next;
           return (0);
         }
-
-      if (space > map->find_cache_threshold)
-        map->find_cache_threshold = space;
 
       start = next->end;
       next = vm_map_next (map, next);
@@ -521,10 +478,7 @@ vm_map_enter (struct vm_map *map, uintptr_t *startp,
 
   if (error != 0 ||
       (error = vm_map_insert (map, NULL, &request)) != 0)
-    {
-      vm_map_reset_find_cache (map);
-      return (error);
-    }
+    return (error);
 
   *startp = request.start;
   return (0);
@@ -632,7 +586,6 @@ vm_map_remove_impl (struct vm_map *map, uintptr_t start,
     }
 
   assert (list_empty (&alloc_entries));
-  vm_map_reset_find_cache (map);
 
   if (entry->object)
     {
@@ -675,7 +628,6 @@ vm_map_init (struct vm_map *map, struct pmap *pmap,
   map->end = end;
   map->size = 0;
   map->lookup_cache = NULL;
-  vm_map_reset_find_cache (map);
   map->pmap = pmap;
   map->priv_cache = priv;
   map->soft_faults = 0;
