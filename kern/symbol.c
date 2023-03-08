@@ -32,16 +32,12 @@ const struct symbol* volatile symbol_table_ptr __weak;
 const struct symbol*
 symbol_lookup (uintptr_t addr)
 {
-  const struct symbol *table = symbol_table_ptr;
-  size_t size = symbol_table_size;
-
-  for (size_t i = 0; i < size; i++)
+  struct symbol_iter iter;
+  for (symbol_iter_init (&iter); symbol_iter_valid (&iter);
+       symbol_iter_next (&iter))
     {
-      const struct symbol *symbol = &table[i];
-
-      if (!symbol->name || !symbol->size)
-        continue;
-      else if (addr >= symbol->addr && addr < symbol->addr + symbol->size)
+      const _Auto symbol = iter.symbol;
+      if (addr >= symbol->addr && addr < symbol->addr + symbol->size)
         return (symbol);
     }
 
