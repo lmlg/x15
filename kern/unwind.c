@@ -194,6 +194,17 @@ unw_read_sleb (const unsigned char **ptr)
 }
 
 static int
+unw_read_safe (uintptr_t addr, uintptr_t *out)
+{
+  if (addr < PMAP_START_KERNEL_ADDRESS ||
+      addr > PMAP_END_KERNEL_ADDRESS)
+    return (-EFAULT);
+
+  *out = *(uintptr_t *)addr;
+  return (0);
+}
+
+static int
 unw_read_encptr (uint8_t enc, const unsigned char **ptr,
                  uintptr_t pc, uintptr_t *out)
 {
@@ -207,7 +218,9 @@ unw_read_encptr (uint8_t enc, const unsigned char **ptr,
     {
       size_t size = sizeof (uintptr_t) - 1;
       p = (const unsigned char *)(((uintptr_t)p + size) & ~size);
-      *out = *(const uintptr_t *)p;
+      if (unw_read_safe ((uintptr_t)p, out) != 0)
+        return (-EFAULT);
+
       *ptr = p + sizeof (uintptr_t);
       return (0);
     }
@@ -269,7 +282,8 @@ unw_read_encptr (uint8_t enc, const unsigned char **ptr,
   if (enc & DW_EH_PE_indirect)
     {
       p = (const unsigned char *)(uintptr_t)ret;
-      memcpy (&ret, p, sizeof (ret));
+      if (unw_read_safe ((uintptr_t)p, &ret) != 0)
+        return (-EFAULT);
     }
 
   *ptr = p;
@@ -476,17 +490,6 @@ unw_run_dw (struct unw_cursor *cursor, const struct unw_cie *cie,
         }
     }
 
-  return (0);
-}
-
-static int
-unw_read_safe (uintptr_t addr, uintptr_t *out)
-{
-  if (addr < PMAP_START_KERNEL_ADDRESS ||
-      addr > PMAP_END_KERNEL_ADDRESS)
-    return (-EFAULT);
-
-  *out = *(uintptr_t *)addr;
   return (0);
 }
 
