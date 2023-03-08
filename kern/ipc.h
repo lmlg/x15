@@ -77,7 +77,7 @@ struct ipc_msg
 };
 
 // Bits for the 'flags' member of a IPC message metadata.
-#define IPC_MSG_INTR   0x01
+#define IPC_MSG_INTR   0x01   // Message was an interrupt.
 
 struct ipc_msg_data
 {
@@ -163,18 +163,9 @@ ipc_iov_iter_init (struct ipc_iov_iter *it, struct iovec *vecs, uint32_t cnt)
 ssize_t ipc_bcopy (struct task *r_task, void *r_ptr, size_t r_size,
                    void *l_ptr, size_t l_size, int direction);
 
-// Copy bytes in iovecs between a local and a remote task.
-ssize_t ipc_bcopyv (struct task *r_task, struct iovec *r_v, uint32_t n_rv,
-                    struct iovec *l_v, uint32_t n_lv, int direction);
-
 // Copy bytes in iterators between a local and a remote task.
 ssize_t ipc_iov_iter_copy (struct task *r_task, struct ipc_iov_iter *r_it,
                            struct ipc_iov_iter *l_it, int direction);
-
-// Transfer capabilities between a remote and a local task.
-int ipc_copy_caps (struct task *r_task, struct ipc_msg_cap *r_caps,
-                   uint32_t r_ncaps, struct ipc_msg_cap *l_caps,
-                   uint32_t l_ncaps, int direction);
 
 // Transfer capabilities in iterators between a local and a remote task.
 int ipc_cap_iter_copy (struct task *r_task, struct ipc_cap_iter *r_it,
@@ -184,9 +175,39 @@ int ipc_cap_iter_copy (struct task *r_task, struct ipc_cap_iter *r_it,
 int ipc_page_iter_copy (struct task *r_task, struct ipc_page_iter *r_it,
                         struct ipc_page_iter *l_it, int direction);
 
+// Copy bytes in iovecs between a local and a remote task.
+static inline ssize_t
+ipc_bcopyv (struct task *r_task, struct iovec *r_iov, uint32_t r_niov,
+            struct iovec *l_iov, uint32_t l_niov, int direction)
+{
+  struct ipc_iov_iter r_it, l_it;
+  ipc_iov_iter_init (&l_it, l_iov, l_niov);
+  ipc_iov_iter_init (&r_it, r_iov, r_niov);
+  return (ipc_iov_iter_copy (r_task, &r_it, &l_it, direction));
+}
+
 // Transfer pages between a remote and a local task.
-int ipc_copy_pages (struct task *r_task, struct ipc_msg_page *r_pages,
-                    uint32_t r_npages, struct ipc_msg_page *l_pages,
-                    uint32_t l_npages, int direction);
+static inline int
+ipc_copy_pages (struct task *r_task, struct ipc_msg_page *r_pages,
+                uint32_t r_npages, struct ipc_msg_page *l_pages,
+                uint32_t l_npages, int direction)
+{
+  struct ipc_page_iter r_it, l_it;
+  ipc_page_iter_init (&r_it, r_pages, r_npages);
+  ipc_page_iter_init (&l_it, l_pages, l_npages);
+  return (ipc_page_iter_copy (r_task, &r_it, &l_it, direction));
+}
+
+// Transfer capabilities between a remote and a local task.
+static inline int
+ipc_copy_caps (struct task *r_task, struct ipc_msg_cap *r_caps,
+               uint32_t r_ncaps, struct ipc_msg_cap *l_caps,
+               uint32_t l_ncaps, int direction)
+{
+  struct ipc_cap_iter r_it, l_it;
+  ipc_cap_iter_init (&r_it, r_caps, r_ncaps);
+  ipc_cap_iter_init (&l_it, l_caps, l_ncaps);
+  return (ipc_cap_iter_copy (r_task, &r_it, &l_it, direction));
+}
 
 #endif

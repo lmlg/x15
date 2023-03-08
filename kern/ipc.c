@@ -305,17 +305,6 @@ ipc_bcopy (struct task *r_task, void *r_ptr, size_t r_size,
     }
 }
 
-ssize_t
-ipc_bcopyv (struct task *r_task, struct iovec *r_iov, uint32_t r_niov,
-            struct iovec *l_iov, uint32_t l_niov, int direction)
-{
-  struct ipc_iov_iter r_it, l_it;
-
-  ipc_iov_iter_init (&l_it, l_iov, l_niov);
-  ipc_iov_iter_init (&r_it, r_iov, r_niov);
-  return (ipc_iov_iter_copy (r_task, &r_it, &l_it, direction));
-}
-
 int
 ipc_page_iter_copy (struct task *r_task, struct ipc_page_iter *r_it,
                     struct ipc_page_iter *l_it, int direction)
@@ -416,17 +405,6 @@ ipc_page_iter_copy (struct task *r_task, struct ipc_page_iter *r_it,
     }
 
   return (i);
-}
-
-int
-ipc_copy_pages (struct task *r_task, struct ipc_msg_page *r_pages,
-                uint32_t r_npages, struct ipc_msg_page *l_pages,
-                uint32_t l_npages, int direction)
-{
-  struct ipc_page_iter r_it, l_it;
-  ipc_page_iter_init (&r_it, r_pages, r_npages);
-  ipc_page_iter_init (&l_it, l_pages, l_npages);
-  return (ipc_page_iter_copy (r_task, &r_it, &l_it, direction));
 }
 
 int
