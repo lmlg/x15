@@ -43,10 +43,10 @@ adaptive_lock_set_contended (struct adaptive_lock *lock)
 }
 
 static inline bool
-adaptive_lock_is_owner (struct adaptive_lock *lock, uintptr_t owner)
+adaptive_lock_is_owner (struct adaptive_lock *lock, struct thread *thread)
 {
   uintptr_t prev = atomic_load_rlx (&lock->owner);
-  return (adaptive_lock_get_thread (prev) == adaptive_lock_get_thread (owner));
+  return (adaptive_lock_get_thread (prev) == thread);
 }
 
 void
@@ -63,16 +63,18 @@ adaptive_lock_acquire_slow (struct adaptive_lock *lock)
                                         self | ADAPTIVE_LOCK_CONTENDED);
 
       assert (owner & ADAPTIVE_LOCK_CONTENDED);
-      if (!adaptive_lock_get_thread (owner))
+      _Auto thr = adaptive_lock_get_thread (owner);
+      if (! thr)
         break;
 
       /*
        * The owner may not return from the unlock function if a thread is
        * spinning on it.
        */
-      while (adaptive_lock_is_owner (lock, owner))
+      while (adaptive_lock_is_owner (lock, thr))
         {
-          if (thread_is_running (adaptive_lock_get_thread (owner)))
+          if (thread_is_running (thr) &&
+              !sleepq_test_circular (sleepq, thread_wchan_addr (thr)))
             cpu_pause ();
           else
             sleepq_wait (sleepq, "adptlk");

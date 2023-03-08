@@ -616,11 +616,11 @@ void thread_schedule (void);
 // Sleep queue lending functions.
 
 static inline struct sleepq*
-thread_sleepq_lend (void)
+thread_sleepq_lend (struct thread *self)
 {
-  struct sleepq *sleepq = thread_self()->priv_sleepq;
+  struct sleepq *sleepq = self->priv_sleepq;
   assert (sleepq);
-  thread_self()->priv_sleepq = NULL;
+  self->priv_sleepq = NULL;
   return (sleepq);
 }
 

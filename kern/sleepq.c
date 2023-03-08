@@ -361,10 +361,12 @@ sleepq_lend_common (const void *sync_obj, bool condition, cpu_flags_t *flags)
 {
   assert (sync_obj);
 
-  _Auto sleepq = thread_sleepq_lend ();
+  _Auto self = thread_self ();
+  _Auto sleepq = thread_sleepq_lend (self);
   assert (sleepq_init_state_valid (sleepq));
 
   _Auto bucket = sleepq_bucket_get (sync_obj, condition);
+  self->wchan_addr = bucket;
 
   if (flags)
     spinlock_lock_intr_save (&bucket->lock, flags);
@@ -384,6 +386,7 @@ sleepq_lend_common (const void *sync_obj, bool condition, cpu_flags_t *flags)
       sleepq = prev;
     }
 
+  self->wchan_addr = NULL;
   return (sleepq);
 }
 
@@ -568,4 +571,10 @@ sleepq_broadcast (struct sleepq *sleepq)
   sleepq->oldest_waiter = NULL;
   sleepq_waiter_set_pending_wakeup (waiter);
   sleepq_waiter_wakeup (waiter);
+}
+
+bool
+sleepq_test_circular (struct sleepq *sleepq, const void *wchan_addr)
+{
+  return ((void *)sleepq->bucket == wchan_addr);
 }

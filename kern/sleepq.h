@@ -148,6 +148,8 @@ int sleepq_timedwait (struct sleepq *sleepq, const char *wchan, uint64_t ticks);
 void sleepq_signal (struct sleepq *sleepq);
 void sleepq_broadcast (struct sleepq *sleepq);
 
+bool sleepq_test_circular (struct sleepq *sleepq, const void *wchan_addr);
+
 /*
  * This init operation provides :
  *  - sleepq creation
