@@ -1327,7 +1327,7 @@ cpu_mp_setup (void)
   void *ptr = (void *) vm_page_direct_va (BOOT_MP_TRAMPOLINE_ADDR);
   memcpy (ptr, boot_mp_trampoline, boot_mp_trampoline_size);
 
-  /* Set up the warm reset vector */
+  // Set up the warm reset vector.
   uint16_t reset_vector[] = { 0, BOOT_MP_TRAMPOLINE_ADDR >> 4 };
   ptr = (void *)vm_page_direct_va (CPU_MP_CMOS_RESET_VECTOR);
   memcpy (ptr, reset_vector, sizeof (reset_vector));
@@ -1348,7 +1348,7 @@ cpu_mp_setup (void)
       struct cpu *cpu = percpu_ptr (cpu_desc, i);
       boot_set_ap_id (i);
 
-      /* Perform the "Universal Start-up Algorithm" */
+      // Perform the "Universal Start-up Algorithm".
       lapic_ipi_init_assert (cpu->apic_id);
       cpu_delay (200);
       lapic_ipi_init_deassert (cpu->apic_id);

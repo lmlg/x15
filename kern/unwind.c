@@ -350,13 +350,11 @@ unw_cursor_set_sp (struct unw_cursor *cursor, uintptr_t sp)
     }   \
   while (0)
 
-#define UNW_NUM_FREE_FRAMES   4
-
 static int
 unw_run_dw (struct unw_cursor *cursor, const struct unw_cie *cie,
             const unsigned char *ops, uintptr_t pc)
 {
-  struct unw_frame_regs free_regs[UNW_NUM_FREE_FRAMES];
+  struct unw_frame_regs free_regs[4];
   uint32_t free_idx = 0;
   intptr_t sarg;
   uintptr_t regno, arg = unw_read_uleb (&ops);
