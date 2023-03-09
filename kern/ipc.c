@@ -364,7 +364,7 @@ ipc_page_iter_copy (struct task *r_task, struct ipc_page_iter *r_it,
           elems_pp = PAGE_SIZE / sizeof (*r_it->begin);
         }
 
-      _Auto page = it_in->begin[it_in->cur++];
+      _Auto page = it_in->begin[it_in->cur];
       uintptr_t end = page.addr + vm_page_round (page.size);
 
       do
@@ -401,6 +401,7 @@ ipc_page_iter_copy (struct task *r_task, struct ipc_page_iter *r_it,
         }
       while (page.addr < end && ipc_page_iter_size (it_out));
 
+      ++it_in->cur;
       --elems_pp;
     }
 
@@ -468,11 +469,11 @@ ipc_cap_iter_copy (struct task *r_task, struct ipc_cap_iter *r_it,
           elems_pp = PAGE_SIZE / sizeof (*r_it->begin);
         }
 
-      _Auto in_cap = cspace_get (sp_in, it_in->begin[it_in->cur++].cap);
+      _Auto in_cap = cspace_get (sp_in, it_in->begin[it_in->cur].cap);
       if (! in_cap)
         return (-EBADF);
 
-      _Auto out_cap = &it_out->begin[it_out->cur++];
+      _Auto out_cap = &it_out->begin[it_out->cur];
       int cap_idx = cspace_add_free (sp_out, in_cap, out_cap->flags);
       cap_base_rel (in_cap);
 
@@ -480,6 +481,8 @@ ipc_cap_iter_copy (struct task *r_task, struct ipc_cap_iter *r_it,
         return (cap_idx);
 
       out_cap->cap = cap_idx;
+      ++it_in->cur;
+      ++it_out->cur;
       --elems_pp;
     }
 

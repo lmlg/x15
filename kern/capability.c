@@ -427,20 +427,23 @@ cap_send_iters (struct task *task, struct cap_iters *r_it,
   data->nbytes += ret;
   if (ipc_cap_iter_size (&r_it->cap) && ipc_cap_iter_size (&l_it->cap))
     {
+      uint32_t prev = l_it->cap.cur;
       int nr_msg = ipc_cap_iter_copy (task, &r_it->cap, &l_it->cap, dir);
+
+      data->caps_recv += l_it->cap.cur - prev;
       if (nr_msg < 0)
         return (nr_msg);
-
-      data->caps_recv += nr_msg;
     }
 
   if (ipc_page_iter_size (&r_it->page) && ipc_page_iter_size (&l_it->page))
     {
+      uint32_t *ptr = dir == IPC_COPY_TO ? &r_it->page.cur : &l_it->page.cur;
+      uint32_t prev = *ptr;
       int nr_msg = ipc_page_iter_copy (task, &r_it->page, &l_it->page, dir);
+
+      data->pages_recv += *ptr - prev;
       if (nr_msg < 0)
         return (nr_msg);
-
-      data->pages_recv += nr_msg;
     }
 
   return (ret);
