@@ -631,7 +631,7 @@ cpu_exc_page_fault (const struct cpu_exc_frame *frame)
               EFAULT : vm_map_fault (map, addr, prot, flags);
   cpu_intr_disable ();
 
-  if (! error)
+  if (!error || error == EINTR)
     return;
   else if (self->fixup)
     unw_fixup_restore (self->fixup, (void *)frame->words, error);
