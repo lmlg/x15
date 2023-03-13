@@ -1087,8 +1087,7 @@ thread_sched_fs_get_next (struct thread_runq *runq)
     return (NULL);
 
   fs_runq->current = group;
-  _Auto thread = list_pop (&group->threads, struct thread, fs_data.group_node);
-  return (thread);
+  return (list_pop (&group->threads, struct thread, fs_data.group_node));
 }
 
 static void
