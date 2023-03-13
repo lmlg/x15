@@ -128,6 +128,20 @@ ipc_iov_iter_refill (struct task *task, struct ipc_iov_iter *it)
   return (0);
 }
 
+static int
+ipc_map_errno (int err)
+{
+  switch (err)
+    {
+      case EACCES:
+        return (-EPERM);
+      case EFAULT:
+        return (-ENXIO);
+      default:
+        return (-err);
+    }
+}
+
 /*
  * Get the physical address associated to a remote virtual address, faulting
  * in the necessary pages in case they aren't resident already. This function
@@ -142,7 +156,7 @@ ipc_map_addr (struct vm_map *map, const void *addr,
   int error = pmap_extract_check (map->pmap, (uintptr_t)addr,
                                   data->prot & VM_PROT_WRITE, pap);
   if (error == EACCES)
-    return (-error);
+    return (-EPERM);
   else if (error)
     { // Need to fault in the destination address.
       error = vm_map_fault (map, (uintptr_t)addr, data->prot,
@@ -150,7 +164,7 @@ ipc_map_addr (struct vm_map *map, const void *addr,
       if (error)
         {
           ipc_data_intr_restore (data);
-          return (-error);
+          return (ipc_map_errno (error));
         }
 
       /* Since we're running with interrupts disabled, and the address

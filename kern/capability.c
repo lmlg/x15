@@ -467,6 +467,21 @@ cap_sender_receiver_step (struct cap_sender *sender, struct cap_receiver *recv)
 }
 
 static ssize_t
+cap_recv_putback (struct cap_flow *flow, struct cap_receiver *recv, ssize_t rv)
+{
+  if (rv == -EFAULT || rv == -EACCES)
+    { // The problem was in the sender's buffers. Put back the receiver.
+      SPINLOCK_GUARD (&flow->lock);
+      list_insert_tail (&flow->receivers, &recv->node);
+      return (rv);
+    }
+
+  recv->rcvid = rv;
+  thread_wakeup (recv->thread);
+  return (rv);
+}
+
+static ssize_t
 cap_sender_impl (struct cap_sender *sender, struct cap_flow *flow)
 {
   struct cap_receiver *recv;
@@ -497,7 +512,7 @@ cap_sender_impl (struct cap_sender *sender, struct cap_flow *flow)
   ssize_t tmp = cap_send_iters (recv->thread->task, &recv->it,
                                 &sender->in_it, IPC_COPY_TO, &recv->ipc_data);
   if (tmp < 0)
-    return (tmp);
+    return (cap_recv_putback (flow, recv, tmp));
 
   cap_sender_receiver_step (sender, recv);
 
@@ -778,6 +793,7 @@ cap_receiver_impl (struct cap_receiver *recv, struct cap_flow *flow)
   struct plist_node *pnode = NULL;
   cap_rcvid_detach (recv->thread);
 
+retry:
   {
     SPINLOCK_GUARD (&flow->lock);
     if (flow->intr.nr_pending)
@@ -826,7 +842,15 @@ cap_receiver_impl (struct cap_receiver *recv, struct cap_flow *flow)
                                 &recv->it, IPC_COPY_FROM, &recv->ipc_data);
 
   if (tmp < 0)
-    return (tmp);
+    {
+      sender->result = tmp;
+      thread_wakeup (sender->thread);
+      if (tmp == -EPERM || tmp == -ENXIO)
+        // The error was in the sender's buffers. Back to sleep.
+        goto retry;
+
+      return (tmp);
+    }
 
   cap_sender_receiver_step (sender, recv);
 

@@ -37,5 +37,7 @@
 #define E2BIG               17
 #define EINPROGRESS         18
 #define EALREADY            19
+#define EPERM               20
+#define ENXIO               21
 
 #endif
