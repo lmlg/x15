@@ -210,6 +210,13 @@ struct vm_page* vm_page_alloc (uint32_t order, uint32_t selector,
                                uint16_t type);
 
 /*
+ * Same as above, only this function doesn't sleep if it can't service
+ * the request.
+ */
+struct vm_page* vm_page_tryalloc (uint32_t order, uint32_t selector,
+                                  uint16_t type);
+
+/*
  * Release a block of 2^order physical pages.
  *
  * The pages must have no references.

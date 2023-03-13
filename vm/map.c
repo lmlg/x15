@@ -853,7 +853,7 @@ retry:
     cpu_intr_disable ();
 
   if (n_pages < 0)
-    return (n_pages == -EINTR ? 0 : -n_pages);
+    return (-n_pages);
   else if (unlikely (start_off + n_pages * PAGE_SIZE < offset))
     /* We didn't cover the faulting page. This is probably due to a truncated
      * object. Return an error that maps to SIGBUS. */
