@@ -2764,33 +2764,9 @@ thread_recv_block (struct spinlock *lock, void *data)
   return (0);
 }
 
-#define thread_sched_state_cpy(dst, src, cls)   \
-  do   \
-    {   \
-      if ((cls) == THREAD_SCHED_CLASS_FS)   \
-        {   \
-          (dst)->fs_data.fs_runq = (src)->fs_data.fs_runq;   \
-          (dst)->fs_data.round = (src)->fs_data.round;   \
-          (dst)->fs_data.weight = (src)->fs_data.weight;   \
-          (dst)->fs_data.work = (src)->fs_data.work;   \
-        }   \
-      else if ((cls) == THREAD_SCHED_CLASS_RT)   \
-        (dst)->rt_data.time_slice = (src)->rt_data.time_slice;   \
-    }   \
-  while (0)
-
-void
-thread_sched_state_save (struct thread *thr, struct thread_sched_state *stp)
-{
-  stp->cls = thr->user_sched_data.sched_class;
-  stp->policy = thr->user_sched_data.sched_policy;
-  stp->priority = thr->user_sched_data.priority;
-  thread_sched_state_cpy (stp, thr, stp->cls);
-}
-
 void
 thread_handoff (struct thread *src, struct thread *dst, void *data,
-                struct thread_sched_state *sched)
+                struct thread_sched_data *sched)
 {
   assert (dst->state == THREAD_SLEEPING);
   assert (dst->wchan_desc == THREAD_RECV_BLOCK);
@@ -2804,12 +2780,13 @@ thread_handoff (struct thread *src, struct thread *dst, void *data,
 
   /* Save the scheduling state of the source thread and mark it
    * as being reply-blocked. */
-  thread_sched_state_save (src, sched);
+  *sched = *thread_get_real_sched_data(src);
   thread_set_wchan (src, data, THREAD_REPLY_BLOCK);
   atomic_store_rlx (&src->state, THREAD_SLEEPING);
 
   // Make the destination thread inherit the scheduling context.
-  thread_pi_setsched_impl (runq, dst, sched->policy, sched->priority);
+  thread_pi_setsched_impl (runq, dst, sched->sched_policy,
+                           sched->global_priority);
   turnstile_td_unlock (td);
 
   thread_clear_wchan (dst);
@@ -2851,12 +2828,4 @@ thread_send_reply_blocked (struct thread *thread)
   return (thread_state (thread) == THREAD_SLEEPING &&
           (thread->wchan_desc == THREAD_SEND_BLOCK ||
            thread->wchan_desc == THREAD_REPLY_BLOCK));
-}
-
-void
-thread_sched_state_load (struct thread *thr,
-                         const struct thread_sched_state *stp)
-{
-  thread_sched_state_cpy (thr, stp, stp->cls);
-  thread_setscheduler (thr, stp->policy, stp->priority);
 }

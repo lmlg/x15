@@ -58,8 +58,8 @@ struct cap_sender
   void *flow;
   struct thread *thread;
   struct thread *handler;
-  struct thread_sched_state sender_sched;
-  struct thread_sched_state recv_sched;
+  struct thread_sched_data sender_sched;
+  struct thread_sched_data recv_sched;
   struct cap_iters in_it;
   struct cap_iters out_it;
   struct ipc_msg_data ipc_data;
@@ -494,7 +494,7 @@ cap_sender_impl (struct cap_sender *sender, struct cap_flow *flow)
         plist_add (&flow->senders, &sender->node);
         cap_mark_pnode_msg (&sender->node);
         // TODO: Priority inheritance.
-        thread_sched_state_save (sender->thread, &sender->sender_sched);
+        sender->sender_sched = *thread_get_real_sched_data(sender->thread);
         int error = thread_send_block (&flow->lock, sender);
         if (error)
           {
@@ -517,7 +517,7 @@ cap_sender_impl (struct cap_sender *sender, struct cap_flow *flow)
   cap_sender_receiver_step (sender, recv);
 
   // Switch to handler thread and return result.
-  thread_sched_state_save (recv->thread, &sender->recv_sched);
+  sender->recv_sched = *thread_get_real_sched_data(recv->thread);
   thread_handoff (sender->thread, recv->thread, sender, &sender->sender_sched);
   return (sender->result);
 }
@@ -722,16 +722,22 @@ cap_rcvid_decode (rcvid_t rcvid, struct thread *self,
 }
 
 static void
+cap_thread_swap_sched (struct thread *thr, struct thread_sched_data *prev,
+                       struct thread_sched_data *next)
+{
+  *prev = *thread_get_real_sched_data(thr);
+  thread_setscheduler (thr, next->sched_policy, next->global_priority);
+}
+
+static void
 cap_rcvid_detach (struct thread *self)
 {
   if (!self->cur_peer)
     return;
 
   _Auto sender = cap_thread_sender (self->cur_peer);
-  thread_sched_state_save (self, &sender->sender_sched);
-  thread_sched_state_load (self, &sender->recv_sched);
+  cap_thread_swap_sched (self, &sender->sender_sched, &sender->recv_sched);
   sender->handler = NULL;
-
   self->cur_peer = NULL;
   self->cur_rcvid = 0;
 }
@@ -751,7 +757,8 @@ cap_rcvid_acq_rel_sender (struct thread *self, rcvid_t rcvid, int *errp)
       _Auto sender = cap_thread_sender (self->cur_peer);
       self->cur_rcvid = 0;
       self->cur_peer = NULL;
-      thread_sched_state_load (self, &sender->recv_sched);
+      thread_setscheduler (self, sender->recv_sched.sched_policy,
+                           sender->recv_sched.global_priority);
       return (cap_sender_stop (sender));
     }
 
@@ -855,7 +862,7 @@ retry:
   cap_sender_receiver_step (sender, recv);
 
   // Inherit the scheduling context and return.
-  thread_sched_state_save (recv->thread, &sender->recv_sched);
+  sender->recv_sched = *thread_get_real_sched_data(recv->thread);
   thread_adopt (sender->thread, recv->thread);
   return (recv->rcvid);
 }
@@ -987,9 +994,7 @@ cap_rcvid_acq_sender (struct thread *self, rcvid_t rcvid)
   self->cur_peer = thread;
 
   _Auto sender = cap_thread_sender (thread);
-  thread_sched_state_save (self, &sender->recv_sched);
-  thread_sched_state_load (self, &sender->sender_sched);
-
+  cap_thread_swap_sched (self, &sender->recv_sched, &sender->sender_sched);
   cap_base_rel (cap);
   thread_unref (thread);
   return (0);
@@ -1009,8 +1014,7 @@ cap_handle (rcvid_t rcvid)
   _Auto sender = cap_thread_sender (self->cur_peer);
   self->cur_rcvid = 0;
   self->cur_peer = NULL;
-  thread_sched_state_save (self, &sender->sender_sched);
-  thread_sched_state_load (self, &sender->recv_sched);
+  cap_thread_swap_sched (self, &sender->sender_sched, &sender->recv_sched);
   return (0);
 }
 

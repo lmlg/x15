@@ -917,18 +917,10 @@ int thread_recv_block (struct spinlock *lock, void *data);
 
 // Hand off scheduling to a specific thread.
 void thread_handoff (struct thread *src, struct thread *dst, void *data,
-                     struct thread_sched_state *sched);
+                     struct thread_sched_data *sched);
 
 // Adopt the scheduling parameters of another thread.
 void thread_adopt (struct thread *src, struct thread *dst);
-
-// Save the scheduling state of a thread.
-void thread_sched_state_save (struct thread *thr,
-                              struct thread_sched_state *stp);
-
-// Set the scheduling state for a thread.
-void thread_sched_state_load (struct thread *thr,
-                              const struct thread_sched_state *stp);
 
 // Test that a thread is either send-blocked or reply-blocked.
 bool thread_send_reply_blocked (struct thread *thread);

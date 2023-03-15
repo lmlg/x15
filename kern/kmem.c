@@ -360,7 +360,7 @@ kmem_slab_create_verify (struct kmem_slab *slab, struct kmem_cache *cache)
     {
       kmem_buf_fill (buf, KMEM_FREE_PATTERN, cache->bufctl_dist);
       buftag->state = KMEM_BUFTAG_FREE;
-      buf += buf_size;
+      buf = (char *)buf + buf_size;
       buftag = kmem_buf_to_buftag (buf, cache);
     }
 }
