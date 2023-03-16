@@ -489,10 +489,12 @@ ipc_cap_iter_copy (struct task *r_task, struct ipc_cap_iter *r_it,
 
       _Auto out_cap = &it_out->begin[it_out->cur];
       int cap_idx = cspace_add_free (sp_out, in_cap, out_cap->flags);
-      cap_base_rel (in_cap);
 
       if (cap_idx < 0)
-        return (cap_idx);
+        {
+          cap_base_rel (in_cap);
+          return (cap_idx);
+        }
 
       out_cap->cap = cap_idx;
       ++it_in->cur;

@@ -200,7 +200,11 @@ task_remove_thread (struct task *task, struct thread *thread)
   spinlock_unlock (&task->lock);
 
   if (unref)
-    task_unref (task);
+    {
+      // Destroy the cspace early to avoid circular references.
+      cspace_destroy (&task->caps);
+      task_unref (task);
+    }
 }
 
 struct thread*

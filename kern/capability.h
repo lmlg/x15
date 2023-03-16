@@ -66,6 +66,7 @@ enum
 {
   CAP_KERNEL_MEMORY,   // Allows mapping physical memory.
   CAP_KERNEL_DEVICE,   // Allows registering interrupts.
+  CAP_KERNEL_MAX,
 };
 
 struct cap_intr_data;

@@ -809,32 +809,41 @@ thread_check_intr_context (void)
 }
 
 static inline void
-thread_intr_enter (void)
+thread_intr_enter_level (uint16_t *ptr)
 {
-  struct thread *thread = thread_self ();
-
-  if (++thread->intr_level == 1)
+  if (++*ptr == 1)
     thread_preempt_disable ();
 
-  assert (thread->intr_level);
+  assert (*ptr);
   barrier ();
+}
+
+static inline void
+thread_intr_enter (void)
+{
+  thread_intr_enter_level (&thread_self()->intr_level);
+}
+
+static inline void
+thread_intr_leave_level (uint16_t *ptr)
+{
+  barrier ();
+  assert (*ptr);
+
+  if (--*ptr == 0)
+    thread_preempt_enable_no_resched ();
 }
 
 static inline void
 thread_intr_leave (void)
 {
-  barrier ();
-  struct thread *thread = thread_self ();
-  assert (thread->intr_level);
-
-  if (--thread->intr_level == 0)
-    thread_preempt_enable_no_resched ();
+  thread_intr_leave_level (&thread_self()->intr_level);
 }
 
 static inline void
-thread_intr_guard_fini (void *ptr __unused)
+thread_intr_guard_fini (void *ptr)
 {
-  thread_intr_leave ();
+  thread_intr_leave_level (*(uint16_t **)ptr);
 }
 
 #define THREAD_INTR_GUARD()   \
