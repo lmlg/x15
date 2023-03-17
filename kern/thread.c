@@ -1083,9 +1083,6 @@ thread_sched_fs_get_next (struct thread_runq *runq)
                            struct thread_fs_group, node);
     }
 
-  if (list_empty (&group->threads))
-    return (NULL);
-
   fs_runq->current = group;
   return (list_pop (&group->threads, struct thread, fs_data.group_node));
 }
