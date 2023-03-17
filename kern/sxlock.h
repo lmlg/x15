@@ -77,19 +77,20 @@ void sxlock_unlock_slow (struct sxlock *sxp);
 static inline void
 sxlock_unlock (struct sxlock *sxp)
 {
-  uint32_t val = atomic_load_rlx (&sxp->lock);
   int wake;
 
-  if ((val & SXLOCK_MASK) == SXLOCK_MASK)
+  if ((atomic_load_rlx (&sxp->lock) & SXLOCK_MASK) == SXLOCK_MASK)
     { // Exclusive lock.
-      atomic_store_rel (&sxp->lock, 0);
-      wake = 1;
+      uint32_t prev = atomic_swap_rel (&sxp->lock, 0);
+      wake = (prev & (SXLOCK_MASK + 1)) != 0;
     }
   else
-    // Shared lock. Check that the count went to 0.
-    wake = (atomic_sub_rel (&sxp->lock, 1) << 1) == 2;
+    {
+      uint32_t prev = atomic_sub_rel (&sxp->lock, 1);
+      wake = prev == SXLOCK_MASK + 2;
+    }
 
-  if (wake && (val & (SXLOCK_MASK + 1)))
+  if (wake)
     sxlock_unlock_slow (sxp);
 }
 
