@@ -2825,7 +2825,6 @@ thread_adopt (struct thread *src, struct thread *dst)
 bool
 thread_send_reply_blocked (struct thread *thread)
 {
-  return (thread_state (thread) == THREAD_SLEEPING &&
-          (thread->wchan_desc == THREAD_SEND_BLOCK ||
-           thread->wchan_desc == THREAD_REPLY_BLOCK));
+  return (thread->wchan_desc == THREAD_SEND_BLOCK ||
+          thread->wchan_desc == THREAD_REPLY_BLOCK);
 }

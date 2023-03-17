@@ -24,7 +24,7 @@
   do   \
     {   \
       struct sleepq *sleepq = sleepq_lend ((obj), false);   \
-      atomic_or_rel (&(obj)->lock, SXLOCK_MASK + 1);   \
+      atomic_or_rel (&(obj)->lock, SXLOCK_WAITERS);   \
       \
       while (1)   \
         {   \
