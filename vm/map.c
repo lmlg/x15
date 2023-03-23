@@ -487,7 +487,11 @@ vm_map_enter (struct vm_map *map, uintptr_t *startp,
 static void
 vm_map_entry_assign (struct vm_map_entry *dst, const struct vm_map_entry *src)
 {
-  *dst = *src;
+  dst->start = src->start;
+  dst->end = src->end;
+  dst->offset = src->offset;
+  dst->flags = src->flags;
+  dst->object = src->object;
   if (dst->object)
     vm_object_ref (dst->object);
 }

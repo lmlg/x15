@@ -1725,7 +1725,6 @@ pmap_load (struct pmap *pmap)
   // TODO Lazy TLB invalidation.
   cpu_local_assign (pmap_current_ptr, pmap);
 
-  // TODO Implement per-CPU page tables for non-kernel pmaps.
   _Auto cpu_table = pmap->cpu_tables[cpu_id ()];
   cpu_set_cr3 (cpu_table->root_ptp_pa);
 }
