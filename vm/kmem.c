@@ -42,8 +42,7 @@ vm_kmem_offset (uintptr_t va)
 static int __init
 vm_kmem_setup (void)
 {
-  uint64_t size = vm_kmem_offset (PMAP_END_KMEM_ADDRESS);
-  vm_object_init (vm_object_get_kernel_object (), size, 0, NULL);
+  vm_object_init (vm_object_get_kernel_object (), 0, NULL);
   return (0);
 }
 

@@ -290,6 +290,26 @@ vm_page_tryref (struct vm_page *page)
   return (0);
 }
 
+static inline void
+vm_page_set_cow (struct vm_page *page)
+{
+  uintptr_t prev = (uintptr_t)vm_page_get_priv (page);
+  vm_page_set_priv (page, (void *)(prev | 1));
+}
+
+static inline void
+vm_page_clr_cow (struct vm_page *page)
+{
+  uintptr_t prev = (uintptr_t)vm_page_get_priv (page);
+  vm_page_set_priv (page, (void *)(prev & ~1));
+}
+
+static inline bool
+vm_page_is_cow (struct vm_page *page)
+{
+  return (((uintptr_t)vm_page_get_priv (page)) & 1);
+}
+
 /*
  * This init operation provides :
  *  - module fully initialized

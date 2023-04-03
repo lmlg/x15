@@ -23,6 +23,7 @@
 #include <stdio.h>
 #include <string.h>
 
+#include <kern/clock.h>
 #include <kern/cpumap.h>
 #include <kern/error.h>
 #include <kern/init.h>
@@ -64,7 +65,7 @@ static void
 test_vm_fault_thread (void *arg __unused)
 {
   struct vm_object *test_obj;
-  int error = vm_object_create (&test_obj, PAGE_SIZE * 4, 0, &test_obj_pager);
+  int error = vm_object_create (&test_obj, 0, &test_obj_pager);
   assert (! error);
 
   uintptr_t va = PMAP_END_ADDRESS - PAGE_SIZE * 10;
@@ -89,24 +90,55 @@ test_vm_fault_thread (void *arg __unused)
   assert (! error);
   assert (entry.object == test_obj);
   assert (VM_MAP_PROT (entry.flags) == VM_PROT_READ);
-  vm_map_entry_put (&entry);
 
+  {
+    struct vm_map *fmap;
+    struct vm_map_entry e2;
+
+    void *buf;
+    error = vm_map_anon_alloc (&buf, map, PAGE_SIZE);
+    assert (! error);
+
+    error = vm_map_fork (&fmap, vm_map_self ());
+    assert (! error);
+
+    error = vm_map_lookup (fmap, va, &e2);
+    assert (! error);
+    assert (e2.object == entry.object &&
+            e2.flags == entry.flags &&
+            e2.offset == entry.offset);
+
+    thread_self()->task->map = fmap;
+    thread_yield ();
+    *(int *)buf = 42;
+
+    thread_self()->task->map = map;
+    vm_map_destroy (fmap);
+
+    /*
+     * Make absolute sure we get rescheduled so that the changes to the
+     * VM map are visible. Calling 'thread_yield' may not be enough,
+     * depending on the conditions of the run queue.
+     */
+    struct spinlock dummy;
+    spinlock_init (&dummy);
+    spinlock_lock (&dummy);
+    thread_timedsleep (&dummy, &dummy, "dummy", clock_get_time () + 1000);
+    spinlock_unlock (&dummy);
+
+    // Ensure that COW pages work correctly.
+    assert (*(int *)buf == 0);
+  }
+
+  vm_map_entry_put (&entry);
   vm_object_unref (test_obj);
 }
 
 TEST_DEFERRED (vm_fault)
 {
-  struct task *task;
-  int error = task_create (&task, "vm_fault");
-  assert (! error);
-
-  struct thread_attr attr;
-  thread_attr_init (&attr, "vm_fault/0");
-  thread_attr_set_task (&attr, task);
-
   struct thread *thread;
-  thread_create (&thread, &attr, test_vm_fault_thread, 0);
-  thread_join (thread);
+  int error = test_util_create_thr (&thread, test_vm_fault_thread,
+                                    NULL, "vm_fault");
 
   int val;
   error = vm_copy (&val, (void *)0x1, sizeof (val));

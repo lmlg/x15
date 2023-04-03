@@ -126,6 +126,9 @@ int vm_map_remove (struct vm_map *map, uintptr_t start, uintptr_t end);
 // Create a VM map.
 int vm_map_create (struct vm_map **mapp);
 
+// Create a fork of a VM map.
+int vm_map_fork (struct vm_map **mapp, struct vm_map *src);
+
 /*
  * Lookup an entry in a VM map.
  *

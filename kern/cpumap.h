@@ -154,7 +154,7 @@ cpumap_count_set (const struct cpumap *cpumap)
  * Until the cpumap module is initialized, the cpumap returned by this
  * function describes the BSP only.
  */
-const struct cpumap* cpumap_all (void);
+const struct cpumap* cpumap_all (void) __attribute__ ((const));
 
 /*
  * Allocate a CPU map.
@@ -163,9 +163,7 @@ const struct cpumap* cpumap_all (void);
  */
 int cpumap_create (struct cpumap **cpumapp);
 
-/*
- * Release a CPU map.
- */
+// Release a CPU map.
 void cpumap_destroy (struct cpumap *cpumap);
 
 /*

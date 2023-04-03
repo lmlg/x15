@@ -61,14 +61,10 @@ INIT_OP_DEFINE (vm_object_setup,
                 INIT_OP_DEP (kmem_setup, true));
 
 void __init
-vm_object_init (struct vm_object *object, uint64_t size,
-                int flags, const void *ctx)
+vm_object_init (struct vm_object *object, int flags, const void *ctx)
 {
-  assert (vm_page_aligned (size));
-
   mutex_init (&object->lock);
   rdxtree_init (&object->pages, 0);
-  object->size = size;
   object->nr_pages = 0;
   object->refcount = 1;
   if (flags & VM_OBJECT_EXTERNAL)
@@ -81,14 +77,13 @@ vm_object_init (struct vm_object *object, uint64_t size,
 }
 
 int
-vm_object_create (struct vm_object **objp, uint64_t size,
-                  int flags, const void *ctx)
+vm_object_create (struct vm_object **objp, int flags, const void *ctx)
 {
   struct vm_object *ret = kmem_cache_alloc (&vm_object_cache);
   if (! ret)
     return (ENOMEM);
 
-  vm_object_init (ret, size, flags, ctx);
+  vm_object_init (ret, flags, ctx);
   *objp = ret;
   return (0);
 }
@@ -101,9 +96,9 @@ vm_object_destroy (struct vm_object *object)
   kmem_cache_free (&vm_object_cache, object);
 }
 
-int
-vm_object_insert (struct vm_object *object, struct vm_page *page,
-                  uint64_t offset)
+static int
+vm_object_insert_impl (struct vm_object *object, struct vm_page *page,
+                       uint64_t offset, bool replace)
 {
   assert (vm_page_aligned (offset));
 
@@ -114,17 +109,17 @@ vm_object_insert (struct vm_object *object, struct vm_page *page,
   vm_page_ref (page);
   mutex_lock (&object->lock);
 
-  int error;
-  if (offset >= object->size)
-    {
-      error = EINVAL;
-      goto error;
-    }
-
-  error = rdxtree_insert (&object->pages, vm_page_btop (offset), page);
+  void **slot;
+  int error = rdxtree_insert_slot (&object->pages, vm_page_btop (offset),
+                                   page, &slot);
 
   if (error)
-    goto error;
+    {
+      if (!replace || error != EBUSY)
+        goto error;
+
+      vm_page_unref (rdxtree_replace_slot (slot, page));
+    }
 
   vm_page_link (page, object, offset);
   ++object->nr_pages;
@@ -138,6 +133,20 @@ error:
   mutex_unlock (&object->lock);
   vm_page_unref (page);
   return (error);
+}
+
+int
+vm_object_insert (struct vm_object *object, struct vm_page *page,
+                  uint64_t offset)
+{
+  return (vm_object_insert_impl (object, page, offset, false));
+}
+
+int
+vm_object_replace (struct vm_object *object, struct vm_page *page,
+                   uint64_t offset)
+{
+  return (vm_object_insert_impl (object, page, offset, true));
 }
 
 void
@@ -205,6 +214,5 @@ static const struct vm_object_pager vm_object_anon_pager =
 int
 vm_object_anon_create (struct vm_object **outp)
 {
-  return (vm_object_create (outp, vm_page_trunc (UINT64_MAX),
-                            0, &vm_object_anon_pager));
+  return (vm_object_create (outp, 0, &vm_object_anon_pager));
 }

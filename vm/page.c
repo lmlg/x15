@@ -189,6 +189,16 @@ vm_page_set_type (struct vm_page *page, uint32_t order, uint16_t type)
     page[i].type = type;
 }
 
+static void
+vm_page_clear (struct vm_page *page, uint32_t order)
+{
+  for (uint32_t i = 0; i < (1u << order); ++i)
+    {
+      page[i].type = VM_PAGE_FREE;
+      page[i].priv = NULL;
+    }
+}
+
 static void __init
 vm_page_free_list_init (struct vm_page_free_list *free_list)
 {
@@ -456,7 +466,7 @@ vm_page_zone_free (struct vm_page_zone *zone, struct vm_page *page,
   assert (page->type != VM_PAGE_FREE);
   assert (order < VM_PAGE_NR_FREE_LISTS);
 
-  vm_page_set_type (page, order, VM_PAGE_FREE);
+  vm_page_clear (page, order);
 
   if (! order)
     {
@@ -648,14 +658,13 @@ vm_page_setup (void)
    */
   for (uint32_t i = 0; i < vm_page_zones_size; ++i)
     {
-      struct vm_page *page, *end;
       _Auto zone = &vm_page_zones[i];
       _Auto boot_zone = &vm_page_boot_zones[i];
       vm_page_zone_init (zone, boot_zone->start, boot_zone->end, table);
-      page = zone->pages + vm_page_btop (boot_zone->avail_start
-                                         - boot_zone->start);
-      end = zone->pages + vm_page_btop (boot_zone->avail_end
-                                        - boot_zone->start);
+      _Auto page = zone->pages + vm_page_btop (boot_zone->avail_start -
+                                               boot_zone->start);
+      _Auto end = zone->pages + vm_page_btop (boot_zone->avail_end -
+                                              boot_zone->start);
 
       for (; page < end; ++page)
         {
@@ -693,7 +702,7 @@ vm_page_manage (struct vm_page *page)
   assert (page->zone_index < ARRAY_SIZE (vm_page_zones));
   assert (page->type == VM_PAGE_RESERVED);
 
-  vm_page_set_type (page, 0, VM_PAGE_FREE);
+  vm_page_clear (page, 0);
   vm_page_zone_free_to_buddy (&vm_page_zones[page->zone_index], page, 0);
 }
 
@@ -873,7 +882,7 @@ vm_page_array_free (struct vm_page **frames, uint32_t order)
   for (uint32_t i = 0; i < n_frames; ++i)
     {
       _Auto page = frames[i];
-      vm_page_set_type (page, 0, VM_PAGE_FREE);
+      vm_page_clear (page, 0);
       vm_page_cpu_pool_free_single (pool, zone, page);
     }
 }

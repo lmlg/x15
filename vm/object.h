@@ -48,7 +48,6 @@ struct vm_object
 {
   struct mutex lock;
   struct rdxtree pages;
-  uint64_t size;
   size_t nr_pages;
   size_t refcount;
   union
@@ -67,12 +66,10 @@ vm_object_get_kernel_object (void)
 }
 
 // Initialize a VM object.
-void vm_object_init (struct vm_object *object, uint64_t size,
-                     int flags, const void *ctx);
+void vm_object_init (struct vm_object *object, int flags, const void *ctx);
 
 // Create a VM object.
-int vm_object_create (struct vm_object **objp, uint64_t size,
-                      int flags, const void *ctx);
+int vm_object_create (struct vm_object **objp, int flags, const void *ctx);
 
 /*
  * Insert a page into a VM object.
@@ -85,6 +82,13 @@ int vm_object_create (struct vm_object **objp, uint64_t size,
  */
 int vm_object_insert (struct vm_object *object, struct vm_page *page,
                       uint64_t offset);
+
+/*
+ * Same as above, only this function may replace the page at the offset,
+ * if it exists.
+ */
+int vm_object_replace (struct vm_object *object, struct vm_page *page,
+                       uint64_t offset);
 
 // Same as above, only this function inserts many pages into the object.
 int vm_object_insert_array (struct vm_object *object, struct vm_page **pages,
