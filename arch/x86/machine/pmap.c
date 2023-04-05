@@ -900,9 +900,9 @@ pmap_copy_cpu_table_page (const pmap_pte_t *sptp, uint32_t level,
 }
 
 static struct vm_page* __init
-pmap_alloc_page (void)
+pmap_alloc_page (uint32_t flags)
 {
-  return (vm_page_alloc (0, VM_PAGE_SEL_DIRECTMAP, VM_PAGE_PMAP));
+  return (vm_page_alloc (0, VM_PAGE_SEL_DIRECTMAP, VM_PAGE_PMAP, flags));
 }
 
 static void __init
@@ -924,7 +924,7 @@ pmap_copy_cpu_table_recursive (const pmap_pte_t *sptp, uint32_t level,
           continue;
         }
 
-      struct vm_page *page = pmap_alloc_page ();
+      struct vm_page *page = pmap_alloc_page (0);
       if (! page)
         panic ("pmap: unable to allocate page table page copy");
 
@@ -955,7 +955,7 @@ pmap_copy_cpu_table (uint32_t cpu)
   cpu_table->root_ptp_pa = BOOT_VTOP ((uintptr_t)pmap_cpu_kpdpts[cpu]);
   pmap_pte_t *dptp = pmap_ptp_from_pa (cpu_table->root_ptp_pa);
 #else
-  struct vm_page *page = pmap_alloc_page ();
+  struct vm_page *page = pmap_alloc_page (0);
   if (! page)
     panic ("pmap: unable to allocate page table root page copy");
 
@@ -1113,7 +1113,7 @@ pmap_free_root (struct pmap_cpu_table *tabp)
 static int
 pmap_alloc_root (struct pmap_cpu_table *tabp, pmap_pte_t **dptp)
 {
-  struct vm_page *page = pmap_alloc_page ();
+  struct vm_page *page = pmap_alloc_page (0);
   if (! page)
     return (ENOMEM);
 
@@ -1125,7 +1125,7 @@ pmap_alloc_root (struct pmap_cpu_table *tabp, pmap_pte_t **dptp)
 static void
 pmap_free_root (struct pmap_cpu_table *tabp)
 {
-  vm_page_free (vm_page_lookup (tabp->root_ptp_pa), 0);
+  vm_page_free (vm_page_lookup (tabp->root_ptp_pa), 0, 0);
 }
 
 #endif
@@ -1166,7 +1166,7 @@ pmap_destroy (struct pmap *pmap)
   for (uint32_t i = 0; i < cpu_count (); ++i)
     {
       _Auto cpu_table = pmap->cpu_tables[i];
-      vm_page_array_list_free (&cpu_table->pages);
+      vm_page_list_free (&cpu_table->pages);
       if (cpu_table->root_ptp_pa)
         pmap_free_root (cpu_table);
     }
@@ -1222,14 +1222,8 @@ pmap_enter_local_impl (struct pmap_cpu_table *cpu_table, uintptr_t va,
         ptp = pmap_pte_next (*pte);
       else
         {
-          struct vm_page *page = NULL;
-
-          if (!(pte_bits & PMAP_PTE_US))
-            page = pmap_alloc_page ();
-          else
-            vm_page_array_alloc (&page, 0,
-                                 VM_PAGE_SEL_DIRECTMAP, VM_PAGE_PMAP);
-
+          _Auto page = pmap_alloc_page ((pte_bits & PMAP_PTE_US) ?
+                                        VM_PAGE_SLEEP : 0);
           if (! page)
             {
               log_warning ("pmap: page table allocation failure");

@@ -100,7 +100,7 @@ vm_kmem_alloc (size_t size)
 
   for (uintptr_t start = va, end = va + size; start < end; start += PAGE_SIZE)
     {
-      _Auto page = vm_page_alloc (0, VM_PAGE_SEL_HIGHMEM, VM_PAGE_KERNEL);
+      _Auto page = vm_page_alloc (0, VM_PAGE_SEL_HIGHMEM, VM_PAGE_KERNEL, 0);
       if (! page)
         goto error;
 

@@ -732,7 +732,7 @@ INIT_OP_DEFINE (vm_map_setup,
                 INIT_OP_DEP (vm_map_bootstrap, true));
 
 static int
-vm_map_alloc_fault_pages (struct vm_map_entry *entry, struct vm_page **frames,
+vm_map_alloc_fault_pages (struct vm_map_entry *entry, struct vm_page **outp,
                           uint64_t offset, uintptr_t addr, uint64_t *startp)
 {
   size_t adv = VM_MAP_ADVICE (entry->flags);
@@ -745,8 +745,9 @@ vm_map_alloc_fault_pages (struct vm_map_entry *entry, struct vm_page **frames,
   uint32_t order = (uint32_t)(log2 ((last_off + start_off) >> PAGE_SHIFT));
 
   *startp = offset - start_off;
-  return (vm_page_array_alloc (frames, order,
-                               VM_PAGE_SEL_HIGHMEM, VM_PAGE_OBJECT));
+  *outp = vm_page_alloc (order, VM_PAGE_SEL_HIGHMEM,
+                         VM_PAGE_OBJECT, VM_PAGE_SLEEP);
+  return (*outp ? (int)order : -1);
 }
 
 static inline void
@@ -757,7 +758,7 @@ vm_map_cleanup_object (void *ptr)
 
 static int
 vm_map_fault_get_data (struct vm_object *obj, uint64_t off,
-                       struct vm_page **pages, int prot, int nr_pages)
+                       struct vm_page *pages, int prot, int nr_pages)
 {
   int ret = -EINTR;
 
@@ -770,7 +771,7 @@ vm_map_fault_get_data (struct vm_object *obj, uint64_t off,
 
       for (ret = 0; ret < nr_pages; ++ret)
         {
-          pmap_ipc_pte_set (pte, va, vm_page_to_pa (pages[ret]));
+          pmap_ipc_pte_set (pte, va, vm_page_to_pa (pages + ret));
           int tmp = vm_object_pager_get (obj, off + ret * PAGE_SIZE,
                                          PAGE_SIZE, prot, (void *)va);
           if (tmp < 0)
@@ -791,8 +792,9 @@ vm_map_fault_get_data (struct vm_object *obj, uint64_t off,
 static int
 vm_map_fault_handle_cow (uintptr_t addr, struct vm_page **pgp)
 {
-  struct vm_page *page = *pgp, *p2;
-  if (vm_page_array_alloc (&p2, 0, VM_PAGE_SEL_HIGHMEM, VM_PAGE_OBJECT) != 0)
+  _Auto p2 = vm_page_alloc (0, VM_PAGE_SEL_HIGHMEM,
+                            VM_PAGE_OBJECT, VM_PAGE_SLEEP);
+  if (! p2)
     return (-1);
 
   /*
@@ -806,12 +808,13 @@ vm_map_fault_handle_cow (uintptr_t addr, struct vm_page **pgp)
   phys_addr_t prev;
   _Auto pte = pmap_ipc_pte_get (&prev);
 
-  pmap_ipc_pte_set (pte, va, vm_page_to_pa (page));
+  pmap_ipc_pte_set (pte, va, vm_page_to_pa (p2));
   memcpy ((void *)va, (const void *)addr, PAGE_SIZE);
   pmap_ipc_pte_put (pte, va, prev);
   thread_unpin ();
 
   // Finally, swap the page from the backing object.
+  _Auto page = *pgp;
   vm_object_replace (page->object, p2, page->offset);
   *pgp = p2;
   return (0);
@@ -876,9 +879,9 @@ retry:
     cpu_intr_enable ();
 
   CLEANUP (vm_map_cleanup_object) __unused _Auto objg = object;
-  struct vm_page *frames[VM_MAP_MAX_FRAMES];
+  struct vm_page *frames;
   uint64_t start_off;
-  int n_pages = vm_map_alloc_fault_pages (entry, frames, offset,
+  int n_pages = vm_map_alloc_fault_pages (entry, &frames, offset,
                                           addr, &start_off);
 
   if (n_pages < 0)
@@ -909,7 +912,7 @@ retry:
         addr >= e2->start &&
         addr - (uintptr_t)(offset - start_off) + n_pages * PAGE_SIZE <= e2->end))
     {
-      vm_page_array_free (frames, log2 (n_pages));
+      vm_page_free (frames, log2 (n_pages), VM_PAGE_SLEEP);
       goto retry;
     }
 
@@ -920,11 +923,13 @@ retry:
   for (uint32_t i = 0; i < (uint32_t)n_pages;
       ++i, final_off += PAGE_SIZE, addr += PAGE_SIZE)
     {
-      struct vm_page *page = frames[i];
+      struct vm_page *page = frames + i;
       if (vm_object_insert (final_obj, page, final_off) != 0 ||
           pmap_enter (map->pmap, addr, vm_page_to_pa (page), prot, 0) != 0)
         {
-          vm_page_array_free (&frames[i], n_pages - i);
+          for (; i < (uint32_t)n_pages; ++i)
+            vm_page_free (frames + i, 0, VM_PAGE_SLEEP);
+
           break;
         }
     }

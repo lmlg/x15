@@ -55,7 +55,7 @@ test_write_pages (void)
   while (1)
     {
       struct vm_page *page = vm_page_alloc (0, VM_PAGE_SEL_HIGHMEM,
-                                            VM_PAGE_KERNEL);
+                                            VM_PAGE_KERNEL, 0);
 
       if (! page)
         break;
@@ -111,7 +111,7 @@ test_reset_pages (void)
       error_check (error, __func__);
       vm_map_remove (kernel_map, va, va + PAGE_SIZE);
 
-      vm_page_free (page, 0);
+      vm_page_free (page, 0, 0);
     }
 }
 

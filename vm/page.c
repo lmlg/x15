@@ -113,9 +113,9 @@ struct vm_page_zone
   phys_addr_t end;
   struct vm_page *pages;
   struct vm_page *pages_end;
-  struct mutex lock;
   struct vm_page_free_list free_lists[VM_PAGE_NR_FREE_LISTS];
   size_t nr_free_pages;
+  __cacheline_aligned struct mutex lock;
 };
 
 // Bootstrap information about a zone.
@@ -129,14 +129,19 @@ struct vm_page_boot_zone
 };
 
 // Threads waiting for free object pages.
+
 struct vm_page_waiter
 {
   struct thread *thread;
   struct plist_node node;
-  struct vm_page **frames;
-  uint32_t needed;
-  uint32_t selector;
-  uint16_t type;
+  uint32_t order;
+  bool done;
+};
+
+struct vm_page_bucket
+{
+  struct spinlock lock;
+  struct plist waiters;
 };
 
 static int vm_page_is_ready __read_mostly;
@@ -167,8 +172,7 @@ static struct vm_page_boot_zone vm_page_boot_zones[PMEM_MAX_ZONES]
 static uint32_t vm_page_zones_size __read_mostly;
 
 // Registry of page_waiters.
-static struct spinlock vm_page_waiters_lock;
-static struct plist vm_page_waiters_list;
+static struct vm_page_bucket vm_page_buckets[PMEM_MAX_ZONES];
 
 static void __init
 vm_page_init (struct vm_page *page, uint16_t zone_index, phys_addr_t pa)
@@ -400,68 +404,98 @@ vm_page_zone_init (struct vm_page_zone *zone, phys_addr_t start, phys_addr_t end
     vm_page_init (&pages[vm_page_btop (pa - zone->start)], i, pa);
 }
 
+static inline int
+vm_page_zone_selector (const struct vm_page_zone *zone)
+{
+  return ((int)(zone - vm_page_zones));
+}
+
+static bool
+vm_page_wait (struct vm_page_zone *zone, struct mutex *mtx,
+              struct vm_page_waiter *waiter)
+{
+  if (! waiter)
+    {
+      mutex_unlock (mtx);
+      return (false);
+    }
+
+  _Auto bucket = &vm_page_buckets[vm_page_zone_selector (zone)];
+
+  spinlock_lock (&bucket->lock);
+  mutex_unlock (mtx);
+  plist_add (&bucket->waiters, &waiter->node);
+  thread_sleep (&bucket->lock, bucket, "vm-page");
+  spinlock_unlock (&bucket->lock);
+
+  return (waiter->done);
+}
+
 static struct vm_page*
 vm_page_zone_alloc (struct vm_page_zone *zone, uint32_t order,
-                    uint16_t type, bool sleep)
+                    uint16_t type, struct vm_page_waiter *waiter)
 {
   assert (order < VM_PAGE_NR_FREE_LISTS);
 
   struct vm_page *page;
 
   if (! order)
-    {
-      THREAD_PIN_GUARD ();
-      _Auto cpu_pool = vm_page_cpu_pool_get (zone);
-
-      if (sleep)
+    while (1)
+      {
+        THREAD_PIN_GUARD ();
+        _Auto cpu_pool = vm_page_cpu_pool_get (zone);
         mutex_lock (&cpu_pool->lock);
-      else if (mutex_trylock (&cpu_pool->lock) != 0)
-        return (NULL);
 
-      if (!cpu_pool->nr_pages &&
-          !vm_page_cpu_pool_fill (cpu_pool, zone))
-        {
-          mutex_unlock (&cpu_pool->lock);
+        if (cpu_pool->nr_pages || vm_page_cpu_pool_fill (cpu_pool, zone))
+          {
+            page = vm_page_cpu_pool_pop (cpu_pool);
+            mutex_unlock (&cpu_pool->lock);
+            break;
+          }
+        else if (!vm_page_wait (zone, &cpu_pool->lock, waiter))
           return (NULL);
-        }
-
-      page = vm_page_cpu_pool_pop (cpu_pool);
-      mutex_unlock (&cpu_pool->lock);
-    }
+      }
   else
-    {
-      if (sleep)
+    while (1)
+      {
         mutex_lock (&zone->lock);
-      else if (mutex_trylock (&zone->lock) != 0)
-        return (NULL);
+        page = vm_page_zone_alloc_from_buddy (zone, order);
 
-      page = vm_page_zone_alloc_from_buddy (zone, order);
-      mutex_unlock (&zone->lock);
-
-      if (! page)
-        return (NULL);
-    }
+        if (page)
+          {
+            mutex_unlock (&zone->lock);
+            break;
+          }
+        else if (!vm_page_wait (zone, &zone->lock, waiter))
+          return (NULL);
+      }
 
   assert (page->type == VM_PAGE_FREE);
   vm_page_set_type (page, order, type);
   return (page);
 }
 
-static void
-vm_page_cpu_pool_free_single (struct vm_page_cpu_pool *pool,
-                              struct vm_page_zone *zone, struct vm_page *page)
+static bool
+vm_page_wakeup (struct vm_page_bucket *bucket, uint32_t order)
 {
-  assert (thread_pinned ());
-  assert (mutex_locked (&pool->lock));
-  if (pool->nr_pages == pool->size)
-    vm_page_cpu_pool_drain (pool, zone);
+  SPINLOCK_GUARD (&bucket->lock);
+  plist_for_each_reverse_safe (&bucket->waiters, pnode, tmp)
+    {
+      _Auto waiter = plist_entry (pnode, struct vm_page_waiter, node);
+      if (likely (waiter->order <= order))
+        {
+          waiter->done = true;
+          thread_wakeup (waiter->thread);
+          return (true);
+        }
+    }
 
-  vm_page_cpu_pool_push (pool, page);
+  return (false);
 }
 
 static void
 vm_page_zone_free (struct vm_page_zone *zone, struct vm_page *page,
-                   uint32_t order)
+                   uint32_t order, uint32_t flags)
 {
   assert (page->type != VM_PAGE_FREE);
   assert (order < VM_PAGE_NR_FREE_LISTS);
@@ -473,13 +507,25 @@ vm_page_zone_free (struct vm_page_zone *zone, struct vm_page *page,
       THREAD_PIN_GUARD ();
       _Auto cpu_pool = vm_page_cpu_pool_get (zone);
       MUTEX_GUARD (&cpu_pool->lock);
-      vm_page_cpu_pool_free_single (cpu_pool, zone, page);
+
+      if (cpu_pool->nr_pages == cpu_pool->size)
+        vm_page_cpu_pool_drain (cpu_pool, zone);
+
+      vm_page_cpu_pool_push (cpu_pool, page);
     }
   else
     {
       MUTEX_GUARD (&zone->lock);
       vm_page_zone_free_to_buddy (zone, page, order);
     }
+
+  if (!(flags & VM_PAGE_SLEEP))
+    return;
+
+  int selector = vm_page_zone_selector (zone);
+  for (; selector >= 0; --selector)
+    if (vm_page_wakeup (&vm_page_buckets[selector], order))
+      return;
 }
 
 void __init
@@ -598,7 +644,7 @@ vm_page_bootalloc (size_t size)
         {
           phys_addr_t pa = zone->avail_start;
           zone->avail_start += vm_page_round (size);
-          return ((void *) vm_page_direct_va (pa));
+          return ((void *)vm_page_direct_va (pa));
         }
     }
 
@@ -684,8 +730,12 @@ vm_page_setup (void)
       va += PAGE_SIZE;
     }
 
-  spinlock_init (&vm_page_waiters_lock);
-  plist_init (&vm_page_waiters_list);
+  for (size_t i = 0; i < ARRAY_SIZE (vm_page_buckets); ++i)
+    {
+      plist_init (&vm_page_buckets[i].waiters);
+      spinlock_init (&vm_page_buckets[i].lock);
+    }
+
   vm_page_is_ready = 1;
   return (0);
 }
@@ -729,14 +779,30 @@ vm_page_block_referenced (const struct vm_page *page, uint32_t order)
   return (false);
 }
 
-static struct vm_page*
-vm_page_alloc_impl (uint32_t order, uint32_t selector,
-                    uint16_t type, bool sleep)
+static void
+vm_page_waiter_init (struct vm_page_waiter *wp, uint32_t order)
 {
+  wp->thread = thread_self ();
+  wp->order = order;
+  wp->done = false;
+  plist_node_init (&wp->node, thread_real_global_priority (wp->thread));
+}
+
+struct vm_page*
+vm_page_alloc (uint32_t order, uint32_t selector,
+               uint16_t type, uint32_t flags)
+{
+  struct vm_page_waiter *waiter = NULL;
+  if (flags & VM_PAGE_SLEEP)
+    {
+      waiter = alloca (sizeof (*waiter));
+      vm_page_waiter_init (waiter, order);
+    }
+
   for (uint32_t i = vm_page_select_alloc_zone (selector);
       i < vm_page_zones_size; --i)
     {
-      _Auto page = vm_page_zone_alloc (&vm_page_zones[i], order, type, sleep);
+      _Auto page = vm_page_zone_alloc (&vm_page_zones[i], order, type, waiter);
       if (page)
         {
           assert (!vm_page_block_referenced (page, order));
@@ -747,168 +813,22 @@ vm_page_alloc_impl (uint32_t order, uint32_t selector,
   return (NULL);
 }
 
-struct vm_page*
-vm_page_alloc (uint32_t order, uint32_t selector, uint16_t type)
-{
-  return (vm_page_alloc_impl (order, selector, type, true));
-}
-
-struct vm_page*
-vm_page_tryalloc (uint32_t order, uint32_t selector, uint16_t type)
-{
-  return (vm_page_alloc_impl (order, selector, type, false));
-}
-
 void
-vm_page_free (struct vm_page *page, uint32_t order)
+vm_page_free (struct vm_page *page, uint32_t order, uint32_t flags)
 {
   assert (page->zone_index < ARRAY_SIZE (vm_page_zones));
   assert (!vm_page_block_referenced (page, order));
-  vm_page_zone_free (&vm_page_zones[page->zone_index], page, order);
-}
-
-static int
-vm_page_array_tryalloc (struct vm_page **frames, uint32_t order,
-                        uint32_t selector, uint16_t type, bool sleep)
-{
-  struct vm_page *pages = vm_page_alloc_impl (order, selector, type, sleep);
-  if (! pages)
-    return (-1);
-
-  for (uint32_t i = 0; i < (1u << order); ++i)
-    frames[i] = pages + i;
-
-  return ((int)order);
-}
-
-static void
-vm_page_waiter_init (struct vm_page_waiter *pw, struct vm_page **frames,
-                     uint32_t order, uint32_t selector, uint16_t type)
-{
-  pw->thread = thread_self ();
-  pw->frames = frames;
-  pw->needed = 1u << order;
-  pw->selector = selector;
-  pw->type = type;
-  plist_node_init (&pw->node, thread_real_global_priority (pw->thread));
-}
-
-int
-vm_page_array_alloc (struct vm_page **frames, uint32_t order,
-                     uint32_t selector, uint16_t type)
-{
-  // TODO: Restrict how many pages each task can allocate.
-  int ret = vm_page_array_tryalloc (frames, order, selector, type, true);
-  if (likely (ret >= 0))
-    return (ret);
-
-  struct vm_page_waiter pw;
-  vm_page_waiter_init (&pw, frames, order, selector, type);
-
-  // TODO: Interruptible wait (and possibly page evictions).
-  spinlock_lock (&vm_page_waiters_lock);
-  ret = vm_page_array_tryalloc (frames, order, selector, type, false);
-  if (ret < 0)
-    {
-      plist_add (&vm_page_waiters_list, &pw.node);
-      thread_sleep (&vm_page_waiters_lock, &pw, "pages");
-      plist_remove (&vm_page_waiters_list, &pw.node);
-      ret = (int)order;
-    }
-
-  spinlock_unlock (&vm_page_waiters_lock);
-  return (ret);
-}
-
-static uint32_t
-vm_page_array_free_impl (struct vm_page **frames, uint32_t n_frames,
-                         struct plist *plist)
-{
-  uint32_t released = 0, selector = frames[0]->zone_index;
-  plist_for_each_reverse_safe (plist, pnode, tmp)
-    {
-      _Auto waiter = plist_entry (pnode, struct vm_page_waiter, node);
-
-      if (selector > waiter->selector)
-        // Can't service this request.
-        continue;
-
-      uint32_t n = MIN (waiter->needed, n_frames);
-      for (uint32_t i = 0; i < n; ++i)
-        {
-          frames[i]->type = waiter->type;
-          waiter->frames[i] = frames[i];
-        }
-
-      waiter->needed -= n;
-      if (!waiter->needed)
-        // The request was fulfilled. Wake the thread.
-        thread_wakeup (waiter->thread);
-      else
-        waiter->frames += n;
-
-      frames += n;
-      released += n;
-    }
-
-  return (released);
+  vm_page_zone_free (&vm_page_zones[page->zone_index], page, order, flags);
 }
 
 void
-vm_page_array_free (struct vm_page **frames, uint32_t order)
+vm_page_list_free (struct list *pages)
 {
-  uint32_t n_frames = 1u << order, n_rel;
-
-  {
-    SPINLOCK_INTR_GUARD (&vm_page_waiters_lock);
-    n_rel = vm_page_array_free_impl (frames, n_frames,
-                                     &vm_page_waiters_list);
-
-    if (n_rel == n_frames)
-      return;
-  }
-
-  n_frames -= n_rel;
-
-  if (! n_frames)
-    return;
-
-  frames += n_rel;
-  THREAD_PIN_GUARD ();
-  _Auto zone = &vm_page_zones[frames[0]->zone_index];
-  _Auto pool = vm_page_cpu_pool_get (zone);
-  MUTEX_GUARD (&pool->lock);
-
-  for (uint32_t i = 0; i < n_frames; ++i)
+  list_for_each_safe (pages, node, tmp)
     {
-      _Auto page = frames[i];
-      vm_page_clear (page, 0);
-      vm_page_cpu_pool_free_single (pool, zone, page);
-    }
-}
-
-void
-vm_page_array_list_free (struct list *pages)
-{
-  struct vm_page *frames[1u << VM_PAGE_LIST_FREE_ORDER];
-  uint32_t nr_frames = 0;
-
-  list_for_each_safe (pages, page, tmp)
-    {
-      frames[nr_frames] = list_entry (page, struct vm_page, node);
-      if (++nr_frames == ARRAY_SIZE (frames))
-        {
-          vm_page_array_free (frames, VM_PAGE_LIST_FREE_ORDER);
-          nr_frames = 0;
-        }
-    }
-
-  for (struct vm_page **p = frames; nr_frames > 0; )
-    {
-      int idx = 31 - __builtin_clz (nr_frames);
-      vm_page_array_free (p, idx);
-      p += 1 << idx;
-      nr_frames &= ~(1u << idx);
+      _Auto page = list_entry (node, struct vm_page, node);
+      vm_page_zone_free (&vm_page_zones[page->zone_index],
+                         page, 0, VM_PAGE_SLEEP);
     }
 }
 

@@ -69,7 +69,7 @@ percpu_setup (void)
     return (0);
 
   uint32_t order = vm_page_order (percpu_area_size);
-  _Auto page = vm_page_alloc (order, VM_PAGE_SEL_DIRECTMAP, VM_PAGE_KERNEL);
+  _Auto page = vm_page_alloc (order, VM_PAGE_SEL_DIRECTMAP, VM_PAGE_KERNEL, 0);
 
   if (! page)
     panic ("percpu: unable to allocate memory for percpu area content");
@@ -115,7 +115,7 @@ percpu_add (uint32_t cpu)
     goto out;
 
   unsigned int order = vm_page_order (percpu_area_size);
-  _Auto page = vm_page_alloc (order, VM_PAGE_SEL_DIRECTMAP, VM_PAGE_KERNEL);
+  _Auto page = vm_page_alloc (order, VM_PAGE_SEL_DIRECTMAP, VM_PAGE_KERNEL, 0);
 
   if (! page)
     {
@@ -143,7 +143,7 @@ percpu_cleanup (void)
 {
   uintptr_t va = (uintptr_t) percpu_area_content;
   _Auto page = vm_page_lookup (vm_page_direct_pa (va));
-  vm_page_free (page, vm_page_order (percpu_area_size));
+  vm_page_free (page, vm_page_order (percpu_area_size), 0);
   return (0);
 }
 

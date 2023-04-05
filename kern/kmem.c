@@ -320,18 +320,14 @@ kmem_pagealloc_is_virtual (size_t size)
 }
 
 static void*
-kmem_pagealloc (size_t size, bool sleep)
+kmem_pagealloc (size_t size, uint32_t pflags)
 {
   if (kmem_pagealloc_is_virtual (size))
     return (vm_kmem_alloc (size));
 
-  struct vm_page *page = NULL;
   size_t order = vm_page_order (size);
-
-  if (sleep)
-    vm_page_array_alloc (&page, order, VM_PAGE_SEL_DIRECTMAP, VM_PAGE_KMEM);
-  else
-    page = vm_page_alloc (order, VM_PAGE_SEL_DIRECTMAP, VM_PAGE_KMEM);
+  _Auto page = vm_page_alloc (order, VM_PAGE_SEL_DIRECTMAP,
+                              VM_PAGE_KMEM, pflags);
 
   return (page ? vm_page_direct_ptr (page) : NULL);
 }
@@ -345,7 +341,7 @@ kmem_pagefree (void *ptr, size_t size)
     {
       _Auto page = vm_page_lookup (vm_page_direct_pa ((uintptr_t)ptr));
       assert (page);
-      vm_page_free (page, vm_page_order (size));
+      vm_page_free (page, vm_page_order (size), 0);
     }
 }
 
@@ -371,9 +367,9 @@ kmem_slab_create_verify (struct kmem_slab *slab, struct kmem_cache *cache)
  * The caller must drop all locks before calling this function.
  */
 static struct kmem_slab*
-kmem_slab_create (struct kmem_cache *cache, size_t color, bool sleep)
+kmem_slab_create (struct kmem_cache *cache, size_t color, uint32_t pflags)
 {
-  void *slab_buf = kmem_pagealloc (cache->slab_size, sleep);
+  void *slab_buf = kmem_pagealloc (cache->slab_size, pflags);
   if (! slab_buf)
     return (NULL);
 
@@ -747,7 +743,7 @@ kmem_cache_lookup (struct kmem_cache *cache, void *buf)
 }
 
 static int
-kmem_cache_grow (struct kmem_cache *cache, bool sleep)
+kmem_cache_grow (struct kmem_cache *cache, uint32_t pflags)
 {
   adaptive_lock_acquire (&cache->lock);
 
@@ -765,7 +761,7 @@ kmem_cache_grow (struct kmem_cache *cache, bool sleep)
 
   adaptive_lock_release (&cache->lock);
 
-  struct kmem_slab *slab = kmem_slab_create (cache, color, sleep);
+  struct kmem_slab *slab = kmem_slab_create (cache, color, pflags);
 
   adaptive_lock_acquire (&cache->lock);
 
@@ -898,7 +894,7 @@ kmem_cache_alloc_verify (struct kmem_cache *cache, void *buf, int construct)
 }
 
 static void*
-kmem_cache_alloc_impl (struct kmem_cache *cache, bool sleep)
+kmem_cache_alloc_impl (struct kmem_cache *cache, uint32_t pflags)
 {
 #ifdef KMEM_USE_CPU_LAYER
 
@@ -927,7 +923,7 @@ fast_alloc:
           adaptive_lock_release (&cpu_pool->lock);
           thread_unpin ();
 
-          if (!kmem_cache_grow (cache, sleep))
+          if (!kmem_cache_grow (cache, pflags))
             return (NULL);
 
           thread_pin ();
@@ -949,7 +945,7 @@ slab_alloc:
 
   if (! buf)
     {
-      if (!kmem_cache_grow (cache, sleep))
+      if (!kmem_cache_grow (cache, pflags))
         return (NULL);
 
       goto slab_alloc;
@@ -967,13 +963,13 @@ slab_alloc:
 void*
 kmem_cache_alloc (struct kmem_cache *cache)
 {
-  return (kmem_cache_alloc_impl (cache, false));
+  return (kmem_cache_alloc_impl (cache, 0));
 }
 
 void*
 kmem_cache_salloc (struct kmem_cache *cache)
 {
-  return (kmem_cache_alloc_impl (cache, true));
+  return (kmem_cache_alloc_impl (cache, VM_PAGE_SLEEP));
 }
 
 static void

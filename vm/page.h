@@ -77,6 +77,9 @@
 #define VM_PAGE_OBJECT      5   // Page is part of a VM object.
 #define VM_PAGE_KERNEL      6   // Type for generic kernel allocations.
 
+// Flags passed to the (de)allocation functions.
+#define VM_PAGE_SLEEP   0x80
+
 struct vm_object;
 
 // Physical page descriptor.
@@ -207,36 +210,17 @@ struct vm_page* vm_page_lookup (phys_addr_t pa);
  * If successful, the returned pages have no references.
  */
 struct vm_page* vm_page_alloc (uint32_t order, uint32_t selector,
-                               uint16_t type);
-
-/*
- * Same as above, only this function doesn't sleep if it can't service
- * the request.
- */
-struct vm_page* vm_page_tryalloc (uint32_t order, uint32_t selector,
-                                  uint16_t type);
+                               uint16_t type, uint32_t flags);
 
 /*
  * Release a block of 2^order physical pages.
  *
  * The pages must have no references.
  */
-void vm_page_free (struct vm_page *page, uint32_t order);
+void vm_page_free (struct vm_page *page, uint32_t order, uint32_t flags);
 
-/*
- * (De)allocate an array of pages.
- *
- * Unlike the above versions, these functions operate on arrays of
- * pages that may not be physically contiguous and they also may
- * sleep when not enough pages are free.
- */
-
-int vm_page_array_alloc (struct vm_page **pages, uint32_t order,
-                         uint32_t selector, uint16_t type);
-
-void vm_page_array_free (struct vm_page **pages, uint32_t order);
-
-void vm_page_array_list_free (struct list *pages);
+// Deallocate a list of pages.
+void vm_page_list_free (struct list *pages);
 
 // Return the name of the given zone.
 const char* vm_page_zone_name (uint32_t zone_index);
@@ -269,7 +253,7 @@ static inline void
 vm_page_unref (struct vm_page *page)
 {
   if (vm_page_unref_nofree (page))
-    vm_page_free (page, 0);
+    vm_page_free (page, 0, 0);
 }
 
 static inline int

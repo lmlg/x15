@@ -182,7 +182,7 @@ vm_object_remove (struct vm_object *object, uint64_t start, uint64_t end)
   }
 
   vm_object_unref_many (object, cnt);
-  vm_page_array_list_free (&pages);
+  vm_page_list_free (&pages);
 }
 
 struct vm_page*
