@@ -153,12 +153,9 @@ cap_channel_fini (struct sref_counter *sref)
 }
 
 int
-cap_channel_create (struct cap_channel **outp, struct cap_base *flow,
+cap_channel_create (struct cap_channel **outp, struct cap_flow *flow,
                     uintptr_t tag)
 {
-  if (flow && flow->type != CAP_TYPE_FLOW)
-    return (EINVAL);
-
   struct cap_channel *ret = kmem_cache_alloc (&cap_misc_cache);
   if (! ret)
     return (ENOMEM);
@@ -168,7 +165,7 @@ cap_channel_create (struct cap_channel **outp, struct cap_base *flow,
   if (flow)
     cap_base_acq (flow);
 
-  ret->flow = (struct cap_flow *)flow;
+  ret->flow = flow;
   ret->tag = tag;
   *outp = ret;
   return (0);
@@ -215,8 +212,8 @@ cap_alert_alloc (struct slist *outp)
 }
 
 static void
-cap_flow_push_alnode (struct cap_flow *flow,
-                      struct slist *slist, struct cap_alert_node *node)
+cap_flow_push_alnode (struct cap_flow *flow, struct slist *slist,
+                      struct cap_alert_node *node)
 {
   slist_concat (&flow->alert_list, slist);
   node->next = flow->alnodes;
@@ -272,8 +269,8 @@ cap_flow_create (struct cap_flow **outp, uint32_t flags, uintptr_t tag)
   return (0);
 }
 
-/* The byte that comes right after the plist node indicates whether
- * it's an alert or a regular message with a thread blocking on it. */
+/* The byte following the plist node indicates whether the object is
+ * an alert or a regular message with a thread blocking on it. */
 
 static void
 cap_mark_pnode_alert (struct plist_node *node)
@@ -293,8 +290,8 @@ cap_pnode_is_alert (struct plist_node *node)
   return (*(char *)(node + 1));
 }
 
-/* Attempt to set the tag to a new value. The only valid transition if
- * from zero. */
+/* Attempt to set the tag to a new value. The only valid transition is
+ * from zero to any value. */
 
 static int
 cap_cas_tag (uintptr_t *tagp, uintptr_t value)
@@ -364,7 +361,10 @@ cap_flow_hook (struct cap_channel **outp, struct task *task, int cap_idx)
       return (EINVAL);
     }
 
-  return (cap_channel_create (outp, base, ((struct cap_flow *)base)->tag));
+  _Auto flow = (struct cap_flow *)base;
+  int ret = cap_channel_create (outp, flow, flow->tag);
+  cap_base_rel (flow);
+  return (ret);
 }
 
 static void
@@ -649,15 +649,15 @@ cap_thread_sender (struct thread *thr)
  *
  * - Both the capability index and thread ID must reflect valid entities.
  * - The thread must be either sending a message or awaiting a reply.
- * - The capability must be equal to the one the thread is waiting on.
- * - The current thread must be equal to the one the thread is waiting on.
+ * - The capability described by the index must be equal to the one the
+     thread sent a message to.
+ * - The current thread must be equal to the one the thread is paired to.
  *   Alternatively, the thread could be waiting on no other thread (as when
  *   calling 'cap_rcvid_detach'), in which case the current thread can become
  *   the new handler thread if needed.
  *
- * The thread's runq lock must be held when accessing the object the thread
- * is waiting on (The 'wait channel address'), since that member is otherwise
- * only set by the owner thread.
+ * The thread's runq lock must be held when accessing the wait channel address,
+ * since that member is otherwise only set by the owner thread.
 */
 
 static int
@@ -876,22 +876,31 @@ ssize_t
 
   if (! cap)
     return (-EBADF);
-  else if (cap->type == CAP_TYPE_FLOW)
-    {
-      flow = (struct cap_flow *)cap;
-      tag = flow->tag;
-    }
-  else if (cap->type == CAP_TYPE_CHANNEL)
-    {
-      flow = ((struct cap_channel *)cap)->flow;
-      if (! flow)
-        return (-EINVAL);
 
-      tag = ((struct cap_channel *)cap)->tag;
+  switch (cap->type)
+    {
+      case CAP_TYPE_FLOW:
+        flow = (struct cap_flow *)cap;
+        tag = flow->tag;
+        break;
+      case CAP_TYPE_CHANNEL:
+        flow = ((struct cap_channel *)cap)->flow;
+        if (! flow)
+          return (-EINVAL);
+
+        tag = ((struct cap_channel *)cap)->tag;
+        break;
+      case CAP_TYPE_THREAD:
+        return (thread_handle_msg (((struct cap_thread *)cap)->thread,
+                                   (struct ipc_msg *)src, dst, data));
+      case CAP_TYPE_TASK:
+        return (task_handle_msg (((struct cap_task *)cap)->task,
+                                 (struct ipc_msg *)src, dst, data));
+      case CAP_TYPE_KERNEL:
+        // TODO: Implement.
+      default:
+        return (-EINVAL);
     }
-  else
-    // TODO: Implement.
-    return (-EINVAL);
 
   struct cap_sender sender;
   cap_sender_init (&sender, thread_self (), flow,

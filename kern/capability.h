@@ -69,7 +69,6 @@ enum
   CAP_KERNEL_MAX,
 };
 
-struct cap_intr_data;
 struct cap_alert_node;
 
 struct cap_intr_data
@@ -149,7 +148,7 @@ int cap_intern (struct cap_base *cap, int flags);
 int cap_flow_create (struct cap_flow **outp, uint32_t flags, uintptr_t tag);
 
 // Create a channel for a flow.
-int cap_channel_create (struct cap_channel **outp, struct cap_base *flow,
+int cap_channel_create (struct cap_channel **outp, struct cap_flow *flow,
                         uintptr_t tag);
 
 // Create a capability representing a task.
@@ -200,9 +199,8 @@ int cap_handle (rcvid_t rcvid);
 /*
  * Pull more data from a receive ID.
  *
- * If the calling thread is not already handling the receive ID, then it is
- * acquired after detaching the current one (in case it's not being handled
- * by any other thread).
+ * If the calling thread is not already handling the receive ID, then it will
+ * attempt to acquire it after the detaching its current peer.
  */
 
 ssize_t cap_pull_msg (rcvid_t rcvid, struct ipc_msg *msg,
@@ -211,9 +209,8 @@ ssize_t cap_pull_msg (rcvid_t rcvid, struct ipc_msg *msg,
 /*
  * Push more data into a receive ID.
  *
- * If the calling thread is not already handling the receive ID, then it is
- * acquired after detaching the current one (in case it's not being handled
- * by any other thread).
+ * If the calling thread is not already handling the receive ID, then it will
+ * attempt to acquire it after the detaching its current peer.
  */
 
 ssize_t cap_push_msg (rcvid_t rcvid, const struct ipc_msg *msg,
@@ -268,7 +265,7 @@ cap_send_iov (struct cap_base *cap, const struct iovec *src, uint32_t nr_src,
 #define cap_send_iov(cap, src, nr_src, dst, nr_dst)   \
   (cap_send_iov) (CAP (cap), (src), (nr_src), (dst), (nr_dst))
 
-// Receive raw bytes from a flow and the metadata.
+// Receive raw bytes and metadata from a capability.
 static inline rcvid_t
 cap_recv_bytes (int capx, void *dst, size_t size,
                 struct ipc_msg_data *data)
@@ -278,7 +275,7 @@ cap_recv_bytes (int capx, void *dst, size_t size,
   return (cap_recv_msg (capx, &msg, data));
 }
 
-// Receive bytes in iovecs and the metadata.
+// Receive bytes in iovecs and metadata from a capability.
 static inline rcvid_t
 cap_recv_iov (int capx, struct iovec *dst, uint32_t nr_iov,
               struct ipc_msg_data *data)

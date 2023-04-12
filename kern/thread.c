@@ -93,6 +93,7 @@
 #include <kern/clock.h>
 #include <kern/cpumap.h>
 #include <kern/init.h>
+#include <kern/ipc.h>
 #include <kern/kmem.h>
 #include <kern/list.h>
 #include <kern/macros.h>
@@ -342,6 +343,13 @@ struct thread_zombie
   struct thread *thread;
 };
 
+struct thread_runq_guard_t
+{
+  struct thread_runq *runq;
+  cpu_flags_t flags;
+  bool preempt_disabled;
+};
+
 static uint8_t
 thread_policy_to_class (uint8_t policy)
 {
@@ -578,6 +586,28 @@ thread_runq_schedule_unload (struct thread *thread __unused)
   perfmon_td_unload (thread_get_perfmon_td (thread));
 #endif
 }
+
+static struct thread_runq_guard_t
+thread_runq_guard_make (struct thread *thread, bool disable_preempt)
+{
+  struct thread_runq_guard_t ret;
+  ret.preempt_disabled = disable_preempt;
+  if (ret.preempt_disabled)
+    thread_preempt_disable ();
+  ret.runq = thread_lock_runq (thread, &ret.flags);
+  return (ret);
+}
+
+static void
+thread_runq_guard_fini (struct thread_runq_guard_t *guard)
+{
+  thread_unlock_runq (guard->runq, guard->flags);
+  if (guard->preempt_disabled)
+    thread_preempt_enable ();
+}
+
+#define thread_runq_guard   \
+  thread_runq_guard_t CLEANUP (thread_runq_guard_fini) __unused
 
 static void
 thread_context_switch (struct thread_runq **runqp,
@@ -1797,10 +1827,8 @@ thread_join_common (struct thread *thread)
   uint32_t state;
   do
     {
-      cpu_flags_t flags;
-      _Auto runq = thread_lock_runq (thread, &flags);
+      struct thread_runq_guard g = thread_runq_guard_make (thread, false);
       state = thread->state;
-      thread_unlock_runq (runq, flags);
     }
   while (state != THREAD_DEAD);
 
@@ -2321,51 +2349,41 @@ thread_suspend (struct thread *thread)
   if (! thread)
     return (EINVAL);
 
-  thread_preempt_disable ();
-  cpu_flags_t flags;
-  _Auto runq = thread_lock_runq (thread, &flags);
+  struct thread_runq_guard g = thread_runq_guard_make (thread, true);
 
-  int error;
-
-  if (thread == runq->idler ||
-      thread == runq->balancer ||
+  if (thread == g.runq->idler ||
+      thread == g.runq->balancer ||
       thread->state == THREAD_DEAD)
-    error = EINVAL;
+    return (EINVAL);
   else if (thread->state == THREAD_SUSPENDED || thread->suspend)
-    error = 0;
+    return (0);
   else if (thread->state == THREAD_SLEEPING)
     {
       thread->state = THREAD_SUSPENDED;
-      error = 0;
+      return (0);
+    }
+
+  assert (thread->state == THREAD_RUNNING);
+
+  if (thread != g.runq->current)
+    {
+      thread->state = THREAD_SUSPENDED;
+      thread_runq_remove (g.runq, thread);
     }
   else
     {
-      assert (thread->state == THREAD_RUNNING);
+      thread->suspend = true;
 
-      if (thread != runq->current)
-        {
-          thread->state = THREAD_SUSPENDED;
-          thread_runq_remove (runq, thread);
-        }
+      if (g.runq == thread_runq_local ())
+        g.runq = thread_runq_schedule (g.runq);
       else
         {
-          thread->suspend = true;
-
-          if (runq == thread_runq_local ())
-            runq = thread_runq_schedule (runq);
-          else
-            {
-              thread_set_flag (thread, THREAD_YIELD);
-              cpu_send_thread_schedule (thread_runq_cpu (runq));
-            }
+          thread_set_flag (thread, THREAD_YIELD);
+          cpu_send_thread_schedule (thread_runq_cpu (g.runq));
         }
-
-      error = 0;
     }
 
-  thread_unlock_runq (runq, flags);
-  thread_preempt_enable ();
-  return (error);
+  return (0);
 }
 
 int
@@ -2504,19 +2522,15 @@ thread_sched_class_to_str (uint8_t sched_class)
     }
 }
 
-void
-thread_setscheduler (struct thread *thread, uint8_t policy,
-                     uint16_t priority)
+static void
+thread_setsched_impl (struct thread *thread, uint8_t policy,
+                      uint16_t priority)
 {
-  _Auto td = thread_turnstile_td (thread);
-  turnstile_td_lock (td);
-
-  cpu_flags_t flags;
-  _Auto runq = thread_lock_runq (thread, &flags);
+  struct thread_runq_guard g = thread_runq_guard_make (thread, false);
 
   if (thread_user_sched_policy (thread) == policy &&
       thread_user_priority (thread) == priority)
-    goto out;
+    return;
 
   bool current, requeue = thread->in_runq;
 
@@ -2524,15 +2538,15 @@ thread_setscheduler (struct thread *thread, uint8_t policy,
     current = false;
   else
     {
-      if (thread != runq->current)
+      if (thread != g.runq->current)
         current = false;
       else
         {
-          thread_runq_put_prev (runq, thread);
+          thread_runq_put_prev (g.runq, thread);
           current = true;
         }
 
-      thread_runq_remove (runq, thread);
+      thread_runq_remove (g.runq, thread);
     }
 
   bool update;
@@ -2566,13 +2580,18 @@ thread_setscheduler (struct thread *thread, uint8_t policy,
 
   if (requeue)
     {
-      thread_runq_add (runq, thread);
+      thread_runq_add (g.runq, thread);
       if (current)
-        thread_runq_set_next (runq, thread);
+        thread_runq_set_next (g.runq, thread);
     }
+}
 
-out:
-  thread_unlock_runq (runq, flags);
+void
+thread_setscheduler (struct thread *thread, uint8_t policy, uint16_t prio)
+{
+  _Auto td = thread_turnstile_td (thread);
+  turnstile_td_lock (td);
+  thread_setsched_impl (thread, policy, prio);
   turnstile_td_unlock (td);
   turnstile_td_propagate_priority (td);
 }
@@ -2636,11 +2655,8 @@ thread_pi_setsched_impl (struct thread_runq *runq, struct thread *thread,
 void
 thread_pi_setscheduler (struct thread *thread, uint8_t policy, uint16_t prio)
 {
-  cpu_flags_t flags;
-  _Auto runq = thread_lock_runq (thread, &flags);
-
-  thread_pi_setsched_impl (runq, thread, policy, prio);
-  thread_unlock_runq (runq, flags);
+  struct thread_runq_guard g = thread_runq_guard_make (thread, false);
+  thread_pi_setsched_impl (g.runq, thread, policy, prio);
 }
 
 void
@@ -2684,19 +2700,14 @@ thread_is_running (const struct thread *thread)
 }
 
 int
-thread_get_affinity (const struct thread *thread, struct cpumap *cpumap)
+thread_get_affinity (const struct thread *thr, struct cpumap *cpumap)
 {
-  if (! thread)
+  if (! thr)
     return (EINVAL);
 
-  thread_preempt_disable ();
-
-  cpu_flags_t flags;
-  _Auto runq = thread_lock_runq ((struct thread *) thread, &flags);
-
-  cpumap_copy (cpumap, &thread->cpumap);
-  thread_unlock_runq (runq, flags);
-  thread_preempt_enable ();
+  struct thread_runq_guard g =
+    thread_runq_guard_make ((struct thread *)thr, true);
+  cpumap_copy (cpumap, &thr->cpumap);
   return (0);
 }
 
@@ -2706,45 +2717,36 @@ thread_set_affinity (struct thread *thread, const struct cpumap *cpumap)
   if (! thread)
     return (EINVAL);
 
-  thread_preempt_disable ();
+  struct thread_runq_guard g = thread_runq_guard_make (thread, true);
 
-  cpu_flags_t flags;
-  _Auto runq = thread_lock_runq (thread, &flags);
-  int error;
-
-  if (thread == runq->idler ||
-      thread == runq->balancer ||
+  if (thread == g.runq->idler ||
+      thread == g.runq->balancer ||
       thread->state == THREAD_DEAD)
-    error = EINVAL;
+    return (EINVAL);
   else if (cpumap_intersects (&thread->cpumap, cpumap))
     { // The desired CPU map intersects the current one.
-      error = 0;
       cpumap_copy (&thread->cpumap, cpumap);
+      return (0);
     }
   else if (thread->pin_level != 0)
     // The thread is pinned, and cannot be migrated to a different CPU.
-    error = EAGAIN;
-  else
-    { // At this point, we know the thread must be migrated.
-      cpumap_copy (&thread->cpumap, cpumap);
+    return (EAGAIN);
 
-      if (thread == runq->current)
+  // At this point, we know the thread must be migrated.
+  cpumap_copy (&thread->cpumap, cpumap);
+
+  if (thread == g.runq->current)
+    {
+      if (g.runq == thread_runq_local ())
+        g.runq = thread_runq_schedule (g.runq);
+      else
         {
-          if (runq == thread_runq_local ())
-            runq = thread_runq_schedule (runq);
-          else
-            {
-              thread_set_flag (thread, THREAD_YIELD);
-              cpu_send_thread_schedule (thread_runq_cpu (runq));
-            }
+          thread_set_flag (thread, THREAD_YIELD);
+          cpu_send_thread_schedule (thread_runq_cpu (g.runq));
         }
-
-      error = 0;
     }
 
-  thread_unlock_runq (runq, flags);
-  thread_preempt_enable ();
-  return (error);
+  return (0);
 }
 
 int
@@ -2824,4 +2826,82 @@ thread_send_reply_blocked (struct thread *thread)
 {
   return (thread->wchan_desc == THREAD_SEND_BLOCK ||
           thread->wchan_desc == THREAD_REPLY_BLOCK);
+}
+
+static ssize_t
+thread_name_impl (struct thread *thread, char *name, bool set)
+{
+  SPINLOCK_GUARD (&thread->task->lock);
+  if (set)
+    memcpy (thread->name, name, sizeof (thread->name));
+  else
+    memcpy (name, thread->name, sizeof (thread->name));
+
+  return (0);
+}
+
+// TODO: user_copy instead of memcpy below.
+
+static ssize_t
+thread_ipc_affinity_impl (struct thread *thread, void *map,
+                          uint32_t size, bool set)
+{
+  if (! size)
+    return (-EINVAL);
+
+  struct cpumap *cpumap;
+  if (cpumap_create (&cpumap) != 0)
+    return (-ENOMEM);
+
+  cpumap_zero (cpumap);
+  size = MIN (size, sizeof (cpumap->cpus));
+  memcpy (cpumap->cpus, map, size);
+
+  ssize_t rv;
+  if (set)
+    rv = thread_set_affinity (thread, cpumap);
+  else if ((rv = thread_get_affinity (thread, cpumap)) == 0)
+    memcpy (map, cpumap->cpus, size);
+
+  cpumap_destroy (cpumap);
+  return (-rv);
+}
+
+#define THREAD_IPC_NEEDS_COPY   \
+  ((1u << THREAD_IPC_GET_NAME) | (1u << THREAD_IPC_GET_AFFINITY))
+
+ssize_t
+thread_handle_msg (struct thread *thr, struct ipc_msg *src,
+                   struct ipc_msg *dst, struct ipc_msg_data *data)
+{
+  struct thread_ipc_msg tmsg;
+  struct iovec iov = { .iov_base = &tmsg, .iov_len = sizeof (tmsg) };
+  ssize_t rv = ipc_bcopyv (task_self (), src->iovs, src->iov_cnt,
+                           &iov, 1, IPC_COPY_FROM);
+
+  if (rv < 0)
+    return (rv);
+
+  switch (tmsg.op)
+    {
+      case THREAD_IPC_GET_NAME:
+      case THREAD_IPC_SET_NAME:
+        rv = thread_name_impl (thr, tmsg.name,
+                               tmsg.op == THREAD_IPC_SET_NAME);
+        break;
+      case THREAD_IPC_GET_AFFINITY:
+      case THREAD_IPC_SET_AFFINITY:
+        rv = thread_ipc_affinity_impl (thr, tmsg.cpumap.map, tmsg.cpumap.size,
+                                       tmsg.op == THREAD_IPC_SET_AFFINITY);
+        break;
+      default:
+        return (-EINVAL);
+    }
+
+  if (rv == 0 && ((1u << tmsg.op) & THREAD_IPC_NEEDS_COPY))
+    rv = ipc_bcopyv (task_self (), dst->iovs, dst->iov_cnt,
+                     &iov, 1, IPC_COPY_TO);
+
+  (void)data;
+  return (rv < 0 ? rv : 0);
 }

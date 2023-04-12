@@ -155,8 +155,6 @@ test_cap_sender (void *arg)
   iov.iov_len = 8;
   error = cap_reply_msg (rcvid, &msg, 0);
   assert (! error);
-
-  cap_base_rel (flow);
 }
 
 static void
@@ -225,6 +223,62 @@ test_cap_receiver (void *arg)
   cap_base_rel (chp);
 }
 
+static void
+test_cap_misc (void *arg __unused)
+{
+  struct cap_task *ctask;
+  int error = cap_task_create (&ctask, task_self ());
+  assert (! error);
+
+  struct task_ipc_msg task_msg;
+
+  task_msg.op = TASK_IPC_GET_NAME;
+  ssize_t rv = cap_send_bytes (ctask, &task_msg, sizeof (task_msg),
+                               &task_msg, sizeof (task_msg));
+
+  assert (rv == 0);
+  assert (strcmp (task_msg.name, "cap_misc") == 0);
+
+  task_msg.op = TASK_IPC_SET_NAME;
+  strcpy (task_msg.name, "new_name");
+
+  rv = cap_send_bytes (ctask, &task_msg, sizeof (task_msg), NULL, 0);
+  assert (rv == 0);
+  assert (strcmp (task_self()->name, "new_name") == 0);
+
+  cap_base_rel (ctask);
+
+  struct cap_thread *cthread;
+  error = cap_thread_create (&cthread, thread_self ());
+
+  struct thread_ipc_msg thr_msg;
+
+  thr_msg.op = THREAD_IPC_GET_NAME;
+  rv = cap_send_bytes (cthread, &thr_msg, sizeof (thr_msg),
+                       &thr_msg, sizeof (thr_msg));
+  assert (rv == 0);
+  assert (strcmp (thr_msg.name, "cap_misc/0") == 0);
+
+  struct cpumap *cpumap;
+  error = cpumap_create (&cpumap);
+  assert (! error);
+  cpumap_zero (cpumap);
+
+  thread_pin ();
+  thr_msg.op = THREAD_IPC_GET_AFFINITY;
+  thr_msg.cpumap.map = cpumap->cpus;
+  thr_msg.cpumap.size = sizeof (cpumap->cpus);
+
+  rv = cap_send_bytes (cthread, &thr_msg, sizeof (thr_msg),
+                       &thr_msg, sizeof (thr_msg));
+  assert (rv == 0);
+  assert (cpumap_test (cpumap, cpu_id ()));
+  thread_unpin ();
+
+  cpumap_destroy (cpumap);
+  cap_base_rel (cthread);
+}
+
 TEST_DEFERRED (cap)
 {
   _Auto data = &test_cap_data;
@@ -232,7 +286,7 @@ TEST_DEFERRED (cap)
   semaphore_init (&data->send_sem, 0, 0xff);
   semaphore_init (&data->recv_sem, 0, 0xff);
 
-  struct thread *sender, *receiver;
+  struct thread *sender, *receiver, *misc;
   int error = test_util_create_thr (&sender, test_cap_sender,
                                     data, "cap_sender");
   assert (! error);
@@ -240,7 +294,11 @@ TEST_DEFERRED (cap)
   error = test_util_create_thr (&receiver, test_cap_receiver,
                                 data, "cap_receiver");
 
+  error = test_util_create_thr (&misc, test_cap_misc, NULL, "cap_misc");
+
   thread_join (sender);
   thread_join (receiver);
+  thread_join (misc);
+
   return (TEST_OK);
 }

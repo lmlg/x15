@@ -14,9 +14,6 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
- *
- * XXX This module is far from complete. It just provides the basic support
- * needed for kernel allocation.
  */
 
 #include <assert.h>
@@ -592,8 +589,7 @@ vm_map_remove_impl (struct vm_map *map, uintptr_t start,
   assert (list_empty (&alloc_entries));
 
   if (entry->object)
-    {
-      // Don't prevent lookups and page faults from here on.
+    { // Don't prevent lookups and page faults from here on.
       sxlock_share (&map->lock);
       pmap_remove_range (map->pmap, start, end, cpumap_all ());
       pmap_update (map->pmap);
@@ -769,11 +765,11 @@ vm_map_fault_get_data (struct vm_object *obj, uint64_t off,
       phys_addr_t prev;
       _Auto pte = pmap_ipc_pte_get (&prev);
 
-      for (ret = 0; ret < nr_pages; ++ret)
+      for (ret = 0; ret < nr_pages; ++ret, off += PAGE_SIZE)
         {
           pmap_ipc_pte_set (pte, va, vm_page_to_pa (pages + ret));
-          int tmp = vm_object_pager_get (obj, off + ret * PAGE_SIZE,
-                                         PAGE_SIZE, prot, (void *)va);
+          int tmp = vm_object_pager_get (obj, off, PAGE_SIZE,
+                                         prot, (void *)va);
           if (tmp < 0)
             {
               ret = tmp;
@@ -862,7 +858,7 @@ retry:
             vm_map_fault_handle_cow (addr, &page) != 0)
           return (0);
         else if (pmap_enter (map->pmap, addr, vm_page_to_pa (page),
-                        prot, 0) == 0)
+                             prot, 0) == 0)
           pmap_update (map->pmap);
 
         vm_page_unref (page);
@@ -1042,11 +1038,11 @@ vm_map_fork (struct vm_map **mapp, struct vm_map *src)
   MUTEX_GUARD (&priv->lock);   // Prevent modifications to private mappings.
 
   if (vm_map_entry_alloc (&dst->entry_list, src->nr_entries) != 0)
-    return (ENOMEM);
+      return (ENOMEM);
 
-  struct vm_map_entry *entry,
-                      *out = list_first_entry (&dst->entry_list,
-                                               struct vm_map_entry, list_node);
+  struct vm_map_entry *entry, *out;
+  out = list_first_entry (&dst->entry_list, typeof (*out), list_node);
+
   list_for_each_entry (&src->entry_list, entry, list_node)
     {
       vm_map_entry_assign (out, entry);

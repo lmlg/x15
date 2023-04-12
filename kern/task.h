@@ -18,6 +18,8 @@
 #ifndef KERN_TASK_H
 #define KERN_TASK_H
 
+#include <stdint.h>
+
 #include <kern/atomic.h>
 #include <kern/cspace_types.h>
 #include <kern/init.h>
@@ -43,6 +45,24 @@ struct task
   struct vm_map *map;
   struct cspace caps;
   char name[TASK_NAME_SIZE];
+};
+
+// Task IPC message (TODO: Move to a specific header).
+struct task_ipc_msg
+{
+  uint32_t size;
+  int op;
+  union
+    {
+      char name[TASK_NAME_SIZE];
+    };
+};
+
+// Task IPC operations.
+enum
+{
+  TASK_IPC_GET_NAME,
+  TASK_IPC_SET_NAME,
 };
 
 static inline struct task*
@@ -129,6 +149,13 @@ task_by_kuid (uint32_t kuid)
  * If task is NULL, this function displays all tasks.
  */
 void task_info (struct task *task, struct stream *stream);
+
+// Handle an IPC message on a task capability.
+struct ipc_msg;
+struct ipc_msg_data;
+
+ssize_t task_handle_msg (struct task *task, struct ipc_msg *src,
+                         struct ipc_msg *dst, struct ipc_msg_data *data);
 
 /*
  * This init operation provides :

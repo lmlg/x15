@@ -51,6 +51,7 @@
 #include <kern/rcu_types.h>
 #include <kern/spinlock_types.h>
 #include <kern/turnstile_types.h>
+#include <kern/types.h>
 #include <kern/unwind.h>
 
 #include <machine/cpu.h>
@@ -222,7 +223,7 @@ struct thread
   struct task *task;              // (T)
   struct list task_node;          // (T)
   void *stack;                    // (-)
-  char name[THREAD_NAME_SIZE];    // ( )
+  char name[THREAD_NAME_SIZE];    // (T)
 
 #ifdef CONFIG_PERFMON
   struct perfmon_td perfmon_td;   // ( )
@@ -233,6 +234,32 @@ struct thread
   struct thread *cur_peer;        // (-)
 };
 
+// Thread IPC message (TODO: Move to a specific header).
+struct thread_ipc_msg
+{
+  uint32_t size;
+  int op;
+  union
+    {
+      char name[THREAD_NAME_SIZE];
+      struct
+        {
+          void *map;
+          uint32_t size;
+        } cpumap;
+    };
+};
+
+// Thread IPC operations.
+enum
+{
+  THREAD_IPC_GET_NAME,
+  THREAD_IPC_SET_NAME,
+  THREAD_IPC_GET_AFFINITY,
+  THREAD_IPC_SET_AFFINITY,
+};
+
+// Thread flags.
 #define THREAD_ATTR_DETACHED   0x1
 
 void thread_terminate (struct thread *thread);
@@ -933,6 +960,13 @@ void thread_adopt (struct thread *src, struct thread *dst);
 
 // Test that a thread is either send-blocked or reply-blocked.
 bool thread_send_reply_blocked (struct thread *thread);
+
+// Handle an IPC message on a thread capability.
+struct ipc_msg;
+struct ipc_msg_data;
+
+ssize_t thread_handle_msg (struct thread *thread, struct ipc_msg *src,
+                           struct ipc_msg *dst, struct ipc_msg_data *data);
 
 /*
  * This init operation provides :

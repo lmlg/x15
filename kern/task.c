@@ -249,8 +249,6 @@ task_info (struct task *task, struct stream *stream)
    * can be used to debug in the middle of most critical sections.
    * Threads are only destroyed after being removed from their task
    * so holding the task lock is enough to guarantee existence.
-   *
-   * TODO Handle tasks and threads names modifications.
    */
 
   struct thread *thread;
@@ -265,4 +263,48 @@ task_info (struct task *task, struct stream *stream)
                  thread_user_priority (thread),
                  thread_real_global_priority (thread),
                  thread_name (thread));
+}
+
+#define TASK_IPC_NEEDS_COPY   ((1u << TASK_IPC_GET_NAME))
+
+static ssize_t
+task_name_impl (struct task *task, char *name, bool set)
+{
+  SPINLOCK_GUARD (&task->lock);
+  if (set)
+    memcpy (task->name, name, sizeof (task->name));
+  else
+    memcpy (name, task->name, sizeof (task->name));
+
+  return (0);
+}
+
+ssize_t
+task_handle_msg (struct task *task, struct ipc_msg *src,
+                 struct ipc_msg *dst, struct ipc_msg_data *data)
+{
+  struct task_ipc_msg tmsg;
+  struct iovec iov = { .iov_base = &tmsg, .iov_len = sizeof (tmsg) };
+  ssize_t rv = ipc_bcopyv (task_self (), src->iovs, src->iov_cnt,
+                           &iov, 1, IPC_COPY_FROM);
+
+  if (rv < 0)
+    return (rv);
+
+  switch (tmsg.op)
+    {
+      case TASK_IPC_GET_NAME:
+      case TASK_IPC_SET_NAME:
+        rv = task_name_impl (task, tmsg.name, tmsg.op == TASK_IPC_SET_NAME);
+        break;
+      default:
+        return (-EINVAL);
+    }
+
+  if (rv >= 0 && ((1u << tmsg.op) & TASK_IPC_NEEDS_COPY))
+    rv = ipc_bcopyv (task_self (), dst->iovs, dst->iov_cnt,
+                     &iov, 1, IPC_COPY_TO);
+
+  (void)data;
+  return (rv < 0 ? rv : 0);
 }
