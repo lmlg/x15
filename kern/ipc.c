@@ -160,7 +160,7 @@ ipc_map_addr (struct vm_map *map, const void *addr,
   else if (error)
     { // Need to fault in the destination address.
       error = vm_map_fault (map, (uintptr_t)addr, data->prot,
-                            data->fault_intr);
+                            VM_MAP_FAULT_INTR);
       if (error)
         {
           ipc_data_intr_restore (data);

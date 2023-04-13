@@ -74,8 +74,8 @@ struct cap_alert_node;
 struct cap_intr_data
 {
   BITMAP_DECLARE (pending, CPU_INTR_TABLE_SIZE);
-  uint32_t nr_pending;
   struct list entries;
+  uint32_t nr_pending;
 };
 
 #define CAPABILITY   struct cap_base base
@@ -86,8 +86,8 @@ struct cap_flow
   struct spinlock lock;
   struct plist senders;
   struct list receivers;
-  uint32_t flags;
   struct cap_intr_data intr;
+  uint32_t flags;
   struct slist alert_list;
   struct cap_alert_node *alnodes;
   uintptr_t tag;

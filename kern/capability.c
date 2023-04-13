@@ -186,12 +186,19 @@ cap_flow_fini (struct sref_counter *sref)
     bitmap_fill (flow->intr.pending, CPU_INTR_TABLE_SIZE);
   }
 
-  if (unlikely (flow->intr.nr_pending))
+  if (unlikely (!list_empty (&flow->intr.entries)))
     {
       struct cap_intr_entry *entry, *tmp;
       list_for_each_entry_safe (&flow->intr.entries, entry, tmp, cap_node)
         cap_intr_rem (entry->irq, &entry->intr_node,
                       bitmap_test (pending, entry->irq));
+    }
+
+  for (_Auto al = flow->alnodes; al != NULL; )
+    {
+      _Auto tmp = al->next;
+      kmem_cache_free (&cap_alert_cache, al);
+      al = tmp;
     }
 
   kmem_cache_free (&cap_flow_cache, flow);
@@ -269,8 +276,10 @@ cap_flow_create (struct cap_flow **outp, uint32_t flags, uintptr_t tag)
   return (0);
 }
 
-/* The byte following the plist node indicates whether the object is
- * an alert or a regular message with a thread blocking on it. */
+/*
+ * The byte following the plist node indicates whether the object is
+ * an alert or a regular message with a thread blocking on it.
+ */
 
 static void
 cap_mark_pnode_alert (struct plist_node *node)
@@ -350,9 +359,9 @@ cap_channel_link (struct cap_channel *channel, struct cap_flow *flow)
 }
 
 int
-cap_flow_hook (struct cap_channel **outp, struct task *task, int cap_idx)
+cap_flow_hook (struct cap_channel **outp, struct task *task, int capx)
 {
-  struct cap_base *base = cspace_get (&task->caps, cap_idx);
+  struct cap_base *base = cspace_get (&task->caps, capx);
   if (! base)
     return (EBADF);
   else if (base->type != CAP_TYPE_FLOW)
@@ -412,9 +421,11 @@ cap_receiver_init (struct cap_receiver *recv, struct thread *self,
   recv->irq = -1;
 }
 
-/* Transfer all 3 iterators between a local and a remote task.
+/*
+ * Transfer all 3 iterators between a local and a remote task.
  * Updates the metadata if succesful. Returns the number of
- * raw bytes transmitted on success; a negative errno value on failure. */
+ * raw bytes transmitted on success; a negative errno value on failure.
+ */
 
 static ssize_t
 cap_send_iters (struct task *task, struct cap_iters *r_it,
@@ -469,7 +480,7 @@ cap_sender_receiver_step (struct cap_sender *sender, struct cap_receiver *recv)
 static ssize_t
 cap_recv_putback (struct cap_flow *flow, struct cap_receiver *recv, ssize_t rv)
 {
-  if (rv == -EFAULT || rv == -EACCES)
+  if (-rv == EFAULT || -rv == EACCES)
     { // The problem was in the sender's buffers. Put back the receiver.
       SPINLOCK_GUARD (&flow->lock);
       list_insert_tail (&flow->receivers, &recv->node);
@@ -509,8 +520,8 @@ cap_sender_impl (struct cap_sender *sender, struct cap_flow *flow)
     recv = list_pop (&flow->receivers, typeof (*recv), node);
   }
 
-  ssize_t tmp = cap_send_iters (recv->thread->task, &recv->it,
-                                &sender->in_it, IPC_COPY_TO, &recv->ipc_data);
+  ssize_t tmp = cap_send_iters (recv->thread->task, &recv->it, &sender->in_it,
+                                IPC_COPY_TO, &recv->ipc_data);
   if (tmp < 0)
     return (cap_recv_putback (flow, recv, tmp));
 
@@ -644,7 +655,8 @@ cap_thread_sender (struct thread *thr)
   return ((void *)thread_wchan_addr (thr));
 }
 
-/* A receive ID is a 64-bit integer, composed of a capability index
+/*
+ * A receive ID is a 64-bit integer, composed of a capability index
  * and a thread ID. When decoding it, the following invariants must apply:
  *
  * - Both the capability index and thread ID must reflect valid entities.
@@ -658,7 +670,7 @@ cap_thread_sender (struct thread *thr)
  *
  * The thread's runq lock must be held when accessing the wait channel address,
  * since that member is otherwise only set by the owner thread.
-*/
+ */
 
 static int
 cap_thread_validate (struct thread *thr, void *flow, struct thread *self)
@@ -684,15 +696,15 @@ cap_thread_validate (struct thread *thr, void *flow, struct thread *self)
 
 static int
 cap_rcvid_decode (rcvid_t rcvid, struct thread *self,
-                  struct cap_base **xcap, struct thread **thrp)
+                  struct cap_base **capp, struct thread **thrp)
 {
-  int cap_idx = (int)(rcvid >> 32);
+  int capx = (int)(rcvid >> 32);
   int tid = (int)(rcvid & 0xffffffff);
 
-  if (cap_idx < 0 || tid <= 0)
+  if (capx < 0 || tid <= 0)
     return (-EBADF);
 
-  _Auto cap = cspace_get (&self->task->caps, cap_idx);
+  _Auto cap = cspace_get (&self->task->caps, capx);
   if (! cap)
     return (-ESRCH);
 
@@ -716,7 +728,7 @@ cap_rcvid_decode (rcvid_t rcvid, struct thread *self,
       return (error);
     }
 
-  *xcap = cap;
+  *capp = cap;
   *thrp = thread;
   return (0);
 }
@@ -852,7 +864,7 @@ retry:
     {
       sender->result = tmp;
       thread_wakeup (sender->thread);
-      if (tmp == -EPERM || tmp == -ENXIO)
+      if (-tmp == EPERM || -tmp == ENXIO)
         // The error was in the sender's buffers. Back to sleep.
         goto retry;
 
@@ -955,7 +967,6 @@ int
 cap_reply_msg (rcvid_t rcvid, const struct ipc_msg *msg, int rv)
 {
   int error;
-  ssize_t bytes = 0;
   struct thread *self = thread_self ();
   _Auto sender = cap_rcvid_acq_rel_sender (self, rcvid, &error);
 
@@ -966,15 +977,17 @@ cap_reply_msg (rcvid_t rcvid, const struct ipc_msg *msg, int rv)
       struct cap_iters l_it;
       cap_iters_init (&l_it, (struct ipc_msg *)msg);
 
-      bytes = cap_send_iters (sender->thread->task,
-                              &sender->out_it, &l_it,
-                              IPC_COPY_TO, &sender->ipc_data);
+      ssize_t bytes = cap_send_iters (sender->thread->task,
+                                      &sender->out_it, &l_it,
+                                      IPC_COPY_TO, &sender->ipc_data);
       if (bytes >= 0)
         {
-          sender->result += sender->ipc_data.nbytes;
+          sender->result = sender->ipc_data.nbytes;
           sender->ipc_data.task_id = self->task->kuid.id;
           sender->ipc_data.thread_id = self->kuid.id;
         }
+      else
+        sender->result = bytes;
     }
   else
     sender->result = rv;
@@ -1029,7 +1042,8 @@ cap_handle (rcvid_t rcvid)
 
 static ssize_t
 cap_push_pull_msg (struct cap_sender *sender, struct ipc_msg *msg,
-                   struct ipc_msg_data *mdata, int dir, size_t off)
+                   struct ipc_msg_data *mdata, int dir,
+                   struct cap_iters *it)
 {
   struct cap_iters l_it;
   cap_iters_init (&l_it, msg);
@@ -1037,9 +1051,7 @@ cap_push_pull_msg (struct cap_sender *sender, struct ipc_msg *msg,
   cap_ipc_msg_data_init (mdata, sender->ipc_data.tag);
   _Auto task = sender->thread->task;
 
-  ssize_t bytes = cap_send_iters (task,
-                                  (struct cap_iters *)((char *)sender + off),
-                                  &l_it, dir, mdata);
+  ssize_t bytes = cap_send_iters (task, it, &l_it, dir, mdata);
   if (bytes >= 0)
     {
       mdata->thread_id = sender->thread->kuid.id;
@@ -1064,8 +1076,8 @@ cap_pull_msg (rcvid_t rcvid, struct ipc_msg *msg, struct ipc_msg_data *mdata)
     }
 
   _Auto sender = cap_thread_sender (self->cur_peer);
-  ssize_t ret = cap_push_pull_msg (sender, msg, mdata, IPC_COPY_FROM,
-                                   offsetof (struct cap_sender, in_it));
+  ssize_t ret = cap_push_pull_msg (sender, msg, mdata,
+                                   IPC_COPY_FROM, &sender->in_it);
 
   if (ret >= 0)
     {
@@ -1094,8 +1106,7 @@ cap_push_msg (rcvid_t rcvid, const struct ipc_msg *msg,
   _Auto sender = cap_thread_sender (self->cur_peer);
   struct ipc_msg_data out_data;
   ssize_t ret = cap_push_pull_msg (sender, (struct ipc_msg *)msg, &out_data,
-                                   IPC_COPY_TO,
-                                   offsetof (struct cap_sender, out_it));
+                                   IPC_COPY_TO, &sender->out_it);
 
   if (ret >= 0)
     {

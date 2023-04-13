@@ -90,10 +90,6 @@ int vm_object_insert (struct vm_object *object, struct vm_page *page,
 int vm_object_replace (struct vm_object *object, struct vm_page *page,
                        uint64_t offset);
 
-// Same as above, only this function inserts many pages into the object.
-int vm_object_insert_array (struct vm_object *object, struct vm_page **pages,
-                            int nr_pages, uint64_t offset);
-
 /*
  * Remove pages from a VM object.
  *
