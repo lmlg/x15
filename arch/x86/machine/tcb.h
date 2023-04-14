@@ -56,7 +56,7 @@ int tcb_build (struct tcb *tcb, void *stack, void (*fn) (void *), void *arg);
 // Release all resources held by a TCB.
 void tcb_cleanup (struct tcb *tcb);
 
-static inline struct tcb*
+static inline struct tcb* __attribute__ ((const))
 tcb_current (void)
 {
   extern struct tcb *tcb_current_ptr;

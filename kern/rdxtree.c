@@ -43,10 +43,10 @@
 
 #if RDXTREE_RADIX < 6
   typedef unsigned long rdxtree_bm_t;
-  #define rdxtree_ffs(x) __builtin_ffsl(x)
+  #define rdxtree_ffs   __builtin_ffsl
 #elif RDXTREE_RADIX == 6
   typedef unsigned long long rdxtree_bm_t;
-  #define rdxtree_ffs(x) __builtin_ffsll(x)
+  #define rdxtree_ffs   __builtin_ffsll
 #else
   #error "radix too high"
 #endif
@@ -108,25 +108,25 @@ static struct kmem_cache rdxtree_node_cache;
 static bool
 rdxtree_alignment_valid (const void *ptr)
 {
-  return (((uintptr_t) ptr & ~RDXTREE_ENTRY_ADDR_MASK) == 0);
+  return (((uintptr_t)ptr & ~RDXTREE_ENTRY_ADDR_MASK) == 0);
 }
 
 static inline void*
 rdxtree_entry_addr (void *entry)
 {
-  return ((void *)((uintptr_t) entry & RDXTREE_ENTRY_ADDR_MASK));
+  return ((void *)((uintptr_t)entry & RDXTREE_ENTRY_ADDR_MASK));
 }
 
 static inline bool
 rdxtree_entry_is_node (const void *entry)
 {
-  return (((uintptr_t) entry & 1) != 0);
+  return (((uintptr_t)entry & 1) != 0);
 }
 
 static inline void*
 rdxtree_node_to_entry (struct rdxtree_node *node)
 {
-  return ((void *)((uintptr_t) node | 1));
+  return ((void *)((uintptr_t)node | 1));
 }
 
 static void
@@ -258,19 +258,19 @@ rdxtree_node_find (struct rdxtree_node *node, uint16_t *indexp)
 static inline void
 rdxtree_node_bm_set (struct rdxtree_node *node, uint16_t index)
 {
-  node->alloc_bm |= (rdxtree_bm_t) 1 << index;
+  node->alloc_bm |= (rdxtree_bm_t)1 << index;
 }
 
 static inline void
 rdxtree_node_bm_clear (struct rdxtree_node *node, uint16_t index)
 {
-  node->alloc_bm &= ~ ((rdxtree_bm_t) 1 << index);
+  node->alloc_bm &= ~ ((rdxtree_bm_t)1 << index);
 }
 
 static inline bool
 rdxtree_node_bm_is_set (struct rdxtree_node *node, uint16_t index)
 {
-  return (node->alloc_bm & ((rdxtree_bm_t) 1 << index));
+  return (node->alloc_bm & ((rdxtree_bm_t)1 << index));
 }
 
 static inline bool
@@ -291,9 +291,9 @@ rdxtree_max_key (uint16_t height)
   size_t shift = RDXTREE_RADIX * height;
 
   if (likely (shift < sizeof (rdxtree_key_t) * CHAR_BIT))
-    return (((rdxtree_key_t) 1 << shift) - 1);
+    return (((rdxtree_key_t)1 << shift) - 1);
   else
-    return (~((rdxtree_key_t) 0));
+    return (~((rdxtree_key_t)0));
 }
 
 static inline bool
@@ -365,7 +365,6 @@ rdxtree_grow (struct rdxtree *tree, rdxtree_key_t key)
         }
       else if (rdxtree_key_alloc_enabled (tree))
         rdxtree_node_bm_clear (node, 0);
-        
 
       rdxtree_node_insert (node, 0, tree->root);
       ++tree->height;
@@ -390,7 +389,7 @@ rdxtree_cleanup (struct rdxtree *tree, struct rdxtree_node *node)
           break;
         }
 
-      if (node->parent == NULL)
+      if (!node->parent)
         {
           tree->height = 0;
           rcu_store (&tree->root, NULL);
@@ -445,7 +444,6 @@ rdxtree_insert_common (struct rdxtree *tree, rdxtree_key_t key,
         return (EBUSY);
 
       rcu_store (&tree->root, ptr);
-
       return (0);
     }
 
@@ -479,7 +477,7 @@ rdxtree_insert_common (struct rdxtree *tree, rdxtree_key_t key,
         }
 
       prev = node;
-      index = (uint16_t) (key >> shift) & RDXTREE_RADIX_MASK;
+      index = (uint16_t)(key >> shift) & RDXTREE_RADIX_MASK;
       node = rdxtree_entry_addr (prev->entries[index]);
       shift -= RDXTREE_RADIX;
       --height;
@@ -674,7 +672,7 @@ rdxtree_lookup_common (const struct rdxtree *tree, rdxtree_key_t key,
         return (NULL);
 
       prev = node;
-      index = (uint16_t) (key >> shift) & RDXTREE_RADIX_MASK;
+      index = (uint16_t)(key >> shift) & RDXTREE_RADIX_MASK;
       entry = rcu_load (&node->entries[index]);
       node = rdxtree_entry_addr (entry);
       shift -= RDXTREE_RADIX;

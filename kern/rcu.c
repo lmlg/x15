@@ -122,7 +122,7 @@
  * When windows are checked, a flip occurs if the previous window isn't
  * active any more.
  */
-#define RCU_WINDOW_CHECK_INTERVAL CONFIG_RCU_WINDOW_CHECK_INTERVAL
+#define RCU_WINDOW_CHECK_INTERVAL   CONFIG_RCU_WINDOW_CHECK_INTERVAL
 
 /*
  * Grace period states.

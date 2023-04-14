@@ -243,7 +243,7 @@ cap_flow_alloc_alerts (struct cap_flow *flow)
 static void
 cap_flow_intr_init (struct cap_intr_data *data)
 {
-  memset (data->pending, 0, sizeof (data->pending));
+  bitmap_zero (data->pending, CPU_INTR_TABLE_SIZE);
   data->nr_pending = 0;
   list_init (&data->entries);
 }
@@ -820,6 +820,7 @@ retry:
         recv->irq = bitmap_find_first (flow->intr.pending,
                                        CPU_INTR_TABLE_SIZE);
         bitmap_clear (flow->intr.pending, recv->irq);
+        --flow->intr.nr_pending;
       }
     else if (plist_empty (&flow->senders))
       {

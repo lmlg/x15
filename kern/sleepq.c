@@ -82,7 +82,7 @@ static struct kmem_cache sleepq_cache;
 static uintptr_t
 sleepq_hash (const void *addr)
 {
-  return (((uintptr_t) addr >> 8) ^ (uintptr_t) addr);
+  return (((uintptr_t)addr >> 8) ^ (uintptr_t)addr);
 }
 
 static void
@@ -304,7 +304,7 @@ sleepq_acquire (const void *sync_obj, bool condition)
   return (sleepq_acquire_common (sync_obj, condition, NULL));
 }
 
-struct sleepq *
+struct sleepq*
 sleepq_tryacquire (const void *sync_obj, bool condition)
 {
   return (sleepq_tryacquire_common (sync_obj, condition, NULL));

@@ -83,7 +83,6 @@ struct cap_intr_data
 struct cap_flow
 {
   CAPABILITY;
-  struct spinlock lock;
   struct plist senders;
   struct list receivers;
   struct cap_intr_data intr;
@@ -91,6 +90,8 @@ struct cap_flow
   struct slist alert_list;
   struct cap_alert_node *alnodes;
   uintptr_t tag;
+  char pad[CPU_L1_SIZE];
+  struct spinlock lock;
 };
 
 struct cap_channel
