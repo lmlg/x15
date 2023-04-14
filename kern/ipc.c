@@ -279,8 +279,8 @@ ipc_iov_iter_copy (struct task *r_task, struct ipc_iov_iter *r_it,
       else if (unlikely ((ret += tmp) < 0))
         return (-EOVERFLOW);
 
-      ipc_iov_adv (lv, tmp);
-      ipc_iov_adv (rv, tmp);
+      iovec_adv (lv, tmp);
+      iovec_adv (rv, tmp);
     }
 }
 

@@ -19,7 +19,6 @@
 
 #include <assert.h>
 #include <stdio.h>
-#include <uio.h>
 
 #include <kern/ipc.h>
 #include <kern/semaphore.h>

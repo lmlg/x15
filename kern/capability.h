@@ -20,8 +20,8 @@
 #ifndef KERN_CAPABILITY_H
 #define KERN_CAPABILITY_H
 
+#include <iovec.h>
 #include <stdint.h>
-#include <uio.h>
 
 #include <kern/bitmap.h>
 #include <kern/init.h>
@@ -228,9 +228,6 @@ int cap_intr_eoi (struct cap_flow *flow, uint32_t irq);
 
 // Inlined versions of the above.
 
-#define CAP_IOV_MAKE(base, len)   \
-  (struct iovec) { .iov_base = (void *)(base), .iov_len = (len) }
-
 #define CAP_MSG_IOV_MAKE(iovs_, nr_iovs_)   \
   (struct ipc_msg) { .size = sizeof (struct ipc_msg),   \
                      .iovs = (struct iovec *)(iovs_),   \
@@ -242,8 +239,8 @@ static inline ssize_t
 cap_send_bytes (struct cap_base *cap, const void *src, size_t src_size,
                 void *dst, size_t dst_size)
 {
-  struct iovec s_iov = CAP_IOV_MAKE (src, src_size),
-               d_iov = CAP_IOV_MAKE (dst, dst_size);
+  struct iovec s_iov = IOVEC (src, src_size),
+               d_iov = IOVEC (dst, dst_size);
   struct ipc_msg s_msg = CAP_MSG_IOV_MAKE (&s_iov, 1),
                  d_msg = CAP_MSG_IOV_MAKE (&d_iov, 1);
 
@@ -271,7 +268,7 @@ static inline rcvid_t
 cap_recv_bytes (int capx, void *dst, size_t size,
                 struct ipc_msg_data *data)
 {
-  struct iovec vec = CAP_IOV_MAKE (dst, size);
+  struct iovec vec = IOVEC (dst, size);
   struct ipc_msg msg = CAP_MSG_IOV_MAKE (&vec, 1);
   return (cap_recv_msg (capx, &msg, data));
 }
@@ -289,7 +286,7 @@ cap_recv_iov (int capx, struct iovec *dst, uint32_t nr_iov,
 static inline int
 cap_reply_bytes (rcvid_t rcvid, const void *src, size_t bytes, int err)
 {
-  struct iovec iov = CAP_IOV_MAKE (src, bytes);
+  struct iovec iov = IOVEC (src, bytes);
   struct ipc_msg msg = CAP_MSG_IOV_MAKE (&iov, 1);
   return (cap_reply_msg (rcvid, &msg, err));
 }
@@ -308,7 +305,7 @@ static inline ssize_t
 cap_pull_bytes (rcvid_t rcvid, void *dst, size_t bytes,
                 struct ipc_msg_data *mdata)
 {
-  struct iovec iov = CAP_IOV_MAKE (dst, bytes);
+  struct iovec iov = IOVEC (dst, bytes);
   struct ipc_msg msg = CAP_MSG_IOV_MAKE (&iov, 1);
   return (cap_pull_msg (rcvid, &msg, mdata));
 }
@@ -327,7 +324,7 @@ static inline ssize_t
 cap_push_bytes (rcvid_t rcvid, const void *src, size_t bytes,
                 struct ipc_msg_data *mdata)
 {
-  struct iovec iov = CAP_IOV_MAKE (src, bytes);
+  struct iovec iov = IOVEC (src, bytes);
   struct ipc_msg msg = CAP_MSG_IOV_MAKE (&iov, 1);
   return (cap_push_msg (rcvid, &msg, mdata));
 }
@@ -341,7 +338,6 @@ cap_push_iov (rcvid_t rcvid, const struct iovec *iovs, uint32_t nr_iovs,
   return (cap_push_msg (rcvid, &msg, mdata));
 }
 
-#undef CAP_IOV_MAKE
 #undef CAP_MSG_IOV_MAKE
 
 /*

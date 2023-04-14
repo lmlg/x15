@@ -129,7 +129,7 @@ static struct kmem_cache turnstile_cache;
 static uintptr_t
 turnstile_hash (const void *addr)
 {
-  return (((uintptr_t) addr >> 8) ^ (uintptr_t) addr);
+  return (((uintptr_t)addr >> 8) ^ (uintptr_t)addr);
 }
 
 static void

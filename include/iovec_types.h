@@ -15,8 +15,8 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef UIO_H
-#define UIO_H
+#ifndef UIO_TYPES_H
+#define UIO_TYPES_H
 
 #include <stddef.h>
 
@@ -28,7 +28,7 @@ struct iovec
   size_t iov_len;
 };
 
-#define UIO_MAXIOV   256
+#define UIO_MAXIOV   1024   // Arbitrary, could be unlimited.
 
 _Static_assert (__builtin_offsetof (struct iovec, iov_base) == 0 &&
                 __builtin_offsetof (struct iovec, iov_len) == sizeof (void *),

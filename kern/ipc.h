@@ -20,9 +20,9 @@
 #ifndef KERN_IPC_H
 #define KERN_IPC_H
 
+#include <iovec.h>
 #include <stdbool.h>
 #include <stdint.h>
-#include <uio.h>
 
 #include <kern/types.h>
 
