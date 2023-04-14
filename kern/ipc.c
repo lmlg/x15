@@ -240,13 +240,6 @@ ipc_iov_iter_next_remote (struct ipc_iov_iter *it,
     }
 }
 
-static void
-ipc_iov_adv (struct iovec *iov, ssize_t off)
-{
-  iov->iov_base = (char *)iov->iov_base + off;
-  iov->iov_len -= off;
-}
-
 ssize_t
 ipc_iov_iter_copy (struct task *r_task, struct ipc_iov_iter *r_it,
                    struct ipc_iov_iter *l_it, int direction)
@@ -299,8 +292,7 @@ ipc_bcopy (struct task *r_task, void *r_ptr, size_t r_size,
     }
 
   ipc_data_init (&data, direction);
-  struct iovec r_v = { .iov_base = r_ptr, .iov_len = r_size },
-               l_v = { .iov_base = l_ptr, .iov_len = l_size };
+  struct iovec r_v = IOVEC (r_ptr, r_size), l_v = IOVEC (l_ptr, l_size);
 
   for (ssize_t ret = 0 ; ; )
     {
@@ -314,8 +306,8 @@ ipc_bcopy (struct task *r_task, void *r_ptr, size_t r_size,
       else if (unlikely ((ret += tmp) < 0))
         return (-EOVERFLOW);
 
-      ipc_iov_adv (&r_v, tmp);
-      ipc_iov_adv (&l_v, tmp);
+      iovec_adv (&r_v, tmp);
+      iovec_adv (&l_v, tmp);
     }
 }
 

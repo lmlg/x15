@@ -58,8 +58,7 @@ test_ipc_sender (void *arg)
 
   struct iovec iovs[] =
     {
-      { .iov_base = mem, .iov_len = half },
-      { .iov_base = mem + half, .iov_len = half }
+      IOVEC (mem, half), IOVEC (mem + half, half)
     };
 
   struct ipc_iov_iter it;

@@ -91,7 +91,7 @@ test_cap_sender (void *arg)
 
   char buf[16];
   uint32_t bufsize;
-  struct iovec iov = { .iov_base = &bufsize, .iov_len = sizeof (bufsize) };
+  _Auto iov = IOVEC (&bufsize, sizeof (bufsize));
 
   struct ipc_msg_page mpage = { .addr = PAGE_SIZE * 10 };
   struct ipc_msg_cap mcap;
@@ -151,8 +151,7 @@ test_cap_sender (void *arg)
   mpage.size = PAGE_SIZE;
   mcap.cap = test_cap_alloc_task ();
 
-  iov.iov_base = memset (buf, '?', sizeof (buf));
-  iov.iov_len = 8;
+  iov = IOVEC (memset (buf, '?', sizeof (buf)), 8);
   error = cap_reply_msg (rcvid, &msg, 0);
   assert (! error);
 }
@@ -192,8 +191,7 @@ test_cap_receiver (void *arg)
 
   struct iovec iovs[] =
     {
-      { .iov_base = &bufsize, .iov_len = sizeof (bufsize) },
-      { .iov_base = buf, .iov_len = bufsize }
+      IOVEC (&bufsize, sizeof (bufsize)), IOVEC (buf, bufsize)
     };
 
   struct ipc_msg msg =

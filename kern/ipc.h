@@ -137,7 +137,7 @@ ipc_page_iter_size (const struct ipc_page_iter *it)
 static inline void
 ipc_iov_iter_init_buf (struct ipc_iov_iter *it, void *buf, size_t size)
 {
-  it->head = (struct iovec) { .iov_base = buf, .iov_len = size };
+  it->head = IOVEC (buf, size);
   it->cache_idx = IPC_IOV_ITER_CACHE_SIZE;
   it->begin = NULL;
   it->cur = it->end = 0;

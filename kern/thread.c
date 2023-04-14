@@ -2875,7 +2875,7 @@ thread_handle_msg (struct thread *thr, struct ipc_msg *src,
                    struct ipc_msg *dst, struct ipc_msg_data *data)
 {
   struct thread_ipc_msg tmsg;
-  struct iovec iov = { .iov_base = &tmsg, .iov_len = sizeof (tmsg) };
+  _Auto iov = IOVEC (&tmsg, sizeof (tmsg));
   ssize_t rv = ipc_bcopyv (task_self (), src->iovs, src->iov_cnt,
                            &iov, 1, IPC_COPY_FROM);
 

@@ -580,7 +580,7 @@ static ssize_t
 cap_send_small (struct cap_receiver *recv, const void *buf,
                 size_t size, uint32_t flags)
 {
-  struct iovec iov = { .iov_base = (void *)buf, .iov_len = size };
+  _Auto iov = IOVEC (buf, size);
   ssize_t rv = ipc_bcopyv (recv->thread->task, recv->it.iov.begin,
                            recv->it.iov.end, &iov, 1, IPC_COPY_TO);
 
