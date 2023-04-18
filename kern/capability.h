@@ -90,7 +90,9 @@ struct cap_flow
   struct slist alert_list;
   struct cap_alert_node *alnodes;
   uintptr_t tag;
+#if CONFIG_MAX_CPUS > 1
   char pad[CPU_L1_SIZE];
+#endif
   struct spinlock lock;
 };
 
