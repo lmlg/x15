@@ -66,16 +66,39 @@ test_cap_sender (void *arg)
   data->sender_capx = cap_intern (flow, 0);
   assert (data->sender_capx >= 0);
 
+  struct
+    {
+      uint64_t _alert_data;
+      struct ipc_msg_data _mdata;
+      char _buf[16];
+      uint32_t _bufsize;
+      struct iovec _iov;
+      struct ipc_msg_page _mpage;
+      struct ipc_msg_cap _mcap;
+      struct ipc_msg _msg;
+    } *vars;
+
+  error = vm_map_anon_alloc ((void **)&vars, vm_map_self (), sizeof (*vars));
+  assert (! error);
+
+#define alert_data   vars->_alert_data
+#define mdata        vars->_mdata
+#define buf          vars->_buf
+#define bufsize      vars->_bufsize
+#define iov          vars->_iov
+#define mpage        vars->_mpage
+#define mcap         vars->_mcap
+#define msg          vars->_msg
+
   {
     // Test that alerts are delivered in priority order.
-    uint64_t alert_data = 0;
+    alert_data = 0;
     ssize_t rv = cap_send_alert (flow, &alert_data, sizeof (alert_data), 0, 0);
     assert (rv >= 0);
     alert_data = 1;
     rv = cap_send_alert (flow, &alert_data, sizeof (alert_data), 0, 1);
     assert (rv >= 0);
 
-    struct ipc_msg_data mdata;
     rcvid_t rcvid = cap_recv_bytes (data->sender_capx, &alert_data,
                                     sizeof (alert_data), &mdata);
     assert (rcvid == 0);
@@ -89,13 +112,10 @@ test_cap_sender (void *arg)
   data->sender = task_self ();
   semaphore_post (&data->recv_sem);
 
-  char buf[16];
-  uint32_t bufsize;
-  _Auto iov = IOVEC (&bufsize, sizeof (bufsize));
+  iov = IOVEC (&bufsize, sizeof (bufsize));
 
-  struct ipc_msg_page mpage = { .addr = PAGE_SIZE * 10 };
-  struct ipc_msg_cap mcap;
-  struct ipc_msg msg =
+  mpage = (struct ipc_msg_page) { .addr = PAGE_SIZE * 10 };
+  msg = (struct ipc_msg)
     {
       .size = sizeof (msg),
       .iovs = &iov,
@@ -106,7 +126,6 @@ test_cap_sender (void *arg)
       .cap_cnt = 1
     };
 
-  struct ipc_msg_data mdata;
   rcvid_t rcvid = cap_recv_msg (data->sender_capx, &msg, &mdata);
 
   assert (rcvid > 0);
@@ -154,6 +173,15 @@ test_cap_sender (void *arg)
   iov = IOVEC (memset (buf, '?', sizeof (buf)), 8);
   error = cap_reply_msg (rcvid, &msg, 0);
   assert (! error);
+
+#undef alert_data
+#undef mdata
+#undef buf
+#undef bufsize
+#undef iov
+#undef mpage
+#undef mcap
+#undef msg
 }
 
 static void
@@ -177,7 +205,28 @@ test_cap_receiver (void *arg)
   assert (! error);
   memset (mem, 'x', PAGE_SIZE);
 
-  struct ipc_msg_page mpage =
+  struct
+    {
+      struct ipc_msg_page _mpage;
+      char _buf[6];
+      uint32_t _bufsize;
+      struct iovec _iovecs[2];
+      struct ipc_msg _msg;
+      struct ipc_msg_data _mdata;
+      struct ipc_msg_cap _mcap;
+    } *vars;
+
+#define mpage     vars->_mpage
+#define buf       vars->_buf
+#define bufsize   vars->_bufsize
+#define iovecs    vars->_iovecs
+#define msg       vars->_msg
+#define mdata     vars->_mdata
+#define mcap      vars->_mcap
+
+  error = vm_map_anon_alloc ((void **)&vars, vm_map_self (), sizeof (*vars));
+  assert (! error);
+  mpage = (struct ipc_msg_page)
     {
       .addr = (uintptr_t)mem,
       .prot = VM_PROT_READ,
@@ -185,19 +234,15 @@ test_cap_receiver (void *arg)
     };
 
   int capx = test_cap_alloc_task ();
-  struct ipc_msg_cap mcap = { .cap = capx, .flags = 0 };
-  char buf[] = "hello";
-  uint32_t bufsize = sizeof (buf) - 1;
-
-  struct iovec iovs[] =
-    {
-      IOVEC (&bufsize, sizeof (bufsize)), IOVEC (buf, bufsize)
-    };
-
-  struct ipc_msg msg =
+  mcap = (struct ipc_msg_cap) { .cap = capx, .flags = 0 };
+  strcpy (buf, "hello");
+  bufsize = sizeof (buf) - 1;
+  iovecs[0] = IOVEC (&bufsize, sizeof (bufsize));
+  iovecs[1] = IOVEC (buf, bufsize);
+  msg = (struct ipc_msg)
     {
       .size = sizeof (msg),
-      .iovs = iovs,
+      .iovs = iovecs,
       .iov_cnt = 2,
       .pages = &mpage,
       .page_cnt = 1,
@@ -205,11 +250,10 @@ test_cap_receiver (void *arg)
       .cap_cnt = 1
     };
 
-  struct ipc_msg_data mdata;
   data->receiver = task_self ();
   ssize_t bytes = cap_send_msg (chp, &msg, &msg, &mdata);
 
-  assert (bytes == (ssize_t)(iovs[0].iov_len + iovs[1].iov_len));
+  assert (bytes == (ssize_t)(iovecs[0].iov_len + iovecs[1].iov_len));
   assert (bufsize == 'Z');
   assert (memcmp (buf, "?????", 5) == 0);
   assert (*(char *)mpage.addr == 'z');
@@ -219,6 +263,14 @@ test_cap_receiver (void *arg)
   assert (mdata.caps_recv == 1);
 
   cap_base_rel (chp);
+
+#undef mpage
+#undef buf
+#undef bufsize
+#undef iovs
+#undef msg
+#undef mdata
+#undef mcap
 }
 
 static void

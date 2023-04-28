@@ -253,7 +253,7 @@ static inline void
 vm_page_unref (struct vm_page *page)
 {
   if (vm_page_unref_nofree (page))
-    vm_page_free (page, 0, 0);
+    vm_page_free (page, 0, page->type == VM_PAGE_OBJECT ? VM_PAGE_SLEEP : 0);
 }
 
 static inline int

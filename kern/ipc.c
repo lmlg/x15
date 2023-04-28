@@ -326,11 +326,16 @@ ipc_page_iter_copy (struct task *r_task, struct ipc_page_iter *r_it,
       if (! ptr)
         return (-ENOMEM);
     }
-  else
-    ptr = tmp;
 
   int rv = ipc_bcopy (r_task, r_it->begin + r_it->cur, size,
                       ptr, size, IPC_COPY_FROM);
+  if (unlikely (rv < 0))
+    {
+      if (ptr != tmp)
+        vm_kmem_free (ptr, size);
+
+      return (rv);
+    }
 
   struct ipc_page_iter aux =
     {
@@ -343,10 +348,9 @@ ipc_page_iter_copy (struct task *r_task, struct ipc_page_iter *r_it,
   if (rv >= 0)
     {
       len = rv * sizeof (*ptr);
-      len = ipc_bcopy (r_task, r_it->begin + r_it->cur, len,
-                       ptr, len, IPC_COPY_TO);
-      if (len >= 0)
-        r_it->cur += len / sizeof (*ptr);
+      if (ipc_bcopy (r_task, r_it->begin + r_it->cur, len,
+                     ptr, len, IPC_COPY_TO) > 0)
+        r_it->cur = aux.cur;
     }
 
   if (ptr != tmp)
@@ -441,8 +445,6 @@ ipc_cap_iter_copy (struct task *r_task, struct ipc_cap_iter *r_it,
       if (! ptr)
         return (-ENOMEM);
     }
-  else
-    ptr = tmp;
 
   int rv = ipc_bcopy (r_task, r_it->begin + r_it->cur, size,
                       ptr, size, IPC_COPY_FROM);
@@ -466,10 +468,9 @@ ipc_cap_iter_copy (struct task *r_task, struct ipc_cap_iter *r_it,
   if (rv >= 0)
     {
       len = rv * sizeof (*ptr);
-      len = ipc_bcopy (r_task, r_it->begin + r_it->cur, len,
-                       ptr, len, IPC_COPY_TO);
-      if (len >= 0)
-        r_it->cur += len / sizeof (*ptr);
+      if (ipc_bcopy (r_task, r_it->begin + r_it->cur, len,
+                     ptr, len, IPC_COPY_TO) > 0)
+        r_it->cur = aux.cur;
     }
 
   if (ptr != tmp)
