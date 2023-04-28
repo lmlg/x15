@@ -704,7 +704,7 @@ INIT_OP_DEFINE (vm_map_bootstrap,
 static const struct vm_map_page_target vm_map_page_targets[] =
 {
   [VM_ADV_NORMAL]     = { .front = PAGE_SIZE, .back = 3 * PAGE_SIZE },
-  [VM_ADV_RANDOM]     = { .front = 0, .back = 0 },
+  [VM_ADV_RANDOM]     = { .front = 0, .back = PAGE_SIZE },
   [VM_ADV_SEQUENTIAL] = { .front = 0, .back = 8 * PAGE_SIZE }
 };
 
@@ -1005,7 +1005,7 @@ vm_map_anon_alloc (void **outp, struct vm_map *map, size_t size)
   if (!map->priv_cache)
     return (EINVAL);
 
-  uintptr_t va = PAGE_SIZE * 50;
+  uintptr_t va = (map->end - map->start) >> 1;
   int flags = VM_MAP_FLAGS (VM_PROT_RDWR, VM_PROT_RDWR, VM_INHERIT_NONE,
                             VM_ADV_DEFAULT, VM_MAP_ANON);
   int error = vm_map_enter (map, &va, vm_page_round (size), 0, flags,
