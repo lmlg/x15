@@ -261,6 +261,7 @@ enum
 
 // Thread flags.
 #define THREAD_ATTR_DETACHED   0x1
+#define THREAD_USER_STACK      0x2
 
 void thread_terminate (struct thread *thread);
 
@@ -321,6 +322,7 @@ struct thread_attr
   struct task *task;
   uint8_t policy;
   uint16_t priority;
+  void *stack;
 };
 
 /*
@@ -332,6 +334,7 @@ struct thread_attr
  *  - task is inherited from parent thread
  *  - policy is fair-scheduling
  *  - priority is fair-scheduling default
+ *  - no user stack
  *
  * If the policy is changed, the priority, if applicable, must be updated
  * as well.
@@ -345,6 +348,7 @@ thread_attr_init (struct thread_attr *attr, const char *name)
   attr->task = NULL;
   attr->policy = THREAD_SCHED_POLICY_FS;
   attr->priority = THREAD_SCHED_FS_PRIO_DEFAULT;
+  attr->stack = NULL;
 }
 
 static inline void
@@ -375,6 +379,12 @@ static inline void
 thread_attr_set_priority (struct thread_attr *attr, uint16_t priority)
 {
   attr->priority = priority;
+}
+
+static inline void
+thread_attr_set_stack (struct thread_attr *attr, void *stack)
+{
+  attr->stack = stack;
 }
 
 /*

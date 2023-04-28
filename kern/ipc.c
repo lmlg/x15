@@ -21,9 +21,11 @@
 #include <kern/task.h>
 #include <kern/thread.h>
 #include <kern/unwind.h>
+#include <kern/user.h>
 
 #include <machine/cpu.h>
 
+#include <vm/kmem.h>
 #include <vm/map.h>
 #include <vm/page.h>
 
@@ -315,184 +317,179 @@ int
 ipc_page_iter_copy (struct task *r_task, struct ipc_page_iter *r_it,
                     struct ipc_page_iter *l_it, int direction)
 {
-  struct vm_map *map_in, *map_out, *l_map = vm_map_self ();
-  struct ipc_page_iter *it_in, *it_out;
+#if 0
+  if (unlikely (!user_check_addr (r_it->begin + r_it->cur) ||
+                !user_check_addr (r_it->begin + r_it->end)))
+    return (-EFAULT);
+#endif
 
-  if (direction == IPC_COPY_FROM)
-    {
-      map_in = r_task->map, map_out = l_map;
-      it_in = r_it, it_out = l_it;
-    }
-  else
-    {
-      map_in = l_map, map_out = r_task->map;
-      it_in = l_it, it_out = r_it;
-    }
+  struct ipc_msg_page tmp[16], *ptr = NULL;
+  int size = ipc_page_iter_size (r_it);
 
-  struct ipc_data data CLEANUP (ipc_data_fini);
   struct unw_fixup fixup;
   int error = unw_fixup_save (&fixup);
 
   if (unlikely (error))
-    return (-error);
-
-  ipc_data_init (&data, direction);
-  phys_addr_t pa;
-  error = ipc_map_addr (r_task->map, r_it->begin + r_it->cur, &data, &pa);
-
-  if (error)
-    return (error);
-
-  ipc_data_pte_get (&data);
-  ipc_data_pte_map (&data, pa);
-  ipc_data_page_ref (&data, pa);
-  ipc_data_intr_restore (&data);
-
-  _Auto elems_pp = ((uintptr_t)&r_it->begin[r_it->cur] % PAGE_SIZE) /
-                   sizeof (*r_it->begin);
-  int i, nmax = (int)MIN (ipc_page_iter_size (it_in),
-                          ipc_page_iter_size (it_out));
-
-  for (i = 0; i < nmax; ++i)
     {
-      if (! elems_pp)
-        {
-          error = ipc_map_addr (r_task->map, r_it->begin + r_it->cur,
-                                &data, &pa);
-          if (error)
-            return (error);
+      if (ptr && ptr != tmp)
+        vm_kmem_free (ptr, size * sizeof (*ptr));
 
-          ipc_data_pte_map (&data, pa);
-          ipc_data_page_unref (&data);
-          ipc_data_page_ref (&data, pa);
-          ipc_data_intr_restore (&data);
+      return (error);
+    }
+  else if (unlikely (size > (int)ARRAY_SIZE (tmp)))
+    {
+      ptr = vm_kmem_alloc (size * sizeof (*ptr));
+      if (! ptr)
+        return (-ENOMEM);
+    }
+  else
+    ptr = tmp;
 
-          elems_pp = PAGE_SIZE / sizeof (*r_it->begin);
-        }
+  memcpy (ptr, r_it->begin + r_it->cur, size * sizeof (*ptr));
 
-      _Auto page = it_in->begin[it_in->cur];
-      uintptr_t end = page.addr + vm_page_round (page.size);
+  struct ipc_page_iter aux =
+    {
+      .begin = ptr,
+      .cur = r_it->cur,
+      .end = r_it->end
+    };
 
-      do
-        {
-          struct vm_map_entry entry CLEANUP (vm_map_entry_put);
-          _Auto outp = &it_out->begin[it_out->cur];
-
-          error = vm_map_lookup (map_in, page.addr, &entry);
-
-          if (error)
-            return (-error);
-          else if ((VM_MAP_MAXPROT (entry.flags) & page.prot) != page.prot)
-            return (-EACCES);
-          else if (entry.flags & VM_MAP_ANON)
-            { // Adjust the offset for anonymous pages.
-              entry.offset += page.addr - entry.start;
-              entry.flags &= ~VM_MAP_ANON;
-            }
-
-          size_t size = MIN (end - page.addr, page.size);
-          if (! size)
-            return (-EINVAL);
-
-          VM_MAP_SET_PROT (&entry.flags, page.prot);
-          error = vm_map_enter (map_out, &outp->addr, size,
-                                0, entry.flags, entry.object, entry.offset);
-          if (error)
-            return (-error);
-
-          outp->prot = page.prot;
-          outp->size = size;
-          page.addr += size;
-          ++it_out->cur;
-        }
-      while (page.addr < end && ipc_page_iter_size (it_out));
-
-      ++it_in->cur;
-      --elems_pp;
+  error = vm_map_iter_copy (r_task->map, &aux, l_it, direction);
+  if (error >= 0)
+    {
+      memcpy (r_it->begin + r_it->cur, ptr, error * sizeof (*ptr));
+      r_it->cur += error;
     }
 
-  return (i);
+  if (ptr != tmp)
+    vm_kmem_free (ptr, size * sizeof (*ptr));
+
+  return (error);
+}
+
+static void
+ipc_cspace_guard_fini (struct adaptive_lock **lockp)
+{
+  if (*lockp)
+    adaptive_lock_release (*lockp);
+}
+
+static void
+ipc_cap_iter_cleanup (struct cspace *sp, struct ipc_cap_iter *it, uint32_t idx)
+{
+  for (; it->cur != idx; --it->cur)
+    {
+      _Auto mp = it->begin + it->cur - 1;
+      cspace_rem (sp, mp->cap);
+    }
+}
+
+static int
+ipc_cap_copy_impl (struct task *r_task, struct ipc_cap_iter *r_it,
+                   struct ipc_cap_iter *l_it, int direction)
+{
+  struct ipc_cap_iter *in_it, *out_it;
+  struct cspace *in_cs, *out_cs;
+
+  if (direction == IPC_COPY_FROM)
+    {
+      in_it = r_it, out_it = l_it;
+      in_cs = &r_task->caps, out_cs = cspace_self ();
+    }
+  else
+    {
+      in_it = l_it, out_it = r_it;
+      in_cs = cspace_self (), out_cs = &r_task->caps;
+    }
+
+  uint32_t prev = out_it->cur;
+  int rv = 0;
+  struct adaptive_lock *lock CLEANUP (ipc_cspace_guard_fini) = &out_cs->lock;
+
+  ADAPTIVE_LOCK_GUARD (&in_cs->lock);
+  if (likely (in_cs != out_cs))
+    adaptive_lock_acquire (lock);
+  else
+    lock = NULL;
+
+  for (; ipc_cap_iter_size (in_it) && ipc_cap_iter_size (out_it);
+      ++in_it->cur, ++out_it->cur, ++rv)
+    {
+      int capx = in_it->begin[in_it->cur].cap;
+      _Auto cap = cspace_get (in_cs, capx);
+
+      if (unlikely (! cap))
+        {
+          ipc_cap_iter_cleanup (out_cs, out_it, prev);
+          return (-EBADF);
+        }
+
+      _Auto outp = out_it->begin + out_it->cur;
+      capx = cspace_add_free_locked (out_cs, cap, outp->flags);
+      cap_base_rel (cap);
+
+      if (unlikely (capx < 0))
+        {
+          ipc_cap_iter_cleanup (out_cs, out_it, prev);
+          return (capx);
+        }
+
+      outp->cap = capx;
+    }
+
+  return (rv);
 }
 
 int
 ipc_cap_iter_copy (struct task *r_task, struct ipc_cap_iter *r_it,
                    struct ipc_cap_iter *l_it, int direction)
 {
-  struct ipc_cap_iter *it_in, *it_out;
-  struct cspace *sp_in, *sp_out;
-  _Auto l_caps = cspace_self ();
+#if 0
+  if (unlikely (!user_check_addr (r_it->begin + r_it->cur) ||
+                !user_check_addr (r_it->begin + r_it->end)))
+    return (-EFAULT);
+#endif
 
-  if (direction == IPC_COPY_FROM)
-    {
-      it_in = r_it, it_out = l_it;
-      sp_in = &r_task->caps, sp_out = l_caps;
-    }
-  else
-    {
-      it_in = l_it, it_out = r_it;
-      sp_in = l_caps, sp_out = &r_task->caps;
-    }
-
-  struct ipc_data data CLEANUP (ipc_data_fini);
-  ipc_data_init (&data, direction);
+  struct ipc_msg_cap tmp[16], *ptr = NULL;
+  int size = ipc_cap_iter_size (r_it);
 
   struct unw_fixup fixup;
   int error = unw_fixup_save (&fixup);
+
   if (unlikely (error))
-    return (-error);
-
-  ipc_data_init (&data, direction);
-  phys_addr_t pa;
-  error = ipc_map_addr (r_task->map, r_it->begin + r_it->cur, &data, &pa);
-
-  if (error)
-    return (error);
-
-  ipc_data_pte_get (&data);
-  ipc_data_pte_map (&data, pa);
-  ipc_data_page_ref (&data, pa);
-  ipc_data_intr_restore (&data);
-
-  _Auto elems_pp = ((uintptr_t)&r_it->begin[r_it->cur] % PAGE_SIZE) /
-                   sizeof (*r_it->begin);
-  int i, nmax = (int)MIN (ipc_cap_iter_size (it_in),
-                          ipc_cap_iter_size (it_out));
-
-  for (i = 0; i < nmax; ++i)
     {
-      if (! elems_pp)
-        {
-          error = ipc_map_addr (r_task->map, r_it->begin + r_it->cur,
-                                &data, &pa);
-          if (error)
-            return (error);
+      if (ptr && ptr != tmp)
+        vm_kmem_free (ptr, size * sizeof (*ptr));
 
-          ipc_data_pte_map (&data, pa);
-          ipc_data_page_unref (&data);
-          ipc_data_page_ref (&data, pa);
-          ipc_data_intr_restore (&data);
+      return (error);
+    }
+  else if (likely (size <= (int)ARRAY_SIZE (tmp)))
+    memcpy (ptr = tmp, r_it->begin + r_it->cur, size * sizeof (*ptr));
+  else
+    {
+      ptr = vm_kmem_alloc (size * sizeof (*ptr));
+      if (! ptr)
+        return (-ENOMEM);
 
-          elems_pp = PAGE_SIZE / sizeof (*r_it->begin);
-        }
-
-      _Auto in_cap = cspace_get (sp_in, it_in->begin[it_in->cur].cap);
-      if (! in_cap)
-        return (-EBADF);
-
-      _Auto out_cap = &it_out->begin[it_out->cur];
-      int cap_idx = cspace_add_free (sp_out, in_cap, out_cap->flags);
-
-      if (cap_idx < 0)
-        {
-          cap_base_rel (in_cap);
-          return (cap_idx);
-        }
-
-      out_cap->cap = cap_idx;
-      ++it_in->cur;
-      ++it_out->cur;
-      --elems_pp;
+      memcpy (ptr, r_it->begin + r_it->cur, size * sizeof (*ptr));
     }
 
-  return (i);
+  struct ipc_cap_iter aux =
+    {
+      .begin = ptr,
+      .cur = r_it->cur,
+      .end = r_it->end
+    };
+
+  error = ipc_cap_copy_impl (r_task, &aux, l_it, direction);
+  if (error >= 0)
+    {
+      memcpy (r_it->begin + r_it->cur, ptr, error * sizeof (*ptr));
+      r_it->cur += error;
+    }
+
+  if (ptr != tmp)
+    vm_kmem_free (ptr, size * sizeof (*ptr));
+
+  return (error);
 }

@@ -1803,7 +1803,8 @@ thread_destroy (struct thread *thread)
 
   turnstile_destroy (thread->priv_turnstile);
   sleepq_destroy (thread->priv_sleepq);
-  thread_free_stack (thread->stack);
+  if (!(thread->flags & THREAD_USER_STACK))
+    thread_free_stack (thread->stack);
   tcb_cleanup (&thread->tcb);
   kmem_cache_free (&thread_cache, thread);
 }
@@ -2132,11 +2133,20 @@ thread_create (struct thread **threadp, const struct thread_attr *attr,
       goto error_thread;
     }
 
-  void *stack = thread_alloc_stack ();
-  if (! stack)
+  void *stack;
+  if (attr->stack)
     {
-      error = ENOMEM;
-      goto error_stack;
+      stack = attr->stack;
+      thread->flags |= THREAD_USER_STACK;
+    }
+  else
+    {
+      stack = thread_alloc_stack ();
+      if (! stack)
+        {
+          error = ENOMEM;
+          goto error_stack;
+        }
     }
 
   error = thread_init (thread, stack, attr, fn, arg);
@@ -2155,7 +2165,8 @@ thread_create (struct thread **threadp, const struct thread_attr *attr,
   return (0);
 
 error_init:
-  thread_free_stack (stack);
+  if (!(thread->flags & THREAD_USER_STACK))
+    thread_free_stack (stack);
 error_stack:
   kmem_cache_free (&thread_cache, thread);
 error_thread:

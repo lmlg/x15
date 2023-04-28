@@ -50,17 +50,24 @@ cspace_get (struct cspace *sp, int cap_idx)
 }
 
 static inline int
-cspace_add_free (struct cspace *sp, struct cap_base *cap,
-                 int flags __unused)
+cspace_add_free_locked (struct cspace *sp, struct cap_base *cap,
+                        int flags __unused)
 {
-  ADAPTIVE_LOCK_GUARD (&sp->lock);
   rdxtree_key_t cap_idx;
   int rv = rdxtree_insert_alloc (&sp->tree, cap, &cap_idx);
   return (rv < 0 ? -ENOMEM : (int)cap_idx);
 }
 
 static inline int
-cspace_rem (struct cspace *sp, int cap_idx)
+cspace_add_free (struct cspace *sp, struct cap_base *cap,
+                 int flags __unused)
+{
+  ADAPTIVE_LOCK_GUARD (&sp->lock);
+  return (cspace_add_free_locked (sp, cap, flags));
+}
+
+static inline int
+cspace_rem_locked (struct cspace *sp, int cap_idx)
 {
   if (cap_idx < 0)
     return (EBADF);
@@ -72,6 +79,13 @@ cspace_rem (struct cspace *sp, int cap_idx)
   CPU_INTR_GUARD ();
   cap_base_rel (cap);
   return (0);
+}
+
+static inline int
+cspace_rem (struct cspace *sp, int cap_idx)
+{
+  ADAPTIVE_LOCK_GUARD (&sp->lock);
+  return (cspace_rem_locked (sp, cap_idx));
 }
 
 static inline int

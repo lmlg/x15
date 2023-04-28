@@ -24,6 +24,7 @@
 #include <stdio.h>
 
 #include <kern/init.h>
+#include <kern/ipc.h>
 #include <kern/kmem.h>
 #include <kern/list.h>
 #include <kern/log.h>
@@ -463,12 +464,11 @@ out:
   return (0);
 }
 
-int
-vm_map_enter (struct vm_map *map, uintptr_t *startp,
-              size_t size, size_t align, int flags,
-              struct vm_object *object, uint64_t offset)
+static inline int
+vm_map_enter_locked (struct vm_map *map, uintptr_t *startp,
+                     size_t size, size_t align, int flags,
+                     struct vm_object *object, uint64_t offset)
 {
-  SXLOCK_EXGUARD (&map->lock);
   struct vm_map_request request;
   int error = vm_map_prepare (map, *startp, size, align, flags, object,
                               offset, &request);
@@ -479,6 +479,16 @@ vm_map_enter (struct vm_map *map, uintptr_t *startp,
 
   *startp = request.start;
   return (0);
+}
+
+int
+vm_map_enter (struct vm_map *map, uintptr_t *startp,
+              size_t size, size_t align, int flags,
+              struct vm_object *object, uint64_t offset)
+{
+  SXLOCK_EXGUARD (&map->lock);
+  return (vm_map_enter_locked (map, startp, size, align,
+                               flags, object, offset));
 }
 
 static void
@@ -541,7 +551,7 @@ vm_map_clip_end (struct vm_map *map, struct vm_map_entry *entry,
 
 static int
 vm_map_remove_impl (struct vm_map *map, uintptr_t start,
-                    uintptr_t end, struct list *list)
+                    uintptr_t end, struct list *list, bool clear)
 {
   assert (start >= map->start);
   assert (end <= map->end);
@@ -588,7 +598,7 @@ vm_map_remove_impl (struct vm_map *map, uintptr_t start,
 
   assert (list_empty (&alloc_entries));
 
-  if (entry->object)
+  if (entry->object && clear)
     { // Don't prevent lookups and page faults from here on.
       sxlock_share (&map->lock);
       pmap_remove_range (map->pmap, start, end, cpumap_all ());
@@ -604,7 +614,7 @@ vm_map_remove (struct vm_map *map, uintptr_t start, uintptr_t end)
   struct list entries;
   list_init (&entries);
 
-  int error = vm_map_remove_impl (map, start, end, &entries);
+  int error = vm_map_remove_impl (map, start, end, &entries, true);
   if (! error)
     list_for_each_safe (&entries, ex, tmp)
       vm_map_entry_destroy (list_entry (ex, struct vm_map_entry, list_node));
@@ -1077,6 +1087,110 @@ vm_map_fork (struct vm_map **mapp, struct vm_map *src)
   dst->nr_entries = src->nr_entries;
   pmap_update (pmap);
   return (0);
+}
+
+static void
+vm_map_iter_cleanup (struct vm_map *map, struct ipc_page_iter *it, uint32_t ix)
+{
+  for (; it->cur != ix; --it->cur)
+    {
+      _Auto page = it->begin + it->cur - 1;
+      struct list entries;
+      uintptr_t start = page->addr, end = start + page->size;
+
+      list_init (&entries);
+      vm_map_remove_impl (map, start, end, &entries, false);
+      list_for_each_safe (&entries, ex, tmp)
+        vm_map_entry_destroy (list_entry (ex, struct vm_map_entry, list_node));
+
+      pmap_remove_range (map->pmap, start, end, cpumap_all ());
+    }
+
+  pmap_update (map->pmap);
+}
+
+static void
+vm_map_iter_fini (struct sxlock **lockp)
+{
+  if (*lockp)
+    sxlock_unlock (*lockp);
+}
+
+int
+vm_map_iter_copy (struct vm_map *r_map, struct ipc_page_iter *r_it,
+                  struct ipc_page_iter *l_it, int direction)
+{
+  struct vm_map *in_map, *out_map;
+  struct ipc_page_iter *in_it, *out_it;
+
+  if (direction == IPC_COPY_FROM)
+    {
+      in_map = r_map, out_map = vm_map_self ();
+      in_it = r_it, out_it = l_it;
+    }
+  else
+    {
+      in_map = vm_map_self (), out_map = r_map;
+      in_it = l_it, out_it = r_it;
+    }
+
+  uint32_t prev = out_it->cur;
+  int i = 0, nmax = (int)MIN (ipc_page_iter_size (in_it),
+                              ipc_page_iter_size (out_it));
+  struct sxlock *lock CLEANUP (vm_map_iter_fini) = &in_map->lock;
+
+  SXLOCK_EXGUARD (&out_map->lock);
+  if (likely (in_map != out_map))
+    sxlock_shlock (lock);
+  else
+    lock = NULL;
+
+  for (; i < nmax; ++i)
+    {
+      _Auto page = in_it->begin[in_it->cur];
+      uintptr_t end = page.addr + vm_page_round (page.size);
+
+      do
+        {
+          _Auto entry = vm_map_lookup_nearest (in_map, page.addr);
+          _Auto outp = &out_it->begin[out_it->cur];
+          uint64_t offset;
+
+#define ERR(code)   \
+  return ((vm_map_iter_cleanup (out_map, out_it, prev)), (code))
+
+          if (! entry)
+            ERR (-ESRCH);
+          else if ((VM_MAP_MAXPROT (entry->flags) & page.prot) != page.prot)
+            ERR (-EACCES);
+          else if (entry->flags & VM_MAP_ANON)
+            offset = entry->offset + (page.addr - entry->start);
+          else
+            offset = entry->offset;
+
+          size_t size = MIN (end - page.addr, page.size);
+          if (! size)
+            ERR (-EINVAL);
+
+          int flags = entry->flags & ~VM_MAP_ANON;
+          VM_MAP_SET_PROT (&flags, page.prot);
+          int error = vm_map_enter_locked (out_map, &outp->addr, size,
+                                           0, flags, entry->object, offset);
+          if (error)
+            ERR (-error);
+
+          outp->prot = page.prot;
+          outp->size = size;
+          page.addr += size;
+          ++out_it->cur;
+        }
+      while (page.addr < end && ipc_page_iter_size (out_it));
+
+      ++in_it->cur;
+    }
+
+  return (i);
+#undef ERR
 }
 
 void
