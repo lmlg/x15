@@ -313,52 +313,6 @@ ipc_bcopy (struct task *r_task, void *r_ptr, size_t r_size,
     }
 }
 
-int
-ipc_page_iter_copy (struct task *r_task, struct ipc_page_iter *r_it,
-                    struct ipc_page_iter *l_it, int direction)
-{
-  struct ipc_msg_page tmp[16], *ptr = tmp;
-  int len = ipc_page_iter_size (r_it), size = len * sizeof (*ptr);
-
-  if (unlikely (len > (int)ARRAY_SIZE (tmp)))
-    {
-      ptr = vm_kmem_alloc (size);
-      if (! ptr)
-        return (-ENOMEM);
-    }
-
-  int rv = ipc_bcopy (r_task, r_it->begin + r_it->cur, size,
-                      ptr, size, IPC_COPY_FROM);
-  if (unlikely (rv < 0))
-    {
-      if (ptr != tmp)
-        vm_kmem_free (ptr, size);
-
-      return (rv);
-    }
-
-  struct ipc_page_iter aux =
-    {
-      .begin = ptr,
-      .cur = r_it->cur,
-      .end = r_it->end
-    };
-
-  rv = vm_map_iter_copy (r_task->map, &aux, l_it, direction);
-  if (rv >= 0)
-    {
-      len = rv * sizeof (*ptr);
-      if (ipc_bcopy (r_task, r_it->begin + r_it->cur, len,
-                     ptr, len, IPC_COPY_TO) > 0)
-        r_it->cur = aux.cur;
-    }
-
-  if (ptr != tmp)
-    vm_kmem_free (ptr, size * sizeof (*ptr));
-
-  return (rv);
-}
-
 static void
 ipc_cspace_guard_fini (struct adaptive_lock **lockp)
 {
@@ -432,49 +386,62 @@ ipc_cap_copy_impl (struct task *r_task, struct ipc_cap_iter *r_it,
   return (rv);
 }
 
+#define IPC_ITER_LOOP(type, fn)   \
+  struct ipc_msg_##type tmp[16], *ptr = tmp;   \
+  int len = ipc_##type##_iter_size (r_it), size = len * sizeof (*ptr);   \
+  \
+  if (unlikely (len > (int)ARRAY_SIZE (tmp)))   \
+    {   \
+      ptr = vm_kmem_alloc (size);   \
+      if (! ptr)   \
+        return (-ENOMEM);   \
+    }   \
+  \
+  int rv = ipc_bcopy (r_task, r_it->begin + r_it->cur, size,   \
+                      ptr, size, IPC_COPY_FROM);   \
+  \
+  if (unlikely (rv < 0))   \
+    {   \
+      if (ptr != tmp)   \
+        vm_kmem_free (ptr, size);   \
+      \
+      return (rv);   \
+    }   \
+  \
+  struct ipc_##type##_iter aux =   \
+    {   \
+      .begin = ptr,   \
+      .cur = r_it->cur,   \
+      .end = r_it->end   \
+    };   \
+  \
+  rv = fn (r_task, &aux, l_it, direction);   \
+  if (rv >= 0)   \
+    {   \
+      len = rv * sizeof (*ptr);   \
+      if (ipc_bcopy (r_task, r_it->begin + r_it->cur, len,   \
+                     ptr, len, IPC_COPY_TO) > 0)   \
+        r_it->cur = aux.cur;   \
+    }   \
+  \
+  if (ptr != tmp)   \
+    vm_kmem_free (ptr, size);   \
+  \
+  return (rv)
+
 int
 ipc_cap_iter_copy (struct task *r_task, struct ipc_cap_iter *r_it,
                    struct ipc_cap_iter *l_it, int direction)
 {
-  struct ipc_msg_cap tmp[16], *ptr = tmp;
-  int len = ipc_cap_iter_size (r_it), size = len * sizeof (*ptr);
+  IPC_ITER_LOOP (cap, ipc_cap_copy_impl);
+}
 
-  if (unlikely (len > (int)ARRAY_SIZE (tmp)))
-    {
-      ptr = vm_kmem_alloc (size);
-      if (! ptr)
-        return (-ENOMEM);
-    }
-
-  int rv = ipc_bcopy (r_task, r_it->begin + r_it->cur, size,
-                      ptr, size, IPC_COPY_FROM);
-
-  if (unlikely (rv < 0))
-    {
-      if (ptr != tmp)
-        vm_kmem_free (ptr, size);
-
-      return (rv);
-    }
-
-  struct ipc_cap_iter aux =
-    {
-      .begin = ptr,
-      .cur = r_it->cur,
-      .end = r_it->end
-    };
-
-  rv = ipc_cap_copy_impl (r_task, &aux, l_it, direction);
-  if (rv >= 0)
-    {
-      len = rv * sizeof (*ptr);
-      if (ipc_bcopy (r_task, r_it->begin + r_it->cur, len,
-                     ptr, len, IPC_COPY_TO) > 0)
-        r_it->cur = aux.cur;
-    }
-
-  if (ptr != tmp)
-    vm_kmem_free (ptr, size);
-
-  return (rv);
+int
+ipc_page_iter_copy (struct task *r_task, struct ipc_page_iter *r_it,
+                    struct ipc_page_iter *l_it, int direction)
+{
+#define ipc_page_copy_impl(task, r_it, l_it, dir)   \
+  vm_map_iter_copy ((task)->map, (r_it), (l_it), (dir))
+  IPC_ITER_LOOP (page, ipc_page_copy_impl);
+#undef ipc_page_copy_impl
 }
