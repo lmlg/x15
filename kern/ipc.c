@@ -326,7 +326,7 @@ ipc_cap_iter_cleanup (struct cspace *sp, struct ipc_cap_iter *it, uint32_t idx)
   for (; it->cur != idx; --it->cur)
     {
       _Auto mp = it->begin + it->cur - 1;
-      cspace_rem (sp, mp->cap);
+      cspace_rem_locked (sp, mp->cap);
     }
 }
 
