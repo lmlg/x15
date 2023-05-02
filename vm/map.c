@@ -930,10 +930,12 @@ retry:
       ++i, final_off += PAGE_SIZE, addr += PAGE_SIZE)
     {
       struct vm_page *page = frames + i;
-      if (vm_object_insert (final_obj, page, final_off) != 0 ||
+      int error = vm_object_insert (final_obj, page, final_off);
+
+      if ((error && error != EBUSY) ||
           pmap_enter (map->pmap, addr, vm_page_to_pa (page), prot, 0) != 0)
         {
-          for (; i < (uint32_t)n_pages; ++i)
+          for (++i; i < (uint32_t)n_pages; ++i)
             vm_page_free (frames + i, 0, VM_PAGE_SLEEP);
 
           break;
