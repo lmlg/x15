@@ -853,10 +853,7 @@ retry:
 
     offset = entry->offset + addr - entry->start;
     if (entry->flags & VM_MAP_ANON)
-      {
-        final_off = offset - entry->offset + addr;
-        final_obj = map->priv_cache;
-      }
+      final_off = addr, final_obj = map->priv_cache;
     else
       final_off = offset, final_obj = object;
 
