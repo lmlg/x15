@@ -975,7 +975,7 @@ cpu_set_percpu_area (const struct cpu *cpu, void *area)
 {
 #ifdef __LP64__
   uintptr_t va = (uintptr_t)area;
-  cpu_set_msr (CPU_MSR_FSBASE, (uint32_t) (va >> 32), (uint32_t) va);
+  cpu_set_msr (CPU_MSR_GSBASE, (uint32_t)(va >> 32), (uint32_t)va);
 #else
   asm volatile ("mov %0, %%fs" : : "r" (CPU_GDT_SEL_PERCPU));
 #endif
@@ -988,7 +988,7 @@ cpu_set_tls_area (void)
 {
 #ifdef __LP64__
   uintptr_t va = (uintptr_t)&cpu_tls_seg;
-  cpu_set_msr (CPU_MSR_GSBASE, (uint32_t) (va >> 32), (uint32_t) va);
+  cpu_set_msr (CPU_MSR_FSBASE, (uint32_t) (va >> 32), (uint32_t) va);
 #else
   asm volatile ("mov %0, %%gs" : : "r" (CPU_GDT_SEL_TLS));
 #endif

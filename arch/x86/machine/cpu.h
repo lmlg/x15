@@ -628,10 +628,16 @@ void cpu_halt_broadcast (void);
 
 // Generic percpu accessors.
 
+#ifdef __LP64__
+#  define CPU_LOCAL_REGISTER   "gs"
+#else
+#  define CPU_LOCAL_REGISTER   "fs"
+#endif
+
 #define cpu_local_ptr(var)   \
 MACRO_BEGIN   \
   typeof(var) *ptr_ = &(var);   \
-  asm ("add %%fs:%1, %0"   \
+  asm ("add %%" CPU_LOCAL_REGISTER ":%1, %0"   \
        : "+r" (ptr_)   \
        : "m" (cpu_local_area));   \
   ptr_;   \
@@ -642,13 +648,13 @@ MACRO_END
 // Generic interrupt-safe percpu accessors.
 
 #define cpu_local_assign(var, val)   \
-  asm ("mov %0, %%fs:%1"   \
+  asm ("mov %0, %%" CPU_LOCAL_REGISTER ":%1"   \
        : : "r" (val), "m" (var));
 
 #define cpu_local_read(var)   \
 MACRO_BEGIN   \
   typeof(var) val_;   \
-  asm ("mov %%fs:%1, %0"   \
+  asm ("mov %%" CPU_LOCAL_REGISTER ":%1, %0"   \
        : "=r" (val_)   \
        : "m" (var));   \
   val_;   \
