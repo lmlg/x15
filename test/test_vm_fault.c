@@ -120,11 +120,7 @@ test_vm_fault_thread (void *arg __unused)
      * VM map are visible. Calling 'thread_yield' may not be enough,
      * depending on the conditions of the run queue.
      */
-    struct spinlock dummy;
-    spinlock_init (&dummy);
-    spinlock_lock (&dummy);
-    thread_timedsleep (&dummy, &dummy, "dummy", clock_get_time () + 1000);
-    spinlock_unlock (&dummy);
+    thread_delay (1000, false);
 
     // Ensure that COW pages work correctly.
     assert (*(int *)buf == 0);
