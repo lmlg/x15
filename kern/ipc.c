@@ -35,7 +35,6 @@ struct ipc_data
   uintptr_t va;
   int direction;
   int prot;
-  int fault_intr;
   void *ipc_pte;
   phys_addr_t prev;
   struct vm_page *page;
@@ -47,7 +46,6 @@ ipc_data_init (struct ipc_data *data, int direction)
   data->direction = direction;
   data->prot = direction == IPC_COPY_FROM ? VM_PROT_READ : VM_PROT_RDWR;
   data->va = vm_map_ipc_addr ();
-  data->fault_intr = cpu_intr_enabled () ? 0 : VM_MAP_FAULT_INTR;
   data->ipc_pte = NULL;
   data->page = NULL;
 }

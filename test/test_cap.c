@@ -50,6 +50,7 @@ test_cap_alloc_task (void)
 
   int capx = cap_intern (ctask, 0);
   assert (capx >= 0);
+  cap_base_rel (ctask);
   return (capx);
 }
 

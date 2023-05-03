@@ -55,7 +55,11 @@ cspace_add_free_locked (struct cspace *sp, struct cap_base *cap,
 {
   rdxtree_key_t cap_idx;
   int rv = rdxtree_insert_alloc (&sp->tree, cap, &cap_idx);
-  return (rv < 0 ? -ENOMEM : (int)cap_idx);
+  if (rv < 0)
+    return (-ENOMEM);
+
+  cap_base_acq (cap);
+  return ((int)cap_idx);
 }
 
 static inline int

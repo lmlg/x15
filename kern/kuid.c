@@ -145,7 +145,11 @@ kuid_remove (struct kuid_head *head, int cls)
     cbuf_push (&map->cbuf, &head->id, sizeof (head->id), false);
 
   spinlock_unlock_intr_restore (&map->lock, flags);
-  return (!prev ? ESRCH : (prev != head ? EINVAL : 0));
+  if (! prev)
+    return (ESRCH);
+
+  assert (prev == head);
+  return (0);
 }
 
 static void
