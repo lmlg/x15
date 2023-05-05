@@ -1207,6 +1207,18 @@ cap_intr_rem (uint32_t intr, struct list *node, bool eoi)
   return (0);
 }
 
+static struct cap_intr_entry*
+cap_find_intr (struct cap_flow *flow, uint32_t irq)
+{
+  struct cap_intr_entry *tmp;
+
+  list_for_each_entry (&flow->intr.entries, tmp, cap_node)
+    if (tmp->irq == irq)
+      return (tmp);
+
+  return (NULL);
+}
+
 int
 cap_intr_register (struct cap_flow *flow, uint32_t irq)
 {
@@ -1231,17 +1243,14 @@ cap_intr_register (struct cap_flow *flow, uint32_t irq)
 
   {
     SPINLOCK_GUARD (&flow->lock);
-    struct cap_intr_entry *tmp;
-
-    list_for_each_entry (&flow->intr.entries, tmp, cap_node)
-      if (tmp->irq == irq)
-        goto ealready;
+    if (cap_find_intr (flow, irq))
+      goto already;
 
     list_insert_tail (&flow->intr.entries, &ep->cap_node);
     return (0);
   }
 
-ealready:
+already:
   cap_intr_rem (irq, &ep->intr_node, false);
   kmem_cache_free (&cap_misc_cache, ep);
   return (EALREADY);
@@ -1250,25 +1259,32 @@ ealready:
 int
 cap_intr_unregister (struct cap_flow *flow, uint32_t irq)
 {
-  struct cap_intr_entry *entry = NULL;
   CPU_INTR_GUARD ();
+  struct cap_intr_entry *entry;
 
-  {
-    SPINLOCK_GUARD (&flow->lock);
-    struct cap_intr_entry *tmp;
-
-    list_for_each_entry (&flow->intr.entries, tmp, cap_node)
-      if (tmp->irq == irq)
-        {
-          entry = tmp;
-          list_remove (&entry->cap_node);
-          break;
-        }
-  }
+  spinlock_lock (&flow->lock);
+  entry = cap_find_intr (flow, irq);
+  spinlock_unlock (&flow->lock);
 
   return (!entry ? EINVAL :
           cap_intr_rem (irq, &entry->intr_node,
                         bitmap_test (flow->intr.pending, irq)));
+}
+
+int
+cap_intr_eoi (struct cap_flow *flow, uint32_t irq)
+{
+  SPINLOCK_GUARD (&flow->lock);
+  if (bitmap_test (flow->intr.pending, irq))
+    {
+      bitmap_clear (flow->intr.pending, irq);
+      --flow->intr.nr_pending;
+    }
+  else if (!cap_find_intr (flow, irq))
+    return (EINVAL);
+
+  intr_eoi (irq);
+  return (0);
 }
 
 static size_t

@@ -1059,7 +1059,7 @@ int
 pmap_extract (struct pmap *pmap, uintptr_t va, phys_addr_t *pap)
 {
   pmap_pte_t *pte = pmap_extract_impl (pmap, va);
-  if (! pte)
+  if (! pte || !(*pte & PMAP_PTE_P))
     return (EFAULT);
 
   *pap = *pte & PMAP_PA_MASK;

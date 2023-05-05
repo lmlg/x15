@@ -714,8 +714,8 @@ void
 rcu_wait (void)
 {
   struct rcu_waiter waiter;
-  rcu_waiter_init (&waiter, thread_self ()),
-                   rcu_waiter_wait (&waiter);
+  rcu_waiter_init (&waiter, thread_self ());
+  rcu_waiter_wait (&waiter);
 }
 
 static int __init

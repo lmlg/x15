@@ -72,7 +72,7 @@ test_intr (void *arg)
   assert (mdata.flags & IPC_MSG_INTR);
   assert (irq == TEST_INTR_FIRST);
 
-  intr_eoi (irq);
+  assert (cap_intr_eoi (flow, irq) == 0);
   assert (test_intr_last == (int)irq);
 }
 
