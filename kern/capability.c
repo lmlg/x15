@@ -496,7 +496,8 @@ cap_recv_putback (struct cap_flow *flow, struct cap_receiver *recv, ssize_t rv)
 static void
 cap_sender_enqueue (struct cap_sender *sender, struct cap_flow *flow)
 {
-  plist_node_init (&sender->node, thread_real_priority (sender->thread));
+  plist_node_init (&sender->node,
+                   thread_real_global_priority (sender->thread));
   plist_add (&flow->senders, &sender->node);
   cap_mark_pnode_msg (&sender->node);
   // TODO: Priority inheritance.

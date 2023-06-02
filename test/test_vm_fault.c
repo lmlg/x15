@@ -120,7 +120,7 @@ test_vm_fault_thread (void *arg __unused)
      * VM map are visible. Calling 'thread_yield' may not be enough,
      * depending on the conditions of the run queue.
      */
-    thread_delay (1000, false);
+    thread_delay (1, false);
 
     // Ensure that COW pages work correctly.
     assert (*(int *)buf == 0);
@@ -141,5 +141,6 @@ TEST_DEFERRED (vm_fault)
   assert (error == EFAULT);
   assert (!thread_self()->fixup);
 
+  thread_join (thread);
   return (TEST_OK);
 }
