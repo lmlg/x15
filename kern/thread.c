@@ -1835,7 +1835,8 @@ thread_join_common (struct thread *thread)
   thread_destroy (thread);
 }
 
-void thread_terminate (struct thread *thread)
+void
+thread_terminate (struct thread *thread)
 {
   SPINLOCK_GUARD (&thread->join_lock);
   thread->terminating = true;
@@ -2777,8 +2778,10 @@ thread_handoff (struct thread *src, struct thread *dst, void *data,
   cpu_flags_t flags;
   _Auto runq = thread_lock_runq (src, &flags);
 
-  /* Save the scheduling state of the source thread and mark it
-   * as being reply-blocked. */
+  /*
+   * Save the scheduling state of the source thread and mark it
+   * as being reply-blocked.
+   */
   *sched = *thread_get_real_sched_data(src);
   thread_set_wchan (src, data, THREAD_REPLY_BLOCK);
   atomic_store_rlx (&src->state, THREAD_SLEEPING);

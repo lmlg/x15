@@ -162,7 +162,7 @@ static void __init
 work_pool_build (struct work_pool *pool, uint32_t cpu, int flags)
 {
   pool->flags = flags;
-  uint32_t nr_cpus;
+  uint32_t nr_cpus = 1;
 
   if (flags & WORK_PF_GLOBAL)
     {
@@ -171,10 +171,9 @@ work_pool_build (struct work_pool *pool, uint32_t cpu, int flags)
     }
   else
     {
-      nr_cpus = 1;
       const char *suffix = (flags & WORK_PF_HIGHPRIO) ? "h" : "";
-
       char name[SYSCNT_NAME_SIZE];
+
       snprintf (name, sizeof (name), "work_transfers/%u%s", cpu, suffix);
       syscnt_register (&pool->sc_transfers, name);
       pool->cpu = cpu;

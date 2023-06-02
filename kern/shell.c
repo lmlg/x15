@@ -213,7 +213,7 @@ shell_history_get_newest (struct shell_history *history)
   return (shell_history_get (history, history->newest));
 }
 
-static struct shell_line *
+static struct shell_line*
 shell_history_get_index (struct shell_history *history)
 {
   return (shell_history_get (history, history->index));
@@ -740,7 +740,7 @@ shell_print_cmd_matches (struct shell *shell, const struct shell_cmd *cmd,
 static int
 shell_process_tabulation (struct shell *shell)
 {
-  const struct shell_cmd *cmd = NULL; /* GCC */
+  const struct shell_cmd *cmd = NULL;
 
   _Auto cmd_set = shell->cmd_set;
   shell_cmd_set_lock (cmd_set);

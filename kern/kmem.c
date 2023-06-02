@@ -660,7 +660,7 @@ kmem_cache_empty (struct kmem_cache *cache)
   return (cache->nr_objs == cache->nr_bufs);
 }
 
-static struct kmem_slab *
+static struct kmem_slab*
 kmem_cache_buf_to_slab (const struct kmem_cache *cache, void *buf)
 {
   if ((cache->flags & KMEM_CF_SLAB_EXTERNAL) ||

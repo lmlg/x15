@@ -41,9 +41,9 @@ sxlock_init (struct sxlock *sxp)
 static inline int
 sxlock_tryexlock (struct sxlock *sxp)
 {
-  uint32_t val = atomic_load_rlx (&sxp->lock) & SXLOCK_MASK;
-  return (!val && atomic_cas_bool_acq (&sxp->lock, val, val | SXLOCK_MASK) ?
-          0 : EBUSY);
+  uint32_t val = atomic_load_rlx (&sxp->lock);
+  return ((val & SXLOCK_MASK) == 0 &&
+          atomic_cas_bool_acq (&sxp->lock, val, val | SXLOCK_MASK) ? 0 : EBUSY);
 }
 
 void sxlock_exlock_slow (struct sxlock *sxp);
@@ -58,10 +58,9 @@ sxlock_exlock (struct sxlock *sxp)
 static inline int
 sxlock_tryshlock (struct sxlock *sxp)
 {
-  uint32_t val = atomic_load_rlx (&sxp->lock) & SXLOCK_MASK;
-  return (val != SXLOCK_MASK &&
-          atomic_cas_bool_acq (&sxp->lock, val, val + 1) ?
-          0 : EBUSY);
+  uint32_t val = atomic_load_rlx (&sxp->lock);
+  return ((val & SXLOCK_MASK) != SXLOCK_MASK &&
+          atomic_cas_bool_acq (&sxp->lock, val, val + 1) ? 0 : EBUSY);
 }
 
 void sxlock_shlock_slow (struct sxlock *sxp);

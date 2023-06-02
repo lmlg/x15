@@ -71,7 +71,6 @@ syscnt_setup (void)
 }
 
 INIT_OP_DEFINE (syscnt_setup,
-                INIT_OP_DEP (mutex_bootstrap, true),
                 INIT_OP_DEP (spinlock_setup, true));
 
 void __init

@@ -23,7 +23,7 @@
 
 #include <kern/macros.h>
 
-#define __symbol_table __section (".symbol")
+#define __symbol_table   __section (".symbol")
 
 /*
  * Symbol structure.

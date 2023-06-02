@@ -58,10 +58,6 @@ struct cap_base
   struct sref_counter sref;
 };
 
-// The following are macros to work around typing issues.
-#define cap_base_acq(x)   sref_counter_inc (&((struct cap_base *)(x))->sref)
-#define cap_base_rel(x)   sref_counter_dec (&((struct cap_base *)(x))->sref)
-
 enum
 {
   CAP_KERNEL_MEMORY,   // Allows mapping physical memory.
@@ -138,8 +134,26 @@ struct cap_kernel
 #define CAP_ALERT_ASYNC   0x00
 #define CAP_ALERT_BLOCK   0x01
 
-/* Intern a capability within the local space. Returns the new capability
- * index, or a negated errno value on error. */
+// Acquire or release a reference on a capability.
+static inline void
+cap_base_acq (struct cap_base *cap)
+{
+  sref_counter_inc (&cap->sref);
+}
+
+static inline void
+cap_base_rel (struct cap_base *cap)
+{
+  sref_counter_dec (&cap->sref);
+}
+
+#define cap_base_acq(cap)   (cap_base_acq) (CAP (cap))
+#define cap_base_rel(cap)   (cap_base_rel) (CAP (cap))
+
+/*
+ * Intern a capability within the local space. Returns the new capability
+ * index, or a negated errno value on error.
+ */
 int cap_intern (struct cap_base *cap, int flags);
 
 #define cap_intern(cap, flags)   (cap_intern) (CAP (cap), (flags))
@@ -203,7 +217,7 @@ int cap_handle (rcvid_t rcvid);
  * Pull more data from a receive ID.
  *
  * If the calling thread is not already handling the receive ID, then it will
- * attempt to acquire it after the detaching its current peer.
+ * attempt to acquire it after detaching its current peer.
  */
 
 ssize_t cap_pull_msg (rcvid_t rcvid, struct ipc_msg *msg,
@@ -213,7 +227,7 @@ ssize_t cap_pull_msg (rcvid_t rcvid, struct ipc_msg *msg,
  * Push more data into a receive ID.
  *
  * If the calling thread is not already handling the receive ID, then it will
- * attempt to acquire it after the detaching its current peer.
+ * attempt to acquire it after detaching its current peer.
  */
 
 ssize_t cap_push_msg (rcvid_t rcvid, const struct ipc_msg *msg,

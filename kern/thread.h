@@ -100,27 +100,6 @@ struct thread_fs_data
   uint16_t work;
 };
 
-struct thread_sched_state
-{
-  uint8_t policy;
-  uint8_t cls;
-  uint16_t priority;
-  union
-    {
-      struct
-        {
-          struct thread_fs_runq *fs_runq;
-          size_t round;
-          uint16_t weight;
-          uint16_t work;
-        } fs_data;
-      struct
-        {
-          uint16_t time_slice;
-        } rt_data;
-    };
-};
-
 /*
  * Thread structure.
  *

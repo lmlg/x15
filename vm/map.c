@@ -1047,7 +1047,10 @@ vm_map_fork (struct vm_map **mapp, struct vm_map *src)
   MUTEX_GUARD (&priv->lock);   // Prevent modifications to private mappings.
 
   if (vm_map_entry_alloc (&dst->entry_list, src->nr_entries) != 0)
+    {
+      vm_map_destroy (dst);
       return (ENOMEM);
+    }
 
   struct vm_map_entry *entry, *out;
   out = list_first_entry (&dst->entry_list, typeof (*out), list_node);

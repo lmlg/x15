@@ -158,19 +158,10 @@ out:
 }
 
 static int
-rtmutex_bootstrap (void)
-{
-  return (0);
-}
-
-INIT_OP_DEFINE (rtmutex_bootstrap,
-                INIT_OP_DEP (thread_setup_booter, true));
-
-static int
 rtmutex_setup (void)
 {
   return (0);
 }
 
 INIT_OP_DEFINE (rtmutex_setup,
-                INIT_OP_DEP (rtmutex_bootstrap, true));
+                INIT_OP_DEP (thread_setup_booter, true));

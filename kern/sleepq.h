@@ -34,10 +34,29 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+#include <kern/hlist.h>
 #include <kern/init.h>
 #include <kern/types.h>
 
-struct sleepq;
+struct sleepq_bucket;
+struct sleepq_waiter;
+
+/*
+ * Waiters are queued in FIFO order and inserted at the head of the
+ * list of waiters. The pointer to the "oldest" waiter is used as
+ * a marker between threads waiting for a signal/broadcast (from the
+ * beginning up to and including the oldest waiter) and threads pending
+ * for wake-up (all the following threads up to the end of the list).
+ */
+struct sleepq
+{
+  __cacheline_aligned struct sleepq_bucket *bucket;
+  struct hlist_node node;
+  const void *sync_obj;
+  struct list waiters;
+  struct sleepq_waiter *oldest_waiter;
+  struct sleepq *next_free;
+};
 
 // Create/destroy a sleep queue.
 struct sleepq* sleepq_create (void);
@@ -156,7 +175,11 @@ void sleepq_broadcast (struct sleepq *sleepq);
  * reliably detect when it's safe to spin on a thread instead of going
  * to sleep.
  */
-bool sleepq_test_circular (struct sleepq *sleepq, const void *wchan_addr);
+static inline bool
+sleepq_test_circular (struct sleepq *sleepq, const void *wchan_addr)
+{
+  return ((void *)sleepq->bucket == wchan_addr);
+}
 
 /*
  * This init operation provides :

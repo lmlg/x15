@@ -230,7 +230,7 @@ xcall_async_timedwait (struct xcall_async *async, uint64_t ticks, bool abs)
     {
       async->waiter = thread_self ();
       ret = thread_timedsleep (&async->lock, &async->work, "asyncx",
-                               ticks + (abs ? clock_get_time () + 1 : 0));
+                               ticks + (abs ? 0 : clock_get_time () + 1));
     }
 
   return (ret);

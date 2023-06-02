@@ -197,13 +197,8 @@ spinlock_qnode_set_locked (struct spinlock_qnode *qnode)
 static void
 spinlock_qnode_wait_locked (const struct spinlock_qnode *qnode)
 {
-  while (1)
-    {
-      if (!atomic_load_acq (&qnode->locked))
-        break;
-
-      cpu_pause ();
-    }
+  while (atomic_load_acq (&qnode->locked))
+    cpu_pause ();
 }
 
 static void

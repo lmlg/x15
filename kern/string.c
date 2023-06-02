@@ -244,6 +244,20 @@ strerror (int error)
         return ("message too long");
       case EACCES:
         return ("permission denied");
+      case EINTR:
+        return ("interrupted call");
+      case EBADF:
+        return ("bad file descriptor");
+      case E2BIG:
+        return ("value too big");
+      case EINPROGRESS:
+        return ("operation in progress");
+      case EALREADY:
+        return ("operation already in progress");
+      case EPERM:
+        return ("operation not permitted");
+      case ENXIO:
+        return ("no such device or address");
       default:
         return ("unknown error");
     }

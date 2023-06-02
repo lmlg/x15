@@ -85,15 +85,6 @@ mutex_unlock_slow (struct mutex *mutex)
 }
 
 static int __init
-mutex_bootstrap (void)
-{
-  return (0);
-}
-
-INIT_OP_DEFINE (mutex_bootstrap,
-                INIT_OP_DEP (thread_setup_booter, true));
-
-static int __init
 mutex_setup (void)
 {
   return (0);

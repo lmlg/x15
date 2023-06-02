@@ -47,23 +47,6 @@ struct sleepq_waiter
   bool pending_wakeup;
 };
 
-/*
- * Waiters are queued in FIFO order and inserted at the head of the
- * list of waiters. The pointer to the "oldest" waiter is used as
- * a marker between threads waiting for a signal/broadcast (from the
- * beginning up to and including the oldest waiter) and threads pending
- * for wake-up (all the following threads up to the end of the list).
- */
-struct sleepq
-{
-  __cacheline_aligned struct sleepq_bucket *bucket;
-  struct hlist_node node;
-  const void *sync_obj;
-  struct list waiters;
-  struct sleepq_waiter *oldest_waiter;
-  struct sleepq *next_free;
-};
-
 #define SLEEPQ_HTABLE_SIZE        128
 #define SLEEPQ_COND_HTABLE_SIZE   64
 
@@ -571,10 +554,4 @@ sleepq_broadcast (struct sleepq *sleepq)
   sleepq->oldest_waiter = NULL;
   sleepq_waiter_set_pending_wakeup (waiter);
   sleepq_waiter_wakeup (waiter);
-}
-
-bool
-sleepq_test_circular (struct sleepq *sleepq, const void *wchan_addr)
-{
-  return ((void *)sleepq->bucket == wchan_addr);
 }

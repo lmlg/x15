@@ -1690,20 +1690,24 @@ pmap_sync (void *arg)
       while (list_empty (&queue->requests))
         thread_sleep (&queue->lock, queue, "pmapq");
 
-      _Auto request = list_first_entry (&queue->requests,
-                                        struct pmap_update_request, node);
-      list_remove (&request->node);
+      struct list reqs;
+      list_set_head (&reqs, &queue->requests);
+      list_init (&queue->requests);
       spinlock_unlock (&queue->lock);
 
-      int error = pmap_update_local (request->oplist, request->nr_mappings);
-      _Auto shared = request->shared;
+      struct pmap_update_request *request;
+      list_for_each_entry (&reqs, request, node)
+        {
+          int error = pmap_update_local (request->oplist, request->nr_mappings);
+          _Auto shared = request->shared;
 
-      SPINLOCK_GUARD (&shared->lock);
-      if (unlikely (error && !shared->error))
-        shared->error = error;
+          SPINLOCK_GUARD (&shared->lock);
+          if (unlikely (error && !shared->error))
+            shared->error = error;
 
-      if (--shared->nr_reqs == 0)
-        thread_wakeup (request->sender);
+          if (--shared->nr_reqs == 0)
+            thread_wakeup (request->sender);
+        }
     }
 }
 
