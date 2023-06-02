@@ -219,6 +219,9 @@ ssize_t cap_pull_msg (rcvid_t rcvid, struct ipc_msg *msg,
 ssize_t cap_push_msg (rcvid_t rcvid, const struct ipc_msg *msg,
                       struct ipc_msg_data *mdata);
 
+// Redirect a previously received message to a new capability.
+int cap_redirect (rcvid_t rcvid, struct cap_base *cap);
+
 // Register a flow for interrupt handling.
 int cap_intr_register (struct cap_flow *flow, uint32_t irq);
 
