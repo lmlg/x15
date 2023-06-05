@@ -2819,8 +2819,8 @@ thread_adopt (struct thread *src, struct thread *dst)
   _Auto td = thread_turnstile_td (dst);
   turnstile_td_lock (td);
 
-  thread_pi_setscheduler (dst, thread_user_sched_policy (src),
-                          thread_user_priority (src));
+  thread_pi_setscheduler (dst, thread_real_sched_policy (src),
+                          thread_real_global_priority (src));
   turnstile_td_unlock (td);
 }
 

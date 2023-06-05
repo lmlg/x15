@@ -945,23 +945,24 @@ ssize_t
 }
 
 static void
-cap_base_rel_safe (void *ptr)
+cap_base_rel_guard (struct cap_base **bp)
 {
-  _Auto cap = *(struct cap_base **)ptr;
-  if (cap)
-    cap_base_rel (cap);
+  cap_base_rel (*bp);
 }
 
 rcvid_t
 cap_recv_msg (int capx, struct ipc_msg *msg, struct ipc_msg_data *data)
 {
   _Auto self = thread_self ();
-  _Auto cap CLEANUP (cap_base_rel_safe) = cspace_get (&self->task->caps, capx);
-  struct cap_flow *flow;
+  _Auto cap = cspace_get (&self->task->caps, capx);
 
   if (! cap)
     return (-EBADF);
-  else if (cap->type == CAP_TYPE_FLOW)
+
+  struct cap_flow *flow;
+  struct cap_base *tmp CLEANUP (cap_base_rel_guard) __unused = cap;
+
+  if (cap->type == CAP_TYPE_FLOW)
     flow = (struct cap_flow *)cap;
   else if (cap->type == CAP_TYPE_CHANNEL)
     {
