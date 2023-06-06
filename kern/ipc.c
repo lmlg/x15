@@ -159,16 +159,17 @@ ipc_map_addr (struct vm_map *map, const void *addr,
     return (-EPERM);
   else if (error)
     { // Need to fault in the destination address.
-      error = vm_map_fault (map, (uintptr_t)addr, data->prot,
-                            VM_MAP_FAULT_INTR);
+      error = vm_map_fault (map, (uintptr_t)addr, data->prot);
       if (error)
         {
           ipc_data_intr_restore (data);
           return (ipc_map_errno (error));
         }
 
-      /* Since we're running with interrupts disabled, and the address
-       * has been faulted in, this call cannot fail. */
+      /*
+       * Since we're running with interrupts disabled, and the address
+       * has been faulted in, this call cannot fail.
+       */
       pmap_extract (map->pmap, (uintptr_t)addr, pap);
     }
 
@@ -409,8 +410,8 @@ ipc_cap_copy_impl (struct task *r_task, struct ipc_cap_iter *r_it,
   struct ipc_##type##_iter aux =   \
     {   \
       .begin = ptr,   \
-      .cur = r_it->cur,   \
-      .end = r_it->end   \
+      .cur = 0,   \
+      .end = r_it->end - r_it->cur   \
     };   \
   \
   rv = fn (r_task, &aux, l_it, direction);   \

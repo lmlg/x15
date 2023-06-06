@@ -158,8 +158,8 @@ vm_map_entry_put (struct vm_map_entry *entry)
     vm_object_unref (obj);
 }
 
-// Handle a page fault.
-int vm_map_fault (struct vm_map *map, uintptr_t addr, int prot, int flags);
+// Handle a page fault. Interrupts must be disabled when calling this function.
+int vm_map_fault (struct vm_map *map, uintptr_t addr, int prot);
 
 // Destroy a VM map.
 void vm_map_destroy (struct vm_map *map);

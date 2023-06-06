@@ -1343,7 +1343,7 @@ cap_intr_register (struct cap_flow *flow, uint32_t irq)
     }
 
   spinlock_lock (&flow->lock);
-  if (cap_find_intr (flow, irq))
+  if (unlikely (cap_find_intr (flow, irq)))
     {
       spinlock_unlock (&flow->lock);
       cap_intr_rem (irq, &ep->intr_node, false);

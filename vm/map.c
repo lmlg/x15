@@ -827,7 +827,7 @@ vm_map_fault_handle_cow (uintptr_t addr, struct vm_page **pgp)
 }
 
 int
-vm_map_fault (struct vm_map *map, uintptr_t addr, int prot, int flags)
+vm_map_fault (struct vm_map *map, uintptr_t addr, int prot)
 {
   assert (map != vm_map_get_kernel_map ());
   addr = vm_page_trunc (addr);
@@ -878,9 +878,7 @@ retry:
     entry = &tmp;
   }
 
-  if (flags & VM_MAP_FAULT_INTR)
-    cpu_intr_enable ();
-
+  cpu_intr_enable ();
   CLEANUP (vm_map_cleanup_object) __unused _Auto objg = object;
   struct vm_page *frames;
   uint64_t start_off;
@@ -889,17 +887,14 @@ retry:
 
   if (n_pages < 0)
     { // Allocation was interrupted. Let userspace handle things.
-      if (flags & VM_MAP_FAULT_INTR)
-        cpu_intr_disable ();
-
+      cpu_intr_disable ();
       return (0);
     }
 
   n_pages = vm_map_fault_get_data (object, start_off, frames,
                                    prot, 1 << n_pages);
 
-  if (flags & VM_MAP_FAULT_INTR)
-    cpu_intr_disable ();
+  cpu_intr_disable ();
 
   if (n_pages < 0)
     return (-n_pages);
