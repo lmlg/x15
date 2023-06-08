@@ -117,6 +117,14 @@ struct cap_kernel
   int kind;
 };
 
+// Triplet of iterators.
+struct cap_iters
+{
+  struct ipc_iov_iter iov;
+  struct ipc_cap_iter cap;
+  struct ipc_page_iter page;
+};
+
 // Cast a capability to the base type.
 
 #define CAP_BASE(x)   ((struct cap_base *)(x))
@@ -189,12 +197,9 @@ int cap_channel_link (struct cap_channel *channel, struct cap_flow *flow);
 // Hook a channel to a remote flow in a task.
 int cap_flow_hook (struct cap_channel **outp, struct task *task, int cap_idx);
 
-// Send a receive a full message and also get the metadata.
-ssize_t cap_send_msg (struct cap_base *cap, const struct ipc_msg *src,
-                      struct ipc_msg *dst, struct ipc_msg_data *data);
-
-#define cap_send_msg(cap, src, dst, data)   \
-  (cap_send_msg) (CAP (cap), (src), (dst), (data))
+// Send and receive IPC iterators and get the metadata.
+ssize_t cap_send_iters (struct cap_base *cap, struct cap_iters *in,
+                        struct cap_iters *out, struct ipc_msg_data *data);
 
 // Send an alert to a capability (flow or channel).
 ssize_t cap_send_alert (struct cap_base *cap, const void *buf,
@@ -203,12 +208,12 @@ ssize_t cap_send_alert (struct cap_base *cap, const void *buf,
 #define cap_send_alert(cap, buf, size, flags, prio)   \
   (cap_send_alert) (CAP (cap), (buf), (size), (flags), (prio))
 
-// Reiceve a full message and the metadata.
-rcvid_t cap_recv_msg (int capx, struct ipc_msg *msg,
-                      struct ipc_msg_data *data);
+// Receive IPC iterators and the metadata.
+rcvid_t cap_recv_iter (int capx, struct cap_iters *it,
+                       struct ipc_msg_data *data);
 
-// Reply to a received message with a full message structure or an error.
-int cap_reply_msg (rcvid_t rcvid, const struct ipc_msg *msg, int err);
+// Reply to a received message with IPC iterators or an error.
+int cap_reply_iter (rcvid_t rcvid, struct cap_iters *iter, int err);
 
 // Make the calling thread handle a message, or detach the current one if zero.
 int cap_handle (rcvid_t rcvid);
@@ -220,8 +225,8 @@ int cap_handle (rcvid_t rcvid);
  * attempt to acquire it after detaching its current peer.
  */
 
-ssize_t cap_pull_msg (rcvid_t rcvid, struct ipc_msg *msg,
-                      struct ipc_msg_data *mdata);
+ssize_t cap_pull_iter (rcvid_t rcvid, struct cap_iters *iter,
+                       struct ipc_msg_data *mdata);
 
 /*
  * Push more data into a receive ID.
@@ -230,8 +235,8 @@ ssize_t cap_pull_msg (rcvid_t rcvid, struct ipc_msg *msg,
  * attempt to acquire it after detaching its current peer.
  */
 
-ssize_t cap_push_msg (rcvid_t rcvid, const struct ipc_msg *msg,
-                      struct ipc_msg_data *mdata);
+ssize_t cap_push_iter (rcvid_t rcvid, struct cap_iters *iter,
+                       struct ipc_msg_data *mdata);
 
 // Redirect a previously received message to a new capability.
 int cap_redirect (rcvid_t rcvid, struct cap_base *cap);
@@ -247,23 +252,41 @@ int cap_intr_eoi (struct cap_flow *flow, uint32_t irq);
 
 // Inlined versions of the above.
 
-#define CAP_MSG_IOV_MAKE(iovs_, nr_iovs_)   \
-  (struct ipc_msg) { .size = sizeof (struct ipc_msg),   \
-                     .iovs = (struct iovec *)(iovs_),   \
-                     .iov_cnt = (nr_iovs_),   \
-                     .cap_cnt = 0, .page_cnt = 0 }
+#define cap_iters_init_impl(it, buf, size, iov_init)   \
+  do   \
+    {   \
+      iov_init (&(it)->iov, (void *)(buf), size);   \
+      ipc_cap_iter_init (&(it)->cap, 0, 0);   \
+      ipc_page_iter_init (&(it)->page, 0, 0);   \
+    }   \
+  while (0)
+
+#define cap_iters_init_buf(it, buf, size)   \
+  cap_iters_init_impl (it, buf, size, ipc_iov_iter_init_buf)
+
+#define cap_iters_init_iov(it, iovs, nr_iovs)   \
+  cap_iters_init_impl (it, iovs, nr_iovs, ipc_iov_iter_init)
+
+#define cap_iters_init_msg(it, msg)   \
+  do   \
+    {   \
+      ipc_iov_iter_init (&(it)->iov, (msg)->iovs, (msg)->iov_cnt);   \
+      ipc_cap_iter_init (&(it)->cap, (msg)->caps, (msg)->cap_cnt);   \
+      ipc_page_iter_init (&(it)->page, (msg)->pages, (msg)->page_cnt);   \
+    }   \
+  while (0)
 
 // Send raw bytes to a capability and receive the reply.
 static inline ssize_t
 cap_send_bytes (struct cap_base *cap, const void *src, size_t src_size,
                 void *dst, size_t dst_size)
 {
-  struct iovec s_iov = IOVEC (src, src_size),
-               d_iov = IOVEC (dst, dst_size);
-  struct ipc_msg s_msg = CAP_MSG_IOV_MAKE (&s_iov, 1),
-                 d_msg = CAP_MSG_IOV_MAKE (&d_iov, 1);
+  struct cap_iters in, out;
 
-  return (cap_send_msg (cap, &s_msg, &d_msg, NULL));
+  cap_iters_init_buf (&in, src, src_size);
+  cap_iters_init_buf (&out, dst, dst_size);
+
+  return (cap_send_iters (cap, &in, &out, NULL));
 }
 
 #define cap_send_bytes(cap, src, src_size, dst, dst_size)   \
@@ -274,22 +297,40 @@ static inline ssize_t
 cap_send_iov (struct cap_base *cap, const struct iovec *src, uint32_t nr_src,
               struct iovec *dst, uint32_t nr_dst)
 {
-  struct ipc_msg s_msg = CAP_MSG_IOV_MAKE (src, nr_src),
-                 d_msg = CAP_MSG_IOV_MAKE (dst, nr_dst);
-  return (cap_send_msg (cap, &s_msg, &d_msg, NULL));
+  struct cap_iters in, out;
+
+  cap_iters_init_iov (&in, src, nr_src);
+  cap_iters_init_iov (&out, dst, nr_dst);
+
+  return (cap_send_iters (cap, &in, &out, NULL));
 }
 
 #define cap_send_iov(cap, src, nr_src, dst, nr_dst)   \
   (cap_send_iov) (CAP (cap), (src), (nr_src), (dst), (nr_dst))
+
+// Send and receive full messages and also the metadata.
+static inline ssize_t
+cap_send_msg (struct cap_base *cap, const struct ipc_msg *src,
+              struct ipc_msg *dst, struct ipc_msg_data *data)
+{
+  struct cap_iters in, out;
+
+  cap_iters_init_msg (&in, src);
+  cap_iters_init_msg (&out, dst);
+  return (cap_send_iters (cap, &in, &out, data));
+}
+
+#define cap_send_msg(cap, src, dst, data)   \
+  (cap_send_msg) (CAP (cap), (src), (dst), (data))
 
 // Receive raw bytes and metadata from a capability.
 static inline rcvid_t
 cap_recv_bytes (int capx, void *dst, size_t size,
                 struct ipc_msg_data *data)
 {
-  struct iovec vec = IOVEC (dst, size);
-  struct ipc_msg msg = CAP_MSG_IOV_MAKE (&vec, 1);
-  return (cap_recv_msg (capx, &msg, data));
+  struct cap_iters in;
+  cap_iters_init_buf (&in, dst, size);
+  return (cap_recv_iter (capx, &in, data));
 }
 
 // Receive bytes in iovecs and metadata from a capability.
@@ -297,17 +338,27 @@ static inline rcvid_t
 cap_recv_iov (int capx, struct iovec *dst, uint32_t nr_iov,
               struct ipc_msg_data *data)
 {
-  struct ipc_msg msg = CAP_MSG_IOV_MAKE (dst, nr_iov);
-  return (cap_recv_msg (capx, &msg, data));
+  struct cap_iters in;
+  cap_iters_init_iov (&in, dst, nr_iov);
+  return (cap_recv_iter (capx, &in, data));
+}
+
+// Receive a full IPC message and metadata from a capability.
+static inline rcvid_t
+cap_recv_msg (int capx, struct ipc_msg *msg, struct ipc_msg_data *data)
+{
+  struct cap_iters in;
+  cap_iters_init_msg (&in, msg);
+  return (cap_recv_iter (capx, &in, data));
 }
 
 // Reply to a received message with raw bytes or an error.
 static inline int
 cap_reply_bytes (rcvid_t rcvid, const void *src, size_t bytes, int err)
 {
-  struct iovec iov = IOVEC (src, bytes);
-  struct ipc_msg msg = CAP_MSG_IOV_MAKE (&iov, 1);
-  return (cap_reply_msg (rcvid, &msg, err));
+  struct cap_iters it;
+  cap_iters_init_buf (&it, src, bytes);
+  return (cap_reply_iter (rcvid, &it, err));
 }
 
 // Reply to a received message with bytes in iovecs or an error.
@@ -315,8 +366,18 @@ static inline int
 cap_reply_iov (rcvid_t rcvid, const struct iovec *iov,
                uint32_t nr_iov, int err)
 {
-  struct ipc_msg msg = CAP_MSG_IOV_MAKE (iov, nr_iov);
-  return (cap_reply_msg (rcvid, &msg, err));
+  struct cap_iters it;
+  cap_iters_init_iov (&it, iov, nr_iov);
+  return (cap_reply_iter (rcvid, &it, err));
+}
+
+// Reply to a received message with a full IPC message or an error.
+static inline int
+cap_reply_msg (rcvid_t rcvid, const struct ipc_msg *msg, int err)
+{
+  struct cap_iters it;
+  cap_iters_init_msg (&it, msg);
+  return (cap_reply_iter (rcvid, &it, err));
 }
 
 // Pull raw bytes from a receive ID.
@@ -324,9 +385,9 @@ static inline ssize_t
 cap_pull_bytes (rcvid_t rcvid, void *dst, size_t bytes,
                 struct ipc_msg_data *mdata)
 {
-  struct iovec iov = IOVEC (dst, bytes);
-  struct ipc_msg msg = CAP_MSG_IOV_MAKE (&iov, 1);
-  return (cap_pull_msg (rcvid, &msg, mdata));
+  struct cap_iters it;
+  cap_iters_init_buf (&it, dst, bytes);
+  return (cap_pull_iter (rcvid, &it, mdata));
 }
 
 // Pull iovecs from a receive ID.
@@ -334,8 +395,18 @@ static inline ssize_t
 cap_pull_iov (rcvid_t rcvid, struct iovec *iovs, uint32_t nr_iovs,
               struct ipc_msg_data *mdata)
 {
-  struct ipc_msg msg = CAP_MSG_IOV_MAKE (iovs, nr_iovs);
-  return (cap_pull_msg (rcvid, &msg, mdata));
+  struct cap_iters it;
+  cap_iters_init_iov (&it, iovs, nr_iovs);
+  return (cap_pull_iter (rcvid, &it, mdata));
+}
+
+// Pull an IPC message from a receive ID.
+static inline ssize_t
+cap_pull_msg (rcvid_t rcvid, struct ipc_msg *msg, struct ipc_msg_data *mdata)
+{
+  struct cap_iters it;
+  cap_iters_init_msg (&it, msg);
+  return (cap_pull_iter (rcvid, &it, mdata));
 }
 
 // Push raw bytes into a receive ID.
@@ -343,9 +414,9 @@ static inline ssize_t
 cap_push_bytes (rcvid_t rcvid, const void *src, size_t bytes,
                 struct ipc_msg_data *mdata)
 {
-  struct iovec iov = IOVEC (src, bytes);
-  struct ipc_msg msg = CAP_MSG_IOV_MAKE (&iov, 1);
-  return (cap_push_msg (rcvid, &msg, mdata));
+  struct cap_iters it;
+  cap_iters_init_buf (&it, src, bytes);
+  return (cap_push_iter (rcvid, &it, mdata));
 }
 
 // Push iovecs into a receive ID.
@@ -353,11 +424,19 @@ static inline ssize_t
 cap_push_iov (rcvid_t rcvid, const struct iovec *iovs, uint32_t nr_iovs,
               struct ipc_msg_data *mdata)
 {
-  struct ipc_msg msg = CAP_MSG_IOV_MAKE (iovs, nr_iovs);
-  return (cap_push_msg (rcvid, &msg, mdata));
+  struct cap_iters it;
+  cap_iters_init_iov (&it, iovs, nr_iovs);
+  return (cap_push_iter (rcvid, &it, mdata));
 }
 
-#undef CAP_MSG_IOV_MAKE
+static inline ssize_t
+cap_push_msg (rcvid_t rcvid, const struct ipc_msg *msg,
+              struct ipc_msg_data *mdata)
+{
+  struct cap_iters it;
+  cap_iters_init_msg (&it, msg);
+  return (cap_push_iter (rcvid, &it, mdata));
+}
 
 /*
  * This init operation provides :

@@ -139,8 +139,8 @@ ipc_iov_iter_init_buf (struct ipc_iov_iter *it, void *buf, size_t size)
 {
   it->head = IOVEC (buf, size);
   it->cache_idx = IPC_IOV_ITER_CACHE_SIZE;
-  it->begin = NULL;
-  it->cur = it->end = 0;
+  it->begin = &it->head;
+  it->cur = it->end = 1;
 }
 
 static inline bool

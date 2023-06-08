@@ -44,13 +44,6 @@ struct cap_alert_node
   union cap_alert alerts[CAP_ALERTS_PER_NODE];
 };
 
-struct cap_iters
-{
-  struct ipc_iov_iter iov;
-  struct ipc_cap_iter cap;
-  struct ipc_page_iter page;
-};
-
 struct cap_sender
 {
   struct plist_node node;
@@ -60,14 +53,14 @@ struct cap_sender
   struct thread *handler;
   struct thread_sched_data sender_sched;
   struct thread_sched_data recv_sched;
-  struct cap_iters in_it;
-  struct cap_iters out_it;
+  struct cap_iters *in_it;
+  struct cap_iters *out_it;
   struct ipc_msg_data ipc_data;
 };
 
 struct cap_receiver
 {
-  struct cap_iters it;
+  struct cap_iters *it;
   struct thread *thread;
   struct list node;
   struct ipc_msg_data ipc_data;
@@ -390,35 +383,26 @@ cap_ipc_msg_data_init (struct ipc_msg_data *data, uintptr_t tag)
 }
 
 static void
-cap_iters_init (struct cap_iters *it, struct ipc_msg *msg)
-{
-  ipc_iov_iter_init (&it->iov, msg->iovs, msg->iov_cnt);
-  ipc_cap_iter_init (&it->cap, msg->caps, msg->cap_cnt);
-  ipc_page_iter_init (&it->page, msg->pages, msg->page_cnt);
-}
-
-static void
 cap_sender_init (struct cap_sender *sender, struct cap_flow *flow,
-                 struct ipc_msg *src, struct ipc_msg *dst, uintptr_t tag)
+                 struct cap_iters *src, struct cap_iters *dst, uintptr_t tag)
 {
   cap_ipc_msg_data_init (&sender->ipc_data, tag);
   sender->thread = thread_self ();
   sender->flow = flow;
   sender->handler = NULL;
   sender->result = 0;
-
-  cap_iters_init (&sender->in_it, src);
-  cap_iters_init (&sender->out_it, dst);
+  sender->in_it = src;
+  sender->out_it = dst;
 }
 
 static void
 cap_receiver_init (struct cap_receiver *recv, struct thread *self,
-                   int cap, struct ipc_msg *msg)
+                   int cap, struct cap_iters *it)
 {
   cap_ipc_msg_data_init (&recv->ipc_data, 0);
   recv->thread = self;
   recv->rcvid = (uint64_t)cap << 32;
-  cap_iters_init (&recv->it, msg);
+  recv->it = it;
   recv->spurious = false;
 }
 
@@ -429,8 +413,8 @@ cap_receiver_init (struct cap_receiver *recv, struct thread *self,
  */
 
 static ssize_t
-cap_send_iters (struct task *task, struct cap_iters *r_it,
-                struct cap_iters *l_it, int dir, struct ipc_msg_data *data)
+cap_transfer_iters (struct task *task, struct cap_iters *r_it,
+                    struct cap_iters *l_it, int dir, struct ipc_msg_data *data)
 {
   ssize_t ret = ipc_iov_iter_copy (task, &r_it->iov, &l_it->iov, dir);
   if (ret < 0)
@@ -528,8 +512,9 @@ cap_sender_impl (struct cap_sender *sender, struct cap_flow *flow)
     recv = list_pop (&flow->receivers, typeof (*recv), node);
   }
 
-  ssize_t tmp = cap_send_iters (recv->thread->task, &recv->it, &sender->in_it,
-                                IPC_COPY_TO, &recv->ipc_data);
+  ssize_t tmp = cap_transfer_iters (recv->thread->task, recv->it,
+                                    sender->in_it, IPC_COPY_TO,
+                                    &recv->ipc_data);
   if (tmp < 0)
     return (cap_recv_putback (flow, recv, tmp));
 
@@ -589,8 +574,8 @@ cap_send_small (struct cap_receiver *recv, const void *buf,
                 size_t size, uint32_t flags)
 {
   _Auto iov = IOVEC (buf, size);
-  ssize_t rv = ipc_bcopyv (recv->thread->task, recv->it.iov.begin,
-                           recv->it.iov.end, &iov, 1, IPC_COPY_TO);
+  ssize_t rv = ipc_bcopyv (recv->thread->task, recv->it->iov.begin,
+                           recv->it->iov.end, &iov, 1, IPC_COPY_TO);
 
   if (unlikely (rv < 0))
     return (rv);
@@ -802,8 +787,8 @@ cap_rcvid_acq_rel_sender (struct thread *self, rcvid_t rcvid, int *errp)
 static void
 cap_recv_small (struct cap_receiver *recv, const void *buf, size_t size)
 {
-  _Auto base = recv->it.iov.begin;
-  _Auto end = base + recv->it.iov.end;
+  _Auto base = recv->it->iov.begin;
+  _Auto end = base + recv->it->iov.end;
 
   for (; base < end && size; ++base)
     {
@@ -877,8 +862,8 @@ retry:
     }
 
   _Auto sender = plist_entry (pnode, struct cap_sender, node);
-  ssize_t tmp = cap_send_iters (sender->thread->task, &sender->in_it,
-                                &recv->it, IPC_COPY_FROM, &recv->ipc_data);
+  ssize_t tmp = cap_transfer_iters (sender->thread->task, sender->in_it,
+                                    recv->it, IPC_COPY_FROM, &recv->ipc_data);
 
   if (tmp < 0)
     {
@@ -899,9 +884,36 @@ retry:
   return (recv->rcvid);
 }
 
+static int
+cap_handle_task_thread (struct cap_iters *src, struct cap_iters *dst,
+                        void *obj, int is_thr)
+{
+  struct ipc_msg in, out;
+  struct ipc_msg_data mdata;
+
+#define cap_init_msg(msg, it)   \
+  ((msg)->iovs = (it)->iov.begin,   \
+   (msg)->iov_cnt = (it)->iov.end,   \
+   (msg)->pages = (it)->page.begin,   \
+   (msg)->page_cnt = (it)->page.end,   \
+   (msg)->caps = (it)->cap.begin,   \
+   (msg)->cap_cnt = (it)->cap.end)
+
+  cap_init_msg (&in, src);
+  cap_init_msg (&out, dst);
+
+#undef cap_init_msg
+
+  return (is_thr ?
+          thread_handle_msg (((struct cap_thread *)obj)->thread,
+                             &in, &out, &mdata) :
+          task_handle_msg (((struct cap_task *)obj)->task,
+                           &in, &out, &mdata));
+}
+
 ssize_t
-(cap_send_msg) (struct cap_base *cap, const struct ipc_msg *src,
-                struct ipc_msg *dst, struct ipc_msg_data *data)
+(cap_send_iters) (struct cap_base *cap, struct cap_iters *src,
+                  struct cap_iters *dst, struct ipc_msg_data *data)
 {
   struct cap_flow *flow;
   uintptr_t tag;
@@ -922,12 +934,11 @@ ssize_t
 
         tag = ((struct cap_channel *)cap)->tag;
         break;
+
       case CAP_TYPE_THREAD:
-        return (thread_handle_msg (((struct cap_thread *)cap)->thread,
-                                   (struct ipc_msg *)src, dst, data));
       case CAP_TYPE_TASK:
-        return (task_handle_msg (((struct cap_task *)cap)->task,
-                                 (struct ipc_msg *)src, dst, data));
+        return (cap_handle_task_thread (src, dst, cap,
+                                        cap->type == CAP_TYPE_THREAD));
       case CAP_TYPE_KERNEL:
         // TODO: Implement.
       default:
@@ -935,7 +946,7 @@ ssize_t
     }
 
   struct cap_sender sender;
-  cap_sender_init (&sender, flow, (struct ipc_msg *)src, dst, tag);
+  cap_sender_init (&sender, flow, src, dst, tag);
 
   ssize_t ret = cap_sender_impl (&sender, flow);
   if (ret >= 0 && data)
@@ -951,7 +962,7 @@ cap_base_rel_guard (struct cap_base **bp)
 }
 
 rcvid_t
-cap_recv_msg (int capx, struct ipc_msg *msg, struct ipc_msg_data *data)
+cap_recv_iter (int capx, struct cap_iters *it, struct ipc_msg_data *data)
 {
   _Auto self = thread_self ();
   _Auto cap = cspace_get (&self->task->caps, capx);
@@ -974,7 +985,7 @@ cap_recv_msg (int capx, struct ipc_msg *msg, struct ipc_msg_data *data)
     return (-EINVAL);
 
   struct cap_receiver rcv;
-  cap_receiver_init (&rcv, self, capx, msg);
+  cap_receiver_init (&rcv, self, capx, it);
 
   rcvid_t ret = cap_receiver_impl (&rcv, flow);
   if (ret >= 0 && data)
@@ -984,7 +995,7 @@ cap_recv_msg (int capx, struct ipc_msg *msg, struct ipc_msg_data *data)
 }
 
 int
-cap_reply_msg (rcvid_t rcvid, const struct ipc_msg *msg, int rv)
+cap_reply_iter (rcvid_t rcvid, struct cap_iters *it, int rv)
 {
   int error;
   struct thread *self = thread_self ();
@@ -994,12 +1005,9 @@ cap_reply_msg (rcvid_t rcvid, const struct ipc_msg *msg, int rv)
     return (error);
   else if (rv >= 0)
     {
-      struct cap_iters l_it;
-      cap_iters_init (&l_it, (struct ipc_msg *)msg);
-
-      ssize_t bytes = cap_send_iters (sender->thread->task,
-                                      &sender->out_it, &l_it,
-                                      IPC_COPY_TO, &sender->ipc_data);
+      ssize_t bytes = cap_transfer_iters (sender->thread->task,
+                                          sender->out_it, it,
+                                          IPC_COPY_TO, &sender->ipc_data);
       if (bytes >= 0)
         {
           sender->result = sender->ipc_data.nbytes;
@@ -1061,17 +1069,14 @@ cap_handle (rcvid_t rcvid)
 }
 
 static ssize_t
-cap_push_pull_msg (struct cap_sender *sender, struct ipc_msg *msg,
+cap_push_pull_msg (struct cap_sender *sender, struct cap_iters *l_it,
                    struct ipc_msg_data *mdata, int dir,
-                   struct cap_iters *it)
+                   struct cap_iters *r_it)
 {
-  struct cap_iters l_it;
-  cap_iters_init (&l_it, msg);
-
   cap_ipc_msg_data_init (mdata, sender->ipc_data.tag);
   _Auto task = sender->thread->task;
 
-  ssize_t bytes = cap_send_iters (task, it, &l_it, dir, mdata);
+  ssize_t bytes = cap_transfer_iters (task, r_it, l_it, dir, mdata);
   if (bytes >= 0)
     {
       mdata->thread_id = sender->thread->kuid.id;
@@ -1082,7 +1087,7 @@ cap_push_pull_msg (struct cap_sender *sender, struct ipc_msg *msg,
 }
 
 ssize_t
-cap_pull_msg (rcvid_t rcvid, struct ipc_msg *msg, struct ipc_msg_data *mdata)
+cap_pull_iter (rcvid_t rcvid, struct cap_iters *it, struct ipc_msg_data *mdata)
 {
   if (rcvid <= 0)
     return (-EBADF);
@@ -1096,8 +1101,8 @@ cap_pull_msg (rcvid_t rcvid, struct ipc_msg *msg, struct ipc_msg_data *mdata)
     }
 
   _Auto sender = cap_thread_sender (self->cur_peer);
-  ssize_t ret = cap_push_pull_msg (sender, msg, mdata,
-                                   IPC_COPY_FROM, &sender->in_it);
+  ssize_t ret = cap_push_pull_msg (sender, it, mdata,
+                                   IPC_COPY_FROM, sender->in_it);
 
   if (ret >= 0)
     {
@@ -1109,8 +1114,8 @@ cap_pull_msg (rcvid_t rcvid, struct ipc_msg *msg, struct ipc_msg_data *mdata)
 }
 
 ssize_t
-cap_push_msg (rcvid_t rcvid, const struct ipc_msg *msg,
-              struct ipc_msg_data *mdata)
+cap_push_iter (rcvid_t rcvid, struct cap_iters *it,
+               struct ipc_msg_data *mdata)
 {
   if (rcvid <= 0)
     return (-EBADF);
@@ -1125,8 +1130,8 @@ cap_push_msg (rcvid_t rcvid, const struct ipc_msg *msg,
 
   _Auto sender = cap_thread_sender (self->cur_peer);
   struct ipc_msg_data out_data;
-  ssize_t ret = cap_push_pull_msg (sender, (struct ipc_msg *)msg, &out_data,
-                                   IPC_COPY_TO, &sender->out_it);
+  ssize_t ret = cap_push_pull_msg (sender, it, &out_data,
+                                   IPC_COPY_TO, sender->out_it);
 
   if (ret >= 0)
     {
@@ -1138,31 +1143,6 @@ cap_push_msg (rcvid_t rcvid, const struct ipc_msg *msg,
     }
 
   return (ret);
-}
-
-static int
-cap_redirect_task_thread (struct cap_sender *sender, void *obj, int is_thr)
-{
-  struct ipc_msg src, dst;
-  struct ipc_msg_data mdata;
-
-#define cap_init_msg(msg, it)   \
-  ((msg)->iovs = (it)->iov.begin,   \
-   (msg)->iov_cnt = (it)->iov.end,   \
-   (msg)->pages = (it)->page.begin,   \
-   (msg)->page_cnt = (it)->page.end,   \
-   (msg)->caps = (it)->cap.begin,   \
-   (msg)->cap_cnt = (it)->cap.end)
-
-  cap_init_msg (&src, &sender->in_it);
-  cap_init_msg (&dst, &sender->out_it);
-
-#undef cap_init_msg
-  return (is_thr ?
-          thread_handle_msg (((struct cap_thread *)obj)->thread, &src,
-                             &dst, &mdata) :
-          task_handle_msg (((struct cap_task *)obj)->task, &src,
-                           &dst, &mdata));
 }
 
 #define cap_reset_iter_single(it)   (it)->cur = 0
@@ -1183,8 +1163,8 @@ cap_redirect (rcvid_t rcvid, struct cap_base *cap)
 
   struct cap_flow *flow = NULL;
 
-  cap_reset_iter (&sender->in_it);
-  cap_reset_iter (&sender->out_it);
+  cap_reset_iter (sender->in_it);
+  cap_reset_iter (sender->out_it);
 
   switch (cap->type)
     {
@@ -1196,8 +1176,8 @@ cap_redirect (rcvid_t rcvid, struct cap_base *cap)
         break;
       case CAP_TYPE_TASK:
       case CAP_TYPE_THREAD:
-        return (cap_redirect_task_thread (sender, cap,
-                                          cap->type == CAP_TYPE_THREAD));
+        return (cap_handle_task_thread (sender->in_it, sender->out_it, cap,
+                                        cap->type == CAP_TYPE_THREAD));
       case CAP_TYPE_KERNEL:
         // XXX: Implement.
         return (-EINVAL);
