@@ -92,22 +92,28 @@ test_cap_sender (void *arg)
 #define msg          vars->_msg
 
   {
+#define ALERT_1   0x123abc657
+#define ALERT_2   (ALERT_1 - 1)
+
     // Test that alerts are delivered in priority order.
-    alert_data = 0;
+    alert_data = ALERT_1;
     ssize_t rv = cap_send_alert (flow, &alert_data, sizeof (alert_data), 0, 0);
     assert (rv >= 0);
-    alert_data = 1;
+    alert_data = ALERT_2;
     rv = cap_send_alert (flow, &alert_data, sizeof (alert_data), 0, 1);
     assert (rv >= 0);
 
     rcvid_t rcvid = cap_recv_bytes (data->sender_capx, &alert_data,
                                     sizeof (alert_data), &mdata);
     assert (rcvid == 0);
-    assert (alert_data == 1);
+    assert (alert_data == ALERT_2);
     rcvid = cap_recv_bytes (data->sender_capx, &alert_data,
                             sizeof (alert_data), &mdata);
     assert (rcvid == 0);
-    assert (alert_data == 0);
+    assert (alert_data == ALERT_1);
+
+#undef ALERT_1
+#undef ALERT_2
   }
 
   data->sender = task_self ();

@@ -573,9 +573,10 @@ static ssize_t
 cap_send_small (struct cap_receiver *recv, const void *buf,
                 size_t size, uint32_t flags)
 {
-  _Auto iov = IOVEC (buf, size);
-  ssize_t rv = ipc_bcopyv (recv->thread->task, recv->it->iov.begin,
-                           recv->it->iov.end, &iov, 1, IPC_COPY_TO);
+  struct ipc_iov_iter tmp;
+  ipc_iov_iter_init_buf (&tmp, (void *)buf, size);
+  ssize_t rv = ipc_iov_iter_copy (recv->thread->task, &recv->it->iov,
+                                  &tmp, IPC_COPY_TO);
 
   if (unlikely (rv < 0))
     return (rv);
@@ -655,7 +656,7 @@ cap_thread_sender (struct thread *thr)
  * - Both the capability index and thread ID must reflect valid entities.
  * - The thread must be either sending a message or awaiting a reply.
  * - The capability described by the index must be equal to the one the
-     thread sent a message to.
+ *   thread sent a message to.
  * - The current thread must be equal to the one the thread is paired to.
  *   Alternatively, the thread could be waiting on no other thread (as when
  *   calling 'cap_rcvid_detach'), in which case the current thread can become
@@ -886,7 +887,7 @@ retry:
 
 static int
 cap_handle_task_thread (struct cap_iters *src, struct cap_iters *dst,
-                        void *obj, int is_thr)
+                        struct cap_base *cap)
 {
   struct ipc_msg in, out;
   struct ipc_msg_data mdata;
@@ -904,10 +905,10 @@ cap_handle_task_thread (struct cap_iters *src, struct cap_iters *dst,
 
 #undef cap_init_msg
 
-  return (is_thr ?
-          thread_handle_msg (((struct cap_thread *)obj)->thread,
+  return (cap->type == CAP_TYPE_THREAD ?
+          thread_handle_msg (((struct cap_thread *)cap)->thread,
                              &in, &out, &mdata) :
-          task_handle_msg (((struct cap_task *)obj)->task,
+          task_handle_msg (((struct cap_task *)cap)->task,
                            &in, &out, &mdata));
 }
 
@@ -937,8 +938,7 @@ ssize_t
 
       case CAP_TYPE_THREAD:
       case CAP_TYPE_TASK:
-        return (cap_handle_task_thread (src, dst, cap,
-                                        cap->type == CAP_TYPE_THREAD));
+        return (cap_handle_task_thread (src, dst, cap));
       case CAP_TYPE_KERNEL:
         // TODO: Implement.
       default:
@@ -1176,8 +1176,7 @@ cap_redirect (rcvid_t rcvid, struct cap_base *cap)
         break;
       case CAP_TYPE_TASK:
       case CAP_TYPE_THREAD:
-        return (cap_handle_task_thread (sender->in_it, sender->out_it, cap,
-                                        cap->type == CAP_TYPE_THREAD));
+        return (cap_handle_task_thread (sender->in_it, sender->out_it, cap));
       case CAP_TYPE_KERNEL:
         // XXX: Implement.
         return (-EINVAL);
