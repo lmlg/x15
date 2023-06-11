@@ -37,9 +37,11 @@ struct kuid_map
 
 static struct kuid_map kuid_maps[KUID_MAX_CLS];
 
-/* In order to prevent common bugs where the last used KUID
+/*
+ * In order to prevent common bugs where the last used KUID
  * is recycled immediately, use at least this many newly created
- * KUID's before recycling. */
+ * KUID's before recycling.
+ */
 #define KUID_MAX_STAMP   16
 
 static int

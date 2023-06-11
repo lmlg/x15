@@ -676,8 +676,10 @@ cpu_unw_mctx_from_frame (uintptr_t *regp, const void *area)
   for (size_t i = 0; i < ARRAY_SIZE (CPU_DWARF_MAP); ++i)
     regp[i] = frame->words[CPU_DWARF_MAP[i]];
 #ifndef __LP64__
-  /* When an exception occurs within the kernel, the SS and
-   * ESP registers are not pushed. */
+  /*
+   * When an exception occurs within the kernel, the SS and
+   * ESP registers are not pushed.
+   */
   if (cpu_kernel_frame (frame))
     regp[4] = (uintptr_t)(frame->words + CPU_EXC_FRAME_ESP);
 #endif
@@ -686,7 +688,8 @@ cpu_unw_mctx_from_frame (uintptr_t *regp, const void *area)
 void
 cpu_unw_mctx_set_frame (const uintptr_t *regs, int retval)
 {
-  /* We can't simply overwrite the frame registers and let the exception
+  /*
+   * We can't simply overwrite the frame registers and let the exception
    * mechanism restore the state, because the stack pointer isn't saved
    * on i386. As such, we need to clear the interrupt state and manually
    * jump into the new context.
