@@ -35,15 +35,6 @@ union cap_alert
   struct slist_node snode;
 };
 
-#define CAP_ALERTS_PER_NODE   \
-  ((PAGE_SIZE / 2 - sizeof (void *)) / sizeof (union cap_alert) - 1)
-
-struct cap_alert_node
-{
-  struct cap_alert_node *next;
-  union cap_alert alerts[CAP_ALERTS_PER_NODE];
-};
-
 struct cap_sender
 {
   struct plist_node node;
@@ -78,7 +69,6 @@ struct cap_intr_entry
 
 static struct kmem_cache cap_flow_cache;
 static struct kmem_cache cap_misc_cache;
-static struct kmem_cache cap_alert_cache;
 
 static struct list cap_intr_handlers[CPU_INTR_TABLE_SIZE];
 static struct adaptive_lock cap_intr_lock;
@@ -187,50 +177,11 @@ cap_flow_fini (struct sref_counter *sref)
                       bitmap_test (pending, entry->irq));
     }
 
-  for (_Auto al = flow->alnodes; al != NULL; )
-    {
-      _Auto tmp = al->next;
-      kmem_cache_free (&cap_alert_cache, al);
-      al = tmp;
-    }
+  union cap_alert *alert, *tmp;
+  slist_for_each_entry_safe (&flow->alert_list, alert, tmp, snode)
+    kmem_free (alert, sizeof (*alert));
 
   kmem_cache_free (&cap_flow_cache, flow);
-}
-
-static struct cap_alert_node*
-cap_alert_alloc (struct slist *outp)
-{
-  slist_init (outp);
-  struct cap_alert_node *np = kmem_cache_salloc (&cap_alert_cache);
-  if (! np)
-    return (NULL);
-
-  for (size_t i = 0; i < ARRAY_SIZE (np->alerts); ++i)
-    slist_insert_tail (outp, &np->alerts[i].snode);
-
-  return (np);
-}
-
-static void
-cap_flow_push_alnode (struct cap_flow *flow, struct slist *slist,
-                      struct cap_alert_node *node)
-{
-  slist_concat (&flow->alert_list, slist);
-  node->next = flow->alnodes;
-  flow->alnodes = node;
-}
-
-static int
-cap_flow_alloc_alerts (struct cap_flow *flow)
-{
-  struct slist tmp;
-  _Auto node = cap_alert_alloc (&tmp);
-
-  if (! node)
-    return (-ENOMEM);
-
-  cap_flow_push_alnode (flow, &tmp, node);
-  return (0);
 }
 
 static void
@@ -253,17 +204,9 @@ cap_flow_create (struct cap_flow **outp, uint32_t flags, uintptr_t tag)
   plist_init (&ret->senders);
   list_init (&ret->receivers);
   slist_init (&ret->alert_list);
-  ret->alnodes = NULL;
   ret->flags = flags;
   ret->tag = tag;
   cap_flow_intr_init (&ret->intr);
-
-  int error = cap_flow_alloc_alerts (ret);
-  if (error)
-    {
-      kmem_cache_free (&cap_flow_cache, ret);
-      return (error);
-    }
 
   *outp = ret;
   return (0);
@@ -526,46 +469,26 @@ cap_sender_impl (struct cap_sender *sender, struct cap_flow *flow)
   return (sender->result);
 }
 
-static void
-cap_flow_pop_alert_locked (struct cap_flow *flow, union cap_alert **outp)
-{
-  _Auto ret = slist_first_entry (&flow->alert_list, union cap_alert, snode);
-  slist_remove (&flow->alert_list, NULL);
-  *outp = ret;
-}
-
 static int
 cap_flow_pop_alert (struct cap_flow *flow, int flags, union cap_alert **outp)
 {
-  if (unlikely (slist_empty (&flow->alert_list)))
+  if (!slist_empty (&flow->alert_list))
     {
-      if (!(flags & CAP_ALERT_BLOCK))
-        return (-EAGAIN);
-
-      spinlock_unlock (&flow->lock);
-
-      struct slist tmp;
-      _Auto node = cap_alert_alloc (&tmp);
-
-      spinlock_lock (&flow->lock);
-      if (unlikely (!slist_empty (&flow->alert_list)))
-        {
-          /*
-           * Someone added a node in the interim. Make sure to put it back in
-           * the cache. However, since we can't hold a spinlock during
-           * deallocations, pop one of the freshly allocated alerts first.
-           */
-          cap_flow_pop_alert_locked (flow, outp);
-          spinlock_unlock (&flow->lock);
-          kmem_cache_free (&cap_alert_cache, node);
-          spinlock_lock (&flow->lock);
-          return (0);
-        }
-
-      cap_flow_push_alnode (flow, &tmp, node);
+      *outp = slist_first_entry (&flow->alert_list, union cap_alert, snode);
+      slist_remove (&flow->alert_list, NULL);
+      return (0);
     }
 
-  cap_flow_pop_alert_locked (flow, outp);
+  spinlock_unlock (&flow->lock);
+  void *ptr = (flags & CAP_ALERT_BLOCK) ?
+              kmem_salloc (sizeof (union cap_alert)) :
+              kmem_alloc (sizeof (union cap_alert));
+  spinlock_lock (&flow->lock);
+
+  if (! ptr)
+    return (-ENOMEM);
+
+  *outp = ptr;
   return (0);
 }
 
@@ -609,7 +532,6 @@ ssize_t
   else
     return (-EBADF);
 
-  union cap_alert *alert;
   char abuf[CAP_ALERT_SIZE];
 
   /*
@@ -623,12 +545,14 @@ ssize_t
 
   {
     SPINLOCK_GUARD (&flow->lock);
-    int error = cap_flow_pop_alert (flow, flags, &alert);
-
-    if (error)
-      return (error);
-    else if (list_empty (&flow->receivers))
+    if (list_empty (&flow->receivers))
       {
+        union cap_alert *alert;
+        int error = cap_flow_pop_alert (flow, flags, &alert);
+
+        if (error)
+          return (error);
+
         memcpy (alert->payload + 1, abuf, size);
         plist_node_init (&alert->pnode, priority);
         plist_add (&flow->senders, &alert->pnode);
@@ -1393,8 +1317,6 @@ cap_setup (void)
   kmem_cache_init (&cap_misc_cache, "cap_misc", size, 0, NULL, 0);
   kmem_cache_init (&cap_flow_cache, "cap_flow",
                    sizeof (struct cap_flow), 0, NULL, 0);
-  kmem_cache_init (&cap_alert_cache, "cap_alert",
-                   sizeof (struct cap_alert_node), 0, NULL, 0);
 
   adaptive_lock_init (&cap_intr_lock);
   for (size_t i = 0; i < ARRAY_SIZE (cap_intr_handlers); ++i)

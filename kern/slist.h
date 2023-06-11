@@ -249,7 +249,7 @@ MACRO_END
 
 // Forge a loop to process all entries of a list.
 #define slist_for_each_entry_safe(list, entry, tmp, member)   \
-  for (entry = slist_first_entry(list, typeof(*entry), member),   \
+  for (entry = slist_first_entry (list, typeof(*entry), member),   \
        tmp = entry ? slist_next_entry (entry, member) : NULL;   \
        entry != NULL;   \
        entry = tmp,   \

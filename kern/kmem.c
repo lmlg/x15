@@ -1250,8 +1250,8 @@ kmem_alloc_verify (struct kmem_cache *cache, void *buf, size_t size)
   memset ((char *)buf + size, KMEM_REDZONE_BYTE, cache->obj_size - size);
 }
 
-void*
-kmem_alloc (size_t size)
+static void*
+kmem_alloc_impl (size_t size, uint32_t flags)
 {
   if (! size)
     return (NULL);
@@ -1260,7 +1260,9 @@ kmem_alloc (size_t size)
   if (index < ARRAY_SIZE (kmem_caches))
     {
       struct kmem_cache *cache = &kmem_caches[index];
-      void *buf = kmem_cache_alloc (cache);
+      void *buf = (flags & VM_PAGE_SLEEP) ?
+                  kmem_cache_salloc (cache) :
+                  kmem_cache_alloc (cache);
 
       if (buf && (cache->flags & KMEM_CF_VERIFY))
         kmem_alloc_verify (cache, buf, size);
@@ -1268,7 +1270,19 @@ kmem_alloc (size_t size)
       return (buf);
     }
 
-  return (kmem_pagealloc (size, false));
+  return (kmem_pagealloc (size, flags));
+}
+
+void*
+kmem_alloc (size_t size)
+{
+  return (kmem_alloc_impl (size, 0));
+}
+
+void*
+kmem_salloc (size_t size)
+{
+  return (kmem_alloc_impl (size, VM_PAGE_SLEEP));
 }
 
 void*

@@ -156,6 +156,9 @@ void* kmem_alloc (size_t size);
 // Allocate size bytes of zeroed memory.
 void* kmem_zalloc (size_t size);
 
+// Same as 'kmem_alloc', only this function may sleep.
+void* kmem_salloc (size_t size);
+
 /*
  * Release memory obtained with kmem_alloc() or kmem_zalloc().
  *

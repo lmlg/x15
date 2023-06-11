@@ -84,7 +84,6 @@ struct cap_flow
   struct cap_intr_data intr;
   uint32_t flags;
   struct slist alert_list;
-  struct cap_alert_node *alnodes;
   uintptr_t tag;
 #if CONFIG_MAX_CPUS > 1
   char pad[CPU_L1_SIZE];
