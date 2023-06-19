@@ -156,6 +156,24 @@ cap_channel_create (struct cap_channel **outp, struct cap_flow *flow,
 
 static int cap_intr_rem (uint32_t intr, struct list *node, bool eoi);
 
+static int
+cap_intr_test (const unsigned long *map, uint32_t irq)
+{
+  return (bitmap_test (map, irq - CPU_EXC_INTR_FIRST));
+}
+
+static void
+cap_intr_clear (unsigned long *map, uint32_t irq)
+{
+  bitmap_clear (map, irq - CPU_EXC_INTR_FIRST);
+}
+
+static void
+cap_intr_set (unsigned long *map, uint32_t irq)
+{
+  bitmap_set (map, irq - CPU_EXC_INTR_FIRST);
+}
+
 static void
 cap_flow_fini (struct sref_counter *sref)
 {
@@ -174,7 +192,7 @@ cap_flow_fini (struct sref_counter *sref)
       struct cap_intr_entry *entry, *tmp;
       list_for_each_entry_safe (&flow->intr.entries, entry, tmp, cap_node)
         cap_intr_rem (entry->irq, &entry->intr_node,
-                      bitmap_test (pending, entry->irq));
+                      cap_intr_test (pending, entry->irq));
     }
 
   union cap_alert *alert, *tmp;
@@ -470,7 +488,7 @@ cap_sender_impl (struct cap_sender *sender, struct cap_flow *flow)
 }
 
 static int
-cap_flow_pop_alert (struct cap_flow *flow, int flags, union cap_alert **outp)
+cap_flow_alloc_alert (struct cap_flow *flow, int flags, union cap_alert **outp)
 {
   if (!slist_empty (&flow->alert_list))
     {
@@ -548,7 +566,7 @@ ssize_t
     if (list_empty (&flow->receivers))
       {
         union cap_alert *alert;
-        int error = cap_flow_pop_alert (flow, flags, &alert);
+        int error = cap_flow_alloc_alert (flow, flags, &alert);
 
         if (error)
           return (error);
@@ -732,6 +750,7 @@ cap_recv_intr (struct cap_receiver *recv, struct cap_flow *flow)
   --flow->intr.nr_pending;
 
   spinlock_unlock (&flow->lock);
+  irq += CPU_EXC_INTR_FIRST;
   cap_recv_small (recv, &irq, sizeof (irq));
   recv->ipc_data.flags |= IPC_MSG_INTR;
 }
@@ -1135,11 +1154,11 @@ cap_notify_intr (struct list *node, uint32_t irq)
 
   {
     SPINLOCK_GUARD (&flow->lock);
-    if (bitmap_test (flow->intr.pending, irq))
+    if (cap_intr_test (flow->intr.pending, irq))
       return (EAGAIN);
     else if (list_empty (&flow->receivers))
       {
-        bitmap_set (flow->intr.pending, irq);
+        cap_intr_set (flow->intr.pending, irq);
         ++flow->intr.nr_pending;
         return (EINPROGRESS);
       }
@@ -1270,16 +1289,19 @@ cap_intr_unregister (struct cap_flow *flow, uint32_t irq)
 
   return (!entry ? EINVAL :
           cap_intr_rem (irq, &entry->intr_node,
-                        bitmap_test (flow->intr.pending, irq)));
+                        cap_intr_test (flow->intr.pending, irq)));
 }
 
 int
 cap_intr_eoi (struct cap_flow *flow, uint32_t irq)
 {
+  if (irq < CPU_EXC_INTR_FIRST || irq > CPU_EXC_INTR_LAST)
+    return (EINVAL);
+
   SPINLOCK_GUARD (&flow->lock);
-  if (bitmap_test (flow->intr.pending, irq))
+  if (cap_intr_test (flow->intr.pending, irq))
     {
-      bitmap_clear (flow->intr.pending, irq);
+      cap_intr_clear (flow->intr.pending, irq);
       --flow->intr.nr_pending;
     }
   else if (!cap_find_intr (flow, irq))

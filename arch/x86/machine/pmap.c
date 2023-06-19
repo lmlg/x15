@@ -84,9 +84,11 @@ struct pmap_cpu_table
 
 struct pmap
 {
-  /* Normally, this would be a flexarray, but they aren't allowed
+  /*
+   * Normally, this would be a flexarray, but they aren't allowed
    * when they are the only member of a struct, so for now, we use
-   * a 'fake' 1 element array. */
+   * a 'fake' 1 element array.
+   */
   struct pmap_cpu_table *cpu_tables[1];
 };
 
@@ -114,7 +116,7 @@ union pmap_global
     } full;
 };
 
-union pmap_global pmap_global_pmap;
+static union pmap_global pmap_global_pmap;
 struct pmap *pmap_kernel_pmap;
 struct pmap *pmap_current_ptr __percpu;
 static pmap_pte_t* pmap_ipc_ptes __percpu;
@@ -567,6 +569,18 @@ pmap_pte_next (pmap_pte_t pte)
   return (pmap_ptp_from_pa (pte & PMAP_PA_MASK));
 }
 
+static inline phys_addr_t
+pmap_get_root (struct pmap *pmap, uint32_t cpu_id)
+{
+  return (pmap->cpu_tables[cpu_id]->root_ptp_pa);
+}
+
+static inline pmap_pte_t*
+pmap_get_root_ptp (struct pmap *pmap, uint32_t cpu_id)
+{
+  return (pmap_ptp_from_pa (pmap_get_root (pmap, cpu_id)));
+}
+
 /*
  * Helper function for initialization procedures that require post-fixing
  * page properties.
@@ -581,8 +595,7 @@ pmap_walk_vas (uintptr_t start, uintptr_t end, pmap_walk_fn_t walk_fn)
 #endif
 
   uintptr_t va = start;
-  phys_addr_t root_ptp_pa =
-    pmap_get_kernel_pmap()->cpu_tables[cpu_id ()]->root_ptp_pa;
+  phys_addr_t root_ptp_pa = pmap_get_root (pmap_get_kernel_pmap (), cpu_id ());
 
   do
     {
@@ -649,13 +662,11 @@ pmap_update_oplist_ctor (void *arg)
 static int
 pmap_update_oplist_create (struct pmap_update_oplist **oplistp)
 {
-  struct pmap_update_oplist *oplist =
-    kmem_cache_alloc (&pmap_update_oplist_cache);
-
+  void *oplist = kmem_cache_alloc (&pmap_update_oplist_cache);
   if (! oplist)
     return (ENOMEM);
 
-  *oplistp = oplist;
+  *oplistp = (struct pmap_update_oplist *)oplist;
   return (0);
 }
 
@@ -668,8 +679,7 @@ pmap_update_oplist_destroy (struct pmap_update_oplist *oplist)
 static struct pmap_update_oplist*
 pmap_update_oplist_get (void)
 {
-  struct pmap_update_oplist *oplist =
-    tcb_get_pmap_update_oplist (tcb_current ());
+  _Auto oplist = tcb_get_pmap_update_oplist (tcb_current ());
   assert (oplist != NULL);
   return (oplist);
 }
@@ -948,8 +958,7 @@ pmap_copy_cpu_table (uint32_t cpu)
   assert (cpu < CONFIG_MAX_CPUS);
   _Auto cpu_table = kernel_pmap->cpu_tables[cpu];
   uint32_t level = PMAP_NR_LEVELS - 1;
-  const pmap_pte_t *sptp =
-    pmap_ptp_from_pa (kernel_pmap->cpu_tables[cpu_id ()]->root_ptp_pa);
+  const _Auto sptp = pmap_get_root_ptp (kernel_pmap, cpu_id ());
 
 #ifdef CONFIG_X86_PAE
   cpu_table->root_ptp_pa = BOOT_VTOP ((uintptr_t)pmap_cpu_kpdpts[cpu]);
@@ -1037,8 +1046,7 @@ static pmap_pte_t*
 pmap_extract_impl (struct pmap *pmap, uintptr_t va)
 {
   uint32_t level = PMAP_NR_LEVELS - 1;
-  pmap_pte_t *ptp =
-    pmap_ptp_from_pa (pmap->cpu_tables[cpu_id ()]->root_ptp_pa);
+  pmap_pte_t *ptp = pmap_get_root_ptp (pmap, cpu_id ());
 
   while (1)
     {
@@ -1071,7 +1079,7 @@ pmap_extract_check (struct pmap *pmap, uintptr_t va,
                     bool rdwr, phys_addr_t *pap)
 {
   pmap_pte_t *pte = pmap_extract_impl (pmap, va);
-  if (! pte)
+  if (! pte || !(*pte & PMAP_PTE_P))
     return (EFAULT);
   else if (rdwr && !(*pte & PMAP_PTE_RW))
     return (EACCES);
@@ -1350,8 +1358,7 @@ static void
 pmap_remove_local_single (struct pmap *pmap, uintptr_t va)
 {
   uint32_t level = PMAP_NR_LEVELS - 1;
-  pmap_pte_t *pte, *ptp =
-    pmap_ptp_from_pa (pmap->cpu_tables[cpu_id ()]->root_ptp_pa);
+  pmap_pte_t *pte, *ptp = pmap_get_root_ptp (pmap, cpu_id ());
 
   while (1)
     {
