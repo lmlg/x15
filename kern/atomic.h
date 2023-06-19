@@ -27,16 +27,16 @@
 #include <machine/atomic.h>
 
 // Supported memory orders.
-#define ATOMIC_RELAXED  __ATOMIC_RELAXED
-#define ATOMIC_CONSUME  __ATOMIC_CONSUME
-#define ATOMIC_ACQUIRE  __ATOMIC_ACQUIRE
-#define ATOMIC_RELEASE  __ATOMIC_RELEASE
-#define ATOMIC_ACQ_REL  __ATOMIC_ACQ_REL
-#define ATOMIC_SEQ_CST  __ATOMIC_SEQ_CST
+#define ATOMIC_RELAXED   __ATOMIC_RELAXED
+#define ATOMIC_CONSUME   __ATOMIC_CONSUME
+#define ATOMIC_ACQUIRE   __ATOMIC_ACQUIRE
+#define ATOMIC_RELEASE   __ATOMIC_RELEASE
+#define ATOMIC_ACQ_REL   __ATOMIC_ACQ_REL
+#define ATOMIC_SEQ_CST   __ATOMIC_SEQ_CST
 
 #define __atomic_cas(place, exp, nval, mo)   \
   ({   \
-     typeof(*(place)) exp_ = (exp);   \
+     typeof (*(place)) exp_ = (exp);   \
      __atomic_compare_exchange_n ((place), &exp_, (nval), true,   \
                                   (mo), ATOMIC_RELAXED);   \
      exp_;   \
@@ -84,13 +84,12 @@
 #define atomic_or(place, val, mo)    atomic_op (place, fetch_or, val, mo)
 #define atomic_xor(place, val, mo)   atomic_op (place, fetch_xor, val, mo)
 
-#define atomic_swap(place, val, mo)   atomic_op (place, swap, val, mo)
-
+#define atomic_swap(place, val, mo)       atomic_op (place, swap, val, mo)
 #define atomic_cas(place, exp, val, mo)   atomic_op (place, cas, exp, val, mo)
 
 #define atomic_cas_bool(place, exp, val, mo)   \
   ({   \
-     typeof(*(place)) sexp_ = (exp);   \
+     typeof (*(place)) sexp_ = (exp);   \
      atomic_cas (place, sexp_, val, mo) == sexp_;   \
    })
 
@@ -98,8 +97,8 @@
 
 // Common shortcuts.
 
-#define atomic_load_rlx(place)       atomic_load ((place), ATOMIC_RELAXED)
-#define atomic_load_acq(place)       atomic_load ((place), ATOMIC_ACQUIRE)
+#define atomic_load_rlx(place)   atomic_load ((place), ATOMIC_RELAXED)
+#define atomic_load_acq(place)   atomic_load ((place), ATOMIC_ACQUIRE)
 #define atomic_load_seq(place)   atomic_load ((place), ATOMIC_SEQ_CST)
 
 #define atomic_store_rlx(place, val)   \
