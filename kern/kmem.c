@@ -319,6 +319,12 @@ kmem_pagealloc_is_virtual (size_t size)
   return (size > PAGE_SIZE);
 }
 
+static inline void
+kmem_mark_page_sleepable (struct vm_page *page)
+{
+  vm_page_set_priv (page, (void *)1);
+}
+
 static void*
 kmem_pagealloc (size_t size, uint32_t pflags)
 {
@@ -326,8 +332,8 @@ kmem_pagealloc (size_t size, uint32_t pflags)
     return (vm_kmem_alloc (size));
 
   size_t order = vm_page_order (size);
-  _Auto page = vm_page_alloc (order, VM_PAGE_SEL_DIRECTMAP,
-                              VM_PAGE_KMEM, pflags);
+  _Auto page = vm_page_alloc (order, VM_PAGE_SEL_DIRECTMAP, VM_PAGE_KMEM,
+                              (pflags & KMEM_ALLOC_SLEEP) ? VM_PAGE_SLEEP : 0);
 
   return (page ? vm_page_direct_ptr (page) : NULL);
 }
@@ -341,7 +347,9 @@ kmem_pagefree (void *ptr, size_t size)
     {
       _Auto page = vm_page_lookup (vm_page_direct_pa ((uintptr_t)ptr));
       assert (page);
-      vm_page_free (page, vm_page_order (size), 0);
+      uint32_t flags = ((uintptr_t)vm_page_get_priv (page) & 1) ?
+                       VM_PAGE_SLEEP : 0;
+      vm_page_free (page, vm_page_order (size), flags);
     }
 }
 
@@ -679,6 +687,20 @@ kmem_cache_registration_required (const struct kmem_cache *cache)
 }
 
 static void
+kmem_page_set_priv (struct vm_page *page, void *priv)
+{
+  uintptr_t val = (uintptr_t)vm_page_get_priv (page) | (uintptr_t)priv;
+  vm_page_set_priv (page, (void *)val);
+}
+
+static void*
+kmem_page_get_priv (struct vm_page *page)
+{
+  uintptr_t val = (uintptr_t)vm_page_get_priv (page);
+  return ((void *)(val & ~1));
+}
+
+static void
 kmem_cache_register (struct kmem_cache *cache, struct kmem_slab *slab)
 {
   assert (kmem_cache_registration_required (cache));
@@ -703,8 +725,8 @@ kmem_cache_register (struct kmem_cache *cache, struct kmem_slab *slab)
       assert (page);
       assert ((virtual && vm_page_type (page) == VM_PAGE_KERNEL) ||
               (!virtual && vm_page_type (page) == VM_PAGE_KMEM));
-      assert (!vm_page_get_priv (page));
-      vm_page_set_priv (page, slab);
+      assert (!kmem_page_get_priv (page));
+      kmem_page_set_priv (page, slab);
     }
 }
 
@@ -736,7 +758,7 @@ kmem_cache_lookup (struct kmem_cache *cache, void *buf)
       (!virtual && (vm_page_type (page) != VM_PAGE_KMEM)))
     return (NULL);
 
-  struct kmem_slab *slab = vm_page_get_priv (page);
+  struct kmem_slab *slab = kmem_page_get_priv (page);
   assert ((uintptr_t)buf >= kmem_slab_buf (slab));
   assert ((uintptr_t)buf < kmem_slab_buf (slab) + cache->slab_size);
   return (slab);
@@ -893,8 +915,8 @@ kmem_cache_alloc_verify (struct kmem_cache *cache, void *buf, int construct)
     cache->ctor (buf);
 }
 
-static void*
-kmem_cache_alloc_impl (struct kmem_cache *cache, uint32_t pflags)
+void*
+kmem_cache_alloc2 (struct kmem_cache *cache, uint32_t pflags)
 {
 #ifdef KMEM_USE_CPU_LAYER
 
@@ -958,18 +980,6 @@ slab_alloc:
     cache->ctor (buf);
 
   return (buf);
-}
-
-void*
-kmem_cache_alloc (struct kmem_cache *cache)
-{
-  return (kmem_cache_alloc_impl (cache, 0));
-}
-
-void*
-kmem_cache_salloc (struct kmem_cache *cache)
-{
-  return (kmem_cache_alloc_impl (cache, VM_PAGE_SLEEP));
 }
 
 static void
@@ -1250,8 +1260,8 @@ kmem_alloc_verify (struct kmem_cache *cache, void *buf, size_t size)
   memset ((char *)buf + size, KMEM_REDZONE_BYTE, cache->obj_size - size);
 }
 
-static void*
-kmem_alloc_impl (size_t size, uint32_t flags)
+void*
+kmem_alloc2 (size_t size, uint32_t flags)
 {
   if (! size)
     return (NULL);
@@ -1260,9 +1270,7 @@ kmem_alloc_impl (size_t size, uint32_t flags)
   if (index < ARRAY_SIZE (kmem_caches))
     {
       struct kmem_cache *cache = &kmem_caches[index];
-      void *buf = (flags & VM_PAGE_SLEEP) ?
-                  kmem_cache_salloc (cache) :
-                  kmem_cache_alloc (cache);
+      void *buf = kmem_cache_alloc2 (cache, flags);
 
       if (buf && (cache->flags & KMEM_CF_VERIFY))
         kmem_alloc_verify (cache, buf, size);
@@ -1271,18 +1279,6 @@ kmem_alloc_impl (size_t size, uint32_t flags)
     }
 
   return (kmem_pagealloc (size, flags));
-}
-
-void*
-kmem_alloc (size_t size)
-{
-  return (kmem_alloc_impl (size, 0));
-}
-
-void*
-kmem_salloc (size_t size)
-{
-  return (kmem_alloc_impl (size, VM_PAGE_SLEEP));
 }
 
 void*

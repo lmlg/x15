@@ -502,9 +502,8 @@ cap_flow_alloc_alert (struct cap_flow *flow, int flags, union cap_alert **outp)
     }
 
   spinlock_unlock (&flow->lock);
-  void *ptr = (flags & CAP_ALERT_BLOCK) ?
-              kmem_salloc (sizeof (union cap_alert)) :
-              kmem_alloc (sizeof (union cap_alert));
+  void *ptr = kmem_alloc2 (sizeof (union cap_alert),
+                           (flags & CAP_ALERT_BLOCK) ? KMEM_ALLOC_SLEEP : 0);
   spinlock_lock (&flow->lock);
 
   if (! ptr)

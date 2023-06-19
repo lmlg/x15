@@ -124,6 +124,9 @@ struct kmem_cache
 #define KMEM_CACHE_PAGE_ONLY    0x2   // Allocate slabs from the page allocator.
 #define KMEM_CACHE_VERIFY       0x4   // Use debugging facilities.
 
+// Cache allocation flags.
+#define KMEM_ALLOC_SLEEP        0x1
+
 /*
  * Initialize a cache.
  *
@@ -135,10 +138,13 @@ void kmem_cache_init (struct kmem_cache *cache, const char *name,
                       int flags);
 
 // Allocate an object from a cache.
-void* kmem_cache_alloc (struct kmem_cache *cache);
+void* kmem_cache_alloc2 (struct kmem_cache *cache, unsigned int flags);
 
-// Same as above, only this function may sleep.
-void* kmem_cache_salloc (struct kmem_cache *cache);
+static inline void*
+kmem_cache_alloc (struct kmem_cache *cache)
+{
+  return (kmem_cache_alloc2 (cache, 0));
+}
 
 // Release an object to its cache.
 void kmem_cache_free (struct kmem_cache *cache, void *obj);
@@ -151,13 +157,16 @@ void kmem_cache_free (struct kmem_cache *cache, void *obj);
 void kmem_cache_info (struct kmem_cache *cache, struct stream *stream);
 
 // Allocate size bytes of uninitialized memory.
-void* kmem_alloc (size_t size);
+void* kmem_alloc2 (size_t size, unsigned int flags);
+
+static inline void*
+kmem_alloc (size_t size)
+{
+  return (kmem_alloc2 (size, 0));
+}
 
 // Allocate size bytes of zeroed memory.
 void* kmem_zalloc (size_t size);
-
-// Same as 'kmem_alloc', only this function may sleep.
-void* kmem_salloc (size_t size);
 
 /*
  * Release memory obtained with kmem_alloc() or kmem_zalloc().

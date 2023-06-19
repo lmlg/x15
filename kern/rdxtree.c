@@ -139,9 +139,13 @@ rdxtree_node_ctor (void *buf)
 }
 
 static int
-rdxtree_node_create (struct rdxtree_node **nodep, uint16_t height)
+rdxtree_node_create (struct rdxtree_node **nodep,
+                     uint16_t height, uint16_t flags)
 {
-  struct rdxtree_node *node = kmem_cache_salloc (&rdxtree_node_cache);
+  struct rdxtree_node *node =
+    kmem_cache_alloc2 (&rdxtree_node_cache,
+                       (flags & RDXTREE_ALLOC_SLEEP) ?
+                       KMEM_ALLOC_SLEEP : 0);
   if (! node)
     return (ENOMEM);
 
@@ -348,7 +352,7 @@ rdxtree_grow (struct rdxtree *tree, rdxtree_key_t key)
   do
     {
       struct rdxtree_node *node;
-      int error = rdxtree_node_create (&node, tree->height);
+      int error = rdxtree_node_create (&node, tree->height, tree->flags);
 
       if (error)
         {
@@ -455,7 +459,7 @@ rdxtree_insert_common (struct rdxtree *tree, rdxtree_key_t key,
     {
       if (! node)
         {
-          int error = rdxtree_node_create (&node, height - 1);
+          int error = rdxtree_node_create (&node, height - 1, tree->flags);
 
           if (error)
             {
@@ -536,7 +540,7 @@ rdxtree_insert_alloc_common (struct rdxtree *tree, void *ptr,
     {
       if (! node)
         {
-          error = rdxtree_node_create (&node, height - 1);
+          error = rdxtree_node_create (&node, height - 1, tree->flags);
 
           if (error)
             {
