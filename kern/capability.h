@@ -65,15 +65,6 @@ enum
   CAP_KERNEL_MAX,
 };
 
-struct cap_alert_node;
-
-struct cap_intr_data
-{
-  BITMAP_DECLARE (pending, CPU_INTR_TABLE_SIZE);
-  struct list entries;
-  uint32_t nr_pending;
-};
-
 #define CAPABILITY   struct cap_base base
 
 struct cap_flow
@@ -81,7 +72,12 @@ struct cap_flow
   CAPABILITY;
   struct plist senders;
   struct list receivers;
-  struct cap_intr_data intr;
+  struct
+    {
+      BITMAP_DECLARE (pending, CPU_INTR_TABLE_SIZE);
+      struct list entries;
+      uint32_t nr_pending;
+    } intr;
   uint32_t flags;
   struct slist alert_list;
   uintptr_t tag;
@@ -214,7 +210,10 @@ rcvid_t cap_recv_iter (int capx, struct cap_iters *it,
 // Reply to a received message with IPC iterators or an error.
 int cap_reply_iter (rcvid_t rcvid, struct cap_iters *iter, int err);
 
-// Make the calling thread handle a message, or detach the current one if zero.
+/*
+ * Make the calling thread handle a receive ID, or detach the
+ * current one if zero.
+ */
 int cap_handle (rcvid_t rcvid);
 
 /*
@@ -223,7 +222,6 @@ int cap_handle (rcvid_t rcvid);
  * If the calling thread is not already handling the receive ID, then it will
  * attempt to acquire it after detaching its current peer.
  */
-
 ssize_t cap_pull_iter (rcvid_t rcvid, struct cap_iters *iter,
                        struct ipc_msg_data *mdata);
 
@@ -233,7 +231,6 @@ ssize_t cap_pull_iter (rcvid_t rcvid, struct cap_iters *iter,
  * If the calling thread is not already handling the receive ID, then it will
  * attempt to acquire it after detaching its current peer.
  */
-
 ssize_t cap_push_iter (rcvid_t rcvid, struct cap_iters *iter,
                        struct ipc_msg_data *mdata);
 

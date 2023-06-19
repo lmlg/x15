@@ -204,11 +204,11 @@ cap_flow_fini (struct sref_counter *sref)
 }
 
 static void
-cap_flow_intr_init (struct cap_intr_data *data)
+cap_flow_intr_init (struct cap_flow *flow)
 {
-  bitmap_zero (data->pending, CPU_INTR_TABLE_SIZE);
-  data->nr_pending = 0;
-  list_init (&data->entries);
+  bitmap_zero (flow->intr.pending, CPU_INTR_TABLE_SIZE);
+  flow->intr.nr_pending = 0;
+  list_init (&flow->intr.entries);
 }
 
 int
@@ -225,7 +225,7 @@ cap_flow_create (struct cap_flow **outp, uint32_t flags, uintptr_t tag)
   slist_init (&ret->alert_list);
   ret->flags = flags;
   ret->tag = tag;
-  cap_flow_intr_init (&ret->intr);
+  cap_flow_intr_init (ret);
 
   *outp = ret;
   return (0);
@@ -416,14 +416,15 @@ cap_sender_receiver_step (struct cap_sender *sender, struct cap_receiver *recv)
   sender->handler = recv->thread;
 
   // Complete the receive ID and set the tag.
-  recv->rcvid |= sender->thread->kuid.id;
-  recv->thread->cur_peer = sender->thread;
+  struct thread *thread = sender->thread;
+  recv->rcvid |= thread->kuid.id;
+  recv->thread->cur_peer = thread;
   recv->thread->cur_rcvid = recv->rcvid;
   recv->ipc_data.tag = sender->ipc_data.tag;
 
   // Fill in the rest of the metadata.
-  recv->ipc_data.thread_id = sender->thread->kuid.id;
-  recv->ipc_data.task_id = sender->thread->task->kuid.id;
+  recv->ipc_data.thread_id = thread->kuid.id;
+  recv->ipc_data.task_id = thread->task->kuid.id;
 }
 
 static ssize_t
@@ -1125,7 +1126,7 @@ cap_redirect (rcvid_t rcvid, struct cap_base *cap)
         return (cap_handle_task_thread (sender->in_it, sender->out_it, cap));
       case CAP_TYPE_KERNEL:
         // XXX: Implement.
-        return (-EINVAL);
+        return (EINVAL);
     }
 
   spinlock_lock (&flow->lock);
@@ -1183,6 +1184,7 @@ cap_handle_intr (void *arg)
   uint32_t irq = (uint32_t)(list - &cap_intr_handlers[0]) + CPU_EXC_INTR_FIRST;
   int ret = EAGAIN;
 
+  RCU_GUARD ();
   list_rcu_for_each (list, tmp)
     {
       int rv = cap_notify_intr (tmp, irq);
