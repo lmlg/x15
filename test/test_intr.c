@@ -22,7 +22,9 @@
 
 #include <kern/capability.h>
 #include <kern/intr.h>
-#include <kern/unwind.h>
+#include <kern/task.h>
+
+#include <vm/map.h>
 
 #include <test/test.h>
 
@@ -64,12 +66,15 @@ test_intr (void *arg)
   int capx = cap_intern (flow, 0);
   assert (capx >= 0);
 
+  struct ipc_msg_data *md;
+  int error = vm_map_anon_alloc ((void **)&md, vm_map_self (), sizeof (*md));
+  assert (! error);
+
   uint32_t irq;
-  struct ipc_msg_data mdata;
-  rcvid_t rcvid = cap_recv_bytes (capx, &irq, sizeof (irq), &mdata);
+  rcvid_t rcvid = cap_recv_bytes (capx, &irq, sizeof (irq), md);
 
   assert (rcvid == 0);
-  assert (mdata.flags & IPC_MSG_INTR);
+  assert (md->flags & IPC_MSG_INTR);
   assert (irq == TEST_INTR_FIRST);
 
   assert (cap_intr_eoi (flow, irq) == 0);
@@ -99,5 +104,6 @@ TEST_DEFERRED (intr)
 
   thread_join (thr);
   error = cap_intr_unregister (flow, TEST_INTR_FIRST);
+  assert (! error);
   return (TEST_OK);
 }

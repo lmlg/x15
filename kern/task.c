@@ -30,6 +30,7 @@
 #include <kern/spinlock.h>
 #include <kern/task.h>
 #include <kern/thread.h>
+#include <kern/user.h>
 
 #include <vm/map.h>
 
@@ -200,8 +201,7 @@ task_remove_thread (struct task *task, struct thread *thread)
   spinlock_unlock (&task->lock);
 
   if (unref)
-    {
-      // Destroy the cspace early to avoid circular references.
+    { // Destroy the cspace early to avoid circular references.
       cspace_destroy (&task->caps);
       task_unref (task);
     }
@@ -285,8 +285,7 @@ task_handle_msg (struct task *task, struct ipc_msg *src,
 {
   struct task_ipc_msg tmsg;
   struct iovec iov = { .iov_base = &tmsg, .iov_len = sizeof (tmsg) };
-  ssize_t rv = ipc_bcopyv (task_self (), src->iovs, src->iov_cnt,
-                           &iov, 1, IPC_COPY_FROM);
+  ssize_t rv = user_copyv_from (&iov, 1, src->iovs, src->iov_cnt);
 
   if (rv < 0)
     return (rv);
@@ -302,8 +301,7 @@ task_handle_msg (struct task *task, struct ipc_msg *src,
     }
 
   if (rv >= 0 && ((1u << tmsg.op) & TASK_IPC_NEEDS_COPY))
-    rv = ipc_bcopyv (task_self (), dst->iovs, dst->iov_cnt,
-                     &iov, 1, IPC_COPY_TO);
+    rv = user_copyv_to (dst->iovs, dst->iov_cnt, &iov, 1);
 
   (void)data;
   return (rv < 0 ? rv : 0);

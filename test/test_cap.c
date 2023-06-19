@@ -287,19 +287,27 @@ test_cap_misc (void *arg __unused)
   int error = cap_task_create (&ctask, task_self ());
   assert (! error);
 
-  struct task_ipc_msg task_msg;
+  struct
+    {
+      struct task_ipc_msg task_msg;
+      struct thread_ipc_msg thr_msg;
+      BITMAP_DECLARE (cpumap, CONFIG_MAX_CPUS);
+    } *vars;
 
-  task_msg.op = TASK_IPC_GET_NAME;
-  ssize_t rv = cap_send_bytes (ctask, &task_msg, sizeof (task_msg),
-                               &task_msg, sizeof (task_msg));
+  error = vm_map_anon_alloc ((void **)&vars, vm_map_self (), sizeof (*vars));
+  assert (! error);
+
+  vars->task_msg.op = TASK_IPC_GET_NAME;
+  ssize_t rv = cap_send_bytes (ctask, &vars->task_msg, sizeof (vars->task_msg),
+                               &vars->task_msg, sizeof (vars->task_msg));
 
   assert (rv == 0);
-  assert (strcmp (task_msg.name, "cap_misc") == 0);
+  assert (strcmp (vars->task_msg.name, "cap_misc") == 0);
 
-  task_msg.op = TASK_IPC_SET_NAME;
-  strcpy (task_msg.name, "new_name");
+  vars->task_msg.op = TASK_IPC_SET_NAME;
+  strcpy (vars->task_msg.name, "new_name");
 
-  rv = cap_send_bytes (ctask, &task_msg, sizeof (task_msg), NULL, 0);
+  rv = cap_send_bytes (ctask, &vars->task_msg, sizeof (vars->task_msg), 0, 0);
   assert (rv == 0);
   assert (strcmp (task_self()->name, "new_name") == 0);
 
@@ -308,31 +316,23 @@ test_cap_misc (void *arg __unused)
   struct cap_thread *cthread;
   error = cap_thread_create (&cthread, thread_self ());
 
-  struct thread_ipc_msg thr_msg;
-
-  thr_msg.op = THREAD_IPC_GET_NAME;
-  rv = cap_send_bytes (cthread, &thr_msg, sizeof (thr_msg),
-                       &thr_msg, sizeof (thr_msg));
+  vars->thr_msg.op = THREAD_IPC_GET_NAME;
+  rv = cap_send_bytes (cthread, &vars->thr_msg, sizeof (vars->thr_msg),
+                       &vars->thr_msg, sizeof (vars->thr_msg));
   assert (rv == 0);
-  assert (strcmp (thr_msg.name, "cap_misc/0") == 0);
-
-  struct cpumap *cpumap;
-  error = cpumap_create (&cpumap);
-  assert (! error);
-  cpumap_zero (cpumap);
+  assert (strcmp (vars->thr_msg.name, "cap_misc/0") == 0);
 
   thread_pin ();
-  thr_msg.op = THREAD_IPC_GET_AFFINITY;
-  thr_msg.cpumap.map = cpumap->cpus;
-  thr_msg.cpumap.size = sizeof (cpumap->cpus);
+  vars->thr_msg.op = THREAD_IPC_GET_AFFINITY;
+  vars->thr_msg.cpumap.map = vars->cpumap;
+  vars->thr_msg.cpumap.size = sizeof (vars->cpumap);
 
-  rv = cap_send_bytes (cthread, &thr_msg, sizeof (thr_msg),
-                       &thr_msg, sizeof (thr_msg));
+  rv = cap_send_bytes (cthread, &vars->thr_msg, sizeof (vars->thr_msg),
+                       &vars->thr_msg, sizeof (vars->thr_msg));
   assert (rv == 0);
-  assert (cpumap_test (cpumap, cpu_id ()));
+  assert (bitmap_test (vars->cpumap, cpu_id ()));
   thread_unpin ();
 
-  cpumap_destroy (cpumap);
   cap_base_rel (cthread);
 }
 

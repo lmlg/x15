@@ -42,6 +42,7 @@ x15_SOURCES-y += \
         kern/thread.c \
         kern/timer.c \
         kern/unwind.c \
+        kern/user.c \
         kern/turnstile.c \
         kern/work.c \
         kern/xcall.c

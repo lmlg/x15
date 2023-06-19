@@ -35,12 +35,11 @@ user_check_addr (const void *addr)
 {
   return (
 #if PMAP_START_ADDRESS > 0
-           ((uintptr_t)addr >= PMAP_START_ADDRESS &&
+           (uintptr_t)addr >= PMAP_START_ADDRESS &&
 #else
-           (1 &&
+           1 &&
 #endif
-           ((uintptr_t)addr < PMAP_END_ADDRESS)) ||
-           task_self () == task_get_kernel_task ());
+           ((uintptr_t)addr < PMAP_END_ADDRESS));
 }
 
 // Copy bytes to userspace.

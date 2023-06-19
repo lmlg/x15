@@ -37,7 +37,7 @@ int
 user_copy_to (void *udst, const void *src, size_t size)
 {
   if (!user_check_addr (udst))
-    return (-EFAULT);
+    return (EFAULT);
 
   return (user_copy_impl (udst, src, size));
 }
@@ -46,7 +46,7 @@ int
 user_copy_from (void *dst, const void *usrc, size_t size)
 {
   if (!user_check_addr (usrc))
-    return (-EFAULT);
+    return (EFAULT);
 
   return (user_copy_impl (dst, usrc, size));
 }
@@ -58,7 +58,7 @@ user_copyv_impl (struct iovec *dst, uint32_t nr_dst,
   struct unw_fixup fixup;
   int error = unw_fixup_save (&fixup);
   if (unlikely (error))
-    return (error);
+    return (-error);
 
   struct iovec dv = IOVEC (0, 0), sv = IOVEC (0, 0);
   ssize_t ret = 0;
@@ -69,6 +69,8 @@ user_copyv_impl (struct iovec *dst, uint32_t nr_dst,
         {
           if (! nr_dst)
             return (ret);
+          else if (to_user && !user_check_addr (dst->iov_base))
+            return (-EFAULT);
 
           dv = *dst++;
           --nr_dst;
@@ -78,14 +80,12 @@ user_copyv_impl (struct iovec *dst, uint32_t nr_dst,
         {
           if (! nr_src)
             return (ret);
+          else if (!to_user && !user_check_addr (src->iov_base))
+            return (-EFAULT);
 
           sv = *src++;
           --nr_src;
         }
-
-      if ((to_user && !user_check_addr (dv.iov_base)) ||
-          (!to_user && !user_check_addr (sv.iov_base)))
-        return (-EFAULT);
 
       size_t tmp = MIN (dv.iov_len, sv.iov_len);
       memcpy (dv.iov_base, sv.iov_base, tmp);

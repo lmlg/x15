@@ -982,18 +982,6 @@ vm_map_lookup (struct vm_map *map, uintptr_t addr,
 }
 
 int
-vm_copy (void *dst, const void *src, size_t size)
-{
-  struct unw_fixup fixup;
-  int res = unw_fixup_save (&fixup);
-
-  if (res == 0)
-    memcpy (dst, src, size);
-
-  return (res);
-}
-
-int
 vm_map_anon_alloc (void **outp, struct vm_map *map, size_t size)
 {
   if (!map->priv_cache)

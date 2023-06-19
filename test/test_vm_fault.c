@@ -30,6 +30,7 @@
 #include <kern/list.h>
 #include <kern/task.h>
 #include <kern/thread.h>
+#include <kern/user.h>
 
 #include <machine/page.h>
 #include <machine/pmap.h>
@@ -82,7 +83,7 @@ test_vm_fault_thread (void *arg __unused)
   assert (memcmp ((void *)(va + PAGE_SIZE / 2), "xxxx", 4) == 0);
 
   // Test that writing to read-only mappings fails with EACCES.
-  error = vm_copy ((void *)va, "???", 3);
+  error = user_copy_to ((void *)va, "???", 3);
   assert (error == EACCES);
 
   struct vm_map_entry entry;
@@ -137,7 +138,7 @@ TEST_DEFERRED (vm_fault)
                                     NULL, "vm_fault");
 
   int val;
-  error = vm_copy (&val, (void *)0x1, sizeof (val));
+  error = user_copy_to ((void *)0x1, &val, sizeof (val));
   assert (error == EFAULT);
   assert (!thread_self()->fixup);
 

@@ -145,7 +145,8 @@ int vm_map_fork (struct vm_map **mapp, struct vm_map *src);
  * Note that the returned entry may not contain the address, and instead
  * compare strictly less than it. The VM object of the entry is referenced
  * prior to returning to guarantee its existence, so normally 'vm_map_entry_put'
- * must be called on the entry. */
+ * must be called on the entry.
+ */
 int vm_map_lookup (struct vm_map *map, uintptr_t addr,
                    struct vm_map_entry *entry);
 
@@ -163,9 +164,6 @@ int vm_map_fault (struct vm_map *map, uintptr_t addr, int prot);
 
 // Destroy a VM map.
 void vm_map_destroy (struct vm_map *map);
-
-// Safely copy bytes to and from arbitrary buffers.
-int vm_copy (void *dst, const void *src, size_t size);
 
 // Allocate anonymous memory in a VM map.
 int vm_map_anon_alloc (void **outp, struct vm_map *map, size_t size);

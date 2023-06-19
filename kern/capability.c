@@ -22,6 +22,7 @@
 #include <kern/rcu.h>
 #include <kern/task.h>
 #include <kern/thread.h>
+#include <kern/user.h>
 
 union cap_alert
 {
@@ -416,6 +417,8 @@ cap_sender_receiver_step (struct cap_sender *sender, struct cap_receiver *recv)
 
   // Complete the receive ID and set the tag.
   recv->rcvid |= sender->thread->kuid.id;
+  recv->thread->cur_peer = sender->thread;
+  recv->thread->cur_rcvid = recv->rcvid;
   recv->ipc_data.tag = sender->ipc_data.tag;
 
   // Fill in the rest of the metadata.
@@ -893,7 +896,7 @@ ssize_t
 
   ssize_t ret = cap_sender_impl (&sender, flow);
   if (ret >= 0 && data)
-    *data = sender.ipc_data;
+    user_copy_to (data, &sender.ipc_data, sizeof (*data));
 
   return (ret);
 }
@@ -932,7 +935,7 @@ cap_recv_iter (int capx, struct cap_iters *it, struct ipc_msg_data *data)
 
   rcvid_t ret = cap_receiver_impl (&rcv, flow);
   if (ret >= 0 && data)
-    *data = rcv.ipc_data;
+    user_copy_to (data, &rcv.ipc_data, sizeof (*data));
 
   return (ret);
 }
