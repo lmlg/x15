@@ -332,17 +332,12 @@ shell_cmd_set_lookup (struct shell_cmd_set *cmd_set, const char *name)
  * The global lock must be acquired before calling this function.
  */
 static const struct shell_cmd*
-shell_cmd_set_match (const struct shell_cmd_set *cmd_set, const char *str,
-                     size_t size)
+shell_cmd_set_match (const struct shell_cmd_set *cmd_set,
+                     const char *str, size_t size)
 {
-  const struct shell_cmd *cmd = cmd_set->cmd_list;
-  while (cmd)
-    {
-      if (strncmp (cmd->name, str, size) == 0)
-        return (cmd);
-
-      cmd = cmd->ls_next;
-    }
+  for (_Auto cmd = cmd_set->cmd_list; cmd; cmd = cmd->ls_next)
+    if (strncmp (cmd->name, str, size) == 0)
+      return (cmd);
 
   return (NULL);
 }
@@ -595,13 +590,13 @@ shell_erase (struct shell *shell)
   while (shell->cursor != remaining_chars)
     {
       shell_printf (shell, " ");
-      shell->cursor++;
+      ++shell->cursor;
     }
 
   while (remaining_chars != 0)
     {
       shell_printf (shell, "\b \b");
-      remaining_chars--;
+      --remaining_chars;
     }
 
   shell->cursor = 0;
@@ -720,9 +715,8 @@ shell_print_cmd_matches (struct shell *shell, const struct shell_cmd *cmd,
 {
   shell_printf (shell, "\n");
 
-  const struct shell_cmd *tmp;
-  size_t i;
-  for (tmp = cmd, i = 1; tmp != NULL; tmp = tmp->ls_next, i++)
+  size_t i = 1;
+  for (_Auto tmp = cmd; tmp != NULL; tmp = tmp->ls_next, ++i)
     {
       if (strncmp (cmd->name, tmp->name, size) != 0)
         break;
@@ -866,7 +860,7 @@ shell_esc_seq_lookup (const char *str)
 static int
 shell_process_esc_sequence (struct shell *shell, char c)
 {
-  if (shell->esc_seq_index >= (ARRAY_SIZE (shell->esc_seq) - 1))
+  if (shell->esc_seq_index >= ARRAY_SIZE (shell->esc_seq) - 1)
     {
       shell_printf (shell, "shell: escape sequence too long\n");
       goto reset;
@@ -875,16 +869,12 @@ shell_process_esc_sequence (struct shell *shell, char c)
   shell->esc_seq[shell->esc_seq_index++] = c;
   shell->esc_seq[shell->esc_seq_index] = '\0';
 
-  if (c >= '@' && c <= '~')
-    {
-      _Auto seq = shell_esc_seq_lookup (shell->esc_seq);
-      if (seq)
-        seq->fn (shell);
+  if (!(c >= '@' && c <= '~'))
+    return (SHELL_ESC_STATE_CSI);
 
-      goto reset;
-    }
-
-  return (SHELL_ESC_STATE_CSI);
+  _Auto seq = shell_esc_seq_lookup (shell->esc_seq);
+  if (seq)
+    seq->fn (shell);
 
 reset:
   shell->esc_seq_index = 0;
@@ -905,12 +895,7 @@ shell_process_args (struct shell *shell)
        (c = shell->tmp_line[i]) != '\0';
        i++, prev = c)
     {
-      if (c == SHELL_SEPARATOR)
-        {
-          if (prev != SHELL_SEPARATOR)
-            shell->tmp_line[i] = '\0';
-        }
-      else
+      if (c != SHELL_SEPARATOR)
         {
           if (prev == SHELL_SEPARATOR)
             {
@@ -926,6 +911,8 @@ shell_process_args (struct shell *shell)
               shell->argv[j] = NULL;
             }
         }
+      else if (prev != SHELL_SEPARATOR)
+        shell->tmp_line[i] = '\0';
     }
 
   shell->argc = j;
@@ -944,10 +931,7 @@ shell_process_line (struct shell *shell)
   cmd = shell_cmd_set_lookup (shell->cmd_set, shell->argv[0]);
 
   if (! cmd)
-    {
-      shell_printf (shell, "shell: %s: command not found\n", shell->argv[0]);
-      goto out;
-    }
+    shell_printf (shell, "shell: %s: command not found\n", shell->argv[0]);
 
 out:
   shell_history_push (&shell->history);
@@ -1000,19 +984,19 @@ shell_run (struct shell *shell)
             {
               switch (escape)
                 {
-                case SHELL_ESC_STATE_START:
-                  // XXX CSI and SS3 sequence processing is the same.
-                  if (c == '[' || c == 'O')
-                    escape = SHELL_ESC_STATE_CSI;
-                  else
-                    escape = 0;
+                  case SHELL_ESC_STATE_START:
+                    // XXX CSI and SS3 sequence processing is the same.
+                    if (c == '[' || c == 'O')
+                      escape = SHELL_ESC_STATE_CSI;
+                    else
+                      escape = 0;
 
-                  break;
-                case SHELL_ESC_STATE_CSI:
-                  escape = shell_process_esc_sequence (shell, c);
-                  break;
-                default:
-                  escape = 0;
+                    break;
+                  case SHELL_ESC_STATE_CSI:
+                    escape = shell_process_esc_sequence (shell, c);
+                    break;
+                  default:
+                    escape = 0;
                 }
 
               error = 0;

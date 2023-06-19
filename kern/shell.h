@@ -150,7 +150,7 @@ MACRO_BEGIN   \
   \
   for (size_t i_ = 0; i_ < ARRAY_SIZE (cmds); i_++)   \
     {   \
-      int  error_ = shell_cmd_set_register (cmd_set, &(cmds)[i_]);   \
+      int error_ = shell_cmd_set_register (cmd_set, &(cmds)[i_]);   \
       error_check (error_, __func__);   \
     }   \
 MACRO_END
