@@ -134,8 +134,8 @@ struct kmem_cache
  * virtual memory, unless KMEM_CACHE_PAGE_ONLY is set.
  */
 void kmem_cache_init (struct kmem_cache *cache, const char *name,
-                      size_t obj_size, size_t align, kmem_ctor_fn_t ctor,
-                      int flags);
+                      size_t obj_size, size_t align,
+                      kmem_ctor_fn_t ctor, int flags);
 
 // Allocate an object from a cache.
 void* kmem_cache_alloc2 (struct kmem_cache *cache, unsigned int flags);

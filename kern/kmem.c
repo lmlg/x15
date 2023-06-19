@@ -337,7 +337,7 @@ kmem_pagealloc (size_t size, uint32_t pflags)
 
   if (! page)
     return (NULL);
-  else if (page && (pflags & KMEM_ALLOC_SLEEP))
+  else if (pflags & KMEM_ALLOC_SLEEP)
     kmem_mark_page_sleepable (page);
 
   return (vm_page_direct_ptr (page));
