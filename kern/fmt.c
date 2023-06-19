@@ -497,14 +497,14 @@ fmt_ostate_produce_int (struct fmt_ostate *state)
         }
     }
 
-  // Conversion, in reverse order.
-  int i = 0, c;
-  char tmp[FMT_MAX_NUM_SIZE];
+  // Convert the integer. 
+  int i, c;
+  char tmp[FMT_MAX_NUM_SIZE], *outp = tmp + sizeof (tmp);
 
   if (! n)
     {
       if (state->precision)
-        tmp[i++] = '0';
+        *--outp = '0';
     }
   else if (state->base == 10)
     {
@@ -525,7 +525,7 @@ fmt_ostate_produce_int (struct fmt_ostate *state)
             {
               uint32_t r = n % 10;
               n /= 10;
-              tmp[i++] = fmt_digits[r];
+              *--outp = fmt_digits[r];
             }
           while (n);
 #ifndef __LP64__
@@ -538,7 +538,7 @@ fmt_ostate_produce_int (struct fmt_ostate *state)
             {
               uint32_t r = m % 10;
               m /= 10;
-              tmp[i++] = fmt_digits[r];
+              *--outp = fmt_digits[r];
             }
           while (m);
         }
@@ -553,11 +553,12 @@ fmt_ostate_produce_int (struct fmt_ostate *state)
         {
           uint32_t r = n & mask;
           n >>= shift;
-          tmp[i++] = fmt_digits[r] | (state->flags & FMT_FORMAT_LOWER);
+          *--outp = fmt_digits[r] | (state->flags & FMT_FORMAT_LOWER);
         }
       while (n);
     }
 
+  i = (int)(&tmp[sizeof (tmp)] - outp);
   if (i > state->precision)
     state->precision = i;
 
@@ -596,23 +597,12 @@ fmt_ostate_produce_int (struct fmt_ostate *state)
     fmt_ostate_produce_raw_char (state, '0');
 
   --state->precision;
+  fmt_ostate_produce_raw_str (state, outp, i);
 
-  /*
-   * Reverse the string so that we can produce output as a contiguous
-   * string, which is faster than doing it one char at a time.
-   */
-  for (int j = 0, k = i - 1; j < k; ++j, --k)
-    SWAP (&tmp[j], &tmp[k]);
+  for (; state->width > 0; --state->width)
+    fmt_ostate_produce_raw_char (state, ' ');
 
-  fmt_ostate_produce_raw_str (state, tmp, i);
-
-  while (state->width > 0)
-    {
-      state->width--;
-      fmt_ostate_produce_raw_char (state, ' ');
-    }
-
-  state->width--;
+  --state->width;
 }
 
 static void
@@ -621,15 +611,13 @@ fmt_ostate_produce_char (struct fmt_ostate *state)
   int c = va_arg (state->ap, int);
 
   if (!(state->flags & FMT_FORMAT_LEFT_JUSTIFY))
-    {
-      while (1)
-        {
-          if (--state->width <= 0)
-            break;
+    while (1)
+      {
+        if (--state->width <= 0)
+          break;
 
-          fmt_ostate_produce_raw_char (state, ' ');
-        }
-    }
+        fmt_ostate_produce_raw_char (state, ' ');
+      }
 
   fmt_ostate_produce_raw_char (state, c);
 
@@ -829,22 +817,17 @@ fmt_istate_finalize (struct fmt_istate *state)
 static void
 fmt_istate_report_conv (struct fmt_istate *state)
 {
-  if (state->nr_convs == EOF)
-    {
-      state->nr_convs = 1;
-      return;
-    }
-
-  ++state->nr_convs;
+  if (state->nr_convs != EOF)
+    ++state->nr_convs;
+  else
+    state->nr_convs = 1;
 }
 
 static void
 fmt_istate_report_error (struct fmt_istate *state)
 {
-  if (state->nr_convs != 0)
-    return;
-
-  state->nr_convs = EOF;
+  if (!state->nr_convs)
+    state->nr_convs = EOF;
 }
 
 static void
