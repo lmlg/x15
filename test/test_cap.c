@@ -138,6 +138,9 @@ test_cap_sender (void *arg)
   assert (rcvid > 0);
   assert (mdata.pages_recv == 1);
   assert (mdata.caps_recv == 1);
+  assert (thread_self()->cur_rcvid == rcvid);
+  assert (thread_self()->cur_peer &&
+          thread_self()->cur_peer->task == data->receiver);
 
   {
     ssize_t nb = cap_pull_bytes (rcvid, buf, bufsize, &mdata);
