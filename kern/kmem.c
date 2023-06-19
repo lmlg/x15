@@ -335,7 +335,12 @@ kmem_pagealloc (size_t size, uint32_t pflags)
   _Auto page = vm_page_alloc (order, VM_PAGE_SEL_DIRECTMAP, VM_PAGE_KMEM,
                               (pflags & KMEM_ALLOC_SLEEP) ? VM_PAGE_SLEEP : 0);
 
-  return (page ? vm_page_direct_ptr (page) : NULL);
+  if (! page)
+    return (NULL);
+  else if (page && (pflags & KMEM_ALLOC_SLEEP))
+    kmem_mark_page_sleepable (page);
+
+  return (vm_page_direct_ptr (page));
 }
 
 static void
