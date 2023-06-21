@@ -111,13 +111,13 @@ cspace_dup3 (struct cspace *sp, int cap_idx, int new_idx,
              int flags __unused)
 {
   if (cap_idx < 0)
-    return (-EBADF);
+    return (EBADF);
 
   ADAPTIVE_LOCK_GUARD (&sp->lock);
   struct cap_base *cap = rdxtree_lookup (&sp->tree, cap_idx);
 
   if (! cap)
-    return (-EBADF);
+    return (EBADF);
 
   void **slot;
   int rv = rdxtree_insert_slot (&sp->tree, new_idx, cap, &slot);
@@ -128,7 +128,7 @@ cspace_dup3 (struct cspace *sp, int cap_idx, int new_idx,
   else if (rv)
     {
       cap_base_rel (cap);
-      return (-ENOMEM);
+      return (ENOMEM);
     }
 
   cap_base_acq (cap);

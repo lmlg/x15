@@ -761,13 +761,13 @@ fmt_snprintf (char *str, size_t size, const char *format, ...)
 int
 fmt_vsnprintf (char *str, size_t size, const char *format, va_list ap)
 {
-  struct stream *stream = string_stream_create (str, size);
-  assert (stream);
+  struct string_stream stream;
+  string_stream_init (&stream, str, size);
 
-  int ret = fmt_vxprintf (stream, format, ap);
+  int ret = fmt_vxprintf (&stream.base, format, ap);
 
   if (ret >= 0)
-    stream_putc (stream, '\0');
+    stream_putc (&stream.base, '\0');
 
   return (ret);
 }
@@ -1432,7 +1432,7 @@ fmt_sscanf (const char *str, const char *format, ...)
 int
 fmt_vsscanf (const char *str, const char *format, va_list ap)
 {
-  struct stream *stream = string_stream_create ((char *)str, SIZE_MAX);
-  assert (stream);
-  return (fmt_vxscanf (stream, format, ap));
+  struct string_stream stream;
+  string_stream_init (&stream, (char *)str, SIZE_MAX);
+  return (fmt_vxscanf (&stream.base, format, ap));
 }

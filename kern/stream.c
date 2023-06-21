@@ -96,17 +96,13 @@ static const struct stream_ops string_stream_ops =
   .read = string_stream_read,
 };
 
-int string_stream_init (struct string_stream *strm,
-                        char *ptr, size_t size)
+void string_stream_init (struct string_stream *strm,
+                         char *ptr, size_t size)
 {
-  if (!strm || !ptr)
-    return (EFAULT);
-
   strm->ptr = ptr;
   strm->size = size;
   strm->cur = 0;
   strm->base.ops = &string_stream_ops;
-  return (0);
 }
 
 static int __init

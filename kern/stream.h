@@ -127,14 +127,7 @@ stream_puts (struct stream *strm, const char *s)
 }
 
 // String streams.
-int string_stream_init (struct string_stream *strm, char *ptr, size_t size);
-
-#define string_stream_create(ptr, size)   \
-  ({   \
-    struct string_stream *s_ = alloca (sizeof (*s_));   \
-    string_stream_init (s_, (ptr), (size)) == 0 ?   \
-      (struct stream *)s_ : (struct stream *)NULL;   \
-  })
+void string_stream_init (struct string_stream *strm, char *ptr, size_t size);
 
 // Standard console stream.
 
