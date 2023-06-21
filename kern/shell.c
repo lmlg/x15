@@ -303,8 +303,8 @@ shell_cmd_set_unlock (struct shell_cmd_set *cmd_set)
 static struct shell_bucket*
 shell_cmd_set_get_bucket (struct shell_cmd_set *cmd_set, const char *name)
 {
-  size_t index = hash_str (name, SHELL_HTABLE_BITS);
-  assert (index < ARRAY_SIZE (cmd_set->htable));
+  size_t index = hash_bytes (name, strlen (name)) %
+                 ARRAY_SIZE (cmd_set->htable);
   return (&cmd_set->htable[index]);
 }
 
