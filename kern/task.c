@@ -20,6 +20,7 @@
 #include <stdio.h>
 #include <string.h>
 
+#include <kern/capability.h>
 #include <kern/cspace.h>
 #include <kern/init.h>
 #include <kern/kmem.h>
@@ -280,12 +281,14 @@ task_name_impl (struct task *task, char *name, bool set)
 }
 
 ssize_t
-task_handle_msg (struct task *task, struct ipc_msg *src,
-                 struct ipc_msg *dst, struct ipc_msg_data *data)
+task_handle_msg (struct task *task, struct cap_iters *src,
+                 struct cap_iters *dst, struct ipc_msg_data *data)
 {
   struct task_ipc_msg tmsg;
-  struct iovec iov = { .iov_base = &tmsg, .iov_len = sizeof (tmsg) };
-  ssize_t rv = user_copyv_from (&iov, 1, src->iovs, src->iov_cnt);
+  struct ipc_iov_iter k_it;
+
+  ipc_iov_iter_init_buf (&k_it, &tmsg, sizeof (tmsg));
+  ssize_t rv = user_copyv_from (&k_it, &src->iov);
 
   if (rv < 0)
     return (rv);
@@ -301,7 +304,10 @@ task_handle_msg (struct task *task, struct ipc_msg *src,
     }
 
   if (rv >= 0 && ((1u << tmsg.op) & TASK_IPC_NEEDS_COPY))
-    rv = user_copyv_to (dst->iovs, dst->iov_cnt, &iov, 1);
+    {
+      ipc_iov_iter_init_buf (&k_it, &tmsg, sizeof (tmsg));
+      rv = user_copyv_to (&dst->iov, &k_it);
+    }
 
   (void)data;
   return (rv < 0 ? rv : 0);

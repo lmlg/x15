@@ -942,11 +942,11 @@ void thread_adopt (struct thread *src, struct thread *dst);
 bool thread_send_reply_blocked (struct thread *thread);
 
 // Handle an IPC message on a thread capability.
-struct ipc_msg;
+struct cap_iters;
 struct ipc_msg_data;
 
-ssize_t thread_handle_msg (struct thread *thread, struct ipc_msg *src,
-                           struct ipc_msg *dst, struct ipc_msg_data *data);
+ssize_t thread_handle_msg (struct thread *thread, struct cap_iters *src,
+                           struct cap_iters *dst, struct ipc_msg_data *data);
 
 /*
  * This init operation provides :

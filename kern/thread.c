@@ -90,10 +90,10 @@
 #include <string.h>
 
 #include <kern/atomic.h>
+#include <kern/capability.h>
 #include <kern/clock.h>
 #include <kern/cpumap.h>
 #include <kern/init.h>
-#include <kern/ipc.h>
 #include <kern/kmem.h>
 #include <kern/list.h>
 #include <kern/macros.h>
@@ -110,6 +110,7 @@
 #include <kern/timer.h>
 #include <kern/turnstile.h>
 #include <kern/types.h>
+#include <kern/user.h>
 #include <kern/work.h>
 
 #include <machine/cpu.h>
@@ -2858,29 +2859,37 @@ thread_ipc_affinity_impl (struct thread *thread, void *map,
 
   cpumap_zero (cpumap);
   size = MIN (size, sizeof (cpumap->cpus));
-  memcpy (cpumap->cpus, map, size);
+  int error = user_copy_from (cpumap->cpus, map, size);
+
+  if (error)
+    return (-error);
 
   ssize_t rv;
   if (set)
     rv = thread_set_affinity (thread, cpumap);
   else if ((rv = thread_get_affinity (thread, cpumap)) == 0)
-    memcpy (map, cpumap->cpus, size);
+    {
+      error = user_copy_to (map, cpumap->cpus, size);
+      if (error)
+        rv = -error;
+    }
 
   cpumap_destroy (cpumap);
-  return (-rv);
+  return (rv);
 }
 
 #define THREAD_IPC_NEEDS_COPY   \
   ((1u << THREAD_IPC_GET_NAME) | (1u << THREAD_IPC_GET_AFFINITY))
 
 ssize_t
-thread_handle_msg (struct thread *thr, struct ipc_msg *src,
-                   struct ipc_msg *dst, struct ipc_msg_data *data)
+thread_handle_msg (struct thread *thr, struct cap_iters *src,
+                   struct cap_iters *dst, struct ipc_msg_data *data)
 {
   struct thread_ipc_msg tmsg;
-  _Auto iov = IOVEC (&tmsg, sizeof (tmsg));
-  ssize_t rv = ipc_bcopyv (task_self (), src->iovs, src->iov_cnt,
-                           &iov, 1, IPC_COPY_FROM);
+  struct ipc_iov_iter k_it;
+
+  ipc_iov_iter_init_buf (&k_it, &tmsg, sizeof (tmsg));
+  ssize_t rv = user_copyv_from (&k_it, &src->iov);
 
   if (rv < 0)
     return (rv);
@@ -2902,8 +2911,10 @@ thread_handle_msg (struct thread *thr, struct ipc_msg *src,
     }
 
   if (rv == 0 && ((1u << tmsg.op) & THREAD_IPC_NEEDS_COPY))
-    rv = ipc_bcopyv (task_self (), dst->iovs, dst->iov_cnt,
-                     &iov, 1, IPC_COPY_TO);
+    {
+      ipc_iov_iter_init_buf (&k_it, &tmsg, sizeof (tmsg));
+      rv = user_copyv_to (&dst->iov, &k_it);
+    }
 
   (void)data;
   return (rv < 0 ? rv : 0);

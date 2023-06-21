@@ -27,19 +27,19 @@
 
 #include <kern/task.h>
 
-struct iovec;
+struct ipc_iov_iter;
 
 // Test that an address is accessible for the current task.
 static inline bool
-user_check_addr (const void *addr)
+user_check_range (const void *addr, size_t size)
 {
   return (
 #if PMAP_START_ADDRESS > 0
-           (uintptr_t)addr >= PMAP_START_ADDRESS &&
+          (uintptr_t)addr >= PMAP_START_ADDRESS &&
 #else
-           1 &&
+          1 &&
 #endif
-           ((uintptr_t)addr < PMAP_END_ADDRESS));
+          ((uintptr_t)addr + size < PMAP_END_ADDRESS));
 }
 
 // Copy bytes to userspace.
@@ -49,10 +49,8 @@ int user_copy_to (void *udst, const void *src, size_t size);
 int user_copy_from (void *dst, const void *usrc, size_t size);
 
 // Same as above, only these operate on iovecs.
-ssize_t user_copyv_to (struct iovec *udst, uint32_t nr_dst,
-                       const struct iovec *src, uint32_t nr_src);
+ssize_t user_copyv_to (struct ipc_iov_iter *udst, struct ipc_iov_iter *src);
 
-ssize_t user_copyv_from (struct iovec *dst, uint32_t nr_dst,
-                         const struct iovec *usrc, uint32_t nr_src);
+ssize_t user_copyv_from (struct ipc_iov_iter *dst, struct ipc_iov_iter *usrc);
 
 #endif

@@ -507,7 +507,7 @@ cap_flow_alloc_alert (struct cap_flow *flow, int flags, union cap_alert **outp)
   spinlock_lock (&flow->lock);
 
   if (! ptr)
-    return (-ENOMEM);
+    return (ENOMEM);
 
   *outp = ptr;
   return (0);
@@ -523,7 +523,7 @@ cap_send_small (struct cap_receiver *recv, const void *buf,
                                   &tmp, IPC_COPY_TO);
 
   if (unlikely (rv < 0))
-    return (rv);
+    return (-rv);
 
   recv->ipc_data.nbytes = rv;
   recv->ipc_data.flags |= flags;
@@ -537,7 +537,7 @@ ssize_t
                   size_t size, uint32_t flags, uint32_t priority)
 {
   if (size > CAP_ALERT_SIZE)
-    return (-E2BIG);
+    return (E2BIG);
 
   struct cap_flow *flow;
 
@@ -546,12 +546,12 @@ ssize_t
       flow = ((struct cap_channel *)cap)->flow;
 
       if (! flow)
-        return (-EINVAL);
+        return (EINVAL);
     }
   else if (cap->type == CAP_TYPE_FLOW)
     flow = (struct cap_flow *)cap;
   else
-    return (-EBADF);
+    return (EBADF);
 
   char abuf[CAP_ALERT_SIZE];
 
@@ -560,7 +560,8 @@ ssize_t
    * generate a page fault while holding a spinlock.
    */
   memset (abuf, 0, sizeof (abuf));
-  memcpy (abuf, buf, MIN (CAP_ALERT_SIZE, size));
+  if (user_copy_from (abuf, buf, MIN (CAP_ALERT_SIZE, size)) != 0)
+    return (EFAULT);
 
   struct cap_receiver *recv;
 
@@ -708,8 +709,7 @@ cap_rcvid_acq_rel_sender (struct thread *self, rcvid_t rcvid, int *errp)
       _Auto sender = cap_thread_sender (self->cur_peer);
       self->cur_rcvid = 0;
       self->cur_peer = NULL;
-      thread_setscheduler (self, sender->recv_sched.sched_policy,
-                           sender->recv_sched.global_priority);
+      cap_thread_swap_sched (self, &sender->sender_sched, &sender->recv_sched);
       return (cap_sender_stop (sender));
     }
 
@@ -835,27 +835,13 @@ static int
 cap_handle_task_thread (struct cap_iters *src, struct cap_iters *dst,
                         struct cap_base *cap)
 {
-  struct ipc_msg in, out;
   struct ipc_msg_data mdata;
-
-#define cap_init_msg(msg, it)   \
-  ((msg)->iovs = (it)->iov.begin,   \
-   (msg)->iov_cnt = (it)->iov.end,   \
-   (msg)->pages = (it)->page.begin,   \
-   (msg)->page_cnt = (it)->page.end,   \
-   (msg)->caps = (it)->cap.begin,   \
-   (msg)->cap_cnt = (it)->cap.end)
-
-  cap_init_msg (&in, src);
-  cap_init_msg (&out, dst);
-
-#undef cap_init_msg
 
   return (cap->type == CAP_TYPE_THREAD ?
           thread_handle_msg (((struct cap_thread *)cap)->thread,
-                             &in, &out, &mdata) :
+                             src, dst, &mdata) :
           task_handle_msg (((struct cap_task *)cap)->task,
-                           &in, &out, &mdata));
+                           src, dst, &mdata));
 }
 
 ssize_t
@@ -966,6 +952,8 @@ cap_reply_iter (rcvid_t rcvid, struct cap_iters *it, int rv)
   else
     sender->result = rv;
 
+  thread_setscheduler (sender->thread, sender->sender_sched.sched_policy,
+                       sender->sender_sched.global_priority);
   thread_wakeup (sender->thread);
   return (rv < 0 ? (int)-rv : 0);
 }

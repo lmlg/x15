@@ -18,6 +18,7 @@
 
 #include <iovec.h>
 
+#include <kern/ipc.h>
 #include <kern/unwind.h>
 #include <kern/user.h>
 
@@ -36,7 +37,7 @@ user_copy_impl (void *dst, const void *src, size_t size)
 int
 user_copy_to (void *udst, const void *src, size_t size)
 {
-  if (!user_check_addr (udst))
+  if (!user_check_range (udst, size))
     return (EFAULT);
 
   return (user_copy_impl (udst, src, size));
@@ -45,67 +46,74 @@ user_copy_to (void *udst, const void *src, size_t size)
 int
 user_copy_from (void *dst, const void *usrc, size_t size)
 {
-  if (!user_check_addr (usrc))
+  if (!user_check_range (usrc, size))
     return (EFAULT);
 
   return (user_copy_impl (dst, usrc, size));
 }
 
-static ssize_t
-user_copyv_impl (struct iovec *dst, uint32_t nr_dst,
-                 const struct iovec *src, uint32_t nr_src, int to_user)
+static struct iovec*
+user_iov_next (struct ipc_iov_iter *it, int check, int *errp)
+{
+  while (1)
+    {
+      if (it->head.iov_len)
+        return (&it->head);
+      else if (it->cur < it->end)
+        {
+          _Auto iov = it->begin + it->cur;
+          if (check && (!user_check_range (iov, sizeof (*iov)) ||
+                        !user_check_range (iov->iov_base, iov->iov_len)))
+            {
+              *errp = -EFAULT;
+              return (NULL);
+            }
+
+          it->head = *iov;
+          ++it->cur;
+        }
+      else
+        return (NULL);
+    }
+}
+
+ssize_t
+user_copyv_impl (struct ipc_iov_iter *dst,
+                 struct ipc_iov_iter *src, int to_user)
 {
   struct unw_fixup fixup;
   int error = unw_fixup_save (&fixup);
   if (unlikely (error))
     return (-error);
 
-  struct iovec dv = IOVEC (0, 0), sv = IOVEC (0, 0);
-  ssize_t ret = 0;
-
-  while (1)
+  for (ssize_t ret = 0 ; ; )
     {
-      if (!dv.iov_len)
-        {
-          if (! nr_dst)
-            return (ret);
-          else if (to_user && !user_check_addr (dst->iov_base))
-            return (-EFAULT);
+      struct iovec *dv = user_iov_next (dst, to_user, &error);
+      if (! dv)
+        return (error ?: ret);
 
-          dv = *dst++;
-          --nr_dst;
-        }
+      struct iovec *sv = user_iov_next (src, !to_user, &error);
+      if (! sv)
+        return (error ?: ret);
 
-      if (!sv.iov_len)
-        {
-          if (! nr_src)
-            return (ret);
-          else if (!to_user && !user_check_addr (src->iov_base))
-            return (-EFAULT);
+      size_t nbytes = MIN (dv->iov_len, sv->iov_len);
+      if (unlikely ((ret += nbytes) < 0))
+        return (-EOVERFLOW);
 
-          sv = *src++;
-          --nr_src;
-        }
-
-      size_t tmp = MIN (dv.iov_len, sv.iov_len);
-      memcpy (dv.iov_base, sv.iov_base, tmp);
-
-      iovec_adv (&dv, tmp);
-      iovec_adv (&sv, tmp);
-      ret += tmp;
+      memcpy (dv->iov_base, sv->iov_base, nbytes);
+      iovec_adv (dv, nbytes);
+      iovec_adv (sv, nbytes);
     }
 }
 
 ssize_t
-user_copyv_to (struct iovec *udst, uint32_t nr_dst,
-               const struct iovec *src, uint32_t nr_src)
+user_copyv_to (struct ipc_iov_iter *udst, struct ipc_iov_iter *src)
 {
-  return (user_copyv_impl (udst, nr_dst, src, nr_src, 1));
+  return (user_copyv_impl (udst, src, 1));
 }
 
 ssize_t
-user_copyv_from (struct iovec *dst, uint32_t nr_dst,
-                 const struct iovec *usrc, uint32_t nr_src)
+user_copyv_from (struct ipc_iov_iter *dst, struct ipc_iov_iter *usrc)
 {
-  return (user_copyv_impl (dst, nr_dst, usrc, nr_src, 0));
+  return (user_copyv_impl (dst, usrc, 0));
 }
