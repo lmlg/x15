@@ -26,6 +26,7 @@
 #include <kern/task.h>
 #include <kern/thread.h>
 
+#include <machine/cpu.h>
 #include <machine/pmap.h>
 
 #include <test/test.h>
@@ -131,4 +132,11 @@ test_util_create_thr (struct thread **out, void (*fn) (void *),
     task_destroy (task);
 
   return (error);
+}
+
+void
+test_thread_wait_state (struct thread *thr, uint32_t state)
+{
+  while (thread_state (thr) != state)
+    thread_yield ();
 }

@@ -552,7 +552,7 @@ unw_cursor_step (struct unw_cursor *cursor)
     return (-1);
 
   uintptr_t initial_loc = fde->base_off + gd->base_addr;
-  _Auto cie = &gd->cies[fde->idxs & 0xffff];
+  _Auto cie = &gd->cies[fde->idxs & 0xff];
 
   // Run the CIE initialization ops.
   int rv = unw_run_dw (cursor, cie, gd->ops + cie->ops_idx, initial_loc);
@@ -560,7 +560,7 @@ unw_cursor_step (struct unw_cursor *cursor)
     return (rv);
 
   // Run the FDE ops to unwind the stack.
-  rv = unw_run_dw (cursor, cie, gd->ops + (fde->idxs >> 16), initial_loc);
+  rv = unw_run_dw (cursor, cie, gd->ops + (fde->idxs >> 8), initial_loc);
   if (rv == 0)
     // If successful, set the registers to their new values.
     rv = unw_apply_regs (cursor, cie);
@@ -574,7 +574,7 @@ static int
 unw_fixup_step_until (struct unw_fixup_t *fixup, struct unw_cursor *cursor)
 {
   int rv = 1;
-  while (unw_cursor_sp (cursor) != fixup->sp)
+  while (unw_cursor_sp (cursor) < fixup->sp)
     {
       rv = unw_cursor_step (cursor);
       if (rv <= 0)
@@ -598,8 +598,7 @@ unw_fixup_restore (struct unw_fixup_t *fixup, void *area, int retval)
     return (-1);
 
   unw_cursor_set_pc (&cursor, fixup->pc);
-  /* No need to set the SP, as it should already be equal to
-   * the value stored in the fixup structure. */
+  unw_cursor_set_sp (&cursor, fixup->sp);
   cpu_unw_mctx_set_frame (cursor.mctx->regs, retval);
   __builtin_unreachable ();
 }

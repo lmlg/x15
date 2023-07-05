@@ -618,16 +618,20 @@ cpu_exc_page_fault (const struct cpu_exc_frame *frame)
    * can't cause another page fault while handling a page fault.
    */
   uintptr_t addr = cpu_get_cr2 ();
-
-  // Enable interrupts if the parent context allowed them.
-  int prot = ((code & CPU_PF_WRITE) ? VM_PROT_WRITE : VM_PROT_READ) |
-             ((code & CPU_PF_EXEC)  ? VM_PROT_EXEC  : 0);
   struct thread *self = thread_self ();
+  _Auto map = self->task->map;
+  int error;
 
-  struct vm_map *map = self->task->map;
-  int error = map == vm_map_get_kernel_map () ?
-              EFAULT : vm_map_fault (map, addr, prot);
-  cpu_intr_disable ();
+  if (map == vm_map_get_kernel_map ())
+    error = EFAULT;
+  else if (self->pagefault_level)
+    error = EAGAIN;
+  else
+    {
+      int prot = ((code & CPU_PF_WRITE) ? VM_PROT_WRITE : VM_PROT_READ) |
+        ((code & CPU_PF_EXEC) ? VM_PROT_EXEC : 0);
+      error = vm_map_fault (map, addr, prot);
+    }
 
   if (!error || error == EINTR)
     return;

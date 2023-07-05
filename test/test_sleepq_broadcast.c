@@ -43,7 +43,7 @@ static struct thread *test_waiters[TEST_NR_WAITERS];
 static void
 test_wait (void *arg __unused)
 {
-  struct sleepq *sleepq = sleepq_lend (&test_dummy_sync_obj, false);
+  struct sleepq *sleepq = sleepq_lend (&test_dummy_sync_obj);
   sleepq_wait (sleepq, "test");
   sleepq_return (sleepq);
 }
@@ -55,7 +55,7 @@ test_broadcast (void *arg __unused)
     while (thread_state (test_waiters[i]) != THREAD_SLEEPING)
       thread_delay (1, false);
 
-  struct sleepq *sleepq = sleepq_acquire (&test_dummy_sync_obj, false);
+  struct sleepq *sleepq = sleepq_acquire (&test_dummy_sync_obj);
   if (! sleepq)
     panic ("test: unable to acquire sleep queue");
 

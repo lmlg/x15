@@ -53,7 +53,7 @@ void
 adaptive_lock_acquire_slow (struct adaptive_lock *lock)
 {
   uintptr_t self = (uintptr_t) thread_self ();
-  struct sleepq *sleepq = sleepq_lend (lock, false);
+  struct sleepq *sleepq = sleepq_lend (lock);
 
   adaptive_lock_set_contended (lock);
 
@@ -143,7 +143,7 @@ adaptive_lock_release_slow (struct adaptive_lock *lock)
        * on the current thread, in which case the latter doesn't return,
        * averting the need for an additional reference.
        */
-      struct sleepq *sleepq = sleepq_tryacquire (lock, false);
+      struct sleepq *sleepq = sleepq_tryacquire (lock);
       if (sleepq)
         {
           sleepq_signal (sleepq);

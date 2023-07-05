@@ -47,6 +47,7 @@
 #include <test/test.h>
 
 #include <vm/kmem.h>
+#include <vm/page.h>
 
 #define TEST_LOOPS_PER_PRINT   100000
 
@@ -78,9 +79,11 @@ test_alloc (void *arg __unused)
 
       if (pdsc)
         {
-          pdsc->addr = vm_kmem_alloc (PAGE_SIZE);
-          if (pdsc->addr)
-            memset (pdsc->addr, TEST_VALIDATION_BYTE, PAGE_SIZE);
+          _Auto page = vm_page_alloc (0, VM_PAGE_SEL_DIRECTMAP,
+                                      VM_PAGE_KERNEL, VM_PAGE_SLEEP);
+          if (page)
+            pdsc->addr = memset (vm_page_direct_ptr (page),
+                                 TEST_VALIDATION_BYTE, PAGE_SIZE);
         }
 
       rcu_store (&test_pdsc, pdsc);
@@ -96,7 +99,8 @@ test_deferred_free (struct work *work)
 {
   struct test_pdsc *pdsc = structof (work, struct test_pdsc, work);
   if (pdsc->addr)
-    vm_kmem_free (pdsc->addr, PAGE_SIZE);
+    vm_page_free (vm_page_lookup (vm_page_direct_pa ((uintptr_t)pdsc->addr)),
+                  0, VM_PAGE_SLEEP);
 
   kmem_cache_free (&test_pdsc_cache, pdsc);
 }
@@ -135,26 +139,25 @@ test_read (void *arg __unused)
       RCU_GUARD ();
       struct test_pdsc *pdsc = rcu_load (&test_pdsc);
 
-      if (pdsc != NULL)
-        {
-          _Auto s = (const unsigned char *)pdsc->addr;
+      if (! pdsc)
+        continue;
 
-          if (s)
-            {
-              for (unsigned int i = 0; i < PAGE_SIZE; i++)
-                if (s[i] != TEST_VALIDATION_BYTE)
-                  panic ("invalid content");
+      _Auto s = (const unsigned char *)pdsc->addr;
+      if (! s)
+        continue;
 
-              if ((nr_loops % TEST_LOOPS_PER_PRINT) == 0)
-                printf ("read ");
+      for (size_t i = 0; i < PAGE_SIZE; ++i)
+        if (s[i] != TEST_VALIDATION_BYTE)
+          panic ("invalid content");
 
-              nr_loops++;
-            }
-        }
+      if ((nr_loops % TEST_LOOPS_PER_PRINT) == 0)
+        printf ("read ");
+
+      ++nr_loops;
     }
 }
 
-TEST_INLINE (rcu_defer)
+TEST_DEFERRED (rcu_defer)
 {
   condition_init (&test_condition);
   mutex_init (&test_lock);

@@ -35,7 +35,7 @@ int
 semaphore_trywait (struct semaphore *semaphore)
 {
   cpu_flags_t flags;
-  _Auto sleepq = sleepq_lend_intr_save (semaphore, false, &flags);
+  _Auto sleepq = sleepq_lend_intr_save (semaphore, &flags);
   int error;
 
   if (!semaphore->value)
@@ -54,7 +54,7 @@ void
 semaphore_wait (struct semaphore *semaphore)
 {
   cpu_flags_t flags;
-  _Auto sleepq = sleepq_lend_intr_save (semaphore, false, &flags);
+  _Auto sleepq = sleepq_lend_intr_save (semaphore, &flags);
 
   while (1)
     {
@@ -74,7 +74,7 @@ int
 semaphore_timedwait (struct semaphore *semaphore, uint64_t ticks)
 {
   cpu_flags_t flags;
-  _Auto sleepq = sleepq_lend_intr_save (semaphore, false, &flags);
+  _Auto sleepq = sleepq_lend_intr_save (semaphore, &flags);
   int error;
 
   while (1)
@@ -100,7 +100,7 @@ int
 semaphore_post (struct semaphore *semaphore)
 {
   cpu_flags_t flags;
-  _Auto sleepq = sleepq_lend_intr_save (semaphore, false, &flags);
+  _Auto sleepq = sleepq_lend_intr_save (semaphore, &flags);
   int error;
 
   if (semaphore->value == semaphore->max_value)

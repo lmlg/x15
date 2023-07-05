@@ -20,6 +20,11 @@ config TEST_FMT
 	default n
 	select SYMTAB
 
+config TEST_FUTEX
+	bool "futex API"
+	default n
+	select SYMTAB
+
 config TEST_INTR
 	bool "interrupt API"
 	default n

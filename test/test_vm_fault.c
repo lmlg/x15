@@ -70,7 +70,7 @@ test_vm_fault_thread (void *arg __unused)
   assert (! error);
 
   uintptr_t va = PMAP_END_ADDRESS - PAGE_SIZE * 10;
-  int flags = VM_MAP_FLAGS (VM_PROT_READ, VM_PROT_READ, VM_INHERIT_NONE,
+  int flags = VM_MAP_FLAGS (VM_PROT_READ, VM_PROT_READ, VM_INHERIT_DEFAULT,
                             VM_ADV_DEFAULT, 0);
   struct vm_map *map = vm_map_self ();
   error = vm_map_enter (map, &va, PAGE_SIZE, 0, flags,
@@ -136,6 +136,7 @@ TEST_DEFERRED (vm_fault)
   struct thread *thread;
   int error = test_util_create_thr (&thread, test_vm_fault_thread,
                                     NULL, "vm_fault");
+  assert (! error);
 
   int val;
   error = user_copy_to ((void *)0x1, &val, sizeof (val));

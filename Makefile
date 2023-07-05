@@ -276,7 +276,6 @@ endif
 
 XBUILD_CFLAGS += -fsigned-char
 XBUILD_CFLAGS += -fno-common
-XBUILD_CFLAGS += -funwind-tables
 XBUILD_CFLAGS += -fasynchronous-unwind-tables
 
 # XXX Some assemblers consider the / symbol to denote comments. The --divide
@@ -286,7 +285,6 @@ XBUILD_CFLAGS += $(call xbuild_check_cc_option,-Wa$(COMMA)--divide)
 XBUILD_CFLAGS += -Wall
 XBUILD_CFLAGS += -Wextra
 XBUILD_CFLAGS += -Wshadow
-#XBUILD_CFLAGS += -Wmissing-prototypes
 XBUILD_CFLAGS += -Wstrict-prototypes
 
 # XXX Temporary, until a single solution is adopted to silence these warnings.

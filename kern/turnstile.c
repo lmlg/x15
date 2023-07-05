@@ -40,7 +40,6 @@
  * a thread cannot be requeued atomically when its priority is changed.
  * That deferred requeue is done during priority propagation.
  *
- * TODO Analyse hash parameters.
  */
 
 #include <assert.h>
@@ -94,12 +93,13 @@ struct turnstile
 {
   struct turnstile_bucket *bucket;       // (b*)
   struct hlist_node node;                // (b)
-  const void *sync_obj;                  // (b)
+  union sync_key sync_key;               // (b)
   struct plist waiters;                  // (b,t)
   struct turnstile *next_free;           // (b)
   struct turnstile_waiter *top_waiter;   // (b,t)
   struct thread *owner;                  // (b,t)
   struct plist_node td_node;             // (t)
+  bool broadcasting;                     // (b)
 };
 
 /*
@@ -123,14 +123,7 @@ struct turnstile_waiter
 #define TURNSTILE_HTABLE_MASK   (TURNSTILE_HTABLE_SIZE - 1)
 
 static struct turnstile_bucket turnstile_htable[TURNSTILE_HTABLE_SIZE];
-
 static struct kmem_cache turnstile_cache;
-
-static uintptr_t
-turnstile_hash (const void *addr)
-{
-  return (((uintptr_t)addr >> 8) ^ (uintptr_t)addr);
-}
 
 static void
 turnstile_waiter_init (struct turnstile_waiter *waiter, struct thread *thread)
@@ -390,36 +383,37 @@ static bool
 turnstile_init_state_valid (const struct turnstile *turnstile)
 {
   return (!turnstile->bucket &&
-          !turnstile->sync_obj &&
+          sync_key_isclear (&turnstile->sync_key) &&
           plist_empty (&turnstile->waiters) &&
           !turnstile->next_free &&
           !turnstile->top_waiter);
 }
 
 static void
-turnstile_use (struct turnstile *turnstile, const void *sync_obj)
+turnstile_use (struct turnstile *turnstile, const union sync_key *key)
 {
-  assert (!turnstile->sync_obj);
-  turnstile->sync_obj = sync_obj;
+  assert (!sync_key_isclear (key));
+  turnstile->sync_key = *key;
 }
 
 static void
 turnstile_unuse (struct turnstile *turnstile)
 {
-  assert (turnstile->sync_obj);
-  turnstile->sync_obj = NULL;
+  assert (!sync_key_isclear (&turnstile->sync_key));
+  sync_key_clear (&turnstile->sync_key);
 }
 
 static bool
 turnstile_in_use (const struct turnstile *turnstile)
 {
-  return (turnstile->sync_obj != NULL);
+  return (!sync_key_isclear (&turnstile->sync_key));
 }
 
 static bool
-turnstile_in_use_by (const struct turnstile *turnstile, const void *sync_obj)
+turnstile_in_use_by (const struct turnstile *turnstile,
+                    const union sync_key *key)
 {
-  return (turnstile->sync_obj == sync_obj);
+  return (sync_key_eq (&turnstile->sync_key, key));
 }
 
 static void
@@ -430,9 +424,9 @@ turnstile_bucket_init (struct turnstile_bucket *bucket)
 }
 
 static struct turnstile_bucket*
-turnstile_bucket_get (const void *sync_obj)
+turnstile_bucket_get (const union sync_key *key)
 {
-  uintptr_t index = turnstile_hash (sync_obj) & TURNSTILE_HTABLE_MASK;
+  uintptr_t index = sync_key_hash (key) & TURNSTILE_HTABLE_MASK;
   assert (index < ARRAY_SIZE (turnstile_htable));
   return (&turnstile_htable[index]);
 }
@@ -457,11 +451,11 @@ turnstile_bucket_remove (struct turnstile_bucket *bucket,
 
 static struct turnstile*
 turnstile_bucket_lookup (const struct turnstile_bucket *bucket,
-                         const void *sync_obj)
+                         const union sync_key *key)
 {
   struct turnstile *turnstile;
   hlist_for_each_entry (&bucket->turnstiles, turnstile, node)
-    if (turnstile_in_use_by (turnstile, sync_obj))
+    if (turnstile_in_use_by (turnstile, key))
       return (turnstile);
 
   return (NULL);
@@ -472,11 +466,12 @@ turnstile_ctor (void *ptr)
 {
   struct turnstile *turnstile = ptr;
   turnstile->bucket = NULL;
-  turnstile->sync_obj = NULL;
+  sync_key_clear (&turnstile->sync_key);
   plist_init (&turnstile->waiters);
   turnstile->next_free = NULL;
   turnstile->top_waiter = NULL;
   turnstile->owner = NULL;
+  turnstile->broadcasting = false;
 }
 
 static int __init
@@ -512,19 +507,15 @@ turnstile_destroy (struct turnstile *turnstile)
 }
 
 struct turnstile*
-turnstile_acquire (const void *sync_obj)
+turnstile_acquire_key (const union sync_key *key)
 {
-  assert (sync_obj);
-
-  _Auto bucket = turnstile_bucket_get (sync_obj);
+  assert (!sync_key_isclear (key));
+  _Auto bucket = turnstile_bucket_get (key);
   spinlock_lock (&bucket->lock);
 
-  _Auto turnstile = turnstile_bucket_lookup (bucket, sync_obj);
+  _Auto turnstile = turnstile_bucket_lookup (bucket, key);
   if (! turnstile)
-    {
-      spinlock_unlock (&bucket->lock);
-      return (NULL);
-    }
+    spinlock_unlock (&bucket->lock);
 
   return (turnstile);
 }
@@ -557,21 +548,20 @@ turnstile_pop_free (struct turnstile *turnstile)
 }
 
 struct turnstile*
-turnstile_lend (const void *sync_obj)
+turnstile_lend_key (const union sync_key *key)
 {
-  assert (sync_obj);
-
+  assert (!sync_key_isclear (key));
   _Auto turnstile = thread_turnstile_lend ();
   assert (turnstile_init_state_valid (turnstile));
 
   _Auto td = thread_turnstile_td (thread_self ());
-  _Auto bucket = turnstile_bucket_get (sync_obj);
+  _Auto bucket = turnstile_bucket_get (key);
   spinlock_lock (&bucket->lock);
 
-  _Auto prev = turnstile_bucket_lookup (bucket, sync_obj);
+  _Auto prev = turnstile_bucket_lookup (bucket, key);
   if (! prev)
     {
-      turnstile_use (turnstile, sync_obj);
+      turnstile_use (turnstile, key);
       turnstile_bucket_add (bucket, turnstile);
     }
   else
@@ -645,6 +635,14 @@ turnstile_update_owner (struct turnstile *turnstile, struct thread *owner)
   spinlock_lock (&turnstile->bucket->lock);
 }
 
+static void
+turnstile_signal_first (struct turnstile *turnstile)
+{
+  _Auto waiter = plist_last_entry (&turnstile->waiters,
+                                   struct turnstile_waiter, node);
+  turnstile_waiter_wakeup (waiter);
+}
+
 static int
 turnstile_wait_common (struct turnstile *turnstile, const char *wchan,
                        struct thread *owner, bool timed, uint64_t ticks)
@@ -674,11 +672,11 @@ turnstile_wait_common (struct turnstile *turnstile, const char *wchan,
         {
           if (! timed)
             thread_sleep (&turnstile->bucket->lock,
-                          turnstile->sync_obj, wchan);
+                          &turnstile->sync_key, wchan);
           else
             {
               error = thread_timedsleep (&turnstile->bucket->lock,
-                                         turnstile->sync_obj, wchan, ticks);
+                                         &turnstile->sync_key, wchan, ticks);
 
               if (error)
                 {
@@ -698,7 +696,7 @@ turnstile_wait_common (struct turnstile *turnstile, const char *wchan,
        * The real priority of a thread may change between waking up
        * and reacquiring the turnstile.
        */
-      if (turnstile->top_waiter == &waiter)
+      if (turnstile->top_waiter == &waiter || turnstile->broadcasting)
         break;
 
       // Otherwise, make sure the new top waiter is awoken.
@@ -709,6 +707,14 @@ turnstile_wait_common (struct turnstile *turnstile, const char *wchan,
   spinlock_lock (&td->lock);
   turnstile_td_set_waiter (td, NULL);
   turnstile_remove_waiter (turnstile, &waiter);
+
+  if (!turnstile->broadcasting)
+    ;
+  else if (turnstile_empty (turnstile))
+    turnstile->broadcasting = false;
+  else
+    turnstile_signal_first (turnstile);
+
   spinlock_unlock (&td->lock);
 
   if (error && turnstile->owner)
@@ -718,12 +724,13 @@ turnstile_wait_common (struct turnstile *turnstile, const char *wchan,
   return (error);
 }
 
-void
+int
 turnstile_wait (struct turnstile *turnstile, const char *wchan,
                 struct thread *owner)
 {
   int error = turnstile_wait_common (turnstile, wchan, owner, false, 0);
   assert (! error);
+  return (error);
 }
 
 int
@@ -739,9 +746,17 @@ turnstile_signal (struct turnstile *turnstile)
   if (turnstile_empty (turnstile))
     return;
 
-  _Auto waiter = plist_last_entry (&turnstile->waiters,
-                                   struct turnstile_waiter, node);
-  turnstile_waiter_wakeup (waiter);
+  turnstile_signal_first (turnstile);
+}
+
+void
+turnstile_broadcast (struct turnstile *turnstile)
+{
+  if (turnstile_empty (turnstile))
+    return;
+
+  turnstile->broadcasting = true;
+  turnstile_signal_first (turnstile);
 }
 
 void
@@ -775,4 +790,29 @@ turnstile_disown (struct turnstile *turnstile)
   spinlock_lock (&td->lock);
   turnstile_td_disown (td, turnstile);
   spinlock_unlock (&td->lock);
+}
+
+bool
+turnstile_owned_by (struct turnstile *turnstile, struct thread *thread)
+{
+  return (turnstile->owner == thread);
+}
+
+void
+turnstile_td_exit (struct turnstile_td *td)
+{
+  if (likely (plist_empty (&td->owned_turnstiles)))
+    return;
+
+  struct turnstile *turnstile;
+  plist_for_each_entry (&td->owned_turnstiles, turnstile, td_node)
+    {
+      turnstile_acquire (turnstile);
+      turnstile_disown (turnstile);
+      turnstile_broadcast (turnstile);
+      turnstile_release (turnstile);
+    }
+
+  plist_init (&td->owned_turnstiles);
+  thread_propagate_priority ();
 }

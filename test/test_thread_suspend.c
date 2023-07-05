@@ -53,13 +53,6 @@
 #include <test/test.h>
 
 static void
-test_wait_for_state (const struct thread *thread, uint32_t state)
-{
-  while (thread_state (thread) != state)
-    cpu_pause ();
-}
-
-static void
 test_spin (void *arg)
 {
   unsigned long *lock = arg;
@@ -89,9 +82,9 @@ TEST_DEFERRED (thread_suspend)
   int error = thread_create (&thread, &attr, test_spin, &lock);
   error_check (error, "thread_create");
 
-  test_wait_for_state (thread, THREAD_RUNNING);
+  test_thread_wait_state (thread, THREAD_RUNNING);
   thread_suspend (thread);
-  test_wait_for_state (thread, THREAD_SUSPENDED);
+  test_thread_wait_state (thread, THREAD_SUSPENDED);
 
   atomic_store_rel (&lock, 0);
   thread_resume (thread);
@@ -103,9 +96,9 @@ TEST_DEFERRED (thread_suspend)
   error = thread_create (&thread, &attr, test_sleep, &sem);
   error_check (error, "thread_create");
 
-  test_wait_for_state (thread, THREAD_SLEEPING);
+  test_thread_wait_state (thread, THREAD_SLEEPING);
   thread_suspend (thread);
-  test_wait_for_state (thread, THREAD_SUSPENDED);
+  test_thread_wait_state (thread, THREAD_SUSPENDED);
   thread_wakeup (thread);
 
   if (thread_state (thread) != THREAD_SUSPENDED)
@@ -117,7 +110,7 @@ TEST_DEFERRED (thread_suspend)
 
   thread_attr_init (&attr, "test_suspend_self");
   error = thread_create (&thread, &attr, test_suspend_self, NULL);
-  test_wait_for_state (thread, THREAD_SUSPENDED);
+  test_thread_wait_state (thread, THREAD_SUSPENDED);
   thread_resume (thread);
   thread_join (thread);
 

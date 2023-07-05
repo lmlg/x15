@@ -57,4 +57,6 @@ struct thread;
 int test_util_create_thr (struct thread **out, void (*fn) (void *),
                           void *arg, const char *name);
 
+void test_thread_wait_state (struct thread *thr, uint32_t state);
+
 #endif

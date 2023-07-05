@@ -45,13 +45,19 @@ static struct kuid_map kuid_maps[KUID_MAX_CLS];
 #define KUID_MAX_STAMP   16
 
 static int
-kuid_map_pop_key (struct kuid_map *map, rdxtree_key_t *keyp)
+kuid_map_pop_key (struct kuid_map *map, rdxtree_key_t *keyp,
+                  struct kuid_head *head)
 {
   uint32_t id;
   size_t size = sizeof (id);
 
   if (cbuf_pop (&map->cbuf, &id, &size) != 0)
     return (-1);
+  else if (rdxtree_insert (&map->tree, id, head) != 0)
+    {
+      cbuf_push (&map->cbuf, &id, size, false);
+      return (-1);
+    }
 
   map->stamp = 0;
   assert (size == sizeof (id));
@@ -75,11 +81,11 @@ kuid_map_alloc_radix (struct kuid_map *map, struct kuid_head *head,
                       rdxtree_key_t *keyp)
 {
   if (map->stamp >= KUID_MAX_STAMP)
-    return (kuid_map_pop_key (map, keyp) ?
+    return (kuid_map_pop_key (map, keyp, head) ?
             kuid_map_alloc_key (map, head, keyp) : 0);
 
   return (kuid_map_alloc_key (map, head, keyp) ?
-          kuid_map_pop_key (map, keyp) : 0);
+          kuid_map_pop_key (map, keyp, head) : 0);
 }
 
 int

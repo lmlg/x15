@@ -33,6 +33,7 @@
 #include <kern/init.h>
 #include <kern/plist.h>
 #include <kern/spinlock.h>
+#include <kern/sync.h>
 #include <kern/thread.h>
 #include <kern/turnstile_types.h>
 
@@ -105,8 +106,16 @@ void turnstile_destroy (struct turnstile *turnstile);
  *
  * Acquiring a turnstile serializes all access and disables preemption.
  */
-struct turnstile* turnstile_acquire (const void *sync_obj);
+struct turnstile* turnstile_acquire_key (const union sync_key *key);
 void turnstile_release (struct turnstile *turnstile);
+
+static inline struct turnstile*
+turnstile_acquire (const void *sync_obj)
+{
+  union sync_key key;
+  sync_key_init (&key, sync_obj);
+  return (turnstile_acquire_key (&key));
+}
 
 /*
  * Lend/return a turnstile.
@@ -124,8 +133,16 @@ void turnstile_release (struct turnstile *turnstile);
  *
  * The turnstile obtained when lending is automatically acquired.
  */
-struct turnstile* turnstile_lend (const void *sync_obj);
+struct turnstile* turnstile_lend_key (const union sync_key *key);
 void turnstile_return (struct turnstile *turnstile);
+
+static inline struct turnstile*
+turnstile_lend (const void *sync_obj)
+{
+  union sync_key key;
+  sync_key_init (&key, sync_obj);
+  return (turnstile_lend_key (&key));
+}
 
 /*
  * Return true if the given turnstile has no waiters.
@@ -158,13 +175,13 @@ bool turnstile_empty (const struct turnstile *turnstile);
  * acquire the turnstile and consider it empty, despite the fact that threads
  * may not have returned from this function yet.
  */
-void turnstile_wait (struct turnstile *turnstile, const char *wchan,
-                     struct thread *owner);
+int turnstile_wait (struct turnstile *turnstile, const char *wchan,
+                    struct thread *owner);
 int turnstile_timedwait (struct turnstile *turnstile, const char *wchan,
                          struct thread *owner, uint64_t ticks);
 
 /*
- * Wake up a thread waiting on the given turnstile, if any.
+ * Wake up one or all threads waiting on the given turnstile, if any.
  *
  * The turnstile must be acquired when calling this function.
  * Since a turnstile must be lent (and in turn is automatically
@@ -172,6 +189,7 @@ int turnstile_timedwait (struct turnstile *turnstile, const char *wchan,
  * wake-ups are serialized and cannot be missed.
  */
 void turnstile_signal (struct turnstile *turnstile);
+void turnstile_broadcast (struct turnstile *turnstile);
 
 /*
  * Own/disown a turnstile.
@@ -184,6 +202,20 @@ void turnstile_signal (struct turnstile *turnstile);
  */
 void turnstile_own (struct turnstile *turnstile);
 void turnstile_disown (struct turnstile *turnstile);
+
+// Check whether a thread owns a turnstile.
+bool turnstile_owned_by (struct turnstile *turnstile, struct thread *thread);
+
+/*
+ * Handle turnstiles owned by a thread upon exiting.
+ *
+ * This is necessary for futexes to work correctly. Since PI futexes are
+ * implemented on top of turnstiles, we need a safe way to cleanup any
+ * remaining turnstiles when a user thread exits without releasing them.
+*/
+
+void turnstile_td_exit (struct turnstile_td *td);
+
 
 /*
  * This init operation provides :

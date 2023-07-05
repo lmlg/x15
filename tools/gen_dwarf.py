@@ -208,7 +208,7 @@ class DwarfState:
 
   def add_fde (self, cie, lstart, lend, opcodes):
     ops_idx = self.add_opcodes (opcodes)
-    self.pc.append ((lstart, lend, cie.array_idx | (ops_idx << 16)))
+    self.pc.append ((lstart, lend, cie.array_idx | (ops_idx << 8)))
 
   def get_cie (self, cie_id):
     return self.cies_by_id[cie_id]

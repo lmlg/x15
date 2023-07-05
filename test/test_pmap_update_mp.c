@@ -32,6 +32,7 @@
 #include <kern/cpumap.h>
 #include <kern/error.h>
 #include <kern/init.h>
+#include <kern/log.h>
 #include <kern/mutex.h>
 #include <kern/panic.h>
 #include <kern/thread.h>
@@ -89,8 +90,14 @@ test_run2 (void *arg __unused)
   log_info ("test (pmap_update): OK");
 }
 
-TEST_INLINE (pmap_update)
+TEST_DEFERRED (pmap_update)
 {
+  if (cpu_count () < 2)
+    {
+      log_err ("pmap_update: at least 2 cpus are needed for this test");
+      return (TEST_SKIPPED);
+    }
+
   condition_init (&test_condition);
   mutex_init (&test_lock);
   test_va = NULL;

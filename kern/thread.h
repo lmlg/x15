@@ -156,6 +156,9 @@ struct thread
   // Interrupt level, in thread context if 0.
   uint16_t intr_level;      // (-)
 
+  // Page fault enablement level. Page faults are enabled if 0.
+  uint16_t pagefault_level;
+
   // RCU per-thread data,
   struct rcu_reader rcu_reader;   // (-)
 
@@ -884,6 +887,20 @@ thread_get_perfmon_td (struct thread *thread)
 }
 
 #endif
+
+// Page fault functions.
+
+static inline void
+thread_pagefault_enable (void)
+{
+  --thread_self()->pagefault_level;
+}
+
+static inline void
+thread_pagefault_disable (void)
+{
+  ++thread_self()->pagefault_level;
+}
 
 /*
  * Return the last CPU on which the thread has been scheduled.

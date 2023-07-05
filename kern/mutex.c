@@ -30,7 +30,7 @@ static int
 mutex_lock_slow_common (struct mutex *mutex, bool timed, uint64_t ticks)
 {
   int error = 0;
-  struct sleepq *sleepq = sleepq_lend (mutex, false);
+  struct sleepq *sleepq = sleepq_lend (mutex);
 
   while (1)
     {
@@ -76,7 +76,7 @@ mutex_timedlock_slow (struct mutex *mutex, uint64_t ticks)
 void
 mutex_unlock_slow (struct mutex *mutex)
 {
-  struct sleepq *sleepq = sleepq_acquire (mutex, false);
+  struct sleepq *sleepq = sleepq_acquire (mutex);
   if (! sleepq)
     return;
 

@@ -1562,6 +1562,7 @@ thread_init_booter (uint32_t cpu)
   booter->flags = 0;
   booter->intr_level = 0;
   booter->preempt_level = 1;
+  booter->pagefault_level = 0;
   rcu_reader_init (&booter->rcu_reader);
   cpumap_fill (&booter->cpumap);
   thread_set_user_sched_policy (booter, THREAD_SCHED_POLICY_IDLE);
@@ -1658,6 +1659,7 @@ thread_init (struct thread *thread, void *stack,
   thread->preempt_level = THREAD_SUSPEND_PREEMPT_LEVEL;
   thread->pin_level = 0;
   thread->intr_level = 0;
+  thread->pagefault_level = 0;
   rcu_reader_init (&thread->rcu_reader);
   cpumap_copy (&thread->cpumap, cpumap);
   thread_set_user_sched_policy (thread, attr->policy);
@@ -1798,6 +1800,9 @@ thread_destroy (struct thread *thread)
 {
   assert (thread != thread_self ());
   assert (thread->state == THREAD_DEAD);
+
+  if (likely (thread->task != task_get_kernel_task ()))
+    turnstile_td_exit (&thread->turnstile_td);
 
   // See task_info().
   task_remove_thread (thread->task, thread);

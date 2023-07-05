@@ -81,8 +81,10 @@ int unw_fixup_restore (struct unw_fixup_t *fixup, void *area, int retval);
 // Restore the saved program state and jump to it.
 noreturn void unw_fixup_jmp (struct unw_fixup_t *fixup, int retval);
 
-/* Print the stack trace originating in the provided context, if provided,
- * otherwise, use the current one. */
+/*
+ * Print the stack trace originating in the provided context, if provided,
+ * otherwise, use the current one.
+ */
 void unw_backtrace (struct unw_mcontext *initial);
 
 // Unwind fixup guards.

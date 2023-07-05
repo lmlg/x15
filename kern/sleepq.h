@@ -36,6 +36,7 @@
 
 #include <kern/hlist.h>
 #include <kern/init.h>
+#include <kern/sync.h>
 #include <kern/types.h>
 
 struct sleepq_bucket;
@@ -52,10 +53,11 @@ struct sleepq
 {
   __cacheline_aligned struct sleepq_bucket *bucket;
   struct hlist_node node;
-  const void *sync_obj;
+  union sync_key sync_key;
   struct list waiters;
   struct sleepq_waiter *oldest_waiter;
   struct sleepq *next_free;
+  struct sleepq **free_link;
 };
 
 // Create/destroy a sleep queue.
@@ -75,23 +77,54 @@ void sleepq_destroy (struct sleepq *sleepq);
  * the call may also return NULL if internal state shared by unrelated
  * synchronization objects is locked.
  */
-struct sleepq* sleepq_acquire (const void *sync_obj, bool condition);
-struct sleepq* sleepq_tryacquire (const void *sync_obj, bool condition);
+struct sleepq* sleepq_acquire_key (const union sync_key *key);
+struct sleepq* sleepq_tryacquire_key (const union sync_key *key);
 void sleepq_release (struct sleepq *sleepq);
+
+static inline struct sleepq*
+sleepq_acquire (const void *sync_obj)
+{
+  union sync_key key;
+  sync_key_init (&key, sync_obj);
+  return (sleepq_acquire_key (&key));
+}
+
+static inline struct sleepq*
+sleepq_tryacquire (const void *sync_obj)
+{
+  union sync_key key;
+  sync_key_init (&key, sync_obj);
+  return (sleepq_tryacquire_key (&key));
+}
 
 /*
  * Versions of the sleep queue acquisition functions that also disable
  * interrupts.
  */
-struct sleepq* sleepq_acquire_intr_save (const void *sync_obj,
-                                         bool condition,
-                                         cpu_flags_t *flags);
 
-struct sleepq* sleepq_tryacquire_intr_save (const void *sync_obj,
-                                            bool condition,
-                                            cpu_flags_t *flags);
+struct sleepq* sleepq_acquire_key_intr (const union sync_key *key,
+                                        cpu_flags_t *flags);
+
+struct sleepq* sleepq_tryacquire_key_intr (const union sync_key *key,
+                                           cpu_flags_t *flags);
 
 void sleepq_release_intr_restore (struct sleepq *sleepq, cpu_flags_t flags);
+
+static inline struct sleepq*
+sleepq_acquire_intr_save (const void *sync_obj, cpu_flags_t *flags)
+{
+  union sync_key key;
+  sync_key_init (&key, sync_obj);
+  return (sleepq_acquire_key_intr (&key, flags));
+}
+
+static inline struct sleepq*
+sleepq_tryacquire_intr_save (const void *sync_obj, cpu_flags_t *flags)
+{
+  union sync_key key;
+  sync_key_init (&key, sync_obj);
+  return (sleepq_tryacquire_key_intr (&key, flags));
+}
 
 /*
  * Lend/return a sleep queue.
@@ -111,24 +144,47 @@ void sleepq_release_intr_restore (struct sleepq *sleepq, cpu_flags_t flags);
  * The condition argument must be true if the synchronization object
  * is a condition variable.
  */
-struct sleepq* sleepq_lend (const void *sync_obj, bool condition);
+
+struct sleepq* sleepq_lend_key (const union sync_key *key);
 void sleepq_return (struct sleepq *sleepq);
+
+static inline struct sleepq*
+sleepq_lend (const void *sync_obj)
+{
+  union sync_key key;
+  sync_key_init (&key, sync_obj);
+  return (sleepq_lend_key (&key));
+}
 
 /*
  * Versions of the sleep queue lending functions that also disable
  * interrupts.
  */
-struct sleepq* sleepq_lend_intr_save (const void *sync_obj, bool condition,
-                                      cpu_flags_t *flags);
+
+struct sleepq* sleepq_lend_key_intr (const union sync_key *key,
+                                     cpu_flags_t *flags);
 
 void sleepq_return_intr_restore (struct sleepq *sleepq, cpu_flags_t flags);
+
+static inline struct sleepq*
+sleepq_lend_intr_save (const void *sync_obj, cpu_flags_t *flags)
+{
+  union sync_key key;
+  sync_key_init (&key, sync_obj);
+  return (sleepq_lend_key_intr (&key, flags));
+}
+
 
 /*
  * Return true if the given sleep queue has no waiters.
  *
  * The sleep queue must be acquired when calling this function.
  */
-bool sleepq_empty (const struct sleepq *sleepq);
+static inline bool
+sleepq_empty (const struct sleepq *sleepq)
+{
+  return (list_empty (&sleepq->waiters));
+}
 
 /*
  * Wait for a wake-up on the given sleep queue.
@@ -148,6 +204,9 @@ bool sleepq_empty (const struct sleepq *sleepq);
  */
 void sleepq_wait (struct sleepq *sleepq, const char *wchan);
 int sleepq_timedwait (struct sleepq *sleepq, const char *wchan, uint64_t ticks);
+
+int sleepq_wait_movable (struct sleepq **sleepq, const char *wchan,
+                         uint64_t *ticksp);
 
 /*
  * Wake up a thread waiting on the given sleep queue, if any.
@@ -180,6 +239,14 @@ sleepq_test_circular (struct sleepq *sleepq, const void *wchan_addr)
 {
   return ((void *)sleepq->bucket == wchan_addr);
 }
+
+/*
+ * Rearrange the waiting queues so that waiters in SRC_KEY are moved and
+ * instead wait on DST_KEY. Move one or all waiters (depending on MOVE_ALL),
+ * and optionally wake one of the waiters (if WAKE_ONE is true).
+ */
+void sleepq_move (const union sync_key *dst_key, const union sync_key *src_key,
+                  bool wake_one, bool move_all);
 
 /*
  * This init operation provides :

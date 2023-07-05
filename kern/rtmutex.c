@@ -156,12 +156,3 @@ rtmutex_unlock_slow (struct rtmutex *rtmutex)
 out:
   thread_propagate_priority ();
 }
-
-static int
-rtmutex_setup (void)
-{
-  return (0);
-}
-
-INIT_OP_DEFINE (rtmutex_setup,
-                INIT_OP_DEP (thread_setup_booter, true));

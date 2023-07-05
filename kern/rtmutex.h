@@ -165,7 +165,4 @@ rtmutex_unlock (struct rtmutex *rtmutex)
     rtmutex_unlock_slow (rtmutex);
 }
 
-// Mutex init operation. See kern/mutex.h.
-INIT_OP_DECLARE (rtmutex_setup);
-
 #endif

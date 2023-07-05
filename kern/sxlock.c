@@ -23,7 +23,7 @@
 #define sxlock_lock_impl(try_lock, label, obj)   \
   do   \
     {   \
-      struct sleepq *sleepq = sleepq_lend ((obj), false);   \
+      struct sleepq *sleepq = sleepq_lend (obj);   \
       atomic_or_rel (&(obj)->lock, SXLOCK_WAITERS);   \
       \
       while (1)   \
@@ -53,7 +53,7 @@ sxlock_shlock_slow (struct sxlock *sxp)
 void
 sxlock_unlock_slow (struct sxlock *sxp)
 {
-  struct sleepq *sleepq = sleepq_acquire (sxp, false);
+  struct sleepq *sleepq = sleepq_acquire (sxp);
   if (sleepq)
     {
       sleepq_broadcast (sleepq);

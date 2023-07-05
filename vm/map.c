@@ -598,7 +598,7 @@ vm_map_remove_impl (struct vm_map *map, uintptr_t start,
 
   assert (list_empty (&alloc_entries));
 
-  if (entry->object && clear)
+  if (clear)
     { // Don't prevent lookups and page faults from here on.
       sxlock_share (&map->lock);
       pmap_remove_range (map->pmap, start, end, cpumap_all ());
@@ -659,7 +659,10 @@ vm_map_shell_info (struct shell *shell, int argc, char **argv)
   if (! task)
     stream_puts (shell->stream, "vm_map_info: task not found\n");
   else
-    vm_map_info (task_get_vm_map (task), shell->stream);
+    {
+      vm_map_info (task_get_vm_map (task), shell->stream);
+      task_unref (task);
+    }
 }
 
 static struct shell_cmd vm_map_shell_cmds[] =
@@ -830,6 +833,7 @@ int
 vm_map_fault (struct vm_map *map, uintptr_t addr, int prot)
 {
   assert (map != vm_map_get_kernel_map ());
+  assert (!cpu_intr_enabled ());
   addr = vm_page_trunc (addr);
 
   struct vm_map_entry *entry, tmp;
@@ -899,8 +903,10 @@ retry:
   if (n_pages < 0)
     return (-n_pages);
   else if (unlikely (start_off + n_pages * PAGE_SIZE < offset))
-    /* We didn't cover the faulting page. This is probably due to a truncated
-     * object. Return an error that maps to SIGBUS. */
+    /*
+     * We didn't cover the faulting page. This is probably due to a truncated
+     * object. Return an error that maps to SIGBUS.
+     */
     return (EIO);
 
   SXLOCK_SHGUARD (&map->lock);
@@ -988,7 +994,7 @@ vm_map_anon_alloc (void **outp, struct vm_map *map, size_t size)
     return (EINVAL);
 
   uintptr_t va = (map->end - map->start) >> 1;
-  int flags = VM_MAP_FLAGS (VM_PROT_RDWR, VM_PROT_RDWR, VM_INHERIT_NONE,
+  int flags = VM_MAP_FLAGS (VM_PROT_RDWR, VM_PROT_RDWR, VM_INHERIT_DEFAULT,
                             VM_ADV_DEFAULT, VM_MAP_ANON);
   int error = vm_map_enter (map, &va, vm_page_round (size), 0, flags,
                             map->priv_cache, 0);
@@ -1040,6 +1046,9 @@ vm_map_fork (struct vm_map **mapp, struct vm_map *src)
 
   list_for_each_entry (&src->entry_list, entry, list_node)
     {
+      if (VM_MAP_INHERIT (entry->flags) == VM_INHERIT_NONE)
+        continue;
+
       vm_map_entry_assign (out, entry);
       rbtree_insert (&dst->entry_tree, &out->tree_node,
                      vm_map_entry_cmp_insert);
@@ -1061,7 +1070,9 @@ vm_map_fork (struct vm_map **mapp, struct vm_map *src)
       entry = vm_map_lookup_nearest (src, (uintptr_t)page->offset);
       assert (entry != NULL);
 
-      if (VM_MAP_PROT (entry->flags) & VM_PROT_WRITE)
+      if (VM_MAP_INHERIT (entry->flags) != VM_INHERIT_COPY)
+        continue;
+      else if (VM_MAP_PROT (entry->flags) & VM_PROT_WRITE)
         pmap_protect (pmap, (uintptr_t)page->offset,
                       VM_MAP_PROT (entry->flags) & ~VM_PROT_WRITE,
                       cpumap_all ());

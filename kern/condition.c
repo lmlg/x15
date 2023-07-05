@@ -28,12 +28,21 @@
 #include <kern/mutex.h>
 #include <kern/sleepq.h>
 
+static struct sleepq*
+condition_sleepq_lend (const void *addr)
+{
+  union sync_key key;
+  sync_key_init (&key, addr);
+  key.local.addr |= 1;
+  return (sleepq_lend_key (&key));
+}
+
 static int
 condition_wait_common (struct condition *condition, struct mutex *mutex,
                        bool timed, uint64_t ticks)
 {
   assert (mutex_locked (mutex));
-  struct sleepq *sleepq = sleepq_lend (condition, true);
+  _Auto sleepq = condition_sleepq_lend (condition);
 
   int error;
   mutex_unlock (mutex);
@@ -65,10 +74,19 @@ condition_timedwait (struct condition *condition,
   return (condition_wait_common (condition, mutex, true, ticks));
 }
 
+static struct sleepq*
+condition_sleepq_acquire (const void *addr)
+{
+  union sync_key key;
+  sync_key_init (&key, addr);
+  key.local.addr |= 1;
+  return (sleepq_acquire_key (&key));
+}
+
 void
 condition_signal (struct condition *condition)
 {
-  struct sleepq *sleepq = sleepq_acquire (condition, true);
+  _Auto sleepq = condition_sleepq_acquire (condition);
   if (! sleepq)
     return;
 
@@ -79,7 +97,7 @@ condition_signal (struct condition *condition)
 void
 condition_broadcast (struct condition *condition)
 {
-  struct sleepq *sleepq = sleepq_acquire (condition, true);
+  _Auto sleepq = condition_sleepq_acquire (condition);
   if (! sleepq)
     return;
 

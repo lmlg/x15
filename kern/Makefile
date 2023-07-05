@@ -11,6 +11,7 @@ x15_SOURCES-y += \
         kern/cpumap.c \
         kern/error.c \
         kern/fmt.c \
+        kern/futex.c \
         kern/init.c \
         kern/intr.c \
         kern/ipc.c \
