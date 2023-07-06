@@ -64,7 +64,7 @@ void __init
 vm_object_init (struct vm_object *object, int flags, const void *ctx)
 {
   mutex_init (&object->lock);
-  rdxtree_init (&object->pages, 0);
+  rdxtree_init (&object->pages, RDXTREE_ALLOC_SLEEP);
   object->nr_pages = 0;
   object->refcount = 1;
   if (flags & VM_OBJECT_EXTERNAL)

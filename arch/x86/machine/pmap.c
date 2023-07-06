@@ -897,7 +897,7 @@ pmap_ap_setup (void)
   if (cpu_has_global_pages ())
     cpu_enable_global_pages ();
   else
-    cpu_tlb_flush();
+    cpu_tlb_flush ();
 }
 
 static void __init

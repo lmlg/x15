@@ -89,7 +89,7 @@ void* rdxtree_walk (struct rdxtree *tree, struct rdxtree_iter *iter);
 static inline void
 rdxtree_init (struct rdxtree *tree, uint16_t flags)
 {
-  assert ((flags & ~RDXTREE_KEY_ALLOC) == 0);
+  assert ((flags & ~(RDXTREE_KEY_ALLOC | RDXTREE_ALLOC_SLEEP)) == 0);
 
   tree->height = 0;
   tree->flags = flags;
