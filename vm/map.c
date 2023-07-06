@@ -104,16 +104,16 @@ vm_map_entry_alloc (struct list *list, uint32_t n)
   for (uint32_t i = 0; i < n; ++i)
     {
       _Auto entry = vm_map_entry_create ();
-      if (entry)
+      if (! entry)
         {
-          list_insert_tail (list, &entry->list_node);
-          continue;
+          list_for_each_safe (list, nd, tmp)
+            kmem_cache_free (&vm_map_entry_cache,
+                             structof (nd, struct vm_map_entry, list_node));
+
+          return (ENOMEM);
         }
 
-      list_for_each_safe (list, nd, tmp)
-        kmem_cache_free (&vm_map_entry_cache, nd);
-
-      return (ENOMEM);
+      list_insert_tail (list, &entry->list_node);
     }
 
   return (0);
@@ -215,12 +215,7 @@ vm_map_find_fixed (struct vm_map *map, struct vm_map_request *request)
     return (ENOMEM);
 
   _Auto next = vm_map_lookup_nearest (map, start);
-  if (! next)
-    {
-      if (map->end - start < size)
-        return (ENOMEM);
-    }
-  else if (start >= next->start || next->start - start < size)
+  if (next && (start >= next->start || next->start - start < size))
     return (ENOMEM);
 
   request->next = next;
@@ -348,7 +343,9 @@ vm_map_try_merge_prev (struct vm_map *map, const struct vm_map_request *request,
   assert (entry);
 
   if (!vm_map_try_merge_compatible (request, entry) ||
-      entry->end != request->start)
+      entry->end != request->start ||
+      (entry->object &&
+       entry->offset + entry->end - entry->start != request->offset))
     return (NULL);
 
   _Auto next = vm_map_next (map, entry);
@@ -368,12 +365,15 @@ vm_map_try_merge_next (struct vm_map *map, const struct vm_map_request *req,
 
   uintptr_t end = req->start + req->size;
 
-  if (end != entry->start)
+  if (end != entry->start ||
+      (entry->object &&
+       req->offset + req->size != entry->offset))
     return (NULL);
 
   _Auto next = vm_map_next (map, entry);
   vm_map_unlink (map, entry);
   entry->start = req->start;
+  entry->offset = req->offset;
   vm_map_link (map, entry, next);
   return (entry);
 }
@@ -388,7 +388,10 @@ vm_map_try_merge_near (struct vm_map *map, const struct vm_map_request *request,
   if (first->end == request->start &&
       request->start + request->size == second->start &&
       vm_map_try_merge_compatible (request, first) &&
-      vm_map_try_merge_compatible (request, second))
+      vm_map_try_merge_compatible (request, second) &&
+      (!first->object ||
+       (first->offset + first->end - first->start == request->offset &&
+        request->offset + request->size == second->offset)))
     {
       _Auto next = vm_map_next (map, second);
       vm_map_unlink (map, first);

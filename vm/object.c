@@ -177,8 +177,9 @@ vm_object_remove (struct vm_object *object, uint64_t start, uint64_t end)
 
         assert (object->nr_pages != 0);
         ++cnt;
-        --object->nr_pages;
       }
+
+    object->nr_pages -= cnt;
   }
 
   vm_object_unref_many (object, cnt);

@@ -159,6 +159,13 @@ vm_map_entry_put (struct vm_map_entry *entry)
     vm_object_unref (obj);
 }
 
+// Same as 'vm_map_lookup', only more ergonomic
+#define vm_map_find(map, addr)   \
+  ({   \
+     struct vm_map_entry *e_ = __builtin_alloca (sizeof (*e_));   \
+     vm_map_lookup ((map), (addr), e_) == 0 ? e_ : NULL;   \
+   })
+
 // Handle a page fault. Interrupts must be disabled when calling this function.
 int vm_map_fault (struct vm_map *map, uintptr_t addr, int prot);
 
