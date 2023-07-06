@@ -19,7 +19,6 @@
  * Efficient Data Structures for Implementing a Timer Facility" by George
  * Varghese and Tony Lauck. Specifically, it implements scheme 6.1.2.
  *
- * TODO Analyse hash parameters.
  */
 
 #include <assert.h>
@@ -32,6 +31,7 @@
 #include <kern/clock.h>
 #include <kern/error.h>
 #include <kern/init.h>
+#include <kern/hash.h>
 #include <kern/hlist.h>
 #include <kern/macros.h>
 #include <kern/panic.h>
@@ -235,10 +235,10 @@ timer_occurred (const struct timer *timer, uint64_t ref)
   return (clock_time_occurred (timer_get_time (timer), ref));
 }
 
-static uintptr_t
+static uint32_t
 timer_hash (uint64_t ticks)
 {
-  return ((uintptr_t)ticks);
+  return (hash_u64 (ticks));
 }
 
 static void
@@ -332,7 +332,7 @@ timer_cpu_data_init (struct timer_cpu_data *cpu_data, unsigned int cpu)
 static struct timer_bucket*
 timer_cpu_data_get_bucket (struct timer_cpu_data *cpu_data, uint64_t ticks)
 {
-  uintptr_t index = timer_hash (ticks) & TIMER_HTABLE_MASK;
+  uint32_t index = timer_hash (ticks) & TIMER_HTABLE_MASK;
   assert (index < ARRAY_SIZE (cpu_data->htable));
   return (&cpu_data->htable[index]);
 }

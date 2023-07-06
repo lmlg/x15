@@ -96,8 +96,7 @@ static const struct stream_ops string_stream_ops =
   .read = string_stream_read,
 };
 
-void string_stream_init (struct string_stream *strm,
-                         char *ptr, size_t size)
+void string_stream_init (struct string_stream *strm, char *ptr, size_t size)
 {
   strm->ptr = ptr;
   strm->size = size;

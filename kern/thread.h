@@ -229,6 +229,7 @@ struct thread_ipc_msg
           void *map;
           uint32_t size;
         } cpumap;
+      int id;
     };
 };
 
@@ -239,6 +240,7 @@ enum
   THREAD_IPC_SET_NAME,
   THREAD_IPC_GET_AFFINITY,
   THREAD_IPC_SET_AFFINITY,
+  THREAD_IPC_GET_ID,
 };
 
 // Thread flags.

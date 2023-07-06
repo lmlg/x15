@@ -55,6 +55,7 @@ struct task_ipc_msg
   union
     {
       char name[TASK_NAME_SIZE];
+      int id;
     };
 };
 
@@ -63,6 +64,7 @@ enum
 {
   TASK_IPC_GET_NAME,
   TASK_IPC_SET_NAME,
+  TASK_IPC_GET_ID,
 };
 
 static inline struct task*
@@ -107,6 +109,12 @@ static inline struct task*
 task_self (void)
 {
   return (thread_self()->task);
+}
+
+static inline int
+task_id (const struct task *task)
+{
+  return ((int)task->kuid.id);
 }
 
 // Create a task.

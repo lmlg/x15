@@ -266,7 +266,8 @@ task_info (struct task *task, struct stream *stream)
                  thread_name (thread));
 }
 
-#define TASK_IPC_NEEDS_COPY   ((1u << TASK_IPC_GET_NAME))
+#define TASK_IPC_NEEDS_COPY   \
+  ((1u << TASK_IPC_GET_NAME) | (1u << TASK_IPC_GET_ID))
 
 static ssize_t
 task_name_impl (struct task *task, char *name, bool set)
@@ -298,6 +299,9 @@ task_handle_msg (struct task *task, struct cap_iters *src,
       case TASK_IPC_GET_NAME:
       case TASK_IPC_SET_NAME:
         rv = task_name_impl (task, tmsg.name, tmsg.op == TASK_IPC_SET_NAME);
+        break;
+      case TASK_IPC_GET_ID:
+        tmsg.id = task_id (task);
         break;
       default:
         return (-EINVAL);

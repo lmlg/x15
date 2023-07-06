@@ -256,13 +256,8 @@ spinlock_set_locked (struct spinlock *lock)
 static void
 spinlock_wait_locked (const struct spinlock *lock)
 {
-  while (1)
-    {
-      if (!(atomic_load_acq (&lock->value) & SPINLOCK_LOCKED))
-        break;
-
-      cpu_pause ();
-    }
+  while (atomic_load_acq (&lock->value) & SPINLOCK_LOCKED)
+    cpu_pause ();
 }
 
 static int

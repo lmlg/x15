@@ -2884,7 +2884,8 @@ thread_ipc_affinity_impl (struct thread *thread, void *map,
 }
 
 #define THREAD_IPC_NEEDS_COPY   \
-  ((1u << THREAD_IPC_GET_NAME) | (1u << THREAD_IPC_GET_AFFINITY))
+  ((1u << THREAD_IPC_GET_NAME) | (1u << THREAD_IPC_GET_AFFINITY) |   \
+   (1u << THREAD_IPC_GET_ID))
 
 ssize_t
 thread_handle_msg (struct thread *thr, struct cap_iters *src,
@@ -2910,6 +2911,9 @@ thread_handle_msg (struct thread *thr, struct cap_iters *src,
       case THREAD_IPC_SET_AFFINITY:
         rv = thread_ipc_affinity_impl (thr, tmsg.cpumap.map, tmsg.cpumap.size,
                                        tmsg.op == THREAD_IPC_SET_AFFINITY);
+        break;
+      case THREAD_IPC_GET_ID:
+        tmsg.id = thread_id (thr);
         break;
       default:
         return (-EINVAL);
