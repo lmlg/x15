@@ -616,6 +616,12 @@ thread_self (void)
   return (thread_from_tcb (tcb_current ()));
 }
 
+static inline int
+thread_id (const struct thread *thread)
+{
+  return ((int)thread->kuid.id);
+}
+
 /*
  * Main scheduler invocation call.
  *

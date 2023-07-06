@@ -191,7 +191,10 @@ test_futex_pi_helper (void *arg)
 {
   int *futex = arg;
   int error = futex_wait (futex, (*futex & FUTEX_TID_MASK), FUTEX_PI, 0);
-  assert (!error || error == EAGAIN);
+  if (! error)
+    assert ((*futex & FUTEX_TID_MASK) == (uint32_t)thread_id (thread_self ()));
+  else
+    assert (error == EAGAIN);
 }
 
 static void
@@ -202,7 +205,7 @@ test_futex_pi (void *arg __unused)
   assert (! error);
 
   int *futex = addr;
-  *futex = thread_self()->kuid.id;
+  *futex = thread_id (thread_self ());
 
   struct thread *thrs[2];
   struct thread_attr attr;
@@ -238,7 +241,7 @@ test_futex_robust_helper (void *arg)
 {
   struct test_futex_data *data = arg;
   struct futex_td *td = &data->td;
-  int val = thread_self()->kuid.id | FUTEX_WAITERS;
+  int val = thread_id (thread_self ()) | FUTEX_WAITERS;
 
   for (size_t i = 0; i < ARRAY_SIZE (data->objs); ++i)
     data->objs[i].head.futex = val;
@@ -269,8 +272,8 @@ test_futex_robust (void *arg __unused)
   error = thread_create (&thr, &attr, test_futex_robust_helper, addr);
   assert (! error);
 
-  error = futex_wait (&data->objs[2].head.futex,
-                      thr->kuid.id | FUTEX_WAITERS, 0, 0);
+  error = futex_wait (&data->objs[2].head.futex, FUTEX_WAITERS |
+                      thread_id (thread_self ()), 0, 0);
   assert (!error || error == EAGAIN);
 
   thread_join (thr);

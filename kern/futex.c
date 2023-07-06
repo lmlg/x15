@@ -38,6 +38,13 @@
 
 struct futex_data;
 
+/*
+ * Futex operations.
+ *
+ * Since the operations themselves are very similar across futexes'
+ * "flavors", this structure aims to encapsulate the subtleties among them.
+ */
+
 struct futex_ops
 {
   void* (*acquire) (const union sync_key *);
@@ -74,9 +81,18 @@ futex_key_init (union sync_key *key, struct vm_map *map,
                 int *addr, uint32_t flags)
 {
   if (likely (!(flags & FUTEX_SHARED)))
+    /*
+     * For task-local futexes the key is made up of the virtual address
+     * itself and the calling thread's VM map.
+     */
     sync_key_local_init (key, addr, map);
   else
     {
+      /*
+       * For task-shared futexes, the key is made of the <VM object, offset>
+       * pair, obtained by performing a VM lookup on the virtual address.
+       */
+
       struct vm_map_entry entry;
       int error = vm_map_lookup (map, (uintptr_t)addr, &entry);
 
@@ -189,8 +205,8 @@ futex_pi_wait (struct futex_data *data, int value,
     return (error);
 
   /*
-   * PI futexes have ownership semantics. In order to apply them, after
-   * we need to change the futex word's value after a succesful wait.
+   * PI futexes have ownership semantics. In order to apply them, we
+   * need to change the futex word's value after a succesful wait.
    */
 
   error = futex_map_addr (data, value, FUTEX_PI_LOCK);
@@ -277,19 +293,11 @@ futex_data_init (struct futex_data *data, int *addr,
   data->map = vm_map_self ();
   data->addr = addr;
 
-  if (likely (!(flags & FUTEX_SHARED)))
-    sync_key_local_init (&data->key, addr, data->map);
-  else
-    {
-      struct vm_map_entry entry;
-      error = vm_map_lookup (data->map, (uintptr_t)addr, &entry);
-
-      if (error)
-        return (error);
-
-      sync_key_shared_init (&data->key, entry.object, entry.offset);
-      data->mode |= FUTEX_DATA_SHARED;
-    }
+  error = futex_key_init (&data->key, data->map, addr, flags);
+  if (error)
+    return (error);
+  else if (flags & FUTEX_SHARED)
+    data->mode |= FUTEX_DATA_SHARED;
 
   data->wait_obj = NULL;
   data->ops = futex_select_ops (flags, mode);
@@ -323,6 +331,13 @@ futex_map_addr (struct futex_data *data, int value, int op)
 
   if (error)
     {
+      /*
+       * There was a page fault when accessing the address. Test if this
+       * was simply because it needs to be paged in, and we couldn't do
+       * earlier due to holding a spinlock, or because there was another
+       * issue (like a permission error).
+       */
+
       thread_pagefault_enable ();
       if (error != EAGAIN)
         return (error);
@@ -365,8 +380,8 @@ futex_map_addr (struct futex_data *data, int value, int op)
         break;
 
       case FUTEX_PI_LOCK:
-        error = atomic_cas_bool_acq (data->addr, value,
-                                     thread_self()->kuid.id | FUTEX_WAITERS) ?
+        error = atomic_cas_bool_acq (data->addr, value, FUTEX_WAITERS |
+                                     thread_id (thread_self ())) ?
                 0 : EAGAIN;
         break;
     }
@@ -483,7 +498,7 @@ futex_robust_list_handle (struct futex_robust_list *list,
 void
 futex_td_exit (struct futex_td *td)
 {
-  int tid = thread_self()->kuid.id;
+  int tid = thread_id (thread_self ());
   struct futex_td rtd;
 
   if (user_copy_from (&rtd, td, sizeof (rtd)) != 0)
