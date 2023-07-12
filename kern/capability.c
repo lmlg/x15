@@ -40,7 +40,8 @@ struct cap_sender
 {
   struct plist_node node;
   ssize_t result;
-  void *flow;
+  void **flowp;
+  void *flow_store;
   struct thread *thread;
   struct thread *handler;
   struct thread_sched_data sender_sched;
@@ -350,7 +351,8 @@ cap_sender_init (struct cap_sender *sender, struct cap_flow *flow,
 {
   cap_ipc_msg_data_init (&sender->ipc_data, tag);
   sender->thread = thread_self ();
-  sender->flow = flow;
+  sender->flow_store = flow;
+  sender->flowp = &sender->flow_store;
   sender->handler = NULL;
   sender->result = 0;
   sender->in_it = src;
@@ -407,8 +409,15 @@ cap_transfer_iters (struct task *task, struct cap_iters *r_it,
   return (ret);
 }
 
+static struct cap_sender*
+cap_thread_sender (struct thread *thr)
+{
+  return ((void *)thread_wchan_addr (thr));
+}
+
 static void
-cap_sender_receiver_step (struct cap_sender *sender, struct cap_receiver *recv)
+cap_sender_receiver_step (struct cap_sender *sender, struct cap_receiver *recv,
+                          struct cap_flow *flow)
 {
   // Update counters and handler thread.
   sender->ipc_data.caps_sent += recv->ipc_data.caps_recv;
@@ -421,6 +430,14 @@ cap_sender_receiver_step (struct cap_sender *sender, struct cap_receiver *recv)
   recv->thread->cur_peer = thread;
   recv->thread->cur_rcvid = recv->rcvid;
   recv->ipc_data.tag = sender->ipc_data.tag;
+
+  if (thread->cur_peer)
+    { // The sender is acting on a peer's message - Update metadata.
+      _Auto prev_sender = cap_thread_sender (thread->cur_peer);
+      sender->flow_store = *prev_sender->flowp;
+      *prev_sender->flowp = flow;
+      sender->flowp = prev_sender->flowp;
+    }
 
   // Fill in the rest of the metadata.
   recv->ipc_data.thread_id = thread->kuid.id;
@@ -483,7 +500,7 @@ cap_sender_impl (struct cap_sender *sender, struct cap_flow *flow)
   if (tmp < 0)
     return (cap_recv_putback (flow, recv, tmp));
 
-  cap_sender_receiver_step (sender, recv);
+  cap_sender_receiver_step (sender, recv, flow);
 
   // Switch to handler thread and return result.
   sender->recv_sched = *thread_get_real_sched_data(recv->thread);
@@ -589,12 +606,6 @@ ssize_t
   return (cap_send_small (recv, abuf, sizeof (abuf), 0));
 }
 
-static struct cap_sender*
-cap_thread_sender (struct thread *thr)
-{
-  return ((void *)thread_wchan_addr (thr));
-}
-
 /*
  * A receive ID is a 64-bit integer, composed of a capability index
  * and a thread ID. When decoding it, the following invariants must apply:
@@ -619,7 +630,7 @@ cap_thread_validate (struct thread *thr, void *flow, struct thread *self)
     return (-EINVAL);
 
   _Auto sender = cap_thread_sender (thr);
-  if (!sender || sender->flow != flow)
+  if (!sender || *sender->flowp != flow)
     return (-EINVAL);
   else if (!sender->handler)
     sender->handler = self;
@@ -823,7 +834,7 @@ retry:
       return (tmp);
     }
 
-  cap_sender_receiver_step (sender, recv);
+  cap_sender_receiver_step (sender, recv, flow);
 
   // Inherit the scheduling context and return.
   sender->recv_sched = *thread_get_real_sched_data(recv->thread);
@@ -842,6 +853,17 @@ cap_handle_task_thread (struct cap_iters *src, struct cap_iters *dst,
                              src, dst, &mdata) :
           task_handle_msg (((struct cap_task *)cap)->task,
                            src, dst, &mdata));
+}
+
+static void
+cap_sender_exit (struct cap_sender *sender)
+{
+  struct thread *self = sender->thread;
+  if (self->cur_peer)
+    {
+      _Auto prev_sender = cap_thread_sender (self->cur_peer);
+      *prev_sender->flowp = sender->flow_store;
+    }
 }
 
 ssize_t
@@ -884,6 +906,7 @@ ssize_t
   if (ret >= 0 && data)
     user_copy_to (data, &sender.ipc_data, sizeof (*data));
 
+  cap_sender_exit (&sender);
   return (ret);
 }
 
