@@ -25,7 +25,6 @@
 
 #include <machine/cpu.h>
 
-#include <vm/kmem.h>
 #include <vm/map.h>
 #include <vm/page.h>
 
@@ -391,9 +390,13 @@ ipc_cap_copy_impl (struct task *r_task, struct ipc_cap_iter *r_it,
   \
   if (unlikely (len > (int)ARRAY_SIZE (tmp)))   \
     {   \
-      ptr = vm_kmem_alloc (size);   \
-      if (! ptr)   \
+      _Auto page = vm_page_alloc (vm_page_order (size),   \
+                                  VM_PAGE_SEL_DIRECTMAP,   \
+                                  VM_PAGE_KERNEL, 0);   \
+      if (! page)   \
         return (-ENOMEM);   \
+      \
+      ptr = vm_page_direct_ptr (page);   \
     }   \
   \
   int rv = ipc_bcopy (r_task, r_it->begin + r_it->cur, size,   \
@@ -402,7 +405,8 @@ ipc_cap_copy_impl (struct task *r_task, struct ipc_cap_iter *r_it,
   if (unlikely (rv < 0))   \
     {   \
       if (ptr != tmp)   \
-        vm_kmem_free (ptr, size);   \
+        vm_page_free (vm_page_lookup (vm_page_direct_pa ((uintptr_t)ptr)),   \
+                      vm_page_order (size), 0);   \
       \
       return (rv);   \
     }   \
@@ -424,7 +428,8 @@ ipc_cap_copy_impl (struct task *r_task, struct ipc_cap_iter *r_it,
     }   \
   \
   if (ptr != tmp)   \
-    vm_kmem_free (ptr, size);   \
+    vm_page_free (vm_page_lookup (vm_page_direct_pa ((uintptr_t)ptr)),   \
+                  vm_page_order (size), 0);   \
   \
   return (rv)
 
