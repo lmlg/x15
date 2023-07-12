@@ -31,10 +31,10 @@
 #define FUTEX_DATA_WAKE     0x04
 
 // Operations used in 'futex_map_addr' below.
-#define FUTEX_OP_CMP      0
-#define FUTEX_OP_SET      1
-#define FUTEX_OP_CLEAR    2
-#define FUTEX_PI_LOCK     3
+#define FUTEX_OP_CMP         0
+#define FUTEX_OP_SET         1
+#define FUTEX_OP_CLEAR       2
+#define FUTEX_OP_LOCK_PI     3
 
 struct futex_data;
 
@@ -209,7 +209,7 @@ futex_pi_wait (struct futex_data *data, int value,
    * need to change the futex word's value after a succesful wait.
    */
 
-  error = futex_map_addr (data, value, FUTEX_PI_LOCK);
+  error = futex_map_addr (data, value, FUTEX_OP_LOCK_PI);
   if (! error)
     turnstile_own (data->wait_obj);
 
@@ -333,16 +333,16 @@ futex_map_addr (struct futex_data *data, int value, int op)
     {
       /*
        * There was a page fault when accessing the address. Test if this
-       * was simply because it needs to be paged in, and we couldn't do
-       * earlier due to holding a spinlock, or because there was another
-       * issue (like a permission error).
+       * was simply because it needs to be paged in, and we couldn't do it
+       * earlier due to us holding a spinlock, or because there was another
+       * issue (like a protection error).
        */
 
       thread_pagefault_enable ();
       if (error != EAGAIN)
         return (error);
 
-      // Drop the lock on the wait queue and fault in the address.
+      // Drop the lock on the wait queue and page in the address.
       futex_data_release (data);
 
       cpu_flags_t flags;
@@ -379,7 +379,7 @@ futex_map_addr (struct futex_data *data, int value, int op)
                                 FUTEX_WAITERS) ? -1 : 0;
         break;
 
-      case FUTEX_PI_LOCK:
+      case FUTEX_OP_LOCK_PI:
         error = atomic_cas_bool_acq (data->addr, value, FUTEX_WAITERS |
                                      thread_id (thread_self ())) ?
                 0 : EAGAIN;

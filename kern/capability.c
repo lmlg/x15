@@ -426,7 +426,7 @@ cap_sender_receiver_step (struct cap_sender *sender, struct cap_receiver *recv,
 
   // Complete the receive ID and set the tag.
   struct thread *thread = sender->thread;
-  recv->rcvid |= thread->kuid.id;
+  recv->rcvid |= thread_id (thread);
   recv->thread->cur_peer = thread;
   recv->thread->cur_rcvid = recv->rcvid;
   recv->ipc_data.tag = sender->ipc_data.tag;
@@ -440,8 +440,8 @@ cap_sender_receiver_step (struct cap_sender *sender, struct cap_receiver *recv,
     }
 
   // Fill in the rest of the metadata.
-  recv->ipc_data.thread_id = thread->kuid.id;
-  recv->ipc_data.task_id = thread->task->kuid.id;
+  recv->ipc_data.thread_id = thread_id (thread);
+  recv->ipc_data.task_id = task_id (thread->task);
 }
 
 static ssize_t
@@ -966,8 +966,8 @@ cap_reply_iter (rcvid_t rcvid, struct cap_iters *it, int rv)
       if (bytes >= 0)
         {
           sender->result = sender->ipc_data.nbytes;
-          sender->ipc_data.task_id = self->task->kuid.id;
-          sender->ipc_data.thread_id = self->kuid.id;
+          sender->ipc_data.task_id = task_id (self->task);
+          sender->ipc_data.thread_id = thread_id (self);
         }
       else
         sender->result = bytes;
@@ -1036,8 +1036,8 @@ cap_push_pull_msg (struct cap_sender *sender, struct cap_iters *l_it,
   ssize_t bytes = cap_transfer_iters (task, r_it, l_it, dir, mdata);
   if (bytes >= 0)
     {
-      mdata->thread_id = sender->thread->kuid.id;
-      mdata->task_id = task->kuid.id;
+      mdata->thread_id = thread_id (sender->thread);
+      mdata->task_id = task_id (task);
     }
 
   return (bytes);
