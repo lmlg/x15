@@ -29,8 +29,9 @@ struct sxlock
   uint32_t lock;
 };
 
-#define SXLOCK_WAITERS   (1u << 31)
-#define SXLOCK_MASK      (SXLOCK_WAITERS - 1)
+#define SXLOCK_WAITERS_BIT   31
+#define SXLOCK_WAITERS       (1u << SXLOCK_WAITERS_BIT)
+#define SXLOCK_MASK          (SXLOCK_WAITERS - 1)
 
 static inline void
 sxlock_init (struct sxlock *sxp)
@@ -82,12 +83,12 @@ sxlock_unlock (struct sxlock *sxp)
   if ((atomic_load_rlx (&sxp->lock) & SXLOCK_MASK) == SXLOCK_MASK)
     { // Exclusive lock.
       uint32_t prev = atomic_swap_rel (&sxp->lock, 0);
-      wake = (prev & SXLOCK_WAITERS) != 0;
+      wake = (int)(prev >> SXLOCK_WAITERS_BIT);
     }
   else
     {
       uint32_t prev = atomic_sub_rel (&sxp->lock, 1);
-      wake = prev == (SXLOCK_WAITERS | 1);
+      wake = (int)((prev >> SXLOCK_WAITERS_BIT) & (prev & 1));
     }
 
   if (wake)
@@ -98,7 +99,7 @@ sxlock_unlock (struct sxlock *sxp)
 static inline void
 sxlock_share (struct sxlock *sxp)
 {
-  uint32_t prev = atomic_and (&sxp->lock, SXLOCK_WAITERS | 1, ATOMIC_ACQUIRE);
+  uint32_t prev = atomic_and_rel (&sxp->lock, SXLOCK_WAITERS | 1);
   if (prev & SXLOCK_WAITERS)
     sxlock_unlock_slow (sxp);
 }
