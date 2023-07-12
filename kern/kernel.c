@@ -30,7 +30,7 @@ kernel_main (void)
 {
   assert (!cpu_intr_enabled ());
 
-  init_setup();
+  init_setup ();
   vm_page_info (log_stream_info ());
 
 #ifdef CONFIG_RUN_TEST

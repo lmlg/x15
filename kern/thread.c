@@ -1675,6 +1675,7 @@ thread_init (struct thread *thread, void *stack,
   thread->fixup = NULL;
   thread->cur_rcvid = 0;
   thread->cur_peer = NULL;
+  thread->futex_td = NULL;
 
 #ifdef CONFIG_PERFMON
   perfmon_td_init (thread_get_perfmon_td (thread));
@@ -2181,6 +2182,8 @@ thread_exit (void)
 {
   struct thread_zombie zombie;
   struct thread *thread = thread_self ();
+
+  futex_td_exit (thread->futex_td);
 
   if (thread_test_flag (thread, THREAD_DETACHED))
     {

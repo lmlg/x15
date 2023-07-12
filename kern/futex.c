@@ -501,7 +501,7 @@ futex_td_exit (struct futex_td *td)
   int tid = thread_id (thread_self ());
   struct futex_td rtd;
 
-  if (user_copy_from (&rtd, td, sizeof (rtd)) != 0)
+  if (!td || user_copy_from (&rtd, td, sizeof (rtd)) != 0)
     return;
 
   if (rtd.pending)

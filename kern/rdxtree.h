@@ -43,7 +43,7 @@ typedef uint64_t rdxtree_key_t;
 #define RDXTREE_ALLOC_SLEEP   0x2   // Allocations may sleep.
 
 // Static tree initializer.
-#define RDXTREE_INITIALIZER   { 0, NULL }
+#define RDXTREE_INITIALIZER   { 0, 0, NULL }
 
 // Radix tree.
 struct rdxtree

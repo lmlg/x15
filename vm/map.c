@@ -47,9 +47,6 @@
 #include <vm/object.h>
 #include <vm/page.h>
 
-// Special threshold which disables the use of the free area cache address.
-#define VM_MAP_NO_FIND_CACHE   (~(size_t)0)
-
 // Maximum number of frames to allocate per mapping.
 #define VM_MAP_MAX_FRAMES_ORDER   3
 #define VM_MAP_MAX_FRAMES         (1 << VM_MAP_MAX_FRAMES_ORDER)

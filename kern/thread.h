@@ -43,6 +43,7 @@
 #include <kern/cpumap.h>
 #include <kern/init.h>
 #include <kern/cpumap.h>
+#include <kern/futex.h>
 #include <kern/kernel.h>
 #include <kern/kuid.h>
 #include <kern/list_types.h>
@@ -214,6 +215,8 @@ struct thread
   struct unw_fixup_t *fixup;      // (-)
   int64_t cur_rcvid;              // (-)
   struct thread *cur_peer;        // (-)
+
+  struct futex_td *futex_td;      // (-)
 };
 
 // Thread IPC message (TODO: Move to a specific header).
