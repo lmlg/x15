@@ -961,9 +961,6 @@ cpu_clear_intr (void)
 
 #define CPU_UNWIND_PC_REG   (CPU_UNWIND_REGISTERS - 1)
 
-// Initialize an unwind context from a saved frame.
-void cpu_unw_mctx_from_frame (uintptr_t *regs, const void *area);
-
 // Save the CPU state into an unwind context.
 void cpu_unw_mctx_save (uintptr_t *regs);
 

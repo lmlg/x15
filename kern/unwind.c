@@ -585,13 +585,11 @@ unw_fixup_step_until (struct unw_fixup_t *fixup, struct unw_cursor *cursor)
 }
 
 int
-unw_fixup_restore (struct unw_fixup_t *fixup, void *area, int retval)
+unw_fixup_restore (struct unw_fixup_t *fixup,
+                   struct unw_mcontext *mctx, int retval)
 {
   struct unw_cursor cursor;
-  struct unw_mcontext mctx;
-
-  cpu_unw_mctx_from_frame (mctx.regs, area);
-  unw_cursor_init_mctx (&cursor, &mctx);
+  unw_cursor_init_mctx (&cursor, mctx);
 
   int rv = unw_fixup_step_until (fixup, &cursor);
   if (rv <= 0)

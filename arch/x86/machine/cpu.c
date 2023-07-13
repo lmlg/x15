@@ -479,6 +479,9 @@ cpu_show_frame (const struct cpu_exc_frame *frame)
 
 #endif
 
+static void cpu_unw_mctx_from_frame (uintptr_t *,
+                                     const struct cpu_exc_frame *);
+
 static void
 cpu_show_stack (const struct cpu_exc_frame *frame)
 {
@@ -636,7 +639,11 @@ cpu_exc_page_fault (const struct cpu_exc_frame *frame)
   if (!error || error == EINTR)
     return;
   else if (self->fixup)
-    unw_fixup_restore (self->fixup, (void *)frame->words, error);
+    {
+      struct unw_mcontext mctx;
+      cpu_unw_mctx_from_frame (mctx.regs, frame);
+      unw_fixup_restore (self->fixup, &mctx, error);
+    }
 
   // TODO: Implement segfaults for userspace tasks.
   cpu_halt_broadcast ();
@@ -673,10 +680,9 @@ static const uint8_t CPU_DWARF_MAP[] =
 
 #undef R_
 
-void
-cpu_unw_mctx_from_frame (uintptr_t *regp, const void *area)
+static void
+cpu_unw_mctx_from_frame (uintptr_t *regp, const struct cpu_exc_frame *frame)
 {
-  const struct cpu_exc_frame *frame = area;
   for (size_t i = 0; i < ARRAY_SIZE (CPU_DWARF_MAP); ++i)
     regp[i] = frame->words[CPU_DWARF_MAP[i]];
 #ifndef __LP64__
