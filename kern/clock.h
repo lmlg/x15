@@ -51,7 +51,7 @@ union clock_global_time
 };
 
 // Clock frequency.
-#define CLOCK_FREQ CONFIG_CLOCK_FREQ
+#define CLOCK_FREQ   CONFIG_CLOCK_FREQ
 
 #if CLOCK_FREQ < 100 || CLOCK_FREQ > 1000 || (1000 % CLOCK_FREQ) != 0
   #error "invalid clock frequency"

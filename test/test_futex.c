@@ -240,9 +240,10 @@ static void
 test_futex_robust_helper (void *arg)
 {
   struct test_futex_data *data = arg;
-  struct futex_td *td = &data->td;
+  _Auto td = &data->td;
   int val = thread_id (thread_self ()) | FUTEX_WAITERS;
 
+  futex_td_init (td);
   for (size_t i = 0; i < ARRAY_SIZE (data->objs); ++i)
     data->objs[i].head.futex = val;
 
@@ -252,7 +253,7 @@ test_futex_robust_helper (void *arg)
   td->list = &data->objs[1].head;
 
   test_thread_wait_state (data->thr, THREAD_SLEEPING);
-  futex_td_exit (td);
+  thread_self()->futex_td = td;
 }
 
 static void

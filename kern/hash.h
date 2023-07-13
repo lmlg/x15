@@ -47,8 +47,7 @@ hash_bytes (const void *ptr, size_t len)
 static inline uint32_t
 hash_mix (uint32_t h1, uint32_t h2)
 {
-  uint32_t next = (h1 << 5) | (h1 >> 27);
-  return (next ^ h2);
+  return (h2 ^ ((h1 << 5) | (h1 >> 27)));
 }
 
 static inline uint32_t

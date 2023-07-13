@@ -31,10 +31,10 @@
 #define FUTEX_DATA_WAKE     0x04
 
 // Operations used in 'futex_map_addr' below.
-#define FUTEX_OP_CMP         0
-#define FUTEX_OP_SET         1
-#define FUTEX_OP_CLEAR       2
-#define FUTEX_OP_LOCK_PI     3
+#define FUTEX_OP_CMP                0
+#define FUTEX_OP_SET                1
+#define FUTEX_OP_ROBUST_CLEAR       2
+#define FUTEX_OP_LOCK_PI            3
 
 struct futex_data;
 
@@ -322,6 +322,25 @@ futex_data_fini (void *arg)
 }
 
 static int
+futex_robust_clear (int *addr, int value)
+{
+  while (1)
+    {
+      int tmp = atomic_load_rlx (addr);
+      if ((tmp & FUTEX_TID_MASK) != (uint32_t)value)
+        return (0);
+      else if (atomic_cas_bool_rel (addr, tmp, tmp | FUTEX_OWNER_DIED))
+        /*
+         * Use a negative value to indicate that a wakeup is needed. This is
+         * done so that it doesn't clash with any errno value.
+         */
+        return ((tmp & FUTEX_WAITERS) ? -1 : 0);
+
+      cpu_pause ();
+    }
+}
+
+static int
 futex_map_addr (struct futex_data *data, int value, int op)
 {
   int prot = op == FUTEX_OP_CMP ? VM_PROT_READ : VM_PROT_RDWR;
@@ -369,14 +388,8 @@ futex_map_addr (struct futex_data *data, int value, int op)
         *data->addr = value;
         break;
 
-      case FUTEX_OP_CLEAR:
-        /*
-         * Use a negative value to indicate that a wakeup is needed. This is
-         * done so that it doesn't clash with any errno value.
-         */
-        error = (*data->addr & FUTEX_TID_MASK) == (uint32_t)value &&
-                (atomic_or_rel (data->addr, FUTEX_OWNER_DIED) &
-                                FUTEX_WAITERS) ? -1 : 0;
+      case FUTEX_OP_ROBUST_CLEAR:
+        error = futex_robust_clear (data->addr, value);
         break;
 
       case FUTEX_OP_LOCK_PI:
@@ -484,7 +497,7 @@ futex_robust_list_handle (struct futex_robust_list *list,
     return (error);
 
   data.wait_obj = data.ops->acquire (&data.key);
-  error = futex_map_addr (&data, tid, FUTEX_OP_CLEAR);
+  error = futex_map_addr (&data, tid, FUTEX_OP_ROBUST_CLEAR);
   if (error < 0)
     { // There are waiters on this robust futex. Wake them all.
       if (data.wait_obj)
