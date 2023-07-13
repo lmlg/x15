@@ -641,21 +641,6 @@ unw_backtrace (struct unw_mcontext *mctx,
       else if (unw_cursor_step (&cursor) <= 0)
         return (0);
     }
-
-  for (uint32_t index = 0 ; ; ++index)
-    {
-      uintptr_t pc = unw_cursor_pc (&cursor);
-      const struct symbol *sym = symbol_lookup (pc);
-
-      if (! sym)
-        printf ("#%02u [%#010lx]\n", index, pc);
-      else
-        printf ("#%02u [%#010lx] %s+%#lx/%#lx\n", index, pc,
-                sym->name, pc - sym->addr, sym->size);
-
-      if (unw_cursor_step (&cursor) <= 0)
-        break;
-    }
 }
 
 static int
@@ -663,7 +648,7 @@ unw_show_stacktrace (struct unw_mcontext *mctx, void *arg)
 {
   uintptr_t pc = mctx->regs[CPU_UNWIND_PC_REG];
   const struct symbol *sym = symbol_lookup (pc);
-  uint32_t index = *(const uint32_t *)arg;
+  uint32_t index = (*(uint32_t *)arg)++;
 
   if (! sym)
     printf ("#%02u [%#010lx]\n", index, pc);
@@ -671,7 +656,6 @@ unw_show_stacktrace (struct unw_mcontext *mctx, void *arg)
     printf ("#%02u [%#010lx] %s+%#lx/%#lx\n", index, pc,
             sym->name, pc - sym->addr, sym->size);
 
-  *(uint32_t *)arg = index + 1;
   return (0);
 }
 
