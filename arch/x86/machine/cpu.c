@@ -487,7 +487,7 @@ cpu_show_stack (const struct cpu_exc_frame *frame)
 {
   struct unw_mcontext mctx;
   cpu_unw_mctx_from_frame (mctx.regs, frame);
-  unw_backtrace (&mctx);
+  unw_stacktrace (&mctx);
 }
 
 static void

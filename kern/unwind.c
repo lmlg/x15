@@ -612,6 +612,7 @@ unw_fixup_jmp (struct unw_fixup_t *fixup, int retval)
 
   if (unw_fixup_step_until (fixup, &cursor) > 0)
     {
+      unw_cursor_set_sp (&cursor, fixup->sp);
       unw_cursor_set_pc (&cursor, fixup->pc);
       cpu_unw_mctx_jmp (cursor.mctx->regs, retval);
     }
@@ -619,8 +620,9 @@ unw_fixup_jmp (struct unw_fixup_t *fixup, int retval)
   __builtin_unreachable ();
 }
 
-void
-unw_backtrace (struct unw_mcontext *mctx)
+int
+unw_backtrace (struct unw_mcontext *mctx,
+               int (*fn) (struct unw_mcontext *, void *), void *arg)
 {
   struct unw_cursor cursor;
 
@@ -631,6 +633,15 @@ unw_backtrace (struct unw_mcontext *mctx)
     }
 
   unw_cursor_init_mctx (&cursor, mctx);
+  while (1)
+    {
+      int error = fn (cursor.mctx, arg);
+      if (error)
+        return (error);
+      else if (unw_cursor_step (&cursor) <= 0)
+        return (0);
+    }
+
   for (uint32_t index = 0 ; ; ++index)
     {
       uintptr_t pc = unw_cursor_pc (&cursor);
@@ -645,4 +656,28 @@ unw_backtrace (struct unw_mcontext *mctx)
       if (unw_cursor_step (&cursor) <= 0)
         break;
     }
+}
+
+static int
+unw_show_stacktrace (struct unw_mcontext *mctx, void *arg)
+{
+  uintptr_t pc = mctx->regs[CPU_UNWIND_PC_REG];
+  const struct symbol *sym = symbol_lookup (pc);
+  uint32_t index = *(const uint32_t *)arg;
+
+  if (! sym)
+    printf ("#%02u [%#010lx]\n", index, pc);
+  else
+    printf ("#%02u [%#010lx] %s+%#lx/%#lx\n", index, pc,
+            sym->name, pc - sym->addr, sym->size);
+
+  *(uint32_t *)arg = index + 1;
+  return (0);
+}
+
+void
+unw_stacktrace (struct unw_mcontext *mctx)
+{
+  uint32_t index = 0;
+  unw_backtrace (mctx, unw_show_stacktrace, &index);
 }

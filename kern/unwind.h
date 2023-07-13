@@ -83,10 +83,18 @@ int unw_fixup_restore (struct unw_fixup_t *fixup,
 noreturn void unw_fixup_jmp (struct unw_fixup_t *fixup, int retval);
 
 /*
+ * Perform a traceback, starting from the passed machine context (or the
+ * current one, if null), applying the function with the registers and
+ * argument. If a non-zero value is returned, the traceback stops immediately.
+ */
+int unw_backtrace (struct unw_mcontext *initial,
+                   int (*fn) (struct unw_mcontext *, void *), void *arg);
+
+/*
  * Print the stack trace originating in the provided context, if provided,
  * otherwise, use the current one.
  */
-void unw_backtrace (struct unw_mcontext *initial);
+void unw_stacktrace (struct unw_mcontext *initial);
 
 // Unwind fixup guards.
 static inline void

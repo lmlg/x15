@@ -43,7 +43,7 @@ panic (const char *format, ...)
   va_start (list, format);
   vprintf (format, list);
   printf ("\n");
-  unw_backtrace (NULL);
+  unw_stacktrace (NULL);
 
   cpu_halt ();
   __builtin_unreachable ();

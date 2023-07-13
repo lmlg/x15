@@ -111,7 +111,7 @@ tcb_trace (const struct tcb *tcb)
   mctx.regs[5] = tcb->bp;
 #endif
   mctx.regs[CPU_UNWIND_PC_REG] = (uintptr_t)tcb_context_restore + 1;
-  unw_backtrace (&mctx);
+  unw_stacktrace (&mctx);
 }
 
 static int __init
