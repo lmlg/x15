@@ -144,16 +144,12 @@ futex_pi_acquire (const union sync_key *key)
 static void
 futex_sleepq_release (void *obj)
 {
-  if (obj)
-    sleepq_release ((struct sleepq *)obj);
+  sleepq_release ((struct sleepq *)obj);
 }
 
 static void
 futex_pi_release (void *obj)
 {
-  if (! obj)
-    return;
-
   turnstile_release ((struct turnstile *)obj);
   thread_propagate_priority ();
 }
@@ -307,6 +303,9 @@ futex_data_init (struct futex_data *data, int *addr,
 static void
 futex_data_release (struct futex_data *data)
 {
+  if (!data->wait_obj)
+    return;
+
   data->ops->release (data->wait_obj);
   data->wait_obj = NULL;
 }
