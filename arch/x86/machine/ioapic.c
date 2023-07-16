@@ -103,8 +103,7 @@ ioapic_alloc_iso (void)
       return (NULL);
     }
 
-  _Auto iso = &ioapic_isos[ioapic_nr_isos++];
-  return (iso);
+  return (&ioapic_isos[ioapic_nr_isos++]);
 }
 
 static struct ioapic_iso*

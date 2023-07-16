@@ -82,9 +82,7 @@ struct lapic_register
   uint32_t reserved_0_2[3];
 };
 
-/*
- * Local APIC register map.
- */
+// Local APIC register map.
 struct lapic_map
 {
   const struct lapic_register reserved_0_1[2];
@@ -253,33 +251,25 @@ lapic_setup (uint32_t map_addr)
 void __init
 lapic_ap_setup (void)
 {
-  lapic_setup_registers();
+  lapic_setup_registers ();
 }
 
 static void
 lapic_ipi (uint32_t apic_id, uint32_t icr)
 {
-  cpu_flags_t flags;
-  cpu_intr_save (&flags);
+  CPU_INTR_GUARD ();
 
   if (!(icr & LAPIC_ICR_DEST_MASK))
     lapic_write (&lapic_map->icr_high, apic_id << LAPIC_DEST_SHIFT);
 
   lapic_write (&lapic_map->icr_low, icr & ~LAPIC_ICR_RESERVED);
-  cpu_intr_restore (flags);
 }
 
 static void
 lapic_ipi_wait (void)
 {
-  uint32_t value;
-
-  do
-    {
-      value = lapic_read (&lapic_map->icr_low);
-      cpu_pause ();
-    }
-  while (value & LAPIC_ICR_STATUS_PENDING);
+  while (lapic_read (&lapic_map->icr_low) & LAPIC_ICR_STATUS_PENDING)
+    cpu_pause ();
 }
 
 void

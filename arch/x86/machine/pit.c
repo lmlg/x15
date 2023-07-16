@@ -88,7 +88,7 @@ pit_delay (size_t usecs)
 {
   assert (usecs);
 
-  /* TODO Avoid 64-bits conversion if result is known not to overflow */
+  // TODO Avoid 64-bits conversion if result is known not to overflow.
   long total = (long) (((int64_t)usecs * PIT_FREQ + 999999) / 1000000),
        prev = pit_read ();
 

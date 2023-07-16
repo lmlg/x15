@@ -197,7 +197,7 @@ uart_write_char (struct uart *uart, char c)
   uart_write_char_common (uart, c);
 }
 
-static struct uart *
+static struct uart*
 uart_get_dev (size_t i)
 {
   assert (i < ARRAY_SIZE (uart_devs));

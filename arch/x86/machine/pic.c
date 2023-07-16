@@ -30,10 +30,10 @@
 #include <machine/pic.h>
 
 // I/O ports.
-#define PIC_MASTER_CMD      0x20
-#define PIC_MASTER_IMR      0x21
-#define PIC_SLAVE_CMD       0xa0
-#define PIC_SLAVE_IMR       0xa1
+#define PIC_PRIMARY_CMD      0x20
+#define PIC_PRIMARY_IMR      0x21
+#define PIC_SECONDARY_CMD       0xa0
+#define PIC_SECONDARY_IMR       0xa1
 
 // Register bits.
 #define PIC_ICW1_IC4        0x01
@@ -43,46 +43,46 @@
 #define PIC_EOI             0x20
 
 // Special interrupts.
-#define PIC_SLAVE_INTR      2
+#define PIC_SECONDARY_INTR      2
 #define PIC_SPURIOUS_INTR   7
 
-static uint32_t pic_nr_slave_intrs;
+static uint32_t pic_nr_secondary_intrs;
 
-static uint8_t pic_master_mask;
-static uint8_t pic_slave_mask;
+static uint8_t pic_primary_mask;
+static uint8_t pic_secondary_mask;
 
-static uint8_t pic_master_spurious_intr;
-static uint8_t pic_slave_spurious_intr;
+static uint8_t pic_primary_spurious_intr;
+static uint8_t pic_secondary_spurious_intr;
 
 static bool
-pic_is_slave_intr (uint32_t intr)
+pic_is_secondary_intr (uint32_t intr)
 {
   assert (intr <= PIC_MAX_INTR);
   return (intr >= PIC_NR_INTRS);
 }
 
 static void
-pic_inc_slave_intrs (void)
+pic_inc_secondary_intrs (void)
 {
-  if (! pic_nr_slave_intrs)
+  if (! pic_nr_secondary_intrs)
     {
-      pic_master_mask |= 1 << PIC_SLAVE_INTR;
-      io_write_byte (PIC_MASTER_IMR, pic_master_mask);
+      pic_primary_mask |= 1 << PIC_SECONDARY_INTR;
+      io_write_byte (PIC_PRIMARY_IMR, pic_primary_mask);
     }
 
-  pic_nr_slave_intrs++;
-  assert (pic_nr_slave_intrs != 0);
+  ++pic_nr_secondary_intrs;
+  assert (pic_nr_secondary_intrs != 0);
 }
 
 static void
-pic_dec_slave_intrs (void)
+pic_dec_secondary_intrs (void)
 {
-  assert (pic_nr_slave_intrs);
+  assert (pic_nr_secondary_intrs);
 
-  if (--pic_nr_slave_intrs == 0)
+  if (--pic_nr_secondary_intrs == 0)
     {
-      pic_master_mask &= ~(1 << PIC_SLAVE_INTR);
-      io_write_byte (PIC_MASTER_IMR, pic_master_mask);
+      pic_primary_mask &= ~(1 << PIC_SECONDARY_INTR);
+      io_write_byte (PIC_PRIMARY_IMR, pic_primary_mask);
     }
 }
 
@@ -90,9 +90,9 @@ static void
 pic_eoi (size_t intr)
 {
   if (intr >= PIC_NR_INTRS)
-    io_write_byte (PIC_SLAVE_CMD, PIC_EOI);
+    io_write_byte (PIC_SECONDARY_CMD, PIC_EOI);
 
-  io_write_byte (PIC_MASTER_CMD, PIC_EOI);
+  io_write_byte (PIC_PRIMARY_CMD, PIC_EOI);
 }
 
 static uint8_t
@@ -105,32 +105,32 @@ pic_read_isr (uint16_t port)
 static void
 pic_ops_enable (void *priv __unused, uint32_t intr, uint32_t cpu __unused)
 {
-  if (pic_is_slave_intr (intr))
+  if (pic_is_secondary_intr (intr))
     {
-      pic_slave_mask &= ~ (1 << (intr - PIC_NR_INTRS));
-      io_write_byte (PIC_SLAVE_IMR, pic_slave_mask);
-      pic_inc_slave_intrs ();
+      pic_secondary_mask &= ~ (1 << (intr - PIC_NR_INTRS));
+      io_write_byte (PIC_SECONDARY_IMR, pic_secondary_mask);
+      pic_inc_secondary_intrs ();
     }
   else
     {
-      pic_master_mask &= ~(1 << intr);
-      io_write_byte (PIC_MASTER_IMR, pic_master_mask);
+      pic_primary_mask &= ~(1 << intr);
+      io_write_byte (PIC_PRIMARY_IMR, pic_primary_mask);
     }
 }
 
 static void
 pic_ops_disable (void *priv __unused, uint32_t intr)
 {
-  if (pic_is_slave_intr (intr))
+  if (pic_is_secondary_intr (intr))
     {
-      pic_dec_slave_intrs ();
-      pic_slave_mask |= 1 << (intr - PIC_NR_INTRS);
-      io_write_byte (PIC_SLAVE_IMR, pic_slave_mask);
+      pic_dec_secondary_intrs ();
+      pic_secondary_mask |= 1 << (intr - PIC_NR_INTRS);
+      io_write_byte (PIC_SECONDARY_IMR, pic_secondary_mask);
     }
   else
     {
-      pic_master_mask |= 1 << intr;
-      io_write_byte (PIC_MASTER_IMR, pic_master_mask);
+      pic_primary_mask |= 1 << intr;
+      io_write_byte (PIC_PRIMARY_IMR, pic_primary_mask);
     }
 }
 
@@ -166,19 +166,19 @@ pic_spurious_intr (void *arg)
 {
   uint8_t intr = *(const uint8_t *)arg;
 
-  if (arg == &pic_master_spurious_intr)
+  if (arg == &pic_primary_spurious_intr)
     {
-      uint8_t isr = pic_read_isr (PIC_MASTER_CMD);
+      uint8_t isr = pic_read_isr (PIC_PRIMARY_CMD);
       if (isr & (1 << PIC_SPURIOUS_INTR))
         panic ("pic: real interrupt %hhu", intr);
     }
   else
     {
-      uint8_t isr = pic_read_isr (PIC_SLAVE_CMD);
+      uint8_t isr = pic_read_isr (PIC_SECONDARY_CMD);
       if (isr & (1 << PIC_SPURIOUS_INTR))
         panic ("pic: real interrupt %hhu", intr);
 
-      pic_eoi (PIC_SLAVE_INTR);
+      pic_eoi (PIC_SECONDARY_INTR);
     }
 
   return (0);
@@ -187,41 +187,41 @@ pic_spurious_intr (void *arg)
 static void __init
 pic_setup_common (bool register_ctl)
 {
-  pic_nr_slave_intrs = 0;
-  pic_master_mask = 0xff;
-  pic_slave_mask = 0xff;
+  pic_nr_secondary_intrs = 0;
+  pic_primary_mask = 0xff;
+  pic_secondary_mask = 0xff;
 
   // ICW 1 - State that ICW 4 will be sent.
-  io_write_byte (PIC_MASTER_CMD, PIC_ICW1_INIT | PIC_ICW1_IC4);
-  io_write_byte (PIC_SLAVE_CMD, PIC_ICW1_INIT | PIC_ICW1_IC4);
+  io_write_byte (PIC_PRIMARY_CMD, PIC_ICW1_INIT | PIC_ICW1_IC4);
+  io_write_byte (PIC_SECONDARY_CMD, PIC_ICW1_INIT | PIC_ICW1_IC4);
 
   // ICW 2.
-  io_write_byte (PIC_MASTER_IMR, CPU_EXC_INTR_FIRST);
-  io_write_byte (PIC_SLAVE_IMR, CPU_EXC_INTR_FIRST + PIC_NR_INTRS);
+  io_write_byte (PIC_PRIMARY_IMR, CPU_EXC_INTR_FIRST);
+  io_write_byte (PIC_SECONDARY_IMR, CPU_EXC_INTR_FIRST + PIC_NR_INTRS);
 
   // ICW 3 - Set up cascading.
-  io_write_byte (PIC_MASTER_IMR, 1 << PIC_SLAVE_INTR);
-  io_write_byte (PIC_SLAVE_IMR, PIC_SLAVE_INTR);
+  io_write_byte (PIC_PRIMARY_IMR, 1 << PIC_SECONDARY_INTR);
+  io_write_byte (PIC_SECONDARY_IMR, PIC_SECONDARY_INTR);
 
   // ICW 4 - Set 8086 mode.
-  io_write_byte (PIC_MASTER_IMR, PIC_ICW4_8086);
-  io_write_byte (PIC_SLAVE_IMR, PIC_ICW4_8086);
+  io_write_byte (PIC_PRIMARY_IMR, PIC_ICW4_8086);
+  io_write_byte (PIC_SECONDARY_IMR, PIC_ICW4_8086);
 
-  /* OCW 1 - Mask all interrupts */
-  io_write_byte (PIC_MASTER_IMR, pic_master_mask);
-  io_write_byte (PIC_SLAVE_IMR, pic_slave_mask);
+  // OCW 1 - Mask all interrupts.
+  io_write_byte (PIC_PRIMARY_IMR, pic_primary_mask);
+  io_write_byte (PIC_SECONDARY_IMR, pic_secondary_mask);
 
   if (register_ctl)
     pic_register ();
 
-  pic_master_spurious_intr = PIC_SPURIOUS_INTR;
-  int error = intr_register (pic_master_spurious_intr, pic_spurious_intr,
-                             &pic_master_spurious_intr);
+  pic_primary_spurious_intr = PIC_SPURIOUS_INTR;
+  int error = intr_register (pic_primary_spurious_intr, pic_spurious_intr,
+                             &pic_primary_spurious_intr);
   error_check (error, __func__);
 
-  pic_slave_spurious_intr = PIC_NR_INTRS + PIC_SPURIOUS_INTR;
-  error = intr_register (pic_slave_spurious_intr, pic_spurious_intr,
-                         &pic_slave_spurious_intr);
+  pic_secondary_spurious_intr = PIC_NR_INTRS + PIC_SPURIOUS_INTR;
+  error = intr_register (pic_secondary_spurious_intr, pic_spurious_intr,
+                         &pic_secondary_spurious_intr);
   error_check (error, __func__);
 }
 

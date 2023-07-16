@@ -1407,7 +1407,8 @@ pmap_cpumap_copy (struct cpumap *dst, const struct cpumap *src)
 static int
 pmap_range_overlap (uintptr_t s1, uintptr_t e1, uintptr_t s2, uintptr_t e2)
 {
-  return (s1 <= e2 && s2 <= e1);
+  return ((s1 <= e2 && s2 <= e1) ||
+          (s2 <= e1 && s1 <= e2));
 }
 
 int
