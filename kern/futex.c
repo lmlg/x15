@@ -205,7 +205,7 @@ futex_pi_wait (struct futex_data *data, int value,
    * need to change the futex word's value after a succesful wait.
    */
 
-  error = futex_map_addr (data, value, FUTEX_OP_LOCK_PI);
+  error = futex_map_addr (data, thread_id (thread_self ()), FUTEX_OP_LOCK_PI);
   if (! error)
     turnstile_own (data->wait_obj);
 
@@ -392,8 +392,7 @@ futex_map_addr (struct futex_data *data, int value, int op)
         break;
 
       case FUTEX_OP_LOCK_PI:
-        error = atomic_cas_bool_acq (data->addr, value, FUTEX_WAITERS |
-                                     thread_id (thread_self ())) ?
+        error = atomic_cas_bool_acq (data->addr, 0, value | FUTEX_WAITERS) ?
                 0 : EAGAIN;
         break;
     }

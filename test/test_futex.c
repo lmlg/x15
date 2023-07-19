@@ -229,7 +229,7 @@ test_futex_pi (void *arg __unused)
           THREAD_SCHED_POLICY_FIFO);
 
   *futex = 0;
-  error = futex_wake (futex, FUTEX_PI | FUTEX_BROADCAST, 0);
+  error = futex_wake (futex, FUTEX_PI | FUTEX_BROADCAST | FUTEX_MUTATE, 0);
   assert (! error);
 
   thread_join (thrs[0]);

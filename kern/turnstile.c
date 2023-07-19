@@ -807,7 +807,7 @@ turnstile_td_exit (struct turnstile_td *td)
   struct turnstile *turnstile;
   plist_for_each_entry (&td->owned_turnstiles, turnstile, td_node)
     {
-      turnstile_acquire (turnstile);
+      spinlock_lock (&turnstile->bucket->lock);
       turnstile_disown (turnstile);
       turnstile_broadcast (turnstile);
       turnstile_release (turnstile);
