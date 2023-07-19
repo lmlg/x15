@@ -2870,20 +2870,16 @@ thread_ipc_affinity_impl (struct thread *thread, void *map,
   int error = user_copy_from (cpumap->cpus, map, size);
 
   if (error)
-    return (-error);
+    goto out;
 
-  ssize_t rv;
   if (set)
-    rv = thread_set_affinity (thread, cpumap);
-  else if ((rv = thread_get_affinity (thread, cpumap)) == 0)
-    {
-      error = user_copy_to (map, cpumap->cpus, size);
-      if (error)
-        rv = -error;
-    }
+    error = thread_set_affinity (thread, cpumap);
+  else if ((error = thread_get_affinity (thread, cpumap)) == 0)
+    error = user_copy_to (map, cpumap->cpus, size);
 
+out:
   cpumap_destroy (cpumap);
-  return (rv);
+  return (-error);
 }
 
 #define THREAD_IPC_NEEDS_COPY   \
