@@ -32,23 +32,25 @@
 #define TEST_INTR_LAST    (CPU_EXC_INTR_FIRST + 1)
 
 static int test_intr_last = -1;
+static int test_intr_status;
 
 static void
 test_intr_dummy_enable (void *arg __unused, uint32_t irq,
                         uint32_t cpu __unused)
 {
   assert (irq >= TEST_INTR_FIRST && irq < TEST_INTR_LAST);
+  test_intr_status = 1;
 }
 
 static void
 test_intr_dummy_disable (void *arg __unused, uint32_t irq __unused)
 {
+  test_intr_status = 0;
 }
 
 static void
 test_intr_dummy_eoi (void *arg __unused, uint32_t irq)
 {
-  assert (test_intr_last < 0);
   test_intr_last = (int)irq;
 }
 
@@ -66,19 +68,26 @@ test_intr (void *arg)
   int capx = cap_intern (flow, 0);
   assert (capx >= 0);
 
-  struct ipc_msg_data *md;
-  int error = vm_map_anon_alloc ((void **)&md, vm_map_self (), sizeof (*md));
+  struct
+    {
+      struct ipc_msg_data md;
+      struct cap_kern_alert alert;
+    } *data;
+
+  int error = vm_map_anon_alloc ((void **)&data, vm_map_self (),
+                                 sizeof (*data));
   assert (! error);
 
-  uint32_t irq;
-  rcvid_t rcvid = cap_recv_bytes (capx, &irq, sizeof (irq), md);
+  rcvid_t rcvid = cap_recv_bytes (capx, &data->alert,
+                                  sizeof (data->alert), &data->md);
 
   assert (rcvid == 0);
-  assert (md->flags & IPC_MSG_INTR);
-  assert (irq == TEST_INTR_FIRST);
+  assert (data->md.flags & IPC_MSG_KERNEL);
+  assert (data->alert.intr.irq == TEST_INTR_FIRST);
+  assert (data->alert.intr.count == 2);
 
-  assert (cap_intr_eoi (flow, irq) == 0);
-  assert (test_intr_last == (int)irq);
+  assert (test_intr_last == (int)data->alert.intr.irq);
+  assert (test_intr_status == 1);
 }
 
 TEST_DEFERRED (intr)
@@ -94,6 +103,7 @@ TEST_DEFERRED (intr)
 
   thread_intr_enter ();
   cpu_intr_disable ();
+  intr_handle (TEST_INTR_FIRST);
   intr_handle (TEST_INTR_FIRST);
   cpu_intr_enable ();
   thread_intr_leave ();

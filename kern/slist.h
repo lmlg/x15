@@ -45,6 +45,13 @@ slist_init (struct slist *list)
   list->first = list->last = NULL;
 }
 
+// Initialize a list node.
+static inline void
+slist_node_init (struct slist_node *node)
+{
+  node->next = NULL;
+}
+
 // Return the first node of a list.
 static inline struct slist_node*
 slist_first (const struct slist *list)
@@ -195,7 +202,7 @@ slist_remove (struct slist *list, struct slist_node *prev)
  * Macro that evaluates to the address of the structure containing the
  * given node based on the given type and member.
  */
-#define slist_entry(node, type, member)   structof(node, type, member)
+#define slist_entry(node, type, member)   structof (node, type, member)
 
 // Get the first entry of a list.
 #define slist_first_entry(list, type, member)   \

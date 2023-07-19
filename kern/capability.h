@@ -20,10 +20,10 @@
 #ifndef KERN_CAPABILITY_H
 #define KERN_CAPABILITY_H
 
+#include <assert.h>
 #include <iovec.h>
 #include <stdint.h>
 
-#include <kern/bitmap.h>
 #include <kern/init.h>
 #include <kern/ipc.h>
 #include <kern/list.h>
@@ -50,6 +50,41 @@ enum
 // Size of an alert message, in bytes.
 #define CAP_ALERT_SIZE   16
 
+// Kernel-sent alerts.
+enum
+{
+  CAP_KERN_ALERT_INTR = 2,
+  CAP_KERN_ALERT_THREAD,
+  CAP_KERN_ALERT_TASK,
+};
+
+struct cap_kern_alert
+{
+  int type;
+  union
+    {
+      struct
+        {
+          uint32_t irq;
+          uint32_t count;
+        } intr;
+
+      int thread_id;
+      int task_id;
+      int any_id;
+    };
+};
+
+static_assert (sizeof (struct cap_kern_alert) <= CAP_ALERT_SIZE,
+               "struct cap_kern_alert is too big");
+
+static_assert (__builtin_offsetof (struct cap_kern_alert, intr.irq) ==
+               __builtin_offsetof (struct cap_kern_alert, thread_id) &&
+               __builtin_offsetof (struct cap_kern_alert, thread_id) ==
+               __builtin_offsetof (struct cap_kern_alert, task_id),
+               "invalid layout for cap_kern_alert");
+
+// Receive-IDs.
 typedef int64_t rcvid_t;
 
 struct cap_base
@@ -72,15 +107,10 @@ struct cap_flow
   CAPABILITY;
   struct plist senders;
   struct list receivers;
-  struct
-    {
-      BITMAP_DECLARE (pending, CPU_INTR_TABLE_SIZE);
-      struct list entries;
-      uint32_t nr_pending;
-    } intr;
-  uint32_t flags;
-  struct slist alert_list;
+  struct slist alert_user;
+  struct slist alert_kern;
   uintptr_t tag;
+  uint32_t flags;
 #if CONFIG_MAX_CPUS > 1
   char pad[CPU_L1_SIZE];
 #endif
@@ -242,9 +272,6 @@ int cap_intr_register (struct cap_flow *flow, uint32_t irq);
 
 // Unregister a flow for interrupt handling.
 int cap_intr_unregister (struct cap_flow *flow, uint32_t irq);
-
-// Mark an interrupt for a flow as handled.
-int cap_intr_eoi (struct cap_flow *flow, uint32_t irq);
 
 // Inlined versions of the above.
 

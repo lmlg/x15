@@ -77,7 +77,7 @@ struct ipc_msg
 };
 
 // Bits for the 'flags' member of a IPC message metadata.
-#define IPC_MSG_INTR   0x01   // Message was an interrupt.
+#define IPC_MSG_KERNEL   0x01   // Message was sent by the kernel.
 
 struct ipc_msg_data
 {

@@ -371,23 +371,9 @@ intr_handle (uint32_t intr)
     }
 
   struct intr_handler *handler;
-  int rv = 0;
-
   list_for_each_entry (&entry->handlers, handler, node)
-    {
-      int tmp = intr_handler_run (handler);
-      if (tmp == EINPROGRESS)
-        rv = tmp;
-    }
+    if (intr_handler_run (handler) == 0)
+      break;
 
-  if (rv != EINPROGRESS)
-    intr_entry_eoi (entry, intr);
-}
-
-void
-intr_eoi (uint32_t intr)
-{
-  _Auto entry = intr_get_entry (intr);
-  SPINLOCK_GUARD (&entry->lock);
   intr_entry_eoi (entry, intr);
 }

@@ -53,13 +53,20 @@ plist_init (struct plist *plist)
   list_init (&plist->prio_list);
 }
 
+// Unlink a priority list node.
+static inline void
+plist_node_unlink (struct plist_node *pnode)
+{
+  list_node_init (&pnode->node);
+  list_node_init (&pnode->prio_node);
+}
+
 // Initialize a priority list node.
 static inline void
 plist_node_init (struct plist_node *pnode, unsigned int priority)
 {
   pnode->priority = priority;
-  list_node_init (&pnode->node);
-  list_node_init (&pnode->prio_node);
+  plist_node_unlink (pnode);
 }
 
 // Return the priority associated with a node.

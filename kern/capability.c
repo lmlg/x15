@@ -24,16 +24,26 @@
 #include <kern/thread.h>
 #include <kern/user.h>
 
-union cap_alert
+struct cap_alert_base
 {
-  struct
-    { // State used when the alert is enqueued.
-      struct plist_node pnode;
-      char payload[CAP_ALERT_SIZE + 1];
-    };
+  struct plist_node pnode;
+  char payload[CAP_ALERT_SIZE + 1];
+};
 
+union cap_alert_user
+{
+  // State when active.
+  struct cap_alert_base base;
   // State when in the freelist.
   struct slist_node snode;
+};
+
+struct cap_alert_async
+{
+  struct cap_alert_base base;
+  struct slist_node lnode;
+  struct list xlink;
+  struct cap_flow *flow;
 };
 
 struct cap_sender
@@ -61,19 +71,45 @@ struct cap_receiver
   bool spurious;
 };
 
-struct cap_intr_entry
-{
-  struct list cap_node;
-  struct list intr_node;
-  uint32_t irq;
-  struct cap_flow *flow;
-};
-
 static struct kmem_cache cap_flow_cache;
 static struct kmem_cache cap_misc_cache;
 
 static struct list cap_intr_handlers[CPU_INTR_TABLE_SIZE];
 static struct adaptive_lock cap_intr_lock;
+
+/*
+ * The byte following the plist node indicates whether the object is
+ * an alert or a regular message with a thread blocking on it.
+ */
+
+static void
+cap_pnode_mark (struct plist_node *node, int type)
+{
+  *(char *)(node + 1) = type;
+}
+
+static void
+cap_pnode_mark_ualert (struct plist_node *node)
+{
+  cap_pnode_mark (node, 1);
+}
+
+static void
+cap_pnode_mark_msg (struct plist_node *node)
+{
+  cap_pnode_mark (node, 0);
+}
+
+static int
+cap_pnode_type (struct plist_node *node)
+{
+  return (*(char *)(node + 1));
+}
+
+// This is a macro to work around typing issues.
+#define cap_alert_buf(alert)   (&((struct cap_alert_base *)alert)->payload[1])
+
+#define CAP_FLOW_EXITING   0x01
 
 #define CAP_FROM_SREF(ptr, type)   structof (ptr, type, base.sref)
 
@@ -156,60 +192,53 @@ cap_channel_create (struct cap_channel **outp, struct cap_flow *flow,
   return (0);
 }
 
-static int cap_intr_rem (uint32_t intr, struct list *node, bool eoi);
-
-static int
-cap_intr_test (const unsigned long *map, uint32_t irq)
-{
-  return (bitmap_test (map, irq - CPU_EXC_INTR_FIRST));
-}
-
-static void
-cap_intr_clear (unsigned long *map, uint32_t irq)
-{
-  bitmap_clear (map, irq - CPU_EXC_INTR_FIRST);
-}
-
-static void
-cap_intr_set (unsigned long *map, uint32_t irq)
-{
-  bitmap_set (map, irq - CPU_EXC_INTR_FIRST);
-}
+static void cap_alert_async_rem (struct cap_alert_async *);
 
 static void
 cap_flow_fini (struct sref_counter *sref)
 {
   _Auto flow = CAP_FROM_SREF (sref, struct cap_flow);
-  BITMAP_DECLARE (pending, CPU_INTR_TABLE_SIZE);
 
   {
-    SPINLOCK_GUARD (&flow->lock);
-    bitmap_copy (pending, flow->intr.pending, CPU_INTR_TABLE_SIZE);
-    // This makes interrupt notification always be marked as spurious.
-    bitmap_fill (flow->intr.pending, CPU_INTR_TABLE_SIZE);
+    SPINLOCK_INTR_GUARD (&flow->lock);
+    flow->flags |= CAP_FLOW_EXITING;
   }
 
-  if (unlikely (!list_empty (&flow->intr.entries)))
+  struct cap_alert_async *aentry, *atmp;
+  slist_for_each_entry_safe (&flow->alert_kern, aentry, atmp, lnode)
     {
-      struct cap_intr_entry *entry, *tmp;
-      list_for_each_entry_safe (&flow->intr.entries, entry, tmp, cap_node)
-        cap_intr_rem (entry->irq, &entry->intr_node,
-                      cap_intr_test (pending, entry->irq));
+      cap_alert_async_rem (aentry);
+      kmem_cache_free (&cap_misc_cache, aentry);
     }
 
-  union cap_alert *alert, *tmp;
-  slist_for_each_entry_safe (&flow->alert_list, alert, tmp, snode)
-    kmem_free (alert, sizeof (*alert));
+  union cap_alert_user *uentry, *utmp;
+  slist_for_each_entry_safe (&flow->alert_user, uentry, utmp, snode)
+    kmem_free (uentry, sizeof (*uentry));
+
+  // Wake pending senders.
+  plist_for_each (&flow->senders, pnode)
+    {
+      int type = cap_pnode_type (pnode);
+      if (type == 1)
+        // Regular alert.
+        kmem_free (pnode, sizeof (union cap_alert_user));
+      else if (type == 0)
+        { // Sender thread.
+          _Auto sender = plist_entry (pnode, struct cap_sender, node);
+          sender->result = -EBADF;
+          thread_wakeup (sender->thread);
+        }
+    }
+
+  // Wake pending receivers.
+  list_for_each (&flow->receivers, node)
+    {
+      _Auto recv = structof (node, struct cap_receiver, node);
+      recv->rcvid = -EBADF;
+      thread_wakeup (recv->thread);
+    }
 
   kmem_cache_free (&cap_flow_cache, flow);
-}
-
-static void
-cap_flow_intr_init (struct cap_flow *flow)
-{
-  bitmap_zero (flow->intr.pending, CPU_INTR_TABLE_SIZE);
-  flow->intr.nr_pending = 0;
-  list_init (&flow->intr.entries);
 }
 
 int
@@ -223,36 +252,13 @@ cap_flow_create (struct cap_flow **outp, uint32_t flags, uintptr_t tag)
   spinlock_init (&ret->lock);
   plist_init (&ret->senders);
   list_init (&ret->receivers);
-  slist_init (&ret->alert_list);
+  slist_init (&ret->alert_user);
+  slist_init (&ret->alert_kern);
   ret->flags = flags;
   ret->tag = tag;
-  cap_flow_intr_init (ret);
 
   *outp = ret;
   return (0);
-}
-
-/*
- * The byte following the plist node indicates whether the object is
- * an alert or a regular message with a thread blocking on it.
- */
-
-static void
-cap_mark_pnode_alert (struct plist_node *node)
-{
-  *(char *)(node + 1) = 1;
-}
-
-static void
-cap_mark_pnode_msg (struct plist_node *node)
-{
-  *(char *)(node + 1) = 0;
-}
-
-static int
-cap_pnode_is_alert (struct plist_node *node)
-{
-  return (*(char *)(node + 1));
 }
 
 /*
@@ -465,7 +471,7 @@ cap_sender_enqueue (struct cap_sender *sender, struct cap_flow *flow)
   plist_node_init (&sender->node,
                    thread_real_global_priority (sender->thread));
   plist_add (&flow->senders, &sender->node);
-  cap_mark_pnode_msg (&sender->node);
+  cap_pnode_mark_msg (&sender->node);
   // TODO: Priority inheritance.
   sender->sender_sched = *thread_get_real_sched_data(sender->thread);
 }
@@ -477,7 +483,9 @@ cap_sender_impl (struct cap_sender *sender, struct cap_flow *flow)
 
   {
     SPINLOCK_GUARD (&flow->lock);
-    if (list_empty (&flow->receivers))
+    if (flow->flags & CAP_FLOW_EXITING)
+      return (-EBADF);
+    else if (list_empty (&flow->receivers))
       { // Add ourselves to the list of senders.
         cap_sender_enqueue (sender, flow);
         int error = thread_send_block (&flow->lock, sender);
@@ -509,17 +517,19 @@ cap_sender_impl (struct cap_sender *sender, struct cap_flow *flow)
 }
 
 static int
-cap_flow_alloc_alert (struct cap_flow *flow, int flags, union cap_alert **outp)
+cap_flow_alloc_alert (struct cap_flow *flow, int flags,
+                      union cap_alert_user **outp)
 {
-  if (!slist_empty (&flow->alert_list))
+  if (!slist_empty (&flow->alert_user))
     {
-      *outp = slist_first_entry (&flow->alert_list, union cap_alert, snode);
-      slist_remove (&flow->alert_list, NULL);
+      *outp = slist_first_entry (&flow->alert_user,
+                                 union cap_alert_user, snode);
+      slist_remove (&flow->alert_user, NULL);
       return (0);
     }
 
   spinlock_unlock (&flow->lock);
-  void *ptr = kmem_alloc2 (sizeof (union cap_alert),
+  void *ptr = kmem_alloc2 (sizeof (union cap_alert_user),
                            (flags & CAP_ALERT_BLOCK) ? KMEM_ALLOC_SLEEP : 0);
   spinlock_lock (&flow->lock);
 
@@ -584,18 +594,21 @@ ssize_t
 
   {
     SPINLOCK_GUARD (&flow->lock);
-    if (list_empty (&flow->receivers))
+
+    if (flow->flags & CAP_FLOW_EXITING)
+      return (-EBADF);
+    else if (list_empty (&flow->receivers))
       {
-        union cap_alert *alert;
+        union cap_alert_user *alert;
         int error = cap_flow_alloc_alert (flow, flags, &alert);
 
         if (error)
           return (error);
 
-        memcpy (alert->payload + 1, abuf, size);
-        plist_node_init (&alert->pnode, priority);
-        plist_add (&flow->senders, &alert->pnode);
-        cap_mark_pnode_alert (&alert->pnode);
+        memcpy (cap_alert_buf (alert), abuf, size);
+        plist_node_init (&alert->base.pnode, priority);
+        plist_add (&flow->senders, &alert->base.pnode);
+        cap_pnode_mark_ualert (&alert->base.pnode);
 
         return (0);
       }
@@ -742,31 +755,45 @@ cap_rcvid_acq_rel_sender (struct thread *self, rcvid_t rcvid, int *errp)
 }
 
 static void
-cap_recv_small (struct cap_receiver *recv, const void *buf, size_t size)
+cap_recv_wakeup_fast (struct cap_flow *flow)
 {
+  if (list_empty (&flow->receivers))
+    return;
+
+  _Auto recv = list_pop (&flow->receivers, struct cap_receiver, node);
+  recv->spurious = true;
+  thread_wakeup (recv->thread);
+}
+
+static int
+cap_recv_alert (struct cap_receiver *recv, struct cap_alert_base *alert,
+                struct spinlock *lock)
+{
+  const char *buf = cap_alert_buf (alert);
+
+  if (cap_pnode_type (&alert->pnode) == CAP_KERN_ALERT_INTR)
+    { // Use a temporary buffer to prevent racing against another interrupt.
+      char *tmp = alloca (CAP_ALERT_SIZE);
+      memcpy (tmp, buf, CAP_ALERT_SIZE);
+      buf = tmp;
+    }
+
+  spinlock_unlock (lock);
   _Auto base = recv->it->iov.begin;
   _Auto end = base + recv->it->iov.end;
+  size_t size = CAP_ALERT_SIZE;
 
   for (; base < end && size; ++base)
     {
       size_t len = MIN (size, base->iov_len);
-      memcpy (base->iov_base, buf, len);
+      if (user_copy_to (base->iov_base, buf, len) != 0)
+        return (EFAULT);
+
       buf = (const char *)buf + len;
       size -= len;
     }
-}
 
-static void
-cap_recv_intr (struct cap_receiver *recv, struct cap_flow *flow)
-{
-  int irq = bitmap_find_first (flow->intr.pending, CPU_INTR_TABLE_SIZE);
-  bitmap_clear (flow->intr.pending, irq);
-  --flow->intr.nr_pending;
-
-  spinlock_unlock (&flow->lock);
-  irq += CPU_EXC_INTR_FIRST;
-  cap_recv_small (recv, &irq, sizeof (irq));
-  recv->ipc_data.flags |= IPC_MSG_INTR;
+  return (0);
 }
 
 static rcvid_t
@@ -777,11 +804,9 @@ cap_receiver_impl (struct cap_receiver *recv, struct cap_flow *flow)
 
 retry:
   spinlock_lock (&flow->lock);
-  if (flow->intr.nr_pending)
-    {
-      cap_recv_intr (recv, flow);
-      return (0);
-    }
+
+  if (flow->flags & CAP_FLOW_EXITING)
+    return (-EBADF);
   else if (plist_empty (&flow->senders))
     {
       list_insert_tail (&flow->receivers, &recv->node);
@@ -809,16 +834,32 @@ retry:
       plist_remove (&flow->senders, pnode);
     }
 
-  spinlock_unlock (&flow->lock);
-  if (cap_pnode_is_alert (pnode))
-    {
-      _Auto alert = plist_entry (pnode, union cap_alert, pnode);
-      cap_recv_small (recv, &alert->payload[1], CAP_ALERT_SIZE);
+  int ps = cap_pnode_type (pnode);
+
+  if (ps)
+    { // Message was an alert.
+      _Auto alert = plist_entry (pnode, struct cap_alert_base, pnode);
+      plist_node_unlink (&alert->pnode);
+      int error = cap_recv_alert (recv, alert, &flow->lock);
+
       SPINLOCK_GUARD (&flow->lock);
-      slist_insert_head (&flow->alert_list, &alert->snode);
-      return (0);
+      if (unlikely (error))
+        { // Put back the alert.
+          plist_add (&flow->senders, &alert->pnode);
+          cap_recv_wakeup_fast (flow);
+        }
+      else if (ps >= CAP_KERN_ALERT_INTR)
+        // Alert was sent by the kernel.
+        recv->ipc_data.flags |= IPC_MSG_KERNEL;
+      else
+        // Regular alert. Put it in the cache for later reuse.
+        slist_insert_head (&flow->alert_user,
+                           &((union cap_alert_user *)alert)->snode);
+
+      return (error);
     }
 
+  spinlock_unlock (&flow->lock);
   _Auto sender = plist_entry (pnode, struct cap_sender, node);
   ssize_t tmp = cap_transfer_iters (sender->thread->task, sender->in_it,
                                     recv->it, IPC_COPY_FROM, &recv->ipc_data);
@@ -1141,47 +1182,50 @@ cap_redirect (rcvid_t rcvid, struct cap_base *cap)
 
   spinlock_lock (&flow->lock);
   cap_sender_enqueue (sender, flow);
-
-  if (list_empty (&flow->receivers))
-    {
-      spinlock_unlock (&flow->lock);
-      return (0);
-    }
-
-  _Auto recv = list_pop (&flow->receivers, struct cap_receiver, node);
+  cap_recv_wakeup_fast (flow);
   spinlock_unlock (&flow->lock);
-
-  recv->spurious = true;
-  thread_wakeup (recv->thread);
   return (0);
 }
 
 #undef cap_reset_iter
 #undef cap_reset_iter_single
 
-static int
-cap_notify_intr (struct list *node, uint32_t irq)
+static inline void
+cap_copy4 (void *dst, const void *src)
 {
-  _Auto ep = list_entry (node, struct cap_intr_entry, intr_node);
+  char *dp = dst;
+  const char *sp = src;
+
+  for (size_t i = 0; i < sizeof (uint32_t); ++i)
+    *dp++ = *sp++;
+}
+
+static int
+cap_notify_intr (struct list *node)
+{
+  _Auto ep = list_entry (node, struct cap_alert_async, xlink);
   _Auto flow = ep->flow;
-  struct cap_receiver *recv;
+  char *buf = cap_alert_buf (ep) +
+              offsetof (struct cap_kern_alert, intr.count);
 
   {
     SPINLOCK_GUARD (&flow->lock);
-    if (cap_intr_test (flow->intr.pending, irq))
+    if (flow->flags & CAP_FLOW_EXITING)
       return (EAGAIN);
-    else if (list_empty (&flow->receivers))
-      {
-        cap_intr_set (flow->intr.pending, irq);
-        ++flow->intr.nr_pending;
-        return (EINPROGRESS);
-      }
 
-    recv = list_pop (&flow->receivers, typeof (*recv), node);
+    uint32_t cnt;
+    cap_copy4 (&cnt, buf);
+
+    ++cnt;
+    cap_copy4 (buf, &cnt);
+
+    if (cnt > 1)
+      return (EINPROGRESS);
+
+    plist_add (&flow->senders, &ep->base.pnode);
+    cap_recv_wakeup_fast (flow);
+    return (EINPROGRESS);
   }
-
-  ssize_t rv = cap_send_small (recv, &ep->irq, sizeof (ep->irq), IPC_MSG_INTR);
-  return (rv < 0 ? 0 : EINPROGRESS);
 }
 
 static int
@@ -1191,13 +1235,12 @@ cap_handle_intr (void *arg)
   assert (list >= &cap_intr_handlers[0] &&
           list <= &cap_intr_handlers[ARRAY_SIZE (cap_intr_handlers) - 1]);
 
-  uint32_t irq = (uint32_t)(list - &cap_intr_handlers[0]) + CPU_EXC_INTR_FIRST;
   int ret = EAGAIN;
-
   RCU_GUARD ();
+
   list_rcu_for_each (list, tmp)
     {
-      int rv = cap_notify_intr (tmp, irq);
+      int rv = cap_notify_intr (tmp);
       if (rv == EINPROGRESS)
         ret = rv;
     }
@@ -1228,31 +1271,64 @@ cap_intr_add (uint32_t intr, struct list *node)
 }
 
 static int
-cap_intr_rem (uint32_t intr, struct list *node, bool eoi)
+cap_intr_rem (uint32_t intr, struct list *node)
 {
   adaptive_lock_acquire (&cap_intr_lock);
   list_rcu_remove (node);
 
   if (list_empty (&cap_intr_handlers[intr - CPU_EXC_INTR_FIRST]))
-    {
-      if (eoi)
-        intr_eoi (intr);
-      intr_unregister (intr, cap_handle_intr);
-    }
+    intr_unregister (intr, cap_handle_intr);
 
   adaptive_lock_release (&cap_intr_lock);
   rcu_wait ();
   return (0);
 }
 
-static struct cap_intr_entry*
-cap_find_intr (struct cap_flow *flow, uint32_t irq)
+static int
+cap_alert_async_id (struct cap_alert_async *entry)
 {
-  struct cap_intr_entry *tmp;
+  uint32_t val;
+  memcpy (&val, cap_alert_buf (entry) +
+          offsetof (struct cap_kern_alert, any_id),
+          sizeof (val));
+  return ((int)val);
+}
 
-  list_for_each_entry (&flow->intr.entries, tmp, cap_node)
-    if (tmp->irq == irq)
-      return (tmp);
+static void
+cap_alert_async_rem (struct cap_alert_async *alert)
+{
+  switch (cap_pnode_type (&alert->base.pnode))
+    {
+      case CAP_KERN_ALERT_INTR:
+        cap_intr_rem (cap_alert_async_id (alert), &alert->xlink);
+        break;
+
+      default:
+        // XXX: Implement.
+        break;
+    }
+}
+
+static struct cap_alert_async*
+cap_alert_async_find (struct cap_flow *flow, int type, int id,
+                      struct slist_node **prevp)
+{
+  struct cap_alert_async *tmp;
+  struct slist_node *node = NULL;
+
+  slist_for_each_entry (&flow->alert_kern, tmp, lnode)
+    {
+      if (cap_pnode_type (&tmp->base.pnode) == type &&
+          cap_alert_async_id (tmp) == id)
+        {
+          if (prevp)
+            *prevp = node;
+
+          return (tmp);
+        }
+
+      node = &tmp->lnode;
+    }
 
   return (NULL);
 }
@@ -1263,32 +1339,41 @@ cap_intr_register (struct cap_flow *flow, uint32_t irq)
   if (irq < CPU_EXC_INTR_FIRST || irq > CPU_EXC_INTR_LAST)
     return (EINVAL);
 
-  struct cap_intr_entry *ep = kmem_cache_alloc (&cap_misc_cache);
-  if (! ep)
+  struct cap_alert_async *ap = kmem_cache_alloc (&cap_misc_cache);
+  if (! ap)
     return (ENOMEM);
 
-  list_node_init (&ep->cap_node);
-  list_node_init (&ep->intr_node);
-  ep->irq = irq;
-  ep->flow = flow;
+  plist_node_init (&ap->base.pnode, ~0u);   // Interrupts have max priority.
+  cap_pnode_mark (&ap->base.pnode, CAP_KERN_ALERT_INTR);
+  slist_node_init (&ap->lnode);
+  list_node_init (&ap->xlink);
+  ap->flow = flow;
 
-  int error = cap_intr_add (irq, &ep->intr_node);
+  struct cap_kern_alert store =
+    {
+      .type = CAP_KERN_ALERT_INTR,
+      .intr = { .irq = irq, .count = 0 }
+    };
+
+  memcpy (cap_alert_buf (ap), &store, sizeof (store));
+
+  int error = cap_intr_add (irq, &ap->xlink);
   if (error)
     {
-      kmem_cache_free (&cap_misc_cache, ep);
+      kmem_cache_free (&cap_misc_cache, ap);
       return (error);
     }
 
   spinlock_lock (&flow->lock);
-  if (unlikely (cap_find_intr (flow, irq)))
+  if (unlikely (cap_alert_async_find (flow, CAP_KERN_ALERT_INTR, irq, NULL)))
     {
       spinlock_unlock (&flow->lock);
-      cap_intr_rem (irq, &ep->intr_node, false);
-      kmem_cache_free (&cap_misc_cache, ep);
+      cap_intr_rem (irq, &ap->xlink);
+      kmem_cache_free (&cap_misc_cache, ap);
       return (EALREADY);
     }
 
-  list_insert_tail (&flow->intr.entries, &ep->cap_node);
+  slist_insert_tail (&flow->alert_kern, &ap->lnode);
   spinlock_unlock (&flow->lock);
   return (0);
 }
@@ -1297,32 +1382,24 @@ int
 cap_intr_unregister (struct cap_flow *flow, uint32_t irq)
 {
   CPU_INTR_GUARD ();
-
   spinlock_lock (&flow->lock);
-  _Auto entry = cap_find_intr (flow, irq);
-  spinlock_unlock (&flow->lock);
 
-  return (!entry ? EINVAL :
-          cap_intr_rem (irq, &entry->intr_node,
-                        cap_intr_test (flow->intr.pending, irq)));
-}
+  struct slist_node *node = NULL;
+  _Auto entry = cap_alert_async_find (flow, CAP_KERN_ALERT_INTR, irq, &node);
 
-int
-cap_intr_eoi (struct cap_flow *flow, uint32_t irq)
-{
-  if (irq < CPU_EXC_INTR_FIRST || irq > CPU_EXC_INTR_LAST)
-    return (EINVAL);
-
-  SPINLOCK_GUARD (&flow->lock);
-  if (cap_intr_test (flow->intr.pending, irq))
+  if (! entry)
     {
-      cap_intr_clear (flow->intr.pending, irq);
-      --flow->intr.nr_pending;
+      spinlock_unlock (&flow->lock);
+      return (EINVAL);
     }
-  else if (!cap_find_intr (flow, irq))
-    return (EINVAL);
 
-  intr_eoi (irq);
+  slist_remove (&flow->alert_kern, node);
+  if (!plist_node_unlinked (&entry->base.pnode))
+    plist_remove (&flow->senders, &entry->base.pnode);
+
+  spinlock_unlock (&flow->lock);
+  cap_intr_rem (irq, &entry->xlink);
+
   return (0);
 }
 
@@ -1349,7 +1426,7 @@ cap_setup (void)
   // Every capability type but flows are allocated from the same cache.
 #define SZ(type)   sizeof (struct cap_##type)
   size_t size = CAP_MAX_SIZE (SZ (task), SZ (thread), SZ (channel),
-                              SZ (kernel), SZ (intr_entry));
+                              SZ (kernel), SZ (alert_async));
 
   kmem_cache_init (&cap_misc_cache, "cap_misc", size, 0, NULL, 0);
   kmem_cache_init (&cap_flow_cache, "cap_flow",
