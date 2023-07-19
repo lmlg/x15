@@ -1802,9 +1802,6 @@ thread_destroy (struct thread *thread)
   assert (thread != thread_self ());
   assert (thread->state == THREAD_DEAD);
 
-  if (likely (thread->task != task_get_kernel_task ()))
-    turnstile_td_exit (&thread->turnstile_td);
-
   // See task_info().
   task_remove_thread (thread->task, thread);
 
@@ -2182,6 +2179,9 @@ thread_exit (void)
 {
   struct thread_zombie zombie;
   struct thread *thread = thread_self ();
+
+  if (likely (thread->task != task_get_kernel_task ()))
+    turnstile_td_exit (&thread->turnstile_td);
 
   futex_td_exit (thread->futex_td);
 
