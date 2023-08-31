@@ -946,28 +946,6 @@ thread_by_kuid (uint32_t kuid)
   return (kuid_find_type (kuid, struct thread, kuid, KUID_THREAD));
 }
 
-// Lock a thread's run queue.
-struct thread_runq* thread_lock_runq (struct thread *thr, cpu_flags_t *flags);
-
-// Unlock a previously acquired run queue.
-void thread_unlock_runq (struct thread_runq *runq, cpu_flags_t flags);
-
-// Make the current thread send-blocked.
-int thread_send_block (struct spinlock *lock, void *data);
-
-// Make the current thread receive-blocked.
-int thread_recv_block (struct spinlock *lock, void *data);
-
-// Hand off scheduling to a specific thread.
-void thread_handoff (struct thread *src, struct thread *dst, void *data,
-                     struct thread_sched_data *sched);
-
-// Adopt the scheduling parameters of another thread.
-void thread_adopt (struct thread *src, struct thread *dst);
-
-// Test that a thread is either send-blocked or reply-blocked.
-bool thread_send_reply_blocked (struct thread *thread);
-
 // Handle an IPC message on a thread capability.
 struct cap_iters;
 struct ipc_msg_data;

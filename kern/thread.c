@@ -191,10 +191,6 @@ struct thread_rt_runq
 // Round slice base unit for fair-scheduling threads.
 #define THREAD_FS_ROUND_SLICE_BASE   (CLOCK_FREQ / 10)
 
-static const char THREAD_SEND_BLOCK[] = "ipc-send";
-static const char THREAD_RECV_BLOCK[] = "ipc-recv";
-static const char THREAD_REPLY_BLOCK[] = "ipc-reply";
-
 // Group of threads sharing the same weight.
 struct thread_fs_group
 {
@@ -586,6 +582,27 @@ thread_runq_schedule_unload (struct thread *thread __unused)
 #ifdef CONFIG_PERFMON
   perfmon_td_unload (thread_get_perfmon_td (thread));
 #endif
+}
+
+static struct thread_runq*
+thread_lock_runq (struct thread *thread, cpu_flags_t *flags)
+{
+  while (1)
+    {
+      _Auto runq = atomic_load_rlx (&thread->runq);
+      spinlock_lock_intr_save (&runq->lock, flags);
+
+      if (likely (runq == atomic_load_rlx (&thread->runq)))
+        return (runq);
+
+      spinlock_unlock_intr_restore (&runq->lock, *flags);
+    }
+}
+
+static void
+thread_unlock_runq (struct thread_runq *runq, cpu_flags_t flags)
+{
+  spinlock_unlock_intr_restore (&runq->lock, flags);
 }
 
 static struct thread_runq_guard_t
@@ -1708,27 +1725,6 @@ error_sleepq:
   return (error);
 }
 
-struct thread_runq*
-thread_lock_runq (struct thread *thread, cpu_flags_t *flags)
-{
-  while (1)
-    {
-      _Auto runq = atomic_load_rlx (&thread->runq);
-      spinlock_lock_intr_save (&runq->lock, flags);
-
-      if (likely (runq == atomic_load_rlx (&thread->runq)))
-        return (runq);
-
-      spinlock_unlock_intr_restore (&runq->lock, *flags);
-    }
-}
-
-void
-thread_unlock_runq (struct thread_runq *runq, cpu_flags_t flags)
-{
-  spinlock_unlock_intr_restore (&runq->lock, flags);
-}
-
 #ifdef CONFIG_THREAD_STACK_GUARD
 
 #include <machine/pmap.h>
@@ -2757,87 +2753,6 @@ thread_set_affinity (struct thread *thread, const struct cpumap *cpumap)
     }
 
   return (0);
-}
-
-int
-thread_send_block (struct spinlock *lock, void *data)
-{
-  thread_sleep (lock, data, THREAD_SEND_BLOCK);
-  return (0);
-}
-
-int
-thread_recv_block (struct spinlock *lock, void *data)
-{
-  thread_sleep (lock, data, THREAD_RECV_BLOCK);
-  return (0);
-}
-
-void
-thread_handoff (struct thread *src, struct thread *dst, void *data,
-                struct thread_sched_data *sched)
-{
-  assert (dst->state == THREAD_SLEEPING);
-  assert (dst->wchan_desc == THREAD_RECV_BLOCK);
-  assert (!dst->in_runq);
-
-  _Auto td = thread_turnstile_td (dst);
-  turnstile_td_lock (td);
-
-  cpu_flags_t flags;
-  _Auto runq = thread_lock_runq (src, &flags);
-
-  /*
-   * Save the scheduling state of the source thread and mark it
-   * as being reply-blocked.
-   */
-  *sched = *thread_get_real_sched_data(src);
-  thread_set_wchan (src, data, THREAD_REPLY_BLOCK);
-  atomic_store_rlx (&src->state, THREAD_SLEEPING);
-
-  // Make the destination thread inherit the scheduling context.
-  thread_pi_setsched_impl (runq, dst, sched->sched_policy,
-                           sched->global_priority);
-  turnstile_td_unlock (td);
-
-  thread_clear_wchan (dst);
-  atomic_store_rlx (&dst->state, THREAD_RUNNING);
-  thread_runq_add (runq, dst);
-  thread_runq_set_next (runq, dst);
-
-  // Do all the bookeeping needed to switch to the destination thread.
-  thread_preempt_disable ();
-  thread_clear_flag (src, THREAD_YIELD);
-  thread_runq_put_prev (runq, src);
-  thread_runq_remove (runq, src);
-
-  thread_context_switch (&runq, src, dst);
-
-  // We're back.
-  thread_preempt_enable ();
-  thread_unlock_runq (runq, flags);
-}
-
-void
-thread_adopt (struct thread *src, struct thread *dst)
-{
-  // Mark the source thread as reply blocked.
-  src->wchan_desc = THREAD_REPLY_BLOCK;
-
-  // Make the destination thread inherit the scheduling context.
-  _Auto td = thread_turnstile_td (dst);
-  turnstile_td_lock (td);
-
-  thread_pi_setscheduler (dst, thread_real_sched_policy (src),
-                          thread_real_global_priority (src));
-  turnstile_td_unlock (td);
-}
-
-bool
-thread_send_reply_blocked (struct thread *thread)
-{
-  return (thread->wchan_desc == THREAD_SEND_BLOCK ||
-          thread->wchan_desc == THREAD_REPLY_BLOCK);
 }
 
 static ssize_t
