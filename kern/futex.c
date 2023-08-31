@@ -273,6 +273,7 @@ static const struct futex_ops*
 futex_select_ops (uint32_t flags, uint32_t mode)
 {
   uint32_t idx = (flags & FUTEX_PI) / FUTEX_PI;
+  assert (idx <= 1);
   return ((mode & FUTEX_DATA_WAIT) ?
           &futex_wait_ops[idx] : &futex_wake_ops[idx]);
 }
@@ -281,6 +282,9 @@ static int
 futex_data_init (struct futex_data *data, int *addr,
                  uint32_t flags, uint32_t mode)
 {
+  data->wait_obj = NULL;
+  data->mode = 0;
+
   int error = futex_check_addr (addr);
   if (error)
     return (error);
@@ -295,7 +299,6 @@ futex_data_init (struct futex_data *data, int *addr,
   else if (flags & FUTEX_SHARED)
     data->mode |= FUTEX_DATA_SHARED;
 
-  data->wait_obj = NULL;
   data->ops = futex_select_ops (flags, mode);
   return (0);
 }

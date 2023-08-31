@@ -147,6 +147,6 @@ cspace_destroy (struct cspace *sp)
   rdxtree_remove_all (&sp->tree);
 }
 
-#define cspace_self()   ((struct cspace *)&thread_self()->task->caps)
+#define cspace_self()   ((struct cspace *)&thread_self()->xtask->caps)
 
 #endif

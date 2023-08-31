@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2022 Agustina Arzille.
+ * Copyright (c) 2023 Agustina Arzille.
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -17,11 +17,10 @@
  * Interfaces for capabilities.
  */
 
-#ifndef KERN_CAPABILITY_H
-#define KERN_CAPABILITY_H
+#ifndef KERN_CAP_H
+#define KERN_CAP_H
 
 #include <assert.h>
-#include <iovec.h>
 #include <stdint.h>
 
 #include <kern/init.h>
@@ -31,8 +30,6 @@
 #include <kern/slist.h>
 #include <kern/spinlock.h>
 #include <kern/sref.h>
-
-#include <machine/cpu.h>
 
 struct task;
 struct thread;
@@ -50,14 +47,18 @@ enum
 // Size of an alert message, in bytes.
 #define CAP_ALERT_SIZE   16
 
-// Kernel-sent alerts.
+#define CAP_ALERT_NONBLOCK   0x01   // Don't block when sending an alert.
+
+// Alert types.
 enum
 {
-  CAP_KERN_ALERT_INTR = 2,
-  CAP_KERN_ALERT_THREAD,
-  CAP_KERN_ALERT_TASK,
+  CAP_ALERT_USER,
+  CAP_ALERT_INTR,
+  CAL_ALERT_THREAD_DIED,
+  CAP_ALERT_TASK_DIED,
 };
 
+// Kernel-sent alert.
 struct cap_kern_alert
 {
   int type;
@@ -84,9 +85,6 @@ static_assert (__builtin_offsetof (struct cap_kern_alert, intr.irq) ==
                __builtin_offsetof (struct cap_kern_alert, task_id),
                "invalid layout for cap_kern_alert");
 
-// Receive-IDs.
-typedef int64_t rcvid_t;
-
 struct cap_base
 {
   unsigned int type;
@@ -100,16 +98,24 @@ enum
   CAP_KERNEL_MAX,
 };
 
+struct cap_thread_info
+{
+  struct futex_td *futex_td;
+  void *thread_ptr;
+};
+
 #define CAPABILITY   struct cap_base base
 
 struct cap_flow
 {
   CAPABILITY;
-  struct plist senders;
+  struct list waiters;
   struct list receivers;
-  struct slist alert_user;
-  struct slist alert_kern;
+  struct slist lpads;
+  struct slist alloc_alerts;
+  struct plist pending_alerts;
   uintptr_t tag;
+  uintptr_t entry;
   uint32_t flags;
 #if CONFIG_MAX_CPUS > 1
   char pad[CPU_L1_SIZE];
@@ -163,10 +169,6 @@ struct cap_iters
             struct cap_flow *   : CAP_BASE (x),   \
             default: (x))
 
-// Flags for 'cap_send_alert'.
-#define CAP_ALERT_ASYNC   0x00
-#define CAP_ALERT_BLOCK   0x01
-
 // Acquire or release a reference on a capability.
 static inline void
 cap_base_acq (struct cap_base *cap)
@@ -195,7 +197,8 @@ int cap_intern (struct cap_base *cap, int flags);
 #define cap_type(cap)   (((const struct cap_base *)(x))->type)
 
 // Create a flow.
-int cap_flow_create (struct cap_flow **outp, uint32_t flags, uintptr_t tag);
+int cap_flow_create (struct cap_flow **outp, uint32_t flags,
+                     uintptr_t tag, uintptr_t entry);
 
 // Create a channel for a flow.
 int cap_channel_create (struct cap_channel **outp, struct cap_flow *flow,
@@ -209,11 +212,9 @@ int cap_thread_create (struct cap_thread **outp, struct thread *thread);
 
 // Get and set a capability's tag (Used for channels and flows).
 int cap_get_tag (const struct cap_base *cap, uintptr_t *tagp);
-
-#define cap_get_tag(cap, tagp)   (cap_get_tag) (CAP (cap), (tagp))
-
 int cap_set_tag (struct cap_base *cap, uintptr_t tag);
 
+#define cap_get_tag(cap, tagp)   (cap_get_tag) (CAP (cap), (tagp))
 #define cap_set_tag(cap, tag)    (cap_set_tag) (CAP (cap), (tag))
 
 // Link a channel to a flow.
@@ -222,58 +223,41 @@ int cap_channel_link (struct cap_channel *channel, struct cap_flow *flow);
 // Hook a channel to a remote flow in a task.
 int cap_flow_hook (struct cap_channel **outp, struct task *task, int cap_idx);
 
-// Send and receive IPC iterators and get the metadata.
-ssize_t cap_send_iters (struct cap_base *cap, struct cap_iters *in,
-                        struct cap_iters *out, struct ipc_msg_data *data);
+// Send and receive iterator triplets to a capability.
+ssize_t cap_send_iters (struct cap_base *cap, struct cap_iters *in_it,
+                        struct cap_iters *out_it, struct ipc_msg_data *data);
 
-// Send an alert to a capability (flow or channel).
-ssize_t cap_send_alert (struct cap_base *cap, const void *buf,
-                        size_t size, uint32_t flags, uint32_t priority);
+// Reply to the current message with an iterator triplet or error value.
+ssize_t cap_reply_iters (struct cap_iters *it, int rv);
 
-#define cap_send_alert(cap, buf, size, flags, prio)   \
-  (cap_send_alert) (CAP (cap), (buf), (size), (flags), (prio))
+// Pull an iterator triplet from the current message.
+ssize_t cap_pull_iters (struct cap_iters *it, struct ipc_msg_data *data);
 
-// Receive IPC iterators and the metadata.
-rcvid_t cap_recv_iter (int capx, struct cap_iters *it,
-                       struct ipc_msg_data *data);
+// Push an iterator triplet to the current message.
+ssize_t cap_push_iters (struct cap_iters *it, struct ipc_msg_data *data);
 
-// Reply to a received message with IPC iterators or an error.
-int cap_reply_iter (rcvid_t rcvid, struct cap_iters *iter, int err);
+// Receive an alert from a flow.
+int cap_recv_alert (struct cap_flow *flow, void *buf,
+                    uint32_t flags, struct ipc_msg_data *mdata);
 
-/*
- * Make the calling thread handle a receive ID, or detach the
- * current one if zero.
- */
-int cap_handle (rcvid_t rcvid);
+// Send an alert to a flow.
+int cap_send_alert (struct cap_base *cap, const void *buf,
+                    uint32_t flags, uint32_t prio);
 
-/*
- * Pull more data from a receive ID.
- *
- * If the calling thread is not already handling the receive ID, then it will
- * attempt to acquire it after detaching its current peer.
- */
-ssize_t cap_pull_iter (rcvid_t rcvid, struct cap_iters *iter,
-                       struct ipc_msg_data *mdata);
+#define cap_send_alert(cap, buf, flags, prio)   \
+  (cap_send_alert) (CAP (cap), buf, flags, prio)
 
-/*
- * Push more data into a receive ID.
- *
- * If the calling thread is not already handling the receive ID, then it will
- * attempt to acquire it after detaching its current peer.
- */
-ssize_t cap_push_iter (rcvid_t rcvid, struct cap_iters *iter,
-                       struct ipc_msg_data *mdata);
+int cap_flow_add_gift (struct cap_flow *flow, void *stack, size_t size,
+                       struct ipc_msg *msg, struct ipc_msg_data *mdata,
+                       struct cap_thread_info *info);
 
-// Redirect a previously received message to a new capability.
-int cap_redirect (rcvid_t rcvid, struct cap_base *cap);
+int cap_flow_rem_gift (struct cap_flow *flow, uintptr_t stack);
 
 // Register a flow for interrupt handling.
 int cap_intr_register (struct cap_flow *flow, uint32_t irq);
 
 // Unregister a flow for interrupt handling.
 int cap_intr_unregister (struct cap_flow *flow, uint32_t irq);
-
-// Inlined versions of the above.
 
 #define cap_iters_init_impl(it, buf, size, iov_init)   \
   do   \
@@ -340,125 +324,94 @@ cap_send_msg (struct cap_base *cap, const struct ipc_msg *src,
 
   cap_iters_init_msg (&in, src);
   cap_iters_init_msg (&out, dst);
+
   return (cap_send_iters (cap, &in, &out, data));
 }
 
 #define cap_send_msg(cap, src, dst, data)   \
   (cap_send_msg) (CAP (cap), (src), (dst), (data))
 
-// Receive raw bytes and metadata from a capability.
-static inline rcvid_t
-cap_recv_bytes (int capx, void *dst, size_t size,
-                struct ipc_msg_data *data)
-{
-  struct cap_iters in;
-  cap_iters_init_buf (&in, dst, size);
-  return (cap_recv_iter (capx, &in, data));
-}
-
-// Receive bytes in iovecs and metadata from a capability.
-static inline rcvid_t
-cap_recv_iov (int capx, struct iovec *dst, uint32_t nr_iov,
-              struct ipc_msg_data *data)
-{
-  struct cap_iters in;
-  cap_iters_init_iov (&in, dst, nr_iov);
-  return (cap_recv_iter (capx, &in, data));
-}
-
-// Receive a full IPC message and metadata from a capability.
-static inline rcvid_t
-cap_recv_msg (int capx, struct ipc_msg *msg, struct ipc_msg_data *data)
-{
-  struct cap_iters in;
-  cap_iters_init_msg (&in, msg);
-  return (cap_recv_iter (capx, &in, data));
-}
-
-// Reply to a received message with raw bytes or an error.
+// Reply to the current message with raw bytes or an error.
 static inline int
-cap_reply_bytes (rcvid_t rcvid, const void *src, size_t bytes, int err)
+cap_reply_bytes (const void *src, size_t bytes, int err)
 {
   struct cap_iters it;
   cap_iters_init_buf (&it, src, bytes);
-  return (cap_reply_iter (rcvid, &it, err));
+  return (cap_reply_iters (&it, err));
 }
 
-// Reply to a received message with bytes in iovecs or an error.
+// Reply to the current message with bytes in iovecs or an error.
 static inline int
-cap_reply_iov (rcvid_t rcvid, const struct iovec *iov,
-               uint32_t nr_iov, int err)
+cap_reply_iov (const struct iovec *iov, uint32_t nr_iov, int err)
 {
   struct cap_iters it;
   cap_iters_init_iov (&it, iov, nr_iov);
-  return (cap_reply_iter (rcvid, &it, err));
+  return (cap_reply_iters (&it, err));
 }
 
-// Reply to a received message with a full IPC message or an error.
+// Reply to the current message with a full IPC message or an error.
 static inline int
-cap_reply_msg (rcvid_t rcvid, const struct ipc_msg *msg, int err)
+cap_reply_msg (const struct ipc_msg *msg, int err)
 {
   struct cap_iters it;
   cap_iters_init_msg (&it, msg);
-  return (cap_reply_iter (rcvid, &it, err));
+  return (cap_reply_iters (&it, err));
 }
 
-// Pull raw bytes from a receive ID.
+// Pull raw bytes from the current message.
 static inline ssize_t
-cap_pull_bytes (rcvid_t rcvid, void *dst, size_t bytes,
-                struct ipc_msg_data *mdata)
+cap_pull_bytes (void *dst, size_t bytes, struct ipc_msg_data *mdata)
 {
   struct cap_iters it;
   cap_iters_init_buf (&it, dst, bytes);
-  return (cap_pull_iter (rcvid, &it, mdata));
+  return (cap_pull_iters (&it, mdata));
 }
 
-// Pull iovecs from a receive ID.
+// Pull iovecs from the current message.
 static inline ssize_t
-cap_pull_iov (rcvid_t rcvid, struct iovec *iovs, uint32_t nr_iovs,
-              struct ipc_msg_data *mdata)
+cap_pull_iov (struct iovec *iovs, uint32_t nr_iovs, struct ipc_msg_data *mdata)
 {
   struct cap_iters it;
   cap_iters_init_iov (&it, iovs, nr_iovs);
-  return (cap_pull_iter (rcvid, &it, mdata));
+  return (cap_pull_iters (&it, mdata));
 }
 
-// Pull an IPC message from a receive ID.
+// Pull an IPC message from the current message.
 static inline ssize_t
-cap_pull_msg (rcvid_t rcvid, struct ipc_msg *msg, struct ipc_msg_data *mdata)
+cap_pull_msg (struct ipc_msg *msg, struct ipc_msg_data *mdata)
 {
   struct cap_iters it;
   cap_iters_init_msg (&it, msg);
-  return (cap_pull_iter (rcvid, &it, mdata));
+  return (cap_pull_iters (&it, mdata));
 }
 
-// Push raw bytes into a receive ID.
+// Push raw bytes into the current message.
 static inline ssize_t
-cap_push_bytes (rcvid_t rcvid, const void *src, size_t bytes,
+cap_push_bytes (const void *src, size_t bytes,
                 struct ipc_msg_data *mdata)
 {
   struct cap_iters it;
   cap_iters_init_buf (&it, src, bytes);
-  return (cap_push_iter (rcvid, &it, mdata));
+  return (cap_push_iters (&it, mdata));
 }
 
-// Push iovecs into a receive ID.
+// Push iovecs into the current message.
 static inline ssize_t
-cap_push_iov (rcvid_t rcvid, const struct iovec *iovs, uint32_t nr_iovs,
+cap_push_iov (const struct iovec *iovs, uint32_t nr_iovs,
               struct ipc_msg_data *mdata)
 {
   struct cap_iters it;
   cap_iters_init_iov (&it, iovs, nr_iovs);
-  return (cap_push_iter (rcvid, &it, mdata));
+  return (cap_push_iters (&it, mdata));
 }
 
+// Push an IPC message to the current message.
 static inline ssize_t
-cap_push_msg (rcvid_t rcvid, const struct ipc_msg *msg,
-              struct ipc_msg_data *mdata)
+cap_push_msg (const struct ipc_msg *msg, struct ipc_msg_data *mdata)
 {
   struct cap_iters it;
   cap_iters_init_msg (&it, msg);
-  return (cap_push_iter (rcvid, &it, mdata));
+  return (cap_push_iters (&it, mdata));
 }
 
 /*
@@ -466,6 +419,6 @@ cap_push_msg (rcvid_t rcvid, const struct ipc_msg *msg,
  *  - capabilities fully operational.
  */
 
-INIT_OP_DECLARE (capability_setup);
+INIT_OP_DECLARE (cap_setup);
 
 #endif

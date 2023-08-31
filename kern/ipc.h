@@ -86,7 +86,7 @@ struct ipc_msg_data
   int thread_id;
   uint32_t flags;
   uintptr_t tag;
-  size_t nbytes;
+  ssize_t nbytes;
   uint32_t pages_sent;
   uint32_t pages_recv;
   uint32_t caps_sent;

@@ -573,7 +573,7 @@ thread_runq_wakeup_balancer (struct thread_runq *runq)
 static void
 thread_runq_schedule_load (struct thread *thread)
 {
-  pmap_load (thread->task->map->pmap);
+  pmap_load (thread->xtask->map->pmap);
 
 #ifdef CONFIG_PERFMON
   perfmon_td_load (thread_get_perfmon_td (thread));
@@ -648,8 +648,9 @@ thread_runq_schedule (struct thread_runq *runq)
 {
   struct thread *prev = thread_self ();
 
-  assert (__builtin_frame_address (0) >= prev->stack &&
-          __builtin_frame_address (0) < prev->stack + TCB_STACK_SIZE);
+  assert (prev->cur_gift ||
+      (__builtin_frame_address (0) >= prev->stack &&
+       __builtin_frame_address (0) < prev->stack + TCB_STACK_SIZE));
   assert (prev->preempt_level == THREAD_SUSPEND_PREEMPT_LEVEL);
   assert (!cpu_intr_enabled ());
   assert (spinlock_locked (&runq->lock));
@@ -1569,7 +1570,7 @@ thread_init_booter (uint32_t cpu)
   thread_set_user_sched_class (booter, THREAD_SCHED_CLASS_IDLE);
   thread_set_user_priority (booter, 0);
   thread_reset_real_priority (booter);
-  booter->task = task_get_kernel_task ();
+  booter->task = booter->xtask = task_get_kernel_task ();
   snprintf (booter->name, sizeof (booter->name),
             THREAD_KERNEL_PREFIX "thread_boot/%u", cpu);
 }
@@ -1636,7 +1637,7 @@ thread_init (struct thread *thread, void *stack,
   thread->in_runq = false;
   thread_set_wchan (thread, thread, "init");
   thread->state = THREAD_SLEEPING;
-  thread->priv_sleepq = sleepq_create();
+  thread->priv_sleepq = sleepq_create ();
 
   int error;
 
@@ -1669,12 +1670,11 @@ thread_init (struct thread *thread, void *stack,
   thread->join_waiter = NULL;
   spinlock_init (&thread->join_lock);
   thread->terminating = false;
-  thread->task = task;
+  thread->task = thread->xtask = task;
   thread->stack = stack;
   strlcpy (thread->name, attr->name, sizeof (thread->name));
   thread->fixup = NULL;
-  thread->cur_rcvid = 0;
-  thread->cur_peer = NULL;
+  thread->cur_gift = NULL;
   thread->futex_td = NULL;
 
 #ifdef CONFIG_PERFMON

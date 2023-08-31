@@ -213,9 +213,8 @@ struct thread
 #endif
 
   struct unw_fixup_t *fixup;      // (-)
-  int64_t cur_rcvid;              // (-)
-  struct thread *cur_peer;        // (-)
-
+  void *cur_gift;                 // (-)
+  struct task *xtask;             // (-)
   struct futex_td *futex_td;      // (-)
 };
 

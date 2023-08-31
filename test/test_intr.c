@@ -65,8 +65,6 @@ static void
 test_intr (void *arg)
 {
   struct cap_flow *flow = arg;
-  int capx = cap_intern (flow, 0);
-  assert (capx >= 0);
 
   struct
     {
@@ -78,10 +76,9 @@ test_intr (void *arg)
                                  sizeof (*data));
   assert (! error);
 
-  rcvid_t rcvid = cap_recv_bytes (capx, &data->alert,
-                                  sizeof (data->alert), &data->md);
+  error = cap_recv_alert (flow, &data->alert, sizeof (data->alert), &data->md);
+  assert (! error);
 
-  assert (rcvid == 0);
   assert (data->md.flags & IPC_MSG_KERNEL);
   assert (data->alert.intr.irq == TEST_INTR_FIRST);
   assert (data->alert.intr.count == 2);
@@ -95,7 +92,7 @@ TEST_DEFERRED (intr)
   intr_register_ctl (&test_intr_ops, 0, TEST_INTR_FIRST, TEST_INTR_LAST);
 
   struct cap_flow *flow;
-  int error = cap_flow_create (&flow, 0, 0);
+  int error = cap_flow_create (&flow, 0, 0, 0);
   assert (! error);
 
   error = cap_intr_register (flow, TEST_INTR_FIRST);

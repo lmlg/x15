@@ -62,7 +62,7 @@
 #include <kern/slist_types.h>
 
 #define PERCPU_SECTION   .percpu
-#define __percpu   __section(QUOTE(PERCPU_SECTION))
+#define __percpu   __section (QUOTE (PERCPU_SECTION))
 
 typedef void (*percpu_op_fn_t) (void);
 

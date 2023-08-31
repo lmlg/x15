@@ -37,19 +37,15 @@ user_copy_impl (void *dst, const void *src, size_t size)
 int
 user_copy_to (void *udst, const void *src, size_t size)
 {
-  if (!user_check_range (udst, size))
-    return (EFAULT);
-
-  return (user_copy_impl (udst, src, size));
+  return (user_check_range (udst, size) ?
+          user_copy_impl (udst, src, size) : EFAULT);
 }
 
 int
 user_copy_from (void *dst, const void *usrc, size_t size)
 {
-  if (!user_check_range (usrc, size))
-    return (EFAULT);
-
-  return (user_copy_impl (dst, usrc, size));
+  return (user_check_range (usrc, size) ?
+          user_copy_impl (dst, usrc, size) : EFAULT);
 }
 
 static struct iovec*

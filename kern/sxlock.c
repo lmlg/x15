@@ -51,7 +51,47 @@ sxlock_shlock_slow (struct sxlock *sxp)
 }
 
 void
-sxlock_unlock_slow (struct sxlock *sxp)
+sxlock_unlock (struct sxlock *sxp)
+{
+  while (1)
+    {
+      uint32_t val = atomic_load_rlx (&sxp->lock);
+      if (val == (SXLOCK_WAITERS | SXLOCK_MASK) ||
+          val == (SXLOCK_WAITERS | 1))
+        break;
+
+      uint32_t nval = val == SXLOCK_MASK ? 0 : val - 1;
+      if (atomic_cas_bool_rel (&sxp->lock, val, nval))
+        return;
+
+      cpu_pause ();
+    }
+
+  _Auto sleepq = sleepq_acquire (sxp);
+  uint32_t val = atomic_load_rlx (&sxp->lock);
+  int wake;
+
+  if ((val & SXLOCK_MASK) == SXLOCK_MASK)
+    {
+      atomic_swap_rel (&sxp->lock, 0);
+      wake = 1;
+    }
+  else
+    {
+      uint32_t prev = atomic_sub_rel (&sxp->lock, 1);
+      wake = (int)((prev >> SXLOCK_WAITERS_BIT) & (prev & 1));
+    }
+
+  if (! sleepq)
+    return;
+  else if (wake)
+    sleepq_broadcast (sleepq);
+
+  sleepq_release (sleepq);
+}
+
+void
+sxlock_share_slow (struct sxlock *sxp)
 {
   struct sleepq *sleepq = sleepq_acquire (sxp);
   if (sleepq)

@@ -73,27 +73,8 @@ sxlock_shlock (struct sxlock *sxp)
     sxlock_shlock_slow (sxp);
 }
 
-void sxlock_unlock_slow (struct sxlock *sxp);
-
-static inline void
-sxlock_unlock (struct sxlock *sxp)
-{
-  int wake;
-
-  if ((atomic_load_rlx (&sxp->lock) & SXLOCK_MASK) == SXLOCK_MASK)
-    { // Exclusive lock.
-      uint32_t prev = atomic_swap_rel (&sxp->lock, 0);
-      wake = (int)(prev >> SXLOCK_WAITERS_BIT);
-    }
-  else
-    {
-      uint32_t prev = atomic_sub_rel (&sxp->lock, 1);
-      wake = (int)((prev >> SXLOCK_WAITERS_BIT) & (prev & 1));
-    }
-
-  if (wake)
-    sxlock_unlock_slow (sxp);
-}
+void sxlock_unlock (struct sxlock *sxp);
+void sxlock_share_slow (struct sxlock *sxp);
 
 // Mutate an exclusive lock into a shared one.
 static inline void
@@ -101,7 +82,7 @@ sxlock_share (struct sxlock *sxp)
 {
   uint32_t prev = atomic_and_rel (&sxp->lock, SXLOCK_WAITERS | 1);
   if (prev & SXLOCK_WAITERS)
-    sxlock_unlock_slow (sxp);
+    sxlock_share_slow (sxp);
 }
 
 // Shared-Exclusive lock guards.

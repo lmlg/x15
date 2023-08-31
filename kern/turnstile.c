@@ -813,6 +813,5 @@ turnstile_td_exit (struct turnstile_td *td)
       turnstile_release (turnstile);
     }
 
-  plist_init (&td->owned_turnstiles);
   thread_propagate_priority ();
 }

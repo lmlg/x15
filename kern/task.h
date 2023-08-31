@@ -108,7 +108,7 @@ task_get_vm_map (const struct task *task)
 static inline struct task*
 task_self (void)
 {
-  return (thread_self()->task);
+  return (thread_self()->xtask);
 }
 
 static inline int

@@ -82,9 +82,11 @@ test_setup (void)
       phys_addr_t pa;
 
       if (pmap_kextract ((uintptr_t)sym->name, &pa) != 0)
-        /* This can happen for symbols that live in the BOOT section;
+        /*
+         * This can happen for symbols that live in the BOOT section;
          * at this stage, that memory is no longer accessible, so we
-         * simply skip them. */
+         * simply skip them.
+         */
         continue;
 
       size_t len = strlen (sym->name);

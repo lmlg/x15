@@ -81,14 +81,11 @@ sleepq_waiter_set_pending_wakeup (struct sleepq_waiter *waiter)
 static void
 sleepq_waiter_wakeup (struct sleepq_waiter *waiter, struct sleepq *sleepq)
 {
-  if (sleepq_waiter_pending_wakeup (waiter))
-    {
-      struct sleepq_waiter *wp = (void *)thread_wchan_addr (waiter->thread);
-      if (wp)
-        wp->sleepq = sleepq;
+  if (!sleepq_waiter_pending_wakeup (waiter))
+    return;
 
-      thread_wakeup (waiter->thread);
-    }
+  waiter->sleepq = sleepq;
+  thread_wakeup (waiter->thread);
 }
 
 static bool
@@ -112,7 +109,6 @@ static void
 sleepq_unuse (struct sleepq *sleepq)
 {
   sync_key_clear (&sleepq->sync_key);
-  memset (&sleepq->sync_key, 0, sizeof (sleepq->sync_key));
 }
 
 static bool
@@ -178,7 +174,7 @@ sleepq_ctor (void *ptr)
 {
   struct sleepq *sleepq = ptr;
   sleepq->bucket = NULL;
-  memset (&sleepq->sync_key, 0, sizeof (sleepq->sync_key));
+  sync_key_clear (&sleepq->sync_key);
   list_init (&sleepq->waiters);
   sleepq->oldest_waiter = NULL;
   sleepq->next_free = NULL;
@@ -453,7 +449,7 @@ sleepq_wait_common (struct sleepq_waiter *waiter, const char *wchan,
 
   do
     {
-      if (!timed)
+      if (! timed)
         {
           thread_sleep (lock, waiter, wchan);
           error = 0;
@@ -592,6 +588,12 @@ void
 sleepq_move (const union sync_key *dst_key, const union sync_key *src_key,
              bool wake_one, bool move_all)
 {
+  assert (dst_key && !sync_key_isclear (dst_key));
+  assert (src_key && !sync_key_isclear (src_key));
+
+  if (sync_key_eq (dst_key, src_key))
+    return;
+
   _Auto dbucket = sleepq_bucket_get (dst_key);
   _Auto sbucket = sleepq_bucket_get (src_key);
 

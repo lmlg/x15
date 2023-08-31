@@ -882,3 +882,69 @@ ASM_ENTRY (cpu_unw_mctx_jmp)
   ret
 .cfi_endproc
 ASM_END (cpu_unw_mctx_jmp)
+
+ASM_ENTRY (cpu_gift_swap)
+.cfi_startproc
+#ifdef __LP64__
+  # Store registers required by the ABI.
+  pushq %rbp
+  pushq %rbx
+  pushq %r12
+  pushq %r13
+  pushq %r14
+  pushq %r15
+  # Save current stack and switch to new one.
+  movq 0(%rdi), %rcx
+  movq %rsp, 0(%rdi)
+  movq %rcx, %rsp
+  # Save old gift and load entry point arguments.
+  movq 16(%rdi), %rsi
+  movq 8(%rdi), %rcx
+  movq %rdx, 8(%rdi)
+  movq %rcx, %rdi
+  # Jump to entry point.
+  jmp *%rdx
+#else
+  movl %esp, %ecx
+  # Store registers required by the ABI.
+  pushl %ebp
+  pushl %ebx
+  pushl %edi
+  pushl %esi
+  # Save current stack and switch to new one.
+  movl 4(%ecx), %eax
+  movl 0(%eax), %edx
+  movl %esp, 0(%eax)
+  movl %edx, %esp
+  # Save old gift and load entry point arguments.
+  movl 8(%eax), %edx
+  movl 4(%eax), %eax
+  movl 12(%ecx), %ecx
+  # Jump to entry point.
+  jmp *%ecx
+#endif
+.cfi_endproc
+ASM_END (cpu_gift_swap)
+
+ASM_ENTRY (cpu_gift_return)
+.cfi_startproc
+#ifdef __LP64__
+  movq %rdi, %rsp
+  movq %rsi, %rax
+  popq %r15
+  popq %r14
+  popq %r13
+  popq %r12
+  popq %rbx
+  popq %rbp
+#else
+  movl 8(%esp), %eax
+  movl 4(%esp), %esp
+  popl %esi
+  popl %edi
+  popl %ebx
+  popl %ebp
+#endif
+  ret
+.cfi_endproc
+ASM_END (cpu_gift_return)

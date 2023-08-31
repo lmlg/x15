@@ -622,7 +622,7 @@ cpu_exc_page_fault (const struct cpu_exc_frame *frame)
    */
   uintptr_t addr = cpu_get_cr2 ();
   struct thread *self = thread_self ();
-  _Auto map = self->task->map;
+  _Auto map = self->xtask->map;
   int error;
 
   if (map == vm_map_get_kernel_map ())

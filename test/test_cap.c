@@ -29,258 +29,230 @@
 
 #include <test/test.h>
 
+#include <vm/map.h>
+
+#define TEST_CAP_CHANNEL_TAG   ((uintptr_t)1234)
+
 struct test_cap_data
 {
-  struct semaphore send_sem;
-  struct semaphore recv_sem;
-  struct task *sender;
+  uintptr_t tag;
+  struct cap_channel *ch;
   struct task *receiver;
-  int sender_capx;
-  uintptr_t sender_tag;
+  struct semaphore recv_sem;
+  struct semaphore send_sem;
+};
+
+struct test_cap_vars
+{
+  struct ipc_msg msg;
+  struct ipc_msg_data mdata;
+  char buf[16];
+  uint32_t bufsize;
+  struct iovec iov;
+  struct ipc_msg_page mpage;
+  struct ipc_msg_cap mcap;
+  struct cap_thread_info info;
 };
 
 static struct test_cap_data test_cap_data;
 
 static int
-test_cap_alloc_task (void)
+test_cap_alloc_task (struct task *task)
 {
   struct cap_task *ctask;
-  int error = cap_task_create (&ctask, task_self ());
+  int error = cap_task_create (&ctask, task);
   assert (! error);
 
   int capx = cap_intern (ctask, 0);
   assert (capx >= 0);
   cap_base_rel (ctask);
+
   return (capx);
 }
 
+#if !defined (__LP64__) && defined (__i386__)
+__attribute__ ((regparm (2)))
+#endif
 static void
-test_cap_sender (void *arg)
+test_cap_entry (struct ipc_msg *msg, struct ipc_msg_data *mdata)
 {
-  struct test_cap_data *data = arg;
-  struct cap_flow *flow;
+  assert (mdata->nbytes > 0);
+  assert (mdata->pages_recv == 1);
+  assert (mdata->caps_recv == 1);
+  assert (mdata->tag == TEST_CAP_CHANNEL_TAG);
+  assert (mdata->task_id == task_id (thread_self()->task));
+  assert (mdata->thread_id == thread_id (thread_self ()));
 
-  data->sender_tag = (uintptr_t)clock_get_time ();
-  int error = cap_flow_create (&flow, 0, data->sender_tag);
+  _Auto vars = structof (msg, struct test_cap_vars, msg);
+  ssize_t nb = cap_pull_bytes (vars->buf, vars->bufsize, mdata);
+
+  assert (nb == (ssize_t)vars->bufsize);
+  assert (memcmp (vars->buf, "hello", 5) == 0);
+
+  struct vm_map_entry entry;
+  int error = vm_map_lookup (vm_map_self (), vars->mpage.addr, &entry);
 
   assert (! error);
-  data->sender_capx = cap_intern (flow, 0);
-  assert (data->sender_capx >= 0);
+  assert (VM_MAP_PROT (entry.flags) == VM_PROT_READ);
+  assert (*(char *)vars->mpage.addr == 'x');
 
-  struct
-    {
-      uint64_t _alert_data;
-      struct ipc_msg_data _mdata;
-      char _buf[16];
-      uint32_t _bufsize;
-      struct iovec _iov;
-      struct ipc_msg_page _mpage;
-      struct ipc_msg_cap _mcap;
-      struct ipc_msg _msg;
-    } *vars;
+  vm_map_entry_put (&entry);
 
-  error = vm_map_anon_alloc ((void **)&vars, vm_map_self (), sizeof (*vars));
-  assert (! error);
+  _Auto cap = cspace_get (cspace_self (), vars->mcap.cap);
+  assert (cap != NULL);
+  assert (cap->type == CAP_TYPE_TASK);
+  assert (((struct cap_task *)cap)->task == thread_self()->task);
+  cap_base_rel (cap);
 
-#define alert_data   vars->_alert_data
-#define mdata        vars->_mdata
-#define buf          vars->_buf
-#define bufsize      vars->_bufsize
-#define iov          vars->_iov
-#define mpage        vars->_mpage
-#define mcap         vars->_mcap
-#define msg          vars->_msg
-
-  {
-#define ALERT_1   0x123abc657
-#define ALERT_2   (ALERT_1 - 1)
-
-    // Test that alerts are delivered in priority order.
-    alert_data = ALERT_1;
-    ssize_t rv = cap_send_alert (flow, &alert_data, sizeof (alert_data), 0, 0);
-    assert (rv >= 0);
-    alert_data = ALERT_2;
-    rv = cap_send_alert (flow, &alert_data, sizeof (alert_data), 0, 1);
-    assert (rv >= 0);
-
-    rcvid_t rcvid = cap_recv_bytes (data->sender_capx, &alert_data,
-                                    sizeof (alert_data), &mdata);
-    assert (rcvid == 0);
-    assert (alert_data == ALERT_2);
-    rcvid = cap_recv_bytes (data->sender_capx, &alert_data,
-                            sizeof (alert_data), &mdata);
-    assert (rcvid == 0);
-    assert (alert_data == ALERT_1);
-
-#undef ALERT_1
-#undef ALERT_2
-  }
-
-  data->sender = task_self ();
-  semaphore_post (&data->recv_sem);
-
-  iov = IOVEC (&bufsize, sizeof (bufsize));
-
-  mpage = (struct ipc_msg_page) { .addr = PAGE_SIZE * 10 };
-  msg = (struct ipc_msg)
-    {
-      .size = sizeof (msg),
-      .iovs = &iov,
-      .iov_cnt = 1,
-      .pages = &mpage,
-      .page_cnt = 1,
-      .caps = &mcap,
-      .cap_cnt = 1
-    };
-
-  rcvid_t rcvid = cap_recv_msg (data->sender_capx, &msg, &mdata);
-
-  assert (rcvid > 0);
-  assert (mdata.pages_recv == 1);
-  assert (mdata.caps_recv == 1);
-  assert (thread_self()->cur_rcvid == rcvid);
-  assert (thread_self()->cur_peer &&
-          thread_self()->cur_peer->task == data->receiver);
-
-  {
-    ssize_t nb = cap_pull_bytes (rcvid, buf, bufsize, &mdata);
-    assert (nb == (ssize_t)bufsize);
-    assert (memcmp (buf, "hello", 5) == 0);
-  }
-
-  {
-    struct vm_map_entry entry;
-    error = vm_map_lookup (vm_map_self (), mpage.addr, &entry);
-
-    assert (! error);
-    assert (VM_MAP_PROT (entry.flags) == VM_PROT_READ);
-    assert (*(char *)mpage.addr == 'x');
-
-    vm_map_entry_put (&entry);
-  }
-
-  {
-    struct cap_base *cap = cspace_get (cspace_self (), mcap.cap);
-    assert (cap != NULL);
-    assert (cap->type == CAP_TYPE_TASK);
-    assert (((struct cap_task *)cap)->task == data->receiver);
-    cap_base_rel (cap);
-  }
-
-  bufsize = 'Z';
-  ssize_t nb = cap_push_bytes (rcvid, &bufsize, sizeof (bufsize), &mdata);
-  assert (nb == sizeof (bufsize));
+  vars->bufsize = 'Z';
 
   void *mem;
   error = vm_map_anon_alloc (&mem, vm_map_self (), 101);
   assert (! error);
+
+  _Auto mp = (struct ipc_msg_data *)mem + 1;
+  nb = cap_push_bytes (&vars->bufsize, sizeof (vars->bufsize), mp);
+  assert (nb == sizeof (vars->bufsize));
+  assert (mp->nbytes == nb);
+
   memset (mem, 'z', 100);
+  vars->mpage.addr = (uintptr_t)mem;
+  vars->mpage.size = PAGE_SIZE;
+  vars->mcap.cap = test_cap_alloc_task (task_self ());
+  vars->iov = IOVEC (memset (vars->buf, '?', sizeof (vars->buf)), 8);
 
-  mpage.addr = (uintptr_t)mem;
-  mpage.size = PAGE_SIZE;
-  mcap.cap = test_cap_alloc_task ();
-
-  iov = IOVEC (memset (buf, '?', sizeof (buf)), 8);
-  error = cap_reply_msg (rcvid, &msg, 0);
-  assert (! error);
-
-#undef alert_data
-#undef mdata
-#undef buf
-#undef bufsize
-#undef iov
-#undef mpage
-#undef mcap
-#undef msg
+  cap_reply_msg (&vars->msg, 0);
+  panic ("cap_reply_msg returned");
 }
 
 static void
 test_cap_receiver (void *arg)
 {
   struct test_cap_data *data = arg;
+  struct cap_flow *flow;
+
+  data->tag = (uintptr_t)clock_get_time ();
+  int error = cap_flow_create (&flow, 0, data->tag, (uintptr_t)test_cap_entry);
+  assert (! error);
+
+  error = cap_channel_create (&data->ch, flow, TEST_CAP_CHANNEL_TAG);
+  assert (! error);
+
+  _Auto page = vm_page_alloc (0, VM_PAGE_SEL_DIRECTMAP, VM_PAGE_KERNEL, 0);
+  assert (page != NULL);
+
+  vm_page_ref (page);
+
+  struct test_cap_vars *vars;
+  error = vm_map_anon_alloc ((void **)&vars, vm_map_self (), 1);
+  assert (! error);
+
+  {
+    // Test that alerts are delivered in priority order.
+    strcpy (vars->buf, "abcd");
+    ssize_t rv = cap_send_alert (flow, vars->buf, 0, 0);
+    assert (rv >= 0);
+
+    strcpy (vars->buf, "1234");
+    rv = cap_send_alert (flow, vars->buf, 0, 1);
+    assert (rv >= 0);
+
+    error = cap_recv_alert (flow, vars->buf, 0, &vars->mdata);
+    assert (! error);
+    assert (memcmp (vars->buf, "1234", 4) == 0);
+
+    error = cap_recv_alert (flow, vars->buf, 0, &vars->mdata);
+    assert (! error);
+    assert (memcmp (vars->buf, "abcd", 4) == 0);
+    assert (vars->mdata.task_id = task_id (thread_self()->task));
+    assert (vars->mdata.thread_id = thread_id (thread_self ()));
+  }
+
+  vars->mpage = (struct ipc_msg_page) { .addr = PAGE_SIZE * 10 };
+  vars->iov = IOVEC (&vars->bufsize, sizeof (vars->bufsize));
+  vars->msg = (struct ipc_msg)
+    {
+      .size = sizeof (struct ipc_msg),
+      .iovs = &vars->iov,
+      .iov_cnt = 1,
+      .pages = &vars->mpage,
+      .page_cnt = 1,
+      .caps = &vars->mcap,
+      .cap_cnt = 1,
+    };
+
+  error = cap_flow_add_gift (flow, (char *)vm_page_direct_ptr (page) +
+                             PAGE_SIZE, PAGE_SIZE, &vars->msg,
+                             &vars->mdata, &vars->info);
+  assert (! error);
+
+  semaphore_post (&data->send_sem);
   semaphore_wait (&data->recv_sem);
+  vm_page_unref (page);
+}
 
-  struct cap_channel *chp;
-  int error = cap_flow_hook (&chp, data->sender, data->sender_capx);
-
-  assert (! error);
-
-  uintptr_t tag;
-  error = cap_get_tag (chp, &tag);
-  assert (! error);
-  assert (tag == data->sender_tag);
+static void
+test_cap_sender (void *arg)
+{
+  struct test_cap_data *data = arg;
+  semaphore_wait (&data->send_sem);
 
   void *mem;
-  error = vm_map_anon_alloc (&mem, vm_map_self (), 100);
+  int error = vm_map_anon_alloc (&mem, vm_map_self (), PAGE_SIZE * 2);
   assert (! error);
-  memset (mem, 'x', PAGE_SIZE);
 
   struct
     {
-      struct ipc_msg_page _mpage;
-      char _buf[6];
-      uint32_t _bufsize;
-      struct iovec _iovecs[2];
-      struct ipc_msg _msg;
-      struct ipc_msg_data _mdata;
-      struct ipc_msg_cap _mcap;
-    } *vars;
+      struct ipc_msg_page mpage;
+      char buf[6];
+      uint32_t bufsize;
+      struct iovec iovecs[2];
+      struct ipc_msg msg;
+      struct ipc_msg_data mdata;
+      struct ipc_msg_cap mcap;
+    } *vars = (void *)((char *)mem + PAGE_SIZE);
 
-#define mpage     vars->_mpage
-#define buf       vars->_buf
-#define bufsize   vars->_bufsize
-#define iovecs    vars->_iovecs
-#define msg       vars->_msg
-#define mdata     vars->_mdata
-#define mcap      vars->_mcap
-
-  error = vm_map_anon_alloc ((void **)&vars, vm_map_self (), sizeof (*vars));
-  assert (! error);
-  mpage = (struct ipc_msg_page)
+  vars->mpage = (struct ipc_msg_page)
     {
-      .addr = (uintptr_t)mem,
+      .addr = (uintptr_t)memset (mem, 'x', PAGE_SIZE),
       .prot = VM_PROT_READ,
-      .size = PAGE_SIZE,
+      .size = PAGE_SIZE
     };
 
-  int capx = test_cap_alloc_task ();
-  mcap = (struct ipc_msg_cap) { .cap = capx, .flags = 0 };
-  strcpy (buf, "hello");
-  bufsize = sizeof (buf) - 1;
-  iovecs[0] = IOVEC (&bufsize, sizeof (bufsize));
-  iovecs[1] = IOVEC (buf, bufsize);
-  msg = (struct ipc_msg)
+  vars->mcap = (struct ipc_msg_cap)
     {
-      .size = sizeof (msg),
-      .iovs = iovecs,
-      .iov_cnt = 2,
-      .pages = &mpage,
-      .page_cnt = 1,
-      .caps = &mcap,
-      .cap_cnt = 1
+      .cap = test_cap_alloc_task (task_self ()),
+      .flags = 0
     };
 
-  data->receiver = task_self ();
-  ssize_t bytes = cap_send_msg (chp, &msg, &msg, &mdata);
+  strcpy (vars->buf, "hello");
+  vars->bufsize = sizeof (vars->buf) - 1;
+  vars->iovecs[0] = IOVEC (&vars->bufsize, sizeof (vars->bufsize));
+  vars->iovecs[1] = IOVEC (vars->buf, vars->bufsize);
 
-  assert (bytes == (ssize_t)(iovecs[0].iov_len + iovecs[1].iov_len));
-  assert (bufsize == 'Z');
-  assert (memcmp (buf, "?????", 5) == 0);
-  assert (*(char *)mpage.addr == 'z');
-  assert (mdata.pages_sent == 1);
-  assert (mdata.pages_recv == 1);
-  assert (mdata.caps_sent == 1);
-  assert (mdata.caps_recv == 1);
+  vars->msg = (struct ipc_msg)
+    {
+      .size = sizeof (struct ipc_msg),
+      .iovs = vars->iovecs,
+      .iov_cnt = 2,
+      .pages = &vars->mpage,
+      .page_cnt = 1,
+      .caps = &vars->mcap,
+      .cap_cnt = 1,
+    };
 
-  cap_base_rel (chp);
+  ssize_t nb = cap_send_msg (data->ch, &vars->msg, &vars->msg, &vars->mdata);
 
-#undef mpage
-#undef buf
-#undef bufsize
-#undef iovs
-#undef msg
-#undef mdata
-#undef mcap
+  assert (nb > 0);
+  assert (vars->bufsize == 'Z');
+  assert (memcmp (vars->buf, "?????", 5) == 0);
+  assert (*(char *)vars->mpage.addr == 'z');
+  assert (vars->mdata.pages_sent == 1);
+  assert (vars->mdata.pages_recv == 1);
+  assert (vars->mdata.caps_sent == 1);
+  assert (vars->mdata.caps_recv == 1);
+
+  semaphore_post (&data->recv_sem);
 }
 
 static void

@@ -69,23 +69,7 @@ static void
 test_futex_helper (void *arg)
 {
   int error = futex_wait (arg, 0, 0, 0);
-  assert (! error);
-}
-
-static void
-test_futex_shared_helper (void *arg)
-{
-  struct vm_map_entry *entry = arg;
-  uintptr_t start = PAGE_SIZE * 100;
-  int flags = VM_MAP_FLAGS (VM_PROT_RDWR, VM_PROT_RDWR, VM_INHERIT_SHARE,
-                            VM_ADV_DEFAULT, 0);
-  int error = vm_map_enter (vm_map_self (), &start, PAGE_SIZE, 0,
-                            flags, entry->object, entry->offset);
-  assert (! error);
-
-  void *addr = (void *)start;
-  error = futex_wait (addr, 0, FUTEX_SHARED, 0);
-  assert (! error);
+  assert (!error || error == EAGAIN);
 }
 
 static void
@@ -166,6 +150,23 @@ test_futex_local (void *arg __unused)
 }
 
 static void
+test_futex_shared_helper (void *arg)
+{
+  struct vm_map_entry *entry = arg;
+  uintptr_t start = PAGE_SIZE * 100;
+  int flags = VM_MAP_FLAGS (VM_PROT_RDWR, VM_PROT_RDWR, VM_INHERIT_SHARE,
+                            VM_ADV_DEFAULT, 0);
+  int error = vm_map_enter (vm_map_self (), &start, PAGE_SIZE, 0,
+                            flags, entry->object, entry->offset);
+  assert (! error);
+
+  void *addr = (void *)start;
+  error = futex_wait (addr, 0, FUTEX_SHARED, 0);
+  assert (!error || error == EAGAIN);
+  assert (*(int *)addr == 1);
+}
+
+static void
 test_futex_shared (void *arg __unused)
 {
   void *addr;
@@ -228,7 +229,6 @@ test_futex_pi (void *arg __unused)
   assert (thread_real_sched_policy (thread_self ()) ==
           THREAD_SCHED_POLICY_FIFO);
 
-  *futex = 0;
   error = futex_wake (futex, FUTEX_PI | FUTEX_BROADCAST | FUTEX_MUTATE, 0);
   assert (! error);
 
@@ -274,7 +274,7 @@ test_futex_robust (void *arg __unused)
   assert (! error);
 
   error = futex_wait (&data->objs[2].head.futex, FUTEX_WAITERS |
-                      thread_id (thread_self ()), 0, 0);
+                      thread_id (thr), 0, 0);
   assert (!error || error == EAGAIN);
 
   thread_join (thr);
@@ -290,6 +290,7 @@ TEST_DEFERRED (futex)
   error = test_util_create_thr (&thread, test_futex_local, NULL, "futex");
   assert (! error);
   thread_join (thread);
+
   error = test_util_create_thr (&thread, test_futex_shared, NULL, "futex-sh");
   assert (! error);
   thread_join (thread);

@@ -123,7 +123,7 @@ vm_map_get_kernel_map (void)
 uintptr_t vm_map_ipc_addr (void);
 
 // Get the current task's VM map.
-#define vm_map_self()   ((struct vm_map *)thread_self()->task->map)
+#define vm_map_self()   ((struct vm_map *)thread_self()->xtask->map)
 
 // Create a virtual mapping.
 int vm_map_enter (struct vm_map *map, uintptr_t *startp,
