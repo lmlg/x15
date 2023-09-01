@@ -887,7 +887,8 @@ INIT_OP_DEFINE (pmap_setup,
                 INIT_OP_DEP (kmem_setup, true),
                 INIT_OP_DEP (log_setup, true),
                 INIT_OP_DEP (pmap_bootstrap, true),
-                INIT_OP_DEP (vm_page_setup, true));
+                INIT_OP_DEP (vm_page_setup, true),
+                INIT_OP_DEP (percpu_setup, true));
 
 void __init
 pmap_ap_setup (void)
