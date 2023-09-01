@@ -82,6 +82,8 @@ test_intr (void *arg)
   assert (data->md.flags & IPC_MSG_KERNEL);
   assert (data->alert.intr.irq == TEST_INTR_FIRST);
   assert (data->alert.intr.count == 2);
+  assert (data->md.task_id == 0);
+  assert (data->md.thread_id == 0);
 
   assert (test_intr_last == (int)data->alert.intr.irq);
   assert (test_intr_status == 1);
