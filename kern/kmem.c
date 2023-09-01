@@ -598,7 +598,7 @@ kmem_cache_compute_properties (struct kmem_cache *cache, int flags)
   if (cache->color_max >= PAGE_SIZE)
     cache->color_max = 0;
 
-  if (!embed)
+  if (! embed)
     cache->flags |= KMEM_CF_SLAB_EXTERNAL;
 }
 
@@ -881,8 +881,10 @@ kmem_cache_free_to_slab (struct kmem_cache *cache, void *buf)
 
   if (--slab->nr_refs == 0)
     {
-      /* The slab has become free - If it was partial,
-       * remove it from its list */
+      /*
+       * The slab has become free - If it was partial,
+       * remove it from its list.
+       */
       if (cache->bufs_per_slab != 1)
         list_remove (&slab->node);
 
@@ -897,7 +899,6 @@ kmem_cache_free_to_slab (struct kmem_cache *cache, void *buf)
 static void
 kmem_cache_alloc_verify (struct kmem_cache *cache, void *buf, int construct)
 {
-
   struct kmem_buftag *buftag = kmem_buf_to_buftag (buf, cache);
 
   if (buftag->state != KMEM_BUFTAG_FREE)
@@ -1290,11 +1291,7 @@ void*
 kmem_zalloc (size_t size)
 {
   void *ptr = kmem_alloc (size);
-  if (! ptr)
-    return (NULL);
-
-  memset (ptr, 0, size);
-  return (ptr);
+  return (ptr ? memset (ptr, 0, size) : ptr);
 }
 
 static void
