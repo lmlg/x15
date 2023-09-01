@@ -29,15 +29,6 @@
 
 #define __unwind   __section (".unwind")
 
-// The saved context to which we may end up jumping.
-struct unw_fixup_t
-{
-  uintptr_t sp;
-  uintptr_t pc;
-  struct unw_fixup_t *next;
-  struct unw_fixup_t **prev;
-};
-
 // Common information element.
 struct unw_cie
 {
@@ -72,16 +63,6 @@ struct unw_mcontext
   uintptr_t regs[CPU_UNWIND_REGISTERS];
 };
 
-// Save the information needed to perform stack unwinding up to that point.
-int unw_fixup_save (struct unw_fixup_t *fixup) __attribute__ ((returns_twice));
-
-// Restore the program state, starting from the passed context.
-int unw_fixup_restore (struct unw_fixup_t *fixup,
-                       struct unw_mcontext *ctx, int retval);
-
-// Restore the saved program state and jump to it.
-noreturn void unw_fixup_jmp (struct unw_fixup_t *fixup, int retval);
-
 /*
  * Perform a traceback, starting from the passed machine context (or the
  * current one, if null), applying the function with the registers and
@@ -95,15 +76,5 @@ int unw_backtrace (struct unw_mcontext *initial,
  * otherwise, use the current one.
  */
 void unw_stacktrace (struct unw_mcontext *initial);
-
-// Unwind fixup guards.
-static inline void
-unw_fixup_fini (void *p)
-{
-  struct unw_fixup_t *fx = p;
-  *fx->prev = fx->next;
-}
-
-#define unw_fixup   unw_fixup_t CLEANUP (unw_fixup_fini)
 
 #endif
