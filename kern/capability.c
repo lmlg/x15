@@ -34,8 +34,8 @@ struct cap_alert
     {
       struct
         { // Valid for user alerts and when not pending.
-          uint32_t task_id;
-          uint32_t thread_id;
+          int task_id;
+          int thread_id;
         };
 
       struct slist_node snode;
@@ -367,7 +367,7 @@ cap_flow_alloc_alert (struct cap_flow *flow, uint32_t flg)
   if (!slist_empty (&flow->alloc_alerts))
     {
       /*
-       * The cahed user alerts are inserted at the head, whereas the
+       * The cached user alerts are inserted at the head, whereas the
        * kernel alerts are appended. Thus, if the first entry is a
        * user one, it can be recycled.
        */
@@ -482,6 +482,13 @@ cap_recv_alert (struct cap_flow *flow, void *buf,
   return (0);
 }
 
+static void
+cap_fill_ids (int *thr_idp, int *task_idp, struct thread *thr)
+{
+  *thr_idp = thread_id (thr);
+  *task_idp = task_id (thr->task);
+}
+
 int
 (cap_send_alert) (struct cap_base *cap, const void *buf,
                   uint32_t flags, uint32_t prio)
@@ -521,15 +528,14 @@ int
         plist_node_init (&alert->pnode, prio);
         plist_add (&flow->pending_alerts, &alert->pnode);
         cap_alert_type(alert) = CAP_ALERT_USER;
+        cap_fill_ids (&alert->thread_id, &alert->task_id, thread_self ());
         return (0);
       }
 
-    recv = list_first_entry (&flow->receivers, typeof (*recv), lnode);
-    list_remove (&recv->lnode);
+    recv = list_pop (&flow->receivers, typeof (*recv), lnode);
   }
 
-  recv->mdata.thread_id = thread_id (thread_self ());
-  recv->mdata.task_id = task_id (thread_self()->task);
+  cap_fill_ids (&recv->mdata.thread_id, &recv->mdata.task_id, thread_self ());
   recv->mdata.nbytes = ipc_bcopy (recv->thread->task, recv->buf, sizeof (abuf),
                                   abuf, sizeof (abuf), IPC_COPY_TO);
 
@@ -644,9 +650,7 @@ cap_sender_impl (struct cap_flow *flow, uintptr_t tag, struct cap_iters *in,
 
   struct cap_gift_entry *cur_gift = self->cur_gift;
   self->cur_gift = gift;
-
-  gift->mdata.task_id = task_id (self->task);
-  gift->mdata.thread_id = thread_id (self);
+  cap_fill_ids (&gift->mdata.thread_id, &gift->mdata.task_id, self);
 
   // Switch task (also sets the pmap).
   cap_task_swap (&gift->task);
@@ -864,13 +868,12 @@ cap_flow_rem_gift (struct cap_flow *flow, uintptr_t stack)
 static void
 cap_notify_intr (struct cap_alert_async *alert)
 {
-  spinlock_lock (&alert->flow->lock);
+  SPINLOCK_GUARD (&alert->flow->lock);
   if (++alert->base.k_alert.intr.count == 1)
     {
       plist_add (&alert->flow->pending_alerts, &alert->base.pnode);
       cap_recv_wakeup_fast (alert->flow);
     }
-  spinlock_unlock (&alert->flow->lock);
 }
 
 static int

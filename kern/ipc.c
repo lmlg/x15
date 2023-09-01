@@ -282,7 +282,7 @@ ipc_bcopy (struct task *r_task, void *r_ptr, size_t r_size,
            void *l_ptr, size_t l_size, int direction)
 {
   struct ipc_data data;
-  struct fixup fixup;
+  FIXUP (fixup);
 
   int error = fixup_save (&fixup);
   if (unlikely (error))
