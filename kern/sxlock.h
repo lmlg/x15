@@ -42,9 +42,8 @@ sxlock_init (struct sxlock *sxp)
 static inline int
 sxlock_tryexlock (struct sxlock *sxp)
 {
-  uint32_t val = atomic_load_rlx (&sxp->lock);
-  return ((val & SXLOCK_MASK) == 0 &&
-          atomic_cas_bool_acq (&sxp->lock, val, val | SXLOCK_MASK) ? 0 : EBUSY);
+  return (atomic_load_rlx (&sxp->lock) == 0 &&
+          atomic_cas_bool_acq (&sxp->lock, 0, SXLOCK_MASK) ? 0 : EBUSY);
 }
 
 void sxlock_exlock_slow (struct sxlock *sxp);
@@ -74,7 +73,7 @@ sxlock_shlock (struct sxlock *sxp)
 }
 
 void sxlock_unlock (struct sxlock *sxp);
-void sxlock_share_slow (struct sxlock *sxp);
+void sxlock_wake (struct sxlock *sxp);
 
 // Mutate an exclusive lock into a shared one.
 static inline void
@@ -82,7 +81,7 @@ sxlock_share (struct sxlock *sxp)
 {
   uint32_t prev = atomic_and_rel (&sxp->lock, SXLOCK_WAITERS | 1);
   if (prev & SXLOCK_WAITERS)
-    sxlock_share_slow (sxp);
+    sxlock_wake (sxp);
 }
 
 // Shared-Exclusive lock guards.

@@ -38,60 +38,98 @@
     }   \
   while (0)
 
+static inline int
+sxlock_exmark (struct sxlock *sxp)
+{
+  while (1)
+    {
+      uint32_t val = atomic_load_rlx (&sxp->lock);
+      if (! val)
+        {
+          if (atomic_cas_bool_acq (&sxp->lock, 0, SXLOCK_MASK))
+            return (0);
+        }
+      else if ((val & SXLOCK_WAITERS) ||
+               atomic_cas_bool_acq (&sxp->lock, val, val | SXLOCK_WAITERS))
+        return (1);
+
+      cpu_pause ();
+    }
+}
+
 void
 sxlock_exlock_slow (struct sxlock *sxp)
 {
-  sxlock_lock_impl (sxlock_tryexlock, "sxlock/X", sxp);
+  _Auto sleepq = sleepq_lend (sxp);
+  while (1)
+    {
+      if (!sxlock_exmark (sxp))
+        break;
+
+      sleepq_wait (sleepq, "sxlock/X");
+    }
+
+  sleepq_return (sleepq);
+}
+
+static inline int
+sxlock_shmark (struct sxlock *sxp)
+{
+  while (1)
+    {
+      uint32_t val = atomic_load_rlx (&sxp->lock);
+      if ((val & SXLOCK_MASK) == 0)
+        {
+          if (atomic_cas_bool_acq (&sxp->lock, val, val + 1))
+            return (0);
+        }
+      else if ((val & SXLOCK_WAITERS) ||
+               atomic_cas_bool_acq (&sxp->lock, val, val | SXLOCK_WAITERS))
+        return (1);
+
+      cpu_pause ();
+    }
 }
 
 void
 sxlock_shlock_slow (struct sxlock *sxp)
 {
-  sxlock_lock_impl (sxlock_tryshlock, "sxlock/S", sxp);
+  _Auto sleepq = sleepq_lend (sxp);
+  while (1)
+    {
+      if (!sxlock_shmark (sxp))
+        break;
+
+      sleepq_wait (sleepq, "sxlock/S");
+    }
+
+  sleepq_return (sleepq);
 }
 
 void
 sxlock_unlock (struct sxlock *sxp)
 {
+  uint32_t prev, last;
+
   while (1)
     {
-      uint32_t val = atomic_load_rlx (&sxp->lock);
-      if (val == (SXLOCK_WAITERS | SXLOCK_MASK) ||
-          val == (SXLOCK_WAITERS | 1))
-        break;
+      prev = atomic_load_rlx (&sxp->lock);
+      last = (prev & SXLOCK_MASK) == SXLOCK_MASK ||
+             prev == (SXLOCK_WAITERS | 1);
 
-      uint32_t nval = val == SXLOCK_MASK ? 0 : val - 1;
-      if (atomic_cas_bool_rel (&sxp->lock, val, nval))
-        return;
+      uint32_t nval = last ? 0 : prev - 1;
+      if (atomic_cas_bool_rel (&sxp->lock, prev, nval))
+        break;
 
       cpu_pause ();
     }
 
-  _Auto sleepq = sleepq_acquire (sxp);
-  uint32_t val = atomic_load_rlx (&sxp->lock);
-  int wake;
-
-  if ((val & SXLOCK_MASK) == SXLOCK_MASK)
-    {
-      atomic_swap_rel (&sxp->lock, 0);
-      wake = 1;
-    }
-  else
-    {
-      uint32_t prev = atomic_sub_rel (&sxp->lock, 1);
-      wake = (int)((prev >> SXLOCK_WAITERS_BIT) & (prev & 1));
-    }
-
-  if (! sleepq)
-    return;
-  else if (wake)
-    sleepq_broadcast (sleepq);
-
-  sleepq_release (sleepq);
+  if (last && (prev & SXLOCK_WAITERS))
+    sxlock_wake (sxp);
 }
 
 void
-sxlock_share_slow (struct sxlock *sxp)
+sxlock_wake (struct sxlock *sxp)
 {
   struct sleepq *sleepq = sleepq_acquire (sxp);
   if (sleepq)
