@@ -18,15 +18,15 @@
 
 #include <iovec.h>
 
+#include <kern/fixup.h>
 #include <kern/ipc.h>
-#include <kern/unwind.h>
 #include <kern/user.h>
 
 static int
 user_copy_impl (void *dst, const void *src, size_t size)
 {
-  struct unw_fixup fixup;
-  int error = unw_fixup_save (&fixup);
+  FIXUP (fixup);
+  int error = fixup_save (&fixup);
 
   if (likely (! error))
     memcpy (dst, src, size);
@@ -77,8 +77,8 @@ ssize_t
 user_copyv_impl (struct ipc_iov_iter *dst,
                  struct ipc_iov_iter *src, int to_user)
 {
-  struct unw_fixup fixup;
-  int error = unw_fixup_save (&fixup);
+  FIXUP (fixup);
+  int error = fixup_save (&fixup);
   if (unlikely (error))
     return (-error);
 

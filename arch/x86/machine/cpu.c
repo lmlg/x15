@@ -24,6 +24,7 @@
 #include <string.h>
 
 #include <kern/atomic.h>
+#include <kern/fixup.h>
 #include <kern/init.h>
 #include <kern/kmem.h>
 #include <kern/log.h>
@@ -34,7 +35,6 @@
 #include <kern/shutdown.h>
 #include <kern/task.h>
 #include <kern/thread.h>
-#include <kern/unwind.h>
 #include <kern/xcall.h>
 
 #include <machine/acpi.h>
@@ -639,11 +639,7 @@ cpu_exc_page_fault (const struct cpu_exc_frame *frame)
   if (!error || error == EINTR)
     return;
   else if (self->fixup)
-    {
-      struct unw_mcontext mctx;
-      cpu_unw_mctx_from_frame (mctx.regs, frame);
-      unw_fixup_restore (self->fixup, &mctx, error);
-    }
+    fixup_restore (self->fixup, error);
 
   // TODO: Implement segfaults for userspace tasks.
   cpu_halt_broadcast ();

@@ -91,8 +91,6 @@ static struct kmem_cache cap_gift_cache;
 static struct list cap_intr_handlers[CPU_INTR_TABLE_SIZE];
 static struct adaptive_lock cap_intr_lock;
 
-#define CAP_FLOW_EXITING   0x01
-
 #define CAP_FROM_SREF(ptr, type)   structof (ptr, type, base.sref)
 
 static void

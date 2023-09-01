@@ -17,10 +17,10 @@
  */
 
 #include <kern/clock.h>
+#include <kern/fixup.h>
 #include <kern/futex.h>
 #include <kern/sleepq.h>
 #include <kern/turnstile.h>
-#include <kern/unwind.h>
 #include <kern/user.h>
 
 #include <vm/map.h>
@@ -347,8 +347,8 @@ futex_map_addr (struct futex_data *data, int value, int op)
 {
   int prot = op == FUTEX_OP_CMP ? VM_PROT_READ : VM_PROT_RDWR;
 
-  struct unw_fixup fixup;
-  int error = unw_fixup_save (&fixup);
+  FIXUP (fixup);
+  int error = fixup_save (&fixup);
 
   if (error)
     {

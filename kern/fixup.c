@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2022 Agustina Arzille.
+ * Copyright (c) 2023 Agustina Arzille.
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -14,34 +14,13 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
- * This module tests the generic unwind API.
  */
 
 #include <kern/fixup.h>
-#include <kern/thread.h>
 
-#include <test/test.h>
-
-static void __noinline
-test_unw_manip (volatile int *ptr)
+void
+fixup_restore (struct fixup *fx, int val)
 {
-  *ptr += 42;
-}
-
-TEST_DEFERRED (unwind)
-{
-  volatile int value = 0;
-  FIXUP (fx);
-  int rv = fixup_save (&fx);
-
-  if (! rv)
-    {
-      test_unw_manip (&value);
-      fixup_restore (&fx, -3);
-      test_unw_manip (&value);
-    }
-
-  assert (value != 0);
-  assert (rv == -3);
-  return (TEST_OK);
+  fx->value = val;
+  __builtin_longjmp (fx->ctx, 1);
 }
