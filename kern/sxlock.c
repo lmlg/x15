@@ -20,24 +20,6 @@
 
 #include <machine/cpu.h>
 
-#define sxlock_lock_impl(try_lock, label, obj)   \
-  do   \
-    {   \
-      struct sleepq *sleepq = sleepq_lend (obj);   \
-      atomic_or_rel (&(obj)->lock, SXLOCK_WAITERS);   \
-      \
-      while (1)   \
-        {   \
-          if (try_lock (obj) == 0)   \
-            break;   \
-          \
-          sleepq_wait (sleepq, label);   \
-        }   \
-      \
-      sleepq_return (sleepq);   \
-    }   \
-  while (0)
-
 static inline int
 sxlock_exmark (struct sxlock *sxp)
 {
