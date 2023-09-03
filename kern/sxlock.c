@@ -91,22 +91,21 @@ sxlock_shlock_slow (struct sxlock *sxp)
 void
 sxlock_unlock (struct sxlock *sxp)
 {
-  uint32_t prev, last;
+  uint32_t prev, nval;
 
   while (1)
     {
       prev = atomic_load_rlx (&sxp->lock);
-      last = (prev & SXLOCK_MASK) == SXLOCK_MASK ||
-             prev == (SXLOCK_WAITERS | 1);
+      nval = (prev & SXLOCK_MASK) == SXLOCK_MASK ||
+             prev == (SXLOCK_WAITERS | 1) ? 0 : prev - 1;
 
-      uint32_t nval = last ? 0 : prev - 1;
       if (atomic_cas_bool_rel (&sxp->lock, prev, nval))
         break;
 
       cpu_pause ();
     }
 
-  if (last && (prev & SXLOCK_WAITERS))
+  if (!nval && (prev & SXLOCK_WAITERS))
     sxlock_wake (sxp);
 }
 
