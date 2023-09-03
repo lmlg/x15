@@ -31,6 +31,7 @@ struct fixup
   int value;
 };
 
+// Save the calling environment in FXP. Always returns 0.
 #define fixup_save(fxp)   \
   ({   \
      struct fixup *fx_ = (fxp);   \
@@ -43,7 +44,13 @@ struct fixup
      fx_->value;   \
    })
 
+/*
+ * Restore the environment saved in FX, making the 'fixup_save'
+ * call return VAL, which must be nonzero.
+ */
 noreturn void fixup_restore (struct fixup *fx, int val);
+
+// Fixup guards.
 
 static inline void
 fixup_fini (void *p)
