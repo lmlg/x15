@@ -627,39 +627,6 @@ thread_runq_guard_fini (struct thread_runq_guard_t *guard)
 #define thread_runq_guard   \
   thread_runq_guard_t CLEANUP (thread_runq_guard_fini) __unused
 
-static void
-thread_context_switch (struct thread_runq **runqp,
-                       struct thread *prev, struct thread *next)
-{
-  if (unlikely (prev == next))
-    return;
-
-  thread_runq_schedule_unload (prev);
-  rcu_report_context_switch (thread_rcu_reader (prev));
-  spinlock_transfer_owner (&(*runqp)->lock, next);
-
-  /*
-   * This is where the true context switch occurs. The next thread must
-   * unlock the run queue and reenable preemption. Note that unlocking
-   * and locking the run queue again is equivalent to a full memory
-   * barrier.
-   */
-  tcb_switch (&prev->tcb, &next->tcb);
-
-  /*
-   * The thread is dispatched on a processor once again.
-   *
-   * Keep in mind the system state may have changed a lot since this
-   * function was called. In particular :
-   *  - The next thread may have been destroyed, and must not be
-   *    referenced any more.
-   *  - The current thread may have been migrated to another processor.
-   */
-  barrier ();
-  thread_runq_schedule_load (prev);
-  *runqp = thread_runq_local ();
-}
-
 static struct thread_runq*
 thread_runq_schedule (struct thread_runq *runq)
 {
@@ -692,7 +659,33 @@ thread_runq_schedule (struct thread_runq *runq)
   assert (next != runq->idler || !runq->nr_threads);
   assert (next->preempt_level == THREAD_SUSPEND_PREEMPT_LEVEL);
 
-  thread_context_switch (&runq, prev, next);
+  if (likely (prev != next))
+    {
+      thread_runq_schedule_unload (prev);
+      rcu_report_context_switch (thread_rcu_reader (prev));
+      spinlock_transfer_owner (&runq->lock, next);
+
+      /*
+       * This is where the true context switch occurs. The next thread must
+       * unlock the run queue and reenable preemption. Note that unlocking
+       * and locking the run queue again is equivalent to a full memory
+       * barrier.
+       */
+      tcb_switch (&prev->tcb, &next->tcb);
+
+      /*
+       * The thread is dispatched on a processor once again.
+       *
+       * Keep in mind the system state may have changed a lot since this
+       * function was called. In particular :
+       *  - The next thread may have been destroyed, and must not be
+       *    referenced any more.
+       *  - The current thread may have been migrated to another processor.
+       */
+      barrier ();
+      thread_runq_schedule_load (prev);
+      runq = thread_runq_local ();
+    }
 
   assert (prev->preempt_level == THREAD_SUSPEND_PREEMPT_LEVEL);
   assert (!cpu_intr_enabled ());
