@@ -31,8 +31,19 @@ struct fixup
   int value;
 };
 
+// Chain the fixup to the current thread's list of fixups.
+void fixup_link (struct fixup *fx);
+
 // Save the calling environment in FXP. Always returns 0.
 #define fixup_save(fxp)   \
+  ({   \
+     struct fixup *fx_ = (fxp);   \
+     fixup_link (fx_);   \
+     __builtin_setjmp (fx_->ctx);   \
+     fx_->value;   \
+   })
+
+#define fixup_save2(fxp)   \
   ({   \
      struct fixup *fx_ = (fxp);   \
      struct thread *self_ = thread_self ();   \

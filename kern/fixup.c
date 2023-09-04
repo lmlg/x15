@@ -17,6 +17,17 @@
  */
 
 #include <kern/fixup.h>
+#include <kern/thread.h>
+
+void
+fixup_link (struct fixup *fx)
+{
+  struct thread *self = thread_self ();
+  fx->prev = &self->fixup;
+  fx->next = *fx->prev;
+  self->fixup = fx;
+  fx->value = 0;
+}
 
 void
 fixup_restore (struct fixup *fx, int val)
