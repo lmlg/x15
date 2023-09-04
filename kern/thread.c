@@ -665,7 +665,7 @@ thread_runq_schedule (struct thread_runq *runq)
 {
   struct thread *prev = thread_self ();
 
-  assert (prev->cur_gift ||
+  assert (prev->cur_port ||
       (__builtin_frame_address (0) >= prev->stack &&
        __builtin_frame_address (0) < prev->stack + TCB_STACK_SIZE));
   assert (prev->preempt_level == THREAD_SUSPEND_PREEMPT_LEVEL);
@@ -1691,7 +1691,7 @@ thread_init (struct thread *thread, void *stack,
   thread->stack = stack;
   strlcpy (thread->name, attr->name, sizeof (thread->name));
   thread->fixup = NULL;
-  thread->cur_gift = NULL;
+  thread->cur_port = NULL;
   thread->futex_td = NULL;
 
 #ifdef CONFIG_PERFMON

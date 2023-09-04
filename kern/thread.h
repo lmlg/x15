@@ -213,7 +213,7 @@ struct thread
 #endif
 
   struct fixup *fixup;            // (-)
-  void *cur_gift;                 // (-)
+  void *cur_port;                 // (-)
   struct task *xtask;             // (-)
   struct futex_td *futex_td;      // (-)
 };

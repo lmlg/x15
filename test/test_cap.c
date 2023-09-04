@@ -181,7 +181,7 @@ test_cap_receiver (void *arg)
       .cap_cnt = 1,
     };
 
-  error = cap_flow_add_gift (flow, (char *)vm_page_direct_ptr (page) +
+  error = cap_flow_add_port (flow, (char *)vm_page_direct_ptr (page) +
                              PAGE_SIZE, PAGE_SIZE, &vars->msg,
                              &vars->mdata, &vars->info);
   assert (! error);

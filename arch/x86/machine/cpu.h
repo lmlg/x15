@@ -970,11 +970,11 @@ noreturn void cpu_unw_mctx_jmp (const uintptr_t *regs, int retval);
 // Restore the CPU context from an unwind frame with a return value.
 noreturn void cpu_unw_mctx_set_frame (const uintptr_t *regs, int retval);
 
-// Switch to a new stack and PC in a flow's gift.
-long cpu_gift_swap (uintptr_t *args, void *gift, void *pc);
+// Switch to a new stack and PC in a flow's port.
+long cpu_port_swap (uintptr_t *args, void *port, void *pc);
 
-// Return from a gifted execution context.
-noreturn void cpu_gift_return (uintptr_t sp, intptr_t ret);
+// Return from a ported execution context.
+noreturn void cpu_port_return (uintptr_t sp, intptr_t ret);
 
 /*
  * This init operation provides :

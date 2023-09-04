@@ -247,11 +247,11 @@ int cap_send_alert (struct cap_base *cap, const void *buf,
 #define cap_send_alert(cap, buf, flags, prio)   \
   (cap_send_alert) (CAP (cap), buf, flags, prio)
 
-int cap_flow_add_gift (struct cap_flow *flow, void *stack, size_t size,
+int cap_flow_add_port (struct cap_flow *flow, void *stack, size_t size,
                        struct ipc_msg *msg, struct ipc_msg_data *mdata,
                        struct cap_thread_info *info);
 
-int cap_flow_rem_gift (struct cap_flow *flow, uintptr_t stack);
+int cap_flow_rem_port (struct cap_flow *flow, uintptr_t stack);
 
 // Register a flow for interrupt handling.
 int cap_intr_register (struct cap_flow *flow, uint32_t irq);

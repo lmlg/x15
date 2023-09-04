@@ -58,7 +58,7 @@ struct cap_alert_async
 
 #define cap_alert_type(alert)   ((alert)->payload[CAP_ALERT_SIZE])
 
-struct cap_gift_entry
+struct cap_port_entry
 {
   struct slist_node snode;
   struct task *task;
@@ -86,7 +86,7 @@ struct cap_sender
 
 static struct kmem_cache cap_flow_cache;
 static struct kmem_cache cap_misc_cache;
-static struct kmem_cache cap_gift_cache;
+static struct kmem_cache cap_port_cache;
 
 static struct list cap_intr_handlers[CPU_INTR_TABLE_SIZE];
 static struct adaptive_lock cap_intr_lock;
@@ -209,11 +209,11 @@ cap_flow_fini (struct sref_counter *sref)
   slist_for_each_entry_safe (&flow->alloc_alerts, alert, tmp, snode)
     cap_alert_free (alert);
 
-  struct cap_gift_entry *gift, *gt;
-  slist_for_each_entry_safe (&flow->lpads, gift, gt, snode)
+  struct cap_port_entry *port, *gt;
+  slist_for_each_entry_safe (&flow->lpads, port, gt, snode)
     {
-      task_unref (gift->task);
-      kmem_cache_free (&cap_gift_cache, gift);
+      task_unref (port->task);
+      kmem_cache_free (&cap_port_cache, port);
     }
 
   kmem_cache_free (&cap_flow_cache, flow);
@@ -600,10 +600,10 @@ cap_iters_copy (struct cap_iters *dst, const struct cap_iters *src)
 }
 
 static void
-cap_flow_push_gift (struct cap_flow *flow, struct cap_gift_entry *gift)
+cap_flow_push_port (struct cap_flow *flow, struct cap_port_entry *port)
 {
   SPINLOCK_GUARD (&flow->lock);
-  slist_insert_head (&flow->lpads, &gift->snode);
+  slist_insert_head (&flow->lpads, &port->snode);
 
   if (list_empty (&flow->waiters))
     return;
@@ -616,7 +616,7 @@ static ssize_t
 cap_sender_impl (struct cap_flow *flow, uintptr_t tag, struct cap_iters *in,
                  struct cap_iters *out, struct ipc_msg_data *data)
 {
-  struct cap_gift_entry *gift;
+  struct cap_port_entry *port;
   struct thread *self = thread_self ();
 
   {
@@ -634,42 +634,42 @@ cap_sender_impl (struct cap_flow *flow, uintptr_t tag, struct cap_iters *in,
         list_remove (&sender.lnode);
       }
 
-    gift = slist_first_entry (&flow->lpads, typeof (*gift), snode);
+    port = slist_first_entry (&flow->lpads, typeof (*port), snode);
     slist_remove (&flow->lpads, NULL);
   }
  
-  cap_ipc_msg_data_init (&gift->mdata, tag);
-  ssize_t nb = cap_transfer_iters (gift->task, &gift->in_it, in,
-                                   IPC_COPY_TO, &gift->mdata);
+  cap_ipc_msg_data_init (&port->mdata, tag);
+  ssize_t nb = cap_transfer_iters (port->task, &port->in_it, in,
+                                   IPC_COPY_TO, &port->mdata);
 
   if (nb < 0)
-    gift->mdata.nbytes = nb;
+    port->mdata.nbytes = nb;
 
-  cap_iters_copy (&gift->in_it, in);
-  gift->out_it = out;
+  cap_iters_copy (&port->in_it, in);
+  port->out_it = out;
 
-  struct cap_gift_entry *cur_gift = self->cur_gift;
-  self->cur_gift = gift;
-  cap_fill_ids (&gift->mdata.thread_id, &gift->mdata.task_id, self);
+  struct cap_port_entry *cur_port = self->cur_port;
+  self->cur_port = port;
+  cap_fill_ids (&port->mdata.thread_id, &port->mdata.task_id, self);
 
   // Switch task (also sets the pmap).
-  cap_task_swap (&gift->task);
-  user_copy_to ((void *)gift->ctx[2], &gift->mdata, sizeof (gift->mdata));
+  cap_task_swap (&port->task);
+  user_copy_to ((void *)port->ctx[2], &port->mdata, sizeof (port->mdata));
 
   // After the copy, switch the counters.
-  SWAP (&gift->mdata.pages_recv, &gift->mdata.pages_sent);
-  SWAP (&gift->mdata.caps_recv, &gift->mdata.caps_sent);
-  gift->mdata.pages_recv = gift->mdata.caps_recv = 0;
+  SWAP (&port->mdata.pages_recv, &port->mdata.pages_sent);
+  SWAP (&port->mdata.caps_recv, &port->mdata.caps_sent);
+  port->mdata.pages_recv = port->mdata.caps_recv = 0;
 
   // Jump to new PC and SP.
-  ssize_t ret = cpu_gift_swap (gift->ctx, cur_gift, (void *)flow->entry);
+  ssize_t ret = cpu_port_swap (port->ctx, cur_port, (void *)flow->entry);
 
   // We're back.
-  cap_flow_push_gift (flow, gift);
-  if (data && user_copy_to (data, &gift->mdata, sizeof (*data)) != 0)
+  cap_flow_push_port (flow, port);
+  if (data && user_copy_to (data, &port->mdata, sizeof (*data)) != 0)
     ret = -EFAULT;
 
-  self->cur_gift = cur_gift;
+  self->cur_port = cur_port;
   return (ret);
 }
 
@@ -726,28 +726,28 @@ cap_send_iters (struct cap_base *cap, struct cap_iters *in,
 
 static ssize_t
 cap_push_pull_msg (struct cap_iters *l_it, struct ipc_msg_data *mdata,
-                   int dir, struct cap_iters *r_it, struct cap_gift_entry *gift)
+                   int dir, struct cap_iters *r_it, struct cap_port_entry *port)
 {
-  cap_ipc_msg_data_init (mdata, gift->mdata.tag);
-  return (cap_transfer_iters (gift->task, r_it, l_it, dir, mdata));
+  cap_ipc_msg_data_init (mdata, port->mdata.tag);
+  return (cap_transfer_iters (port->task, r_it, l_it, dir, mdata));
 }
 
 ssize_t
 cap_pull_iters (struct cap_iters *it, struct ipc_msg_data *mdata)
 {
   struct thread *self = thread_self ();
-  struct cap_gift_entry *gift = self->cur_gift;
+  struct cap_port_entry *port = self->cur_port;
 
-  if (! gift)
+  if (! port)
     return (-EINVAL);
 
   struct ipc_msg_data tmp;
   ssize_t ret = cap_push_pull_msg (it, &tmp, IPC_COPY_FROM,
-                                   &gift->in_it, gift);
+                                   &port->in_it, port);
   if (ret >= 0)
     {
-      gift->mdata.pages_sent += tmp.pages_recv;
-      gift->mdata.caps_sent += tmp.caps_recv;
+      port->mdata.pages_sent += tmp.pages_recv;
+      port->mdata.caps_sent += tmp.caps_recv;
 
       if (mdata && user_copy_to (mdata, &tmp, sizeof (tmp)) != 0)
         ret = -EFAULT;
@@ -760,19 +760,19 @@ ssize_t
 cap_push_iters (struct cap_iters *it, struct ipc_msg_data *mdata)
 {
   struct thread *self = thread_self ();
-  struct cap_gift_entry *gift = self->cur_gift;
+  struct cap_port_entry *port = self->cur_port;
 
-  if (! gift)
+  if (! port)
     return (-EINVAL);
 
   struct ipc_msg_data out_data;
   ssize_t ret = cap_push_pull_msg (it, &out_data, IPC_COPY_TO,
-                                   gift->out_it, gift);
+                                   port->out_it, port);
   if (ret >= 0)
     {
-      gift->mdata.nbytes += ret;
-      gift->mdata.pages_recv += out_data.pages_recv;
-      gift->mdata.caps_recv += out_data.caps_recv;
+      port->mdata.nbytes += ret;
+      port->mdata.pages_recv += out_data.pages_recv;
+      port->mdata.caps_recv += out_data.caps_recv;
 
       if (mdata)
         {
@@ -790,29 +790,29 @@ cap_push_iters (struct cap_iters *it, struct ipc_msg_data *mdata)
 ssize_t
 cap_reply_iters (struct cap_iters *it, int rv)
 {
-  struct cap_gift_entry *gift = thread_self()->cur_gift;
+  struct cap_port_entry *port = thread_self()->cur_port;
   ssize_t ret;
 
-  if (! gift)
+  if (! port)
     return (-EINVAL);
   else if (rv >= 0)
-    ret = gift->mdata.nbytes =
-      cap_transfer_iters (gift->task, gift->out_it,
-                          it, IPC_COPY_TO, &gift->mdata);
+    ret = port->mdata.nbytes =
+      cap_transfer_iters (port->task, port->out_it,
+                          it, IPC_COPY_TO, &port->mdata);
   else
     ret = rv;
 
-  cap_task_swap (&gift->task);
-  cpu_gift_return (gift->ctx[0], ret);
+  cap_task_swap (&port->task);
+  cpu_port_return (port->ctx[0], ret);
   __builtin_unreachable ();
 }
 
 int
-cap_flow_add_gift (struct cap_flow *flow, void *stack, size_t size,
+cap_flow_add_port (struct cap_flow *flow, void *stack, size_t size,
                    struct ipc_msg *msg, struct ipc_msg_data *mdata,
                    struct cap_thread_info *info __unused)
 {
-  struct cap_gift_entry *entry = kmem_cache_alloc (&cap_gift_cache);
+  struct cap_port_entry *entry = kmem_cache_alloc (&cap_port_cache);
   if (! entry)
     return (ENOMEM);
 
@@ -824,15 +824,15 @@ cap_flow_add_gift (struct cap_flow *flow, void *stack, size_t size,
   cap_iters_init_msg (&entry->in_it, msg);
   task_ref (entry->task = task_self ());
 
-  cap_flow_push_gift (flow, entry);
+  cap_flow_push_port (flow, entry);
   return (0);
 }
 
 int
-cap_flow_rem_gift (struct cap_flow *flow, uintptr_t stack)
+cap_flow_rem_port (struct cap_flow *flow, uintptr_t stack)
 {
   spinlock_lock (&flow->lock);
-  struct cap_gift_entry *entry;
+  struct cap_port_entry *entry;
   struct slist_node *prev = NULL;
 
   slist_for_each_entry (&flow->lpads, entry, snode)
@@ -860,7 +860,7 @@ cap_flow_rem_gift (struct cap_flow *flow, uintptr_t stack)
   if (! error)
     kmem_free (entry, sizeof (*entry));
   else
-    cap_flow_push_gift (flow, entry);
+    cap_flow_push_port (flow, entry);
 
   return (error);
 }
@@ -1051,8 +1051,8 @@ cap_setup (void)
   kmem_cache_init (&cap_misc_cache, "cap_misc", size, 0, NULL, 0);
   kmem_cache_init (&cap_flow_cache, "cap_flow",
                    sizeof (struct cap_flow), 0, NULL, 0);
-  kmem_cache_init (&cap_gift_cache, "cap_gift",
-                   sizeof (struct cap_gift_entry), 0, NULL, 0);
+  kmem_cache_init (&cap_port_cache, "cap_port",
+                   sizeof (struct cap_port_entry), 0, NULL, 0);
 
   adaptive_lock_init (&cap_intr_lock);
   for (size_t i = 0; i < ARRAY_SIZE (cap_intr_handlers); ++i)
