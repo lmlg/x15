@@ -188,7 +188,7 @@ sleepq_setup (void)
     sleepq_bucket_init (&sleepq_htable[i]);
 
   kmem_cache_init (&sleepq_cache, "sleepq", sizeof (struct sleepq),
-                   CPU_L1_SIZE, sleepq_ctor, 0);
+                   alignof (struct sleepq), sleepq_ctor, 0);
   return (0);
 }
 

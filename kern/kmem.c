@@ -322,7 +322,8 @@ kmem_pagealloc_is_virtual (size_t size)
 static inline void
 kmem_mark_page_sleepable (struct vm_page *page)
 {
-  vm_page_set_priv (page, (void *)1);
+  _Auto value = (uintptr_t)vm_page_get_priv (page);
+  vm_page_set_priv (page, (void *)(value | 2));
 }
 
 static void*
@@ -352,7 +353,7 @@ kmem_pagefree (void *ptr, size_t size)
     {
       _Auto page = vm_page_lookup (vm_page_direct_pa ((uintptr_t)ptr));
       assert (page);
-      uint32_t flags = ((uintptr_t)vm_page_get_priv (page) & 1) ?
+      uint32_t flags = ((uintptr_t)vm_page_get_priv (page) & 2) ?
                        VM_PAGE_SLEEP : 0;
       vm_page_free (page, vm_page_order (size), flags);
     }
@@ -702,7 +703,7 @@ static void*
 kmem_page_get_priv (struct vm_page *page)
 {
   uintptr_t val = (uintptr_t)vm_page_get_priv (page);
-  return ((void *)(val & ~1));
+  return ((void *)(val & ~2));
 }
 
 static void
@@ -925,7 +926,6 @@ void*
 kmem_cache_alloc2 (struct kmem_cache *cache, uint32_t pflags)
 {
 #ifdef KMEM_USE_CPU_LAYER
-
   thread_pin ();
   struct kmem_cpu_pool *cpu_pool = kmem_cpu_pool_get (cache);
   adaptive_lock_acquire (&cpu_pool->lock);

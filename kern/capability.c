@@ -149,7 +149,10 @@ static void
 cap_channel_fini (struct sref_counter *sref)
 {
   _Auto chp = CAP_FROM_SREF (sref, struct cap_channel);
-  cap_base_rel (chp->flow);
+
+  if (chp->flow)
+    cap_base_rel (chp->flow);
+
   kmem_cache_free (&cap_misc_cache, chp);
 }
 
@@ -197,6 +200,13 @@ cap_alert_free (struct cap_alert *alert)
 }
 
 static void
+cap_port_entry_fini (struct cap_port_entry *port)
+{
+  task_unref (port->task);
+  kmem_cache_free (&cap_port_cache, port);
+}
+
+static void
 cap_flow_fini (struct sref_counter *sref)
 {
   _Auto flow = CAP_FROM_SREF (sref, struct cap_flow);
@@ -209,12 +219,9 @@ cap_flow_fini (struct sref_counter *sref)
   slist_for_each_entry_safe (&flow->alloc_alerts, alert, tmp, snode)
     cap_alert_free (alert);
 
-  struct cap_port_entry *port, *gt;
-  slist_for_each_entry_safe (&flow->lpads, port, gt, snode)
-    {
-      task_unref (port->task);
-      kmem_cache_free (&cap_port_cache, port);
-    }
+  struct cap_port_entry *port, *pt;
+  slist_for_each_entry_safe (&flow->lpads, port, pt, snode)
+    cap_port_entry_fini (port);
 
   kmem_cache_free (&cap_flow_cache, flow);
 }
@@ -1024,7 +1031,7 @@ int
 }
 
 static size_t
-cap_max_size (const size_t *args, size_t n)
+cap_get_max (const size_t *args, size_t n)
 {
   size_t ret = *args;
   for (size_t i = 1; i < n; ++i)
@@ -1034,10 +1041,10 @@ cap_max_size (const size_t *args, size_t n)
   return (ret);
 }
 
-#define CAP_MAX_SIZE(...)   \
+#define CAP_MAX(...)   \
   ({   \
      const size_t args_[] = { __VA_ARGS__ };   \
-     cap_max_size (args_, ARRAY_SIZE (args_));   \
+     cap_get_max (args_, ARRAY_SIZE (args_));   \
    })
 
 static int __init
@@ -1045,10 +1052,14 @@ cap_setup (void)
 {
   // Every capability type but flows are allocated from the same cache.
 #define SZ(type)   sizeof (struct cap_##type)
-  size_t size = CAP_MAX_SIZE (SZ (task), SZ (thread), SZ (channel),
-                              SZ (kernel), SZ (alert_async));
+#define AL(type)   alignof (struct cap_##type)
 
-  kmem_cache_init (&cap_misc_cache, "cap_misc", size, 0, NULL, 0);
+  size_t size = CAP_MAX (SZ (task), SZ (thread), SZ (channel),
+                         SZ (kernel), SZ (alert_async));
+  size_t alignment = CAP_MAX (AL (task), AL (thread), AL (channel),
+                              AL (kernel), AL (alert_async));
+
+  kmem_cache_init (&cap_misc_cache, "cap_misc", size, alignment, NULL, 0);
   kmem_cache_init (&cap_flow_cache, "cap_flow",
                    sizeof (struct cap_flow), 0, NULL, 0);
   kmem_cache_init (&cap_port_cache, "cap_port",

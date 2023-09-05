@@ -1704,8 +1704,8 @@ pmap_sync (void *arg)
       list_init (&queue->requests);
       spinlock_unlock (&queue->lock);
 
-      struct pmap_update_request *request;
-      list_for_each_entry (&reqs, request, node)
+      struct pmap_update_request *request, *tmp;
+      list_for_each_entry_safe (&reqs, request, tmp, node)
         {
           int error = pmap_update_local (request->oplist, request->nr_mappings);
           _Auto shared = request->shared;

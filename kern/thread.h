@@ -212,7 +212,7 @@ struct thread
   struct perfmon_td perfmon_td;   // ( )
 #endif
 
-  struct fixup *fixup;            // (-)
+  struct unw_fixup_t *fixup;      // (-)
   void *cur_port;                 // (-)
   struct task *xtask;             // (-)
   struct futex_td *futex_td;      // (-)

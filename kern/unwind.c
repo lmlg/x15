@@ -315,6 +315,12 @@ unw_cursor_set_pc (struct unw_cursor *cursor, uintptr_t pc)
   cursor->mctx->regs[CPU_UNWIND_PC_REG] = pc;
 }
 
+static uintptr_t
+unw_cursor_sp (const struct unw_cursor *cursor)
+{
+  return (cursor->mctx->regs[UNW_SP_REGISTER]);
+}
+
 static void
 unw_cursor_set_sp (struct unw_cursor *cursor, uintptr_t sp)
 {
@@ -595,4 +601,68 @@ unw_stacktrace (struct unw_mcontext *mctx)
 {
   uint32_t index = 0;
   unw_backtrace (mctx, unw_show_stacktrace, &index);
+}
+
+int
+unw_fixup_save (struct unw_fixup_t *fx)
+{
+  __builtin_unwind_init ();
+  fx->sp = (uintptr_t)__builtin_dwarf_cfa ();
+  fx->pc = (uintptr_t)UNW_RA (__builtin_return_address (0));
+
+  struct thread *self = thread_self ();
+  fx->prev = &self->fixup;
+  fx->next = *fx->prev;
+
+  self->fixup = fx;
+  return (0);
+}
+
+static int
+unw_fixup_step_until (struct unw_fixup_t *fixup, struct unw_cursor *cursor)
+{
+  int rv = 1;
+  while (unw_cursor_sp (cursor) < fixup->sp)
+    {
+      rv = unw_cursor_step (cursor);
+      if (rv <= 0)
+        break;
+    }
+
+  return (rv);
+}
+
+void
+unw_fixup_restore (struct unw_fixup_t *fixup,
+                   struct unw_mcontext *mctx, int retval)
+{
+  struct unw_cursor cursor;
+  unw_cursor_init_mctx (&cursor, mctx);
+
+  if (unw_fixup_step_until (fixup, &cursor) <= 0)
+    return;
+
+  unw_cursor_set_pc (&cursor, fixup->pc);
+  unw_cursor_set_sp (&cursor, fixup->sp);
+  cpu_unw_mctx_set_frame (cursor.mctx->regs, retval);
+  __builtin_unreachable ();
+}
+
+void
+unw_fixup_jmp (struct unw_fixup_t *fixup, int retval)
+{
+  struct unw_cursor cursor;
+  struct unw_mcontext mctx;
+
+  cpu_unw_mctx_save (mctx.regs);
+  unw_cursor_init_mctx (&cursor, &mctx);
+
+  if (unw_fixup_step_until (fixup, &cursor) > 0)
+    {
+      unw_cursor_set_sp (&cursor, fixup->sp);
+      unw_cursor_set_pc (&cursor, fixup->pc);
+      cpu_unw_mctx_jmp (cursor.mctx->regs, retval);
+    }
+
+  __builtin_unreachable ();
 }

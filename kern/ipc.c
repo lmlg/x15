@@ -17,10 +17,10 @@
 
 #include <kern/capability.h>
 #include <kern/cspace.h>
-#include <kern/fixup.h>
 #include <kern/ipc.h>
 #include <kern/task.h>
 #include <kern/thread.h>
+#include <kern/unwind.h>
 #include <kern/user.h>
 
 #include <machine/cpu.h>
@@ -247,8 +247,8 @@ ipc_iov_iter_copy (struct task *r_task, struct ipc_iov_iter *r_it,
   struct ipc_data data;
   ipc_data_init (&data, direction);
 
-  FIXUP (fixup);
-  int error = fixup_save (&fixup);
+  struct unw_fixup fixup;
+  int error = unw_fixup_save (&fixup);
   if (unlikely (error))
     {
       ipc_data_fini (&data);
@@ -282,9 +282,8 @@ ipc_bcopy (struct task *r_task, void *r_ptr, size_t r_size,
            void *l_ptr, size_t l_size, int direction)
 {
   struct ipc_data data;
-  FIXUP (fixup);
-
-  int error = fixup_save (&fixup);
+  struct unw_fixup fixup;
+  int error = unw_fixup_save (&fixup);
   if (unlikely (error))
     {
       ipc_data_fini (&data);

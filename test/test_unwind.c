@@ -17,8 +17,7 @@
  * This module tests the generic unwind API.
  */
 
-#include <kern/fixup.h>
-#include <kern/thread.h>
+#include <kern/unwind.h>
 
 #include <test/test.h>
 
@@ -31,13 +30,13 @@ test_unw_manip (volatile int *ptr)
 TEST_DEFERRED (unwind)
 {
   volatile int value = 0;
-  FIXUP (fx);
-  int rv = fixup_save (&fx);
+  struct unw_fixup fx;
+  int rv = unw_fixup_save (&fx);
 
   if (! rv)
     {
       test_unw_manip (&value);
-      fixup_restore (&fx, -3);
+      unw_fixup_jmp (&fx, -3);
       test_unw_manip (&value);
     }
 
