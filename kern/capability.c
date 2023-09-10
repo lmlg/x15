@@ -411,8 +411,7 @@ cap_recv_wakeup_fast (struct cap_flow *flow)
   if (list_empty (&flow->receivers))
     return;
 
-  _Auto recv = list_first_entry (&flow->receivers, struct cap_receiver, lnode);
-  list_remove (&recv->lnode);
+  _Auto recv = list_pop (&flow->receivers, struct cap_receiver, lnode);
   recv->spurious = true;
   thread_wakeup (recv->thread);
 }

@@ -63,6 +63,7 @@ struct unw_mcontext
   uintptr_t regs[CPU_UNWIND_REGISTERS];
 };
 
+// Saved information needed for fixups.
 struct unw_fixup_t
 {
   uintptr_t sp;

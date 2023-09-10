@@ -152,6 +152,13 @@
 #define CPU_CPUID_EXT1_EDX_1GP                  0x04000000
 #define CPU_CPUID_EXT1_EDX_LM                   0x20000000
 
+// Registers used to implement percpu variables.
+#ifdef __LP64__
+#  define CPU_LOCAL_REGISTER   "gs"
+#else
+#  define CPU_LOCAL_REGISTER   "fs"
+#endif
+
 #ifndef __ASSEMBLER__
 
 enum cpu_feature
@@ -351,7 +358,6 @@ struct cpu
   struct cpu_feature_map feature_map;
   uint16_t phys_addr_width;
   uint16_t virt_addr_width;
-
   struct cpu_gdt gdt;
 
   /*
@@ -374,7 +380,6 @@ struct cpu
 #endif
 
   uint32_t started;
-
   alignas (CPU_DATA_ALIGN) char intr_stack[CPU_INTR_STACK_SIZE];
   alignas (CPU_DATA_ALIGN) char df_stack[CPU_INTR_STACK_SIZE];
 };
@@ -411,8 +416,7 @@ cpu_get_eflags (void)
   return (eflags);
 }
 
-#define CPU_INTR_TABLE_SIZE   \
-  (CPU_EXC_INTR_LAST - CPU_EXC_INTR_FIRST)
+#define CPU_INTR_TABLE_SIZE   (CPU_EXC_INTR_LAST - CPU_EXC_INTR_FIRST)
 
 // Gate/segment descriptor bits and masks.
 #define CPU_DESC_TYPE_DATA                      0x00000200
@@ -628,15 +632,9 @@ void cpu_halt_broadcast (void);
 
 // Generic percpu accessors.
 
-#ifdef __LP64__
-#  define CPU_LOCAL_REGISTER   "gs"
-#else
-#  define CPU_LOCAL_REGISTER   "fs"
-#endif
-
 #define cpu_local_ptr(var)   \
 MACRO_BEGIN   \
-  typeof(var) *ptr_ = &(var);   \
+  typeof (var) *ptr_ = &(var);   \
   asm ("add %%" CPU_LOCAL_REGISTER ":%1, %0"   \
        : "+r" (ptr_)   \
        : "m" (cpu_local_area));   \
@@ -653,7 +651,7 @@ MACRO_END
 
 #define cpu_local_read(var)   \
 MACRO_BEGIN   \
-  typeof(var) val_;   \
+  typeof (var) val_;   \
   asm ("mov %%" CPU_LOCAL_REGISTER ":%1, %0"   \
        : "=r" (val_)   \
        : "m" (var));   \
@@ -947,10 +945,9 @@ cpu_clear_intr (void)
 /*
  * CPU fixups, used to safely perform operations on memory that may fault.
  *
- * These work similarly to what setjmp/longjmp do, with the exception that
- * unwinding doesn't occur immediately; rather, the state is spilled into
- * a memory area (i.e: the stack region where registers where saved before
- * running the interrupt handler), so that it's restored afterwards.
+ * They work similarly to setjmp/longjmp, with the exception that they
+ * are better coupled with exception and traps, since they can use
+ * a CPU frame to start the unwinding process.
 */
 
 #ifdef __LP64__

@@ -606,7 +606,6 @@ unw_stacktrace (struct unw_mcontext *mctx)
 int
 unw_fixup_save (struct unw_fixup_t *fx)
 {
-  __builtin_unwind_init ();
   fx->sp = (uintptr_t)__builtin_dwarf_cfa ();
   fx->pc = (uintptr_t)UNW_RA (__builtin_return_address (0));
 
