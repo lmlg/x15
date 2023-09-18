@@ -67,13 +67,18 @@ struct unw_mcontext
 struct unw_fixup_t
 {
   uintptr_t sp;
+  uintptr_t bp;
   uintptr_t pc;
   struct unw_fixup_t *next;
   struct unw_fixup_t **prev;
 };
 
-// Save the calling environment in FIXUP. Always returns 0.
-int unw_fixup_save (struct unw_fixup_t *fixup) __attribute__ ((returns_twice));
+int unw_fixup_save (struct unw_fixup_t *fixup, void *frame)
+  __attribute__ ((returns_twice));
+
+// Save the calling environemt in FIXUP. Always returns zero.
+#define unw_fixup_save(fx)   \
+  (unw_fixup_save) ((fx), __builtin_frame_address (0))
 
 /*
  * Restore the environment saved in FIXUP, starting the unwind process

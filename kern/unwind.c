@@ -315,12 +315,6 @@ unw_cursor_set_pc (struct unw_cursor *cursor, uintptr_t pc)
   cursor->mctx->regs[CPU_UNWIND_PC_REG] = pc;
 }
 
-static uintptr_t
-unw_cursor_sp (const struct unw_cursor *cursor)
-{
-  return (cursor->mctx->regs[UNW_SP_REGISTER]);
-}
-
 static void
 unw_cursor_set_sp (struct unw_cursor *cursor, uintptr_t sp)
 {
@@ -604,9 +598,10 @@ unw_stacktrace (struct unw_mcontext *mctx)
 }
 
 int
-unw_fixup_save (struct unw_fixup_t *fx)
+(unw_fixup_save) (struct unw_fixup_t *fx, void *frame)
 {
   fx->sp = (uintptr_t)__builtin_dwarf_cfa ();
+  fx->bp = (uintptr_t)frame;
   fx->pc = (uintptr_t)UNW_RA (__builtin_return_address (0));
 
   struct thread *self = thread_self ();
@@ -617,18 +612,18 @@ unw_fixup_save (struct unw_fixup_t *fx)
   return (0);
 }
 
+#define unw_cursor_frame(cursor)   ((cursor)->mctx->regs[CPU_UNWIND_FRAME_REG])
+
 static int
 unw_fixup_step_until (struct unw_fixup_t *fixup, struct unw_cursor *cursor)
 {
-  int rv = 1;
-  while (unw_cursor_sp (cursor) < fixup->sp)
+  while (1)
     {
-      rv = unw_cursor_step (cursor);
-      if (rv <= 0)
-        break;
+      if (unw_cursor_frame (cursor) == fixup->bp)
+        return (0);
+      else if (unw_cursor_step (cursor) <= 0)
+        return (-1);
     }
-
-  return (rv);
 }
 
 void
@@ -638,7 +633,7 @@ unw_fixup_restore (struct unw_fixup_t *fixup,
   struct unw_cursor cursor;
   unw_cursor_init_mctx (&cursor, mctx);
 
-  if (unw_fixup_step_until (fixup, &cursor) <= 0)
+  if (unw_fixup_step_until (fixup, &cursor) < 0)
     return;
 
   unw_cursor_set_pc (&cursor, fixup->pc);
@@ -650,13 +645,14 @@ unw_fixup_restore (struct unw_fixup_t *fixup,
 void
 unw_fixup_jmp (struct unw_fixup_t *fixup, int retval)
 {
+  __builtin_unwind_init ();
   struct unw_cursor cursor;
   struct unw_mcontext mctx;
 
   cpu_unw_mctx_save (mctx.regs);
   unw_cursor_init_mctx (&cursor, &mctx);
 
-  if (unw_fixup_step_until (fixup, &cursor) > 0)
+  if (unw_fixup_step_until (fixup, &cursor) == 0)
     {
       unw_cursor_set_sp (&cursor, fixup->sp);
       unw_cursor_set_pc (&cursor, fixup->pc);

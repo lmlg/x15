@@ -469,11 +469,7 @@ struct cpu_seg_desc
   uint32_t high;
 };
 
-/*
- * Macro to create functions that read/write control registers.
- *
- * TODO Break down.
- */
+// Macro to create functions that read/write control registers.
 #define CPU_DECL_GETSET_CR(name)   \
 static __always_inline uintptr_t   \
 CONCAT (cpu_get_, name) (void)   \
@@ -717,7 +713,6 @@ cpu_has_global_pages (void)
  * pages were previously disabled.
  *
  * Implies a full memory barrier.
- * TODO Update barrier description.
  */
 static __always_inline void
 cpu_enable_global_pages (void)
@@ -771,7 +766,6 @@ cpu_set_msr64 (uint32_t msr, uint64_t value)
  * Flush non-global TLB entries.
  *
  * Implies a full memory barrier.
- * TODO Update barrier description.
  */
 static __always_inline void
 cpu_tlb_flush (void)
@@ -783,7 +777,6 @@ cpu_tlb_flush (void)
  * Flush all TLB entries, including global ones.
  *
  * Implies a full memory barrier.
- * TODO Update barrier description.
  */
 static __always_inline void
 cpu_tlb_flush_all (void)
@@ -810,7 +803,6 @@ cpu_tlb_flush_all (void)
  * Flush a single page table entry in the TLB.
  *
  * Implies a full memory barrier.
- * TODO Update barrier description.
  */
 static __always_inline void
 cpu_tlb_flush_va (uintptr_t va)
@@ -951,9 +943,11 @@ cpu_clear_intr (void)
 */
 
 #ifdef __LP64__
+  #define CPU_UNWIND_FRAME_REG   6
   #define CPU_UNWIND_REGISTERS   17
 #else
-  #define CPU_UNWIND_REGISTERS    9
+  #define CPU_UNWIND_FRAME_REG   5
+  #define CPU_UNWIND_REGISTERS   9
 #endif
 
 #define CPU_UNWIND_PC_REG   (CPU_UNWIND_REGISTERS - 1)
