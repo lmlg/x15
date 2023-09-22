@@ -40,6 +40,7 @@ struct test_cap_data
   struct task *receiver;
   struct semaphore recv_sem;
   struct semaphore send_sem;
+  struct semaphore dead_sem;
 };
 
 struct test_cap_vars
@@ -311,22 +312,125 @@ test_cap_misc (void *arg __unused)
   cap_base_rel (cthread);
 }
 
+static void
+test_cap_dead_child (void *arg)
+{
+  semaphore_wait (arg);
+}
+
+static void
+test_cap_dead_helper (void *arg)
+{
+  struct cap_flow *flow = arg;
+  struct thread *thr;
+  struct thread_attr attr;
+
+  thread_attr_init (&attr, "cap_dead/2");
+  thread_attr_set_detached (&attr);
+
+  int error = thread_create (&thr, &attr, test_cap_dead_child,
+                             &test_cap_data.dead_sem);
+  assert (! error);
+
+  error = cap_thread_register (flow, thr);
+  assert (! error);
+
+  error = cap_thread_unregister (flow, thr);
+  assert (! error);
+
+  error = cap_thread_register (flow, thread_self ());
+  assert (! error);
+
+  error = cap_task_register (flow, thread_self()->task);
+  assert (! error);
+
+  test_cap_dead_child (&test_cap_data.dead_sem);
+}
+
+static void
+test_cap_dead_notif (void *arg __unused)
+{
+  struct cap_flow *flow;
+  int error = cap_flow_create (&flow, 0, 0, 0);
+  assert (! error);
+
+  struct
+    {
+      struct cap_kern_alert alert;
+      char extra[16];
+      struct ipc_msg_data mdata;
+    } *buf;
+
+  error = vm_map_anon_alloc ((void **)&buf, vm_map_self (), 1);
+  assert (! error);
+
+  struct thread *thr;
+  error = test_util_create_thr (&thr, test_cap_dead_helper, flow, "cap_dead");
+  assert (! error);
+
+  int tsk_id = task_id (thr->task), thr_id = thread_id (thr);
+  int got_task = 0, got_thr = 0;
+
+  semaphore_post (&test_cap_data.dead_sem);
+  semaphore_post (&test_cap_data.dead_sem);
+  thread_join (thr);
+
+  error = cap_recv_alert (flow, &buf->alert, 0, &buf->mdata);
+  assert (! error);
+  assert (buf->mdata.flags & IPC_MSG_KERNEL);
+  assert (buf->mdata.thread_id == 0);
+  assert (buf->mdata.task_id == 0);
+
+  if (buf->alert.type == CAP_ALERT_THREAD_DIED &&
+      buf->alert.thread_id == thr_id)
+    got_thr = 1;
+  else if (buf->alert.type == CAP_ALERT_TASK_DIED &&
+           buf->alert.task_id == tsk_id)
+    got_task = 1;
+  else
+    panic ("got unexpected alert");
+
+  error = cap_recv_alert (flow, &buf->alert, 0, &buf->mdata);
+  assert (! error);
+  assert (buf->mdata.flags & IPC_MSG_KERNEL);
+  assert (buf->mdata.thread_id == 0);
+  assert (buf->mdata.task_id == 0);
+
+  if (buf->alert.type == CAP_ALERT_THREAD_DIED &&
+      buf->alert.thread_id == thr_id)
+    ++got_thr;
+  else if (buf->alert.type == CAP_ALERT_TASK_DIED &&
+           buf->alert.task_id == tsk_id)
+    ++got_task;
+  else
+    panic ("got unexpected alert");
+
+  assert (got_thr == 1);
+  assert (got_task == 1);
+}
+
 TEST_DEFERRED (cap)
 {
   _Auto data = &test_cap_data;
 
   semaphore_init (&data->send_sem, 0, 0xff);
   semaphore_init (&data->recv_sem, 0, 0xff);
+  semaphore_init (&data->dead_sem, 0, 0xff);
 
-  struct thread *sender, *receiver, *misc;
+  struct thread *sender, *receiver, *misc, *dead_notif;
   int error = test_util_create_thr (&sender, test_cap_sender,
                                     data, "cap_sender");
   assert (! error);
 
   error = test_util_create_thr (&receiver, test_cap_receiver,
                                 data, "cap_receiver");
+  assert (! error);
 
   error = test_util_create_thr (&misc, test_cap_misc, NULL, "cap_misc");
+  assert (! error);
+
+  error = test_util_create_thr (&dead_notif, test_cap_dead_notif,
+                                NULL, "cap_dead");
 
   thread_join (sender);
   thread_join (receiver);

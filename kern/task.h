@@ -21,6 +21,7 @@
 #include <stdint.h>
 
 #include <kern/atomic.h>
+#include <kern/bulletin.h>
 #include <kern/cspace_types.h>
 #include <kern/init.h>
 #include <kern/kuid.h>
@@ -44,6 +45,7 @@ struct task
   struct list threads;
   struct vm_map *map;
   struct cspace caps;
+  struct bulletin dead_subs;
   char name[TASK_NAME_SIZE];
 };
 

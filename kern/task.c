@@ -58,6 +58,7 @@ task_init (struct task *task, const char *name, struct vm_map *map)
   list_init (&task->threads);
   task->map = map;
   strlcpy (task->name, name, sizeof (task->name));
+  bulletin_init (&task->dead_subs);
 }
 
 #ifdef CONFIG_SHELL
@@ -161,8 +162,9 @@ task_destroy (struct task *task)
   spinlock_lock (&task_list_lock);
   list_remove (&task->node);
   spinlock_unlock (&task_list_lock);
-  vm_map_destroy (task->map);
   cspace_destroy (&task->caps);
+  vm_map_destroy (task->map);
+  cap_notify_dead (&task->dead_subs);
   kuid_remove (&task->kuid, KUID_TASK);
   kmem_cache_free (&task_cache, task);
 }
@@ -198,10 +200,10 @@ task_remove_thread (struct task *task, struct thread *thread)
 {
   spinlock_lock (&task->lock);
   list_remove (&thread->task_node);
-  bool unref = list_empty (&task->threads);
+  bool last = list_empty (&task->threads);
   spinlock_unlock (&task->lock);
 
-  if (unref)
+  if (last)
     { // Destroy the cspace early to avoid circular references.
       cspace_destroy (&task->caps);
       task_unref (task);

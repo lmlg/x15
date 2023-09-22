@@ -1686,6 +1686,7 @@ thread_init (struct thread *thread, void *stack,
   thread->fixup = NULL;
   thread->cur_port = NULL;
   thread->futex_td = NULL;
+  bulletin_init (&thread->dead_subs);
 
 #ifdef CONFIG_PERFMON
   perfmon_td_init (thread_get_perfmon_td (thread));
@@ -1833,6 +1834,7 @@ thread_terminate (struct thread *thread)
 {
   SPINLOCK_GUARD (&thread->join_lock);
   thread->terminating = true;
+  cap_notify_dead (&thread->dead_subs);
   kuid_remove (&thread->kuid, KUID_THREAD);
   thread_wakeup (thread->join_waiter);
 }
@@ -2759,8 +2761,6 @@ thread_name_impl (struct thread *thread, char *name, bool set)
 
   return (0);
 }
-
-// TODO: user_copy instead of memcpy below.
 
 static ssize_t
 thread_ipc_affinity_impl (struct thread *thread, void *map,

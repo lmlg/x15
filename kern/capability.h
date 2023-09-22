@@ -54,7 +54,7 @@ enum
 {
   CAP_ALERT_USER,
   CAP_ALERT_INTR,
-  CAL_ALERT_THREAD_DIED,
+  CAP_ALERT_THREAD_DIED,
   CAP_ALERT_TASK_DIED,
 };
 
@@ -155,6 +155,8 @@ struct cap_iters
   struct ipc_cap_iter cap;
   struct ipc_page_iter page;
 };
+
+struct bulletin;
 
 // Cast a capability to the base type.
 
@@ -258,6 +260,21 @@ int cap_intr_register (struct cap_flow *flow, uint32_t irq);
 
 // Unregister a flow for interrupt handling.
 int cap_intr_unregister (struct cap_flow *flow, uint32_t irq);
+
+// Register a thread on a flow to notify on its death.
+int cap_thread_register (struct cap_flow *flow, struct thread *thread);
+
+// Register a task on a flow to notify on its death.
+int cap_task_register (struct cap_flow *flow, struct task *task);
+
+// Unregister a thread.
+int cap_thread_unregister (struct cap_flow *flow, struct thread *thread);
+
+// Unregister a task.
+int cap_task_unregister (struct cap_flow *flow, struct task *task);
+
+// Traverse a list of dead notifications.
+void cap_notify_dead (struct bulletin *bulletin);
 
 #define cap_iters_init_impl(it, buf, size, iov_init)   \
   do   \

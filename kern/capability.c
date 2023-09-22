@@ -178,12 +178,40 @@ cap_channel_create (struct cap_channel **outp, struct cap_flow *flow,
 static int cap_intr_rem (uint32_t irq, struct list *link);
 
 static void
+cap_task_thread_rem (int id, int type, struct list *link)
+{
+  _Auto kuid = kuid_find (id, type == CAP_ALERT_THREAD_DIED ?
+                              KUID_THREAD : KUID_TASK);
+
+#define cap_unlink_alert(obj, type, unref)   \
+  do   \
+    {   \
+      _Auto ptr = structof (obj, type, kuid);   \
+      spinlock_lock (&ptr->dead_subs.lock);   \
+      list_remove (link);   \
+      spinlock_unlock (&ptr->dead_subs.lock);   \
+      unref (ptr);   \
+    }   \
+  while (0)
+
+  if (! kuid)
+    return;
+  else if (type == CAP_ALERT_THREAD_DIED)
+    cap_unlink_alert (kuid, struct thread, thread_unref);
+  else
+    cap_unlink_alert (kuid, struct task, task_unref);
+
+#undef cap_unlink_alert
+}
+
+static void
 cap_alert_free (struct cap_alert *alert)
 {
   _Auto async = (struct cap_alert_async *)alert;
   _Auto k_alert = &alert->k_alert;
+  int type = cap_alert_type (alert);
 
-  switch (cap_alert_type (alert))
+  switch (type)
     {
       case CAP_ALERT_USER:
         kmem_free (alert, sizeof (*alert));
@@ -193,8 +221,12 @@ cap_alert_free (struct cap_alert *alert)
         cap_intr_rem (k_alert->intr.irq, &async->xlink);
         break;
 
+      case CAP_ALERT_THREAD_DIED:
+      case CAP_ALERT_TASK_DIED:
+        cap_task_thread_rem (k_alert->any_id, type, &async->xlink);
+        break;
+
       default:
-        // XXX: Implement.
         break;
     }
 }
@@ -375,7 +407,7 @@ cap_flow_alloc_alert (struct cap_flow *flow, uint32_t flg)
     {
       /*
        * The cached user alerts are inserted at the head, whereas the
-       * kernel alerts are appended. Thus, if the first entry is a
+       * kernel alerts are appended at the end. Thus, if the first entry is a
        * user one, it can be recycled.
        */
       _Auto entry = slist_first_entry (&flow->alloc_alerts,
@@ -955,6 +987,10 @@ cap_alert_async_find (struct cap_flow *flow, int type, int id,
   return (NULL);
 }
 
+#define CAP_ALERT_INTR_PRIO     (~0u)
+#define CAP_ALERT_THREAD_PRIO   (CAP_ALERT_INTR_PRIO >> 1)
+#define CAP_ALERT_TASK_PRIO     (CAP_ALERT_THREAD_PRIO >> 1)
+
 int
 cap_intr_register (struct cap_flow *flow, uint32_t irq)
 {
@@ -965,7 +1001,7 @@ cap_intr_register (struct cap_flow *flow, uint32_t irq)
   if (! ap)
     return (ENOMEM);
 
-  plist_node_init (&ap->base.pnode, ~0u);   // Interrupts have max priority.
+  plist_node_init (&ap->base.pnode, CAP_ALERT_INTR_PRIO);
   cap_alert_type(&ap->base) = CAP_ALERT_INTR;
   slist_node_init (&ap->base.snode);
   list_node_init (&ap->xlink);
@@ -998,29 +1034,158 @@ cap_intr_register (struct cap_flow *flow, uint32_t irq)
   return (0);
 }
 
-int
-cap_intr_unregister (struct cap_flow *flow, uint32_t irq)
+static int
+cap_unregister_impl (struct cap_flow *flow, int type,
+                     uint32_t id, struct cap_alert_async **outp)
 {
-  CPU_INTR_GUARD ();
-  spinlock_lock (&flow->lock);
-
+  SPINLOCK_GUARD (&flow->lock);
   struct slist_node *node = NULL;
-  _Auto entry = cap_alert_async_find (flow, CAP_ALERT_INTR, irq, &node);
+  _Auto entry = cap_alert_async_find (flow, type, id, &node);
 
   if (! entry)
-    {
-      spinlock_unlock (&flow->lock);
-      return (ESRCH);
-    }
+    return (ESRCH);
 
   slist_remove (&flow->alloc_alerts, node);
   if (!plist_node_unlinked (&entry->base.pnode))
     plist_remove (&flow->pending_alerts, &entry->base.pnode);
 
-  spinlock_unlock (&flow->lock);
-  cap_intr_rem (irq, &entry->xlink);
-
+  *outp = entry;
   return (0);
+}
+
+int
+cap_intr_unregister (struct cap_flow *flow, uint32_t irq)
+{
+  CPU_INTR_GUARD ();
+  struct cap_alert_async *entry;
+  int error = cap_unregister_impl (flow, CAP_ALERT_INTR, irq, &entry);
+
+  if (! error)
+    cap_intr_rem (irq, &entry->xlink);
+
+  return (error);
+}
+
+static int
+cap_register_task_thread (struct cap_flow *flow, struct kuid_head *kuid,
+                          uint32_t prio, int type, struct bulletin *outp)
+{
+  struct cap_alert_async *ap = kmem_cache_alloc (&cap_misc_cache);
+  if (! ap)
+    return (ENOMEM);
+
+  plist_node_init (&ap->base.pnode, prio);
+  cap_alert_type(&ap->base) = type;
+  slist_node_init (&ap->base.snode);
+  list_node_init (&ap->xlink);
+  ap->flow = flow;
+
+  ap->base.k_alert = (struct cap_kern_alert)
+    {
+      .type = type,
+      .any_id = kuid->id
+    };
+
+  spinlock_lock (&flow->lock);
+  if (unlikely (cap_alert_async_find (flow, type, kuid->id, NULL)))
+    {
+      spinlock_unlock (&flow->lock);
+      kmem_cache_free (&cap_misc_cache, ap);
+      return (EALREADY);
+    }
+
+  slist_insert_tail (&flow->alloc_alerts, &ap->base.snode);
+
+  spinlock_lock (&outp->lock);
+  list_insert_tail (&outp->subs, &ap->xlink);
+  if (atomic_load_rlx (&kuid->nr_refs) == 1)
+    {
+      plist_add (&flow->pending_alerts, &ap->base.pnode);
+      cap_recv_wakeup_fast (flow);
+    }
+
+  spinlock_unlock (&flow->lock);
+  spinlock_unlock (&outp->lock);
+  return (0);
+}
+
+static int
+cap_task_thread_unregister (struct cap_flow *flow, int type,
+                            int tid, struct bulletin *outp)
+{
+  struct cap_alert_async *entry;
+  int error = cap_unregister_impl (flow, type, tid, &entry);
+
+  if (! error)
+    {
+      SPINLOCK_GUARD (&outp->lock);
+      list_remove (&entry->xlink);
+    }
+
+  return (error);
+}
+
+int
+cap_thread_register (struct cap_flow *flow, struct thread *thr)
+{
+  if (! thr)
+    return (EINVAL);
+
+  return (cap_register_task_thread (flow, &thr->kuid, CAP_ALERT_THREAD_PRIO,
+                                    CAP_ALERT_THREAD_DIED, &thr->dead_subs));
+}
+
+int
+cap_task_register (struct cap_flow *flow, struct task *task)
+{
+  if (! task)
+    return (EINVAL);
+
+  return (cap_register_task_thread (flow, &task->kuid, CAP_ALERT_TASK_PRIO,
+                                    CAP_ALERT_TASK_DIED, &task->dead_subs));
+}
+
+int
+cap_thread_unregister (struct cap_flow *flow, struct thread *thr)
+{
+  if (! thr)
+    return (EINVAL);
+
+  return (cap_task_thread_unregister (flow, CAP_ALERT_THREAD_DIED,
+                                      thread_id (thr), &thr->dead_subs));
+}
+
+int
+cap_task_unregister (struct cap_flow *flow, struct task *task)
+{
+  if (! task)
+    return (EINVAL);
+
+  return (cap_task_thread_unregister (flow, CAP_ALERT_TASK_DIED,
+                                      task_id (task), &task->dead_subs));
+}
+
+void
+cap_notify_dead (struct bulletin *bulletin)
+{
+  struct list dead_subs;
+
+  spinlock_lock (&bulletin->lock);
+  list_set_head (&dead_subs, &bulletin->subs);
+  spinlock_unlock (&bulletin->lock);
+
+  struct cap_alert_async *ap;
+  list_for_each_entry (&dead_subs, ap, xlink)
+    {
+      _Auto flow = ap->flow;
+
+      SPINLOCK_GUARD (&flow->lock);
+      if (!plist_node_unlinked (&ap->base.pnode))
+        continue;
+
+      plist_add (&flow->pending_alerts, &ap->base.pnode);
+      cap_recv_wakeup_fast (flow);
+    }
 }
 
 int

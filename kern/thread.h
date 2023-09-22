@@ -40,6 +40,7 @@
 #include <stdnoreturn.h>
 
 #include <kern/atomic.h>
+#include <kern/bulletin.h>
 #include <kern/cpumap.h>
 #include <kern/init.h>
 #include <kern/cpumap.h>
@@ -216,6 +217,7 @@ struct thread
   void *cur_port;                 // (-)
   struct task *xtask;             // (-)
   struct futex_td *futex_td;      // (-)
+  struct bulletin dead_subs;      // ( )
 };
 
 // Thread IPC message (TODO: Move to a specific header).

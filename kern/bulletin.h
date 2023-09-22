@@ -23,9 +23,9 @@
 
 #include <stdint.h>
 
-#include <kern/list.h>
+#include <kern/list_types.h>
 #include <kern/macros.h>
-#include <kern/spinlock.h>
+#include <kern/spinlock_types.h>
 #include <kern/work.h>
 
 /*
