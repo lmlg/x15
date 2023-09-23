@@ -165,9 +165,12 @@ console_intr (struct console *console, const char *s)
       cbuf_pushb (&console->recvbuf, *s, false);
     }
 
-  struct list *node = list_first (&console->waiters);
-  if (node)
-    thread_wakeup (list_entry(node, struct console_waiter, node)->thread);
+  if (list_empty (&console->waiters))
+    return;
+
+  _Auto waiter = list_first_entry (&console->waiters,
+                                   struct console_waiter, node);
+  thread_wakeup (waiter->thread);
 }
 
 void
