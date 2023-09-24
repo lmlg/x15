@@ -103,13 +103,8 @@ tcb_trace (const struct tcb *tcb)
   struct unw_mcontext mctx;
   memset (&mctx, 0, sizeof (mctx));
 
-#ifdef __LP64__
-  mctx.regs[6] = tcb->bp;
-  mctx.regs[7] = tcb->sp;
-#else
-  mctx.regs[4] = tcb->sp;
-  mctx.regs[5] = tcb->bp;
-#endif
+  mctx.regs[CPU_UNWIND_FRAME_REG] = tcb->bp;
+  mctx.regs[__builtin_dwarf_sp_column ()] = tcb->sp;
   mctx.regs[CPU_UNWIND_PC_REG] = (uintptr_t)tcb_context_restore + 1;
   unw_stacktrace (&mctx);
 }
