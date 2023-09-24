@@ -26,8 +26,6 @@
 
 #include <machine/pmap.h>
 
-#include <stdio.h>
-
 struct cap_alert
 {
   union
