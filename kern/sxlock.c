@@ -43,13 +43,8 @@ void
 sxlock_exlock_slow (struct sxlock *sxp)
 {
   _Auto sleepq = sleepq_lend (sxp);
-  while (1)
-    {
-      if (!sxlock_exmark (sxp))
-        break;
-
-      sleepq_wait (sleepq, "sxlock/X");
-    }
+  while (sxlock_exmark (sxp))
+    sleepq_wait (sleepq, "sxlock/X");
 
   sleepq_return (sleepq);
 }
@@ -77,13 +72,8 @@ void
 sxlock_shlock_slow (struct sxlock *sxp)
 {
   _Auto sleepq = sleepq_lend (sxp);
-  while (1)
-    {
-      if (!sxlock_shmark (sxp))
-        break;
-
-      sleepq_wait (sleepq, "sxlock/S");
-    }
+  while (sxlock_shmark (sxp))
+    sleepq_wait (sleepq, "sxlock/S");
 
   sleepq_return (sleepq);
 }
