@@ -164,7 +164,6 @@ task_destroy (struct task *task)
   spinlock_unlock (&task_list_lock);
   cspace_destroy (&task->caps);
   vm_map_destroy (task->map);
-  cap_notify_dead (&task->dead_subs);
   kuid_remove (&task->kuid, KUID_TASK);
   kmem_cache_free (&task_cache, task);
 }
@@ -206,6 +205,7 @@ task_remove_thread (struct task *task, struct thread *thread)
   if (last)
     { // Destroy the cspace early to avoid circular references.
       cspace_destroy (&task->caps);
+      cap_notify_dead (&task->dead_subs);
       task_unref (task);
     }
 }

@@ -239,6 +239,7 @@ cap_port_entry_fini (struct cap_port_entry *port)
 static void
 cap_flow_fini (struct sref_counter *sref)
 {
+
   _Auto flow = CAP_FROM_SREF (sref, struct cap_flow);
 
   struct cap_alert *alert, *tmp;
@@ -693,8 +694,8 @@ cap_sender_impl (struct cap_flow *flow, uintptr_t tag, struct cap_iters *in,
   user_copy_to ((void *)port->ctx[2], &port->mdata, sizeof (port->mdata));
 
   // After the copy, switch the counters.
-  SWAP (&port->mdata.pages_recv, &port->mdata.pages_sent);
-  SWAP (&port->mdata.caps_recv, &port->mdata.caps_sent);
+  port->mdata.pages_sent = port->mdata.pages_recv;
+  port->mdata.caps_sent = port->mdata.caps_recv;
   port->mdata.pages_recv = port->mdata.caps_recv = 0;
 
   // Jump to new PC and SP.
@@ -1170,6 +1171,7 @@ cap_notify_dead (struct bulletin *bulletin)
 
   spinlock_lock (&bulletin->lock);
   list_set_head (&dead_subs, &bulletin->subs);
+  list_init (&bulletin->subs);
   spinlock_unlock (&bulletin->lock);
 
   struct cap_alert_async *ap;
