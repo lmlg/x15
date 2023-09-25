@@ -132,6 +132,7 @@ test_cap_receiver (void *arg)
   struct test_cap_data *data = arg;
   struct cap_flow *flow;
 
+  data->receiver = task_self ();
   data->tag = (uintptr_t)clock_get_time ();
   int error = cap_flow_create (&flow, 0, data->tag, (uintptr_t)test_cap_entry);
   assert (! error);
@@ -190,6 +191,8 @@ test_cap_receiver (void *arg)
   semaphore_post (&data->send_sem);
   semaphore_wait (&data->recv_sem);
   vm_page_unref (page);
+  cap_base_rel (data->ch);
+  cap_base_rel (flow);
 }
 
 static void
@@ -252,6 +255,12 @@ test_cap_sender (void *arg)
   assert (vars->mdata.pages_recv == 1);
   assert (vars->mdata.caps_sent == 1);
   assert (vars->mdata.caps_recv == 1);
+
+  _Auto cap = cspace_get (cspace_self (), vars->mcap.cap);
+  assert (cap != NULL);
+  assert (cap->type == CAP_TYPE_TASK);
+  assert (((struct cap_task *)cap)->task == data->receiver);
+  cap_base_rel (cap);
 
   semaphore_post (&data->recv_sem);
 }
@@ -435,6 +444,7 @@ TEST_DEFERRED (cap)
   thread_join (sender);
   thread_join (receiver);
   thread_join (misc);
+  thread_join (dead_notif);
 
   return (TEST_OK);
 }
