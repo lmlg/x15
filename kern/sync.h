@@ -53,7 +53,7 @@ static_assert (sizeof (((union sync_key *)0)->both) >=
                sizeof (((union sync_key *)0)->local) &&
                sizeof (((union sync_key *)0)->both) >=
                sizeof (((union sync_key *)0)->shared),
-               "invalid layout for sync_key::local");
+               "invalid layout for sync_key");
 
 static inline bool
 sync_key_eq (const union sync_key *x, const union sync_key *y)
