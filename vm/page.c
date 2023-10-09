@@ -43,7 +43,7 @@
 #include <kern/macros.h>
 #include <kern/mutex.h>
 #include <kern/panic.h>
-#include <kern/plist.h>
+#include <kern/pqueue.h>
 #include <kern/printf.h>
 #include <kern/shell.h>
 #include <kern/spinlock.h>
@@ -133,7 +133,7 @@ struct vm_page_boot_zone
 struct vm_page_waiter
 {
   struct thread *thread;
-  struct plist_node node;
+  struct pqueue_node node;
   uint32_t order;
   bool done;
 };
@@ -141,7 +141,7 @@ struct vm_page_waiter
 struct vm_page_bucket
 {
   struct spinlock lock;
-  struct plist waiters;
+  struct pqueue waiters;
 };
 
 static int vm_page_is_ready __read_mostly;
@@ -422,11 +422,16 @@ vm_page_wait (struct vm_page_zone *zone, struct mutex *mtx,
 
   _Auto bucket = &vm_page_buckets[vm_page_zone_selector (zone)];
 
-  spinlock_lock (&bucket->lock);
+  // Grab the queue lock before dropping the page pool one.
+  SPINLOCK_GUARD (&bucket->lock);
   mutex_unlock (mtx);
-  plist_add (&bucket->waiters, &waiter->node);
+  pqueue_insert (&bucket->waiters, &waiter->node);
   thread_sleep (&bucket->lock, bucket, "vm-page");
-  spinlock_unlock (&bucket->lock);
+
+  pqueue_remove (&bucket->waiters, &waiter->node);
+  if (waiter->done)
+    // Only bump the other waiters if we succeeded.
+    pqueue_inc (&bucket->waiters, 1);
 
   return (waiter->done);
 }
@@ -479,9 +484,9 @@ static bool
 vm_page_wakeup (struct vm_page_bucket *bucket, uint32_t order)
 {
   SPINLOCK_GUARD (&bucket->lock);
-  plist_for_each_reverse_safe (&bucket->waiters, pnode, tmp)
+  pqueue_for_each (&bucket->waiters, pnode)
     {
-      _Auto waiter = plist_entry (pnode, struct vm_page_waiter, node);
+      _Auto waiter = pqueue_entry (pnode, struct vm_page_waiter, node);
       if (likely (waiter->order <= order))
         {
           waiter->done = true;
@@ -732,7 +737,7 @@ vm_page_setup (void)
 
   for (size_t i = 0; i < ARRAY_SIZE (vm_page_buckets); ++i)
     {
-      plist_init (&vm_page_buckets[i].waiters);
+      pqueue_init (&vm_page_buckets[i].waiters);
       spinlock_init (&vm_page_buckets[i].lock);
     }
 
@@ -785,7 +790,7 @@ vm_page_waiter_init (struct vm_page_waiter *wp, uint32_t order)
   wp->thread = thread_self ();
   wp->order = order;
   wp->done = false;
-  plist_node_init (&wp->node, thread_real_global_priority (wp->thread));
+  pqueue_node_init (&wp->node, thread_real_global_priority (wp->thread));
 }
 
 struct vm_page*
@@ -800,7 +805,7 @@ vm_page_alloc (uint32_t order, uint32_t selector,
     }
 
   for (uint32_t i = vm_page_select_alloc_zone (selector);
-      i < vm_page_zones_size; --i)
+       i < vm_page_zones_size; --i)
     {
       _Auto page = vm_page_zone_alloc (&vm_page_zones[i], order, type, waiter);
       if (page)

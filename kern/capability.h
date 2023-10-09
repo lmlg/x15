@@ -26,7 +26,7 @@
 #include <kern/init.h>
 #include <kern/ipc.h>
 #include <kern/list.h>
-#include <kern/plist.h>
+#include <kern/pqueue.h>
 #include <kern/slist.h>
 #include <kern/spinlock.h>
 #include <kern/sref.h>
@@ -113,7 +113,7 @@ struct cap_flow
   struct list receivers;
   struct slist lpads;
   struct slist alloc_alerts;
-  struct plist pending_alerts;
+  struct pqueue pending_alerts;
   uintptr_t tag;
   uintptr_t entry;
   uint32_t flags;

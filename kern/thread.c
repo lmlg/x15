@@ -2550,12 +2550,9 @@ thread_setsched_impl (struct thread *thread, uint8_t policy,
       thread_runq_remove (g.runq, thread);
     }
 
-  bool update;
+  bool update = true;
   if (thread_user_sched_policy (thread) == policy)
-    {
-      thread_update_user_priority (thread, priority);
-      update = true;
-    }
+    thread_update_user_priority (thread, priority);
   else
     {
       thread_set_user_sched_policy (thread, policy);

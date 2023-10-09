@@ -39,7 +39,7 @@ struct cap_alert
       struct slist_node snode;
     };
 
-  struct plist_node pnode;
+  struct pqueue_node pnode;
   union
     {
       char payload[CAP_ALERT_SIZE + 1];
@@ -173,7 +173,7 @@ cap_channel_create (struct cap_channel **outp, struct cap_flow *flow,
   return (0);
 }
 
-static int cap_intr_rem (uint32_t irq, struct list *link);
+static void cap_intr_rem (uint32_t irq, struct list *link);
 
 static void
 cap_task_thread_rem (int id, int type, struct list *link)
@@ -243,7 +243,7 @@ cap_flow_fini (struct sref_counter *sref)
   _Auto flow = CAP_FROM_SREF (sref, struct cap_flow);
 
   struct cap_alert *alert, *tmp;
-  plist_for_each_entry_safe (&flow->pending_alerts, alert, tmp, pnode)
+  pqueue_for_each_entry_safe (&flow->pending_alerts, alert, tmp, pnode)
     if (cap_alert_type (alert) == CAP_ALERT_USER)
       kmem_free (alert, sizeof (*alert));
 
@@ -271,7 +271,7 @@ cap_flow_create (struct cap_flow **outp, uint32_t flags,
   list_init (&ret->receivers);
   slist_init (&ret->lpads);
   slist_init (&ret->alloc_alerts);
-  plist_init (&ret->pending_alerts);
+  pqueue_init (&ret->pending_alerts);
   ret->flags = flags;
   ret->tag = tag;
   ret->entry = entry;
@@ -452,7 +452,7 @@ cap_recv_alert (struct cap_flow *flow, void *buf,
                 uint32_t flags, struct ipc_msg_data *mdata)
 {
   spinlock_lock (&flow->lock);
-  if (plist_empty (&flow->pending_alerts))
+  if (pqueue_empty (&flow->pending_alerts))
     {
       if (flags & CAP_ALERT_NONBLOCK)
         {
@@ -465,7 +465,7 @@ cap_recv_alert (struct cap_flow *flow, void *buf,
 
       do
         thread_sleep (&flow->lock, flow, "flow-alert");
-      while (plist_empty (&flow->pending_alerts));
+      while (pqueue_empty (&flow->pending_alerts));
 
       if (!recv.spurious)
         {
@@ -480,17 +480,17 @@ cap_recv_alert (struct cap_flow *flow, void *buf,
         }
     }
 
-  _Auto entry = plist_last_entry (&flow->pending_alerts,
+  _Auto entry = pqueue_pop_entry (&flow->pending_alerts,
                                   struct cap_alert, pnode);
-
-  plist_remove (&flow->pending_alerts, &entry->pnode);
+  pqueue_inc (&flow->pending_alerts, 1);
   spinlock_unlock (&flow->lock);
+
   uint32_t ids[2] = { 0 };
 
   if (unlikely (user_copy_to (buf, entry->payload, CAP_ALERT_SIZE) != 0))
     {
       SPINLOCK_GUARD (&flow->lock);
-      plist_add (&flow->pending_alerts, &entry->pnode);
+      pqueue_insert (&flow->pending_alerts, &entry->pnode);
       cap_recv_wakeup_fast (flow);
       return (EFAULT);
     }
@@ -562,8 +562,8 @@ int
           return (-ENOMEM);
 
         memcpy (alert->payload, abuf, CAP_ALERT_SIZE);
-        plist_node_init (&alert->pnode, prio);
-        plist_add (&flow->pending_alerts, &alert->pnode);
+        pqueue_node_init (&alert->pnode, prio);
+        pqueue_insert (&flow->pending_alerts, &alert->pnode);
         cap_alert_type(alert) = CAP_ALERT_USER;
         cap_fill_ids (&alert->thread_id, &alert->task_id, thread_self ());
         return (0);
@@ -908,7 +908,7 @@ cap_notify_intr (struct cap_alert_async *alert)
   SPINLOCK_GUARD (&alert->flow->lock);
   if (++alert->base.k_alert.intr.count == 1)
     {
-      plist_add (&alert->flow->pending_alerts, &alert->base.pnode);
+      pqueue_insert (&alert->flow->pending_alerts, &alert->base.pnode);
       cap_recv_wakeup_fast (alert->flow);
     }
 }
@@ -949,7 +949,7 @@ cap_intr_add (uint32_t intr, struct list *node)
   return (0);
 }
 
-static int
+static void
 cap_intr_rem (uint32_t intr, struct list *node)
 {
   adaptive_lock_acquire (&cap_intr_lock);
@@ -960,7 +960,6 @@ cap_intr_rem (uint32_t intr, struct list *node)
 
   adaptive_lock_release (&cap_intr_lock);
   rcu_wait ();
-  return (0);
 }
 
 static struct cap_alert_async*
@@ -986,9 +985,9 @@ cap_alert_async_find (struct cap_flow *flow, int type, int id,
   return (NULL);
 }
 
+#define CAP_ALERT_TASK_PRIO     ((THREAD_SCHED_RT_PRIO_MAX + 2) << 1)
+#define CAP_ALERT_THREAD_PRIO   (CAP_ALERT_TASK_PRIO << 1)
 #define CAP_ALERT_INTR_PRIO     (~0u)
-#define CAP_ALERT_THREAD_PRIO   (CAP_ALERT_INTR_PRIO >> 1)
-#define CAP_ALERT_TASK_PRIO     (CAP_ALERT_THREAD_PRIO >> 1)
 
 int
 cap_intr_register (struct cap_flow *flow, uint32_t irq)
@@ -1000,7 +999,7 @@ cap_intr_register (struct cap_flow *flow, uint32_t irq)
   if (! ap)
     return (ENOMEM);
 
-  plist_node_init (&ap->base.pnode, CAP_ALERT_INTR_PRIO);
+  pqueue_node_init (&ap->base.pnode, CAP_ALERT_INTR_PRIO);
   cap_alert_type(&ap->base) = CAP_ALERT_INTR;
   slist_node_init (&ap->base.snode);
   list_node_init (&ap->xlink);
@@ -1045,8 +1044,8 @@ cap_unregister_impl (struct cap_flow *flow, int type,
     return (ESRCH);
 
   slist_remove (&flow->alloc_alerts, node);
-  if (!plist_node_unlinked (&entry->base.pnode))
-    plist_remove (&flow->pending_alerts, &entry->base.pnode);
+  if (!pqueue_node_unlinked (&entry->base.pnode))
+    pqueue_remove (&flow->pending_alerts, &entry->base.pnode);
 
   *outp = entry;
   return (0);
@@ -1073,7 +1072,7 @@ cap_register_task_thread (struct cap_flow *flow, struct kuid_head *kuid,
   if (! ap)
     return (ENOMEM);
 
-  plist_node_init (&ap->base.pnode, prio);
+  pqueue_node_init (&ap->base.pnode, prio);
   cap_alert_type(&ap->base) = type;
   slist_node_init (&ap->base.snode);
   list_node_init (&ap->xlink);
@@ -1099,7 +1098,7 @@ cap_register_task_thread (struct cap_flow *flow, struct kuid_head *kuid,
   list_insert_tail (&outp->subs, &ap->xlink);
   if (atomic_load_rlx (&kuid->nr_refs) == 1)
     {
-      plist_add (&flow->pending_alerts, &ap->base.pnode);
+      pqueue_insert (&flow->pending_alerts, &ap->base.pnode);
       cap_recv_wakeup_fast (flow);
     }
 
@@ -1180,10 +1179,10 @@ cap_notify_dead (struct bulletin *bulletin)
       _Auto flow = ap->flow;
 
       SPINLOCK_GUARD (&flow->lock);
-      if (!plist_node_unlinked (&ap->base.pnode))
+      if (!pqueue_node_unlinked (&ap->base.pnode))
         continue;
 
-      plist_add (&flow->pending_alerts, &ap->base.pnode);
+      pqueue_insert (&flow->pending_alerts, &ap->base.pnode);
       cap_recv_wakeup_fast (flow);
     }
 }

@@ -34,6 +34,7 @@
 #endif
 
 #ifndef __ASSEMBLER__
+  #include <stdbool.h>
   #include <stddef.h>
 #endif
 

@@ -25,6 +25,7 @@ x15_SOURCES-y += \
         kern/percpu.c \
         kern/plist.c \
         kern/printf.c \
+        kern/pqueue.c \
         kern/rbtree.c \
         kern/rcu.c \
         kern/rdxtree.c \
