@@ -199,24 +199,24 @@ fmt_ostate_consume_flags (struct fmt_ostate *state)
       int c = fmt_ostate_consume_format (state);
       switch (c)
         {
-        case '#':
-          state->flags |= FMT_FORMAT_ALT_FORM;
-          break;
-        case '0':
-          state->flags |= FMT_FORMAT_ZERO_PAD;
-          break;
-        case '-':
-          state->flags |= FMT_FORMAT_LEFT_JUSTIFY;
-          break;
-        case ' ':
-          state->flags |= FMT_FORMAT_BLANK;
-          break;
-        case '+':
-          state->flags |= FMT_FORMAT_SIGN;
-          break;
-        default:
-          found = false;
-          break;
+          case '#':
+            state->flags |= FMT_FORMAT_ALT_FORM;
+            break;
+          case '0':
+            state->flags |= FMT_FORMAT_ZERO_PAD;
+            break;
+          case '-':
+            state->flags |= FMT_FORMAT_LEFT_JUSTIFY;
+            break;
+          case ' ':
+            state->flags |= FMT_FORMAT_BLANK;
+            break;
+          case '+':
+            state->flags |= FMT_FORMAT_SIGN;
+            break;
+          default:
+            found = false;
+            break;
         }
     }
   while (found);
@@ -974,6 +974,7 @@ fmt_istate_consume_modifier (struct fmt_istate *state)
           }
 
       break;
+
       case 'z':
         state->modifier = FMT_MODIFIER_SIZE;
         break;
