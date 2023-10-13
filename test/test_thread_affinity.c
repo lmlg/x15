@@ -23,7 +23,7 @@
 #include <kern/thread.h>
 #include <test/test.h>
 
-struct semaphore affinity_sem;
+struct semaphore test_affinity_sem;
 
 static void
 test_affinity_self (void *arg)
@@ -44,7 +44,7 @@ test_affinity_self (void *arg)
   error = thread_set_affinity (thread_self (), cpumap);
   error_check (error, "thread_set_affinity");
 
-  semaphore_timedwait (&affinity_sem, 1);
+  thread_delay (1, false);
   error = thread_get_affinity (thread_self (), prev);
   error_check (error, "thread_get_affinity (2)");
 
@@ -63,7 +63,7 @@ test_affinity_suspended (void *arg)
   int error = cpumap_create (&cpumap);
   error_check (error, "cpumap_create");
 
-  semaphore_wait (&affinity_sem);
+  semaphore_wait (&test_affinity_sem);
   error = thread_get_affinity (thread_self (), cpumap);
   error_check (error, "thread_get_affinity");
 
@@ -86,7 +86,7 @@ TEST_DEFERRED (thread_affinity)
       return (TEST_SKIPPED);
     }
 
-  semaphore_init (&affinity_sem, 0, 0xff);
+  semaphore_init (&test_affinity_sem, 0, 0xff);
 
   struct cpumap *cpumap;
   int error = cpumap_create (&cpumap);
@@ -118,7 +118,7 @@ TEST_DEFERRED (thread_affinity)
   cpumap_zero (cpumap);
   cpumap_set (cpumap, 0);
   error = thread_set_affinity (thread, cpumap);
-  semaphore_post (&affinity_sem);
+  semaphore_post (&test_affinity_sem);
   thread_join (thread);
 
   return (TEST_OK);
