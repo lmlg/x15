@@ -572,7 +572,7 @@ pmap_pte_next (pmap_pte_t pte)
 static inline phys_addr_t
 pmap_get_root (struct pmap *pmap, uint32_t cpu_id)
 {
-  return (pmap->cpu_tables[cpu_id]->root_ptp_pa);
+  return (pmap->cpu_tables[cpu_id]->root_ptp_pa & ~PMAP_XBIT0);
 }
 
 static inline pmap_pte_t*
@@ -1090,10 +1090,22 @@ pmap_extract_check (struct pmap *pmap, uintptr_t va,
 }
 
 static void
-pmap_cpu_table_init (struct pmap_cpu_table *table)
+pmap_cpu_table_init (struct pmap_cpu_table *table, phys_addr_t root)
 {
   list_init (&table->pages);
-  table->root_ptp_pa = 0;
+  table->root_ptp_pa = root | PMAP_XBIT0;
+}
+
+static void
+pmap_init_root (pmap_pte_t *ptp)
+{
+  const _Auto level = &pmap_pt_levels[PMAP_NR_LEVELS - 1];
+  uintptr_t idx = pmap_pte_index (PMAP_END_ADDRESS, level);
+
+  memset (ptp, 0, idx * sizeof (*ptp));
+  memcpy (ptp + idx,
+          pmap_get_root_ptp (pmap_get_kernel_pmap (), cpu_id ()) + idx,
+          (level->ptes_per_pt - idx) * sizeof (*ptp));
 }
 
 #ifdef CONFIG_X86_PAE
@@ -1107,6 +1119,7 @@ pmap_alloc_root (struct pmap_cpu_table *tabp, pmap_pte_t **dptp)
 
   tabp->root_ptp_pa = vm_page_direct_pa ((uintptr_t)ptr);
   *dptp = pmap_ptp_from_pa (tabp->root_ptp_pa);
+  pmap_init_root (*dptp);
   return (0);
 }
 
@@ -1128,6 +1141,7 @@ pmap_alloc_root (struct pmap_cpu_table *tabp, pmap_pte_t **dptp)
 
   tabp->root_ptp_pa = vm_page_to_pa (page);
   *dptp = vm_page_direct_ptr (page);
+  pmap_init_root (*dptp);
   return (0);
 }
 
@@ -1139,35 +1153,6 @@ pmap_free_root (struct pmap_cpu_table *tabp)
 
 #endif
 
-static int
-pmap_copy (struct pmap *dmp)
-{
-  const struct pmap *src = pmap_get_kernel_pmap ();
-  const _Auto level = &pmap_pt_levels[PMAP_NR_LEVELS - 1];
-
-  for (uint32_t i = 0; i < cpu_count (); ++i)
-    {
-      pmap_pte_t *dptp;
-      int error = pmap_alloc_root (dmp->cpu_tables[i], &dptp);
-
-      if (error)
-        {
-          pmap_destroy (dmp);
-          return (error);
-        }
-
-      uintptr_t idx = pmap_pte_index (PMAP_END_ADDRESS, level);
-
-      // Clear the user part and copy the kernel one.
-      memset (dptp, 0, idx * sizeof (*dptp));
-      memcpy (dptp + idx,
-              pmap_ptp_from_pa (src->cpu_tables[i]->root_ptp_pa) + idx,
-              (level->ptes_per_pt - idx) * sizeof (*dptp));
-    }
-
-  return (0);
-}
-
 void
 pmap_destroy (struct pmap *pmap)
 {
@@ -1176,7 +1161,7 @@ pmap_destroy (struct pmap *pmap)
     {
       _Auto cpu_table = pmap->cpu_tables[i];
       vm_page_list_free (&cpu_table->pages);
-      if (cpu_table->root_ptp_pa)
+      if (!(cpu_table->root_ptp_pa & PMAP_XBIT0))
         pmap_free_root (cpu_table);
     }
 
@@ -1199,25 +1184,39 @@ pmap_create (struct pmap **pmapp)
   for (size_t i = 0; i < cpu_count (); ++i)
     {
       _Auto cpu_table = (struct pmap_cpu_table *)tables + i;
-      pmap_cpu_table_init (cpu_table);
+      pmap_cpu_table_init (cpu_table,
+                           pmap_get_root (pmap_get_kernel_pmap (), i));
       pmap->cpu_tables[i] = cpu_table;
     }
 
-  int error = pmap_copy (pmap);
-  if (! error)
-    *pmapp = pmap;
+  *pmapp = pmap;
+  return (0);
+}
 
-  return (error);
+static int
+pmap_cpu_table_ensure (struct pmap_cpu_table *tabp, pmap_pte_t **ptpp)
+{
+  if (tabp->root_ptp_pa & PMAP_XBIT0)
+    return (pmap_alloc_root (tabp, ptpp));
+
+  *ptpp = pmap_ptp_from_pa (tabp->root_ptp_pa);
+  return (0);
 }
 
 static int
 pmap_enter_local_impl (struct pmap_cpu_table *cpu_table, uintptr_t va,
                        pmap_pte_t pte_bits, pmap_pte_t **outp)
 {
-  uint32_t level = PMAP_NR_LEVELS - 1;
-  pmap_pte_t *ptp = pmap_ptp_from_pa (cpu_table->root_ptp_pa);
+  pmap_pte_t *ptp;
+  int error = pmap_cpu_table_ensure (cpu_table, &ptp);
 
-  while (1)
+  if (unlikely (error))
+    {
+      log_warning ("pmap: root page table allocation failure");
+      return (error);
+    }
+
+  for (uint32_t level = PMAP_NR_LEVELS - 1 ; ; )
     {
       const _Auto pt_level = &pmap_pt_levels[level];
       pmap_pte_t *pte = &ptp[pmap_pte_index (va, pt_level)];
@@ -1451,7 +1450,7 @@ pmap_protect_single (struct pmap_cpu_table *table, uintptr_t addr,
                      int prot, bool is_kernel)
 {
   uint32_t level = PMAP_NR_LEVELS - 1;
-  pmap_pte_t *pte, *ptp = pmap_ptp_from_pa (table->root_ptp_pa);
+  pmap_pte_t *pte, *ptp = pmap_ptp_from_pa (table->root_ptp_pa & ~PMAP_XBIT0);
 
   const struct pmap_pt_level *pt_level;
   while (1)

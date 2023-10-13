@@ -146,6 +146,19 @@
 #define PMAP_L2_PTES_PER_PT     (1 << PMAP_L2_BITS)
 #define PMAP_L3_PTES_PER_PT     (1 << PMAP_L3_BITS)
 
+/*
+ * Kernel-defined bit. When userspace tasks are created, the cpu page
+ * tables are actually borrowed from the kernel, but marked with this
+ * special bit. Thus, when the page tables need to be modified, a check
+ * is made to see if this bit is set, and if so, a new page table structure
+ * gets allocated on the fly.
+ */
+#ifdef CONFIG_X86_PAE
+  #define PMAP_XBIT0   (1ull << 60)
+#else
+  #define PMAP_XBIT0   (1 << 10)
+#endif
+
 #ifndef __ASSEMBLER__
 
 #include <stdint.h>

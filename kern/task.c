@@ -81,7 +81,6 @@ task_shell_info (struct shell *shell, int argc, char **argv)
   
   task_info (task, shell->stream);
   task_unref (task);
-  return;
 }
 
 static struct shell_cmd task_shell_cmds[] =
