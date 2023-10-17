@@ -169,7 +169,8 @@ ipc_map_addr (struct vm_map *map, const void *addr,
        * Since we're running with interrupts disabled, and the address
        * has been faulted in, this call cannot fail.
        */
-      pmap_extract (map->pmap, (uintptr_t)addr, pap);
+      error = pmap_extract (map->pmap, (uintptr_t)addr, pap);
+      assert (! error);
     }
 
   return (0);

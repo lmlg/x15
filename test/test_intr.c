@@ -22,6 +22,7 @@
 
 #include <kern/capability.h>
 #include <kern/intr.h>
+#include <kern/semaphore.h>
 #include <kern/task.h>
 
 #include <vm/map.h>
@@ -33,6 +34,7 @@
 
 static int test_intr_last = -1;
 static int test_intr_status;
+static struct semaphore test_intr_sems[2];
 
 static void
 test_intr_dummy_enable (void *arg __unused, uint32_t irq,
@@ -87,10 +89,24 @@ test_intr (void *arg)
 
   assert (test_intr_last == (int)data->alert.intr.irq);
   assert (test_intr_status == 1);
+
+  semaphore_post (test_intr_sems + 0);
+  semaphore_wait (test_intr_sems + 1);
+
+  error = cap_recv_alert (flow, &data->alert, sizeof (data->alert), &data->md);
+  assert (! error);
+
+  assert (data->md.flags & IPC_MSG_KERNEL);
+  assert (data->alert.intr.irq == TEST_INTR_FIRST);
+  assert (data->alert.intr.count == 1);
+  assert (data->md.task_id == 0);
+  assert (data->md.thread_id == 0);
 }
 
 TEST_DEFERRED (intr)
 {
+  semaphore_init (test_intr_sems + 0, 0, 0xff);
+  semaphore_init (test_intr_sems + 1, 0, 0xff);
   intr_register_ctl (&test_intr_ops, 0, TEST_INTR_FIRST, TEST_INTR_LAST);
 
   struct cap_flow *flow;
@@ -110,6 +126,15 @@ TEST_DEFERRED (intr)
   struct thread *thr;
   error = test_util_create_thr (&thr, test_intr, flow, "intr");
   assert (! error);
+
+  semaphore_wait (test_intr_sems + 0);
+  thread_intr_enter ();
+  cpu_intr_disable ();
+  intr_handle (TEST_INTR_FIRST);
+  cpu_intr_disable ();
+  thread_intr_leave ();
+
+  semaphore_post (test_intr_sems + 1);
 
   thread_join (thr);
   error = cap_intr_unregister (flow, TEST_INTR_FIRST);

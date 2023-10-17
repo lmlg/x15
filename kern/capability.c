@@ -239,7 +239,6 @@ cap_port_entry_fini (struct cap_port_entry *port)
 static void
 cap_flow_fini (struct sref_counter *sref)
 {
-
   _Auto flow = CAP_FROM_SREF (sref, struct cap_flow);
 
   struct cap_alert *alert, *tmp;
@@ -482,15 +481,28 @@ cap_recv_alert (struct cap_flow *flow, void *buf,
 
   _Auto entry = pqueue_pop_entry (&flow->pending_alerts,
                                   struct cap_alert, pnode);
+  void *payload = entry->payload;
+  if (cap_alert_type (entry) == CAP_ALERT_INTR)
+    { // Copy into a temp buffer so we may reset the counter.
+      payload = alloca (sizeof (entry->k_alert));
+      *(struct cap_kern_alert *)payload = entry->k_alert;
+      entry->k_alert.intr.count = 0;
+    }
+
   pqueue_inc (&flow->pending_alerts, 1);
   spinlock_unlock (&flow->lock);
 
-  uint32_t ids[2] = { 0 };
+  uint32_t ids[2] = { 0, 0 };
 
-  if (unlikely (user_copy_to (buf, entry->payload, CAP_ALERT_SIZE) != 0))
+  if (unlikely (user_copy_to (buf, payload, CAP_ALERT_SIZE) != 0))
     {
       SPINLOCK_GUARD (&flow->lock);
       pqueue_insert (&flow->pending_alerts, &entry->pnode);
+
+      if (payload != entry->payload)
+        entry->k_alert.intr.count +=
+          ((struct cap_kern_alert *)payload)->intr.count;
+
       cap_recv_wakeup_fast (flow);
       return (EFAULT);
     }
@@ -781,14 +793,15 @@ cap_pull_iters (struct cap_iters *it, struct ipc_msg_data *mdata)
   struct ipc_msg_data tmp;
   ssize_t ret = cap_push_pull_msg (it, &tmp, IPC_COPY_FROM,
                                    &port->in_it, port);
-  if (ret >= 0)
-    {
-      port->mdata.pages_sent += tmp.pages_recv;
-      port->mdata.caps_sent += tmp.caps_recv;
 
-      if (mdata && user_copy_to (mdata, &tmp, sizeof (tmp)) != 0)
-        ret = -EFAULT;
-    }
+  if (ret < 0)
+    return (ret);
+
+  port->mdata.pages_sent += tmp.pages_recv;
+  port->mdata.caps_sent += tmp.caps_recv;
+
+  if (mdata && user_copy_to (mdata, &tmp, sizeof (tmp)) != 0)
+    ret = -EFAULT;
 
   return (ret);
 }
@@ -805,20 +818,21 @@ cap_push_iters (struct cap_iters *it, struct ipc_msg_data *mdata)
   struct ipc_msg_data out_data;
   ssize_t ret = cap_push_pull_msg (it, &out_data, IPC_COPY_TO,
                                    port->out_it, port);
-  if (ret >= 0)
-    {
-      port->mdata.nbytes += ret;
-      port->mdata.pages_recv += out_data.pages_recv;
-      port->mdata.caps_recv += out_data.caps_recv;
 
-      if (mdata)
-        {
-          out_data.pages_sent = out_data.pages_recv;
-          out_data.caps_sent = out_data.caps_recv;
-          out_data.pages_recv = out_data.caps_recv = 0;
-          if (user_copy_to (mdata, &out_data, sizeof (*mdata)) != 0)
-            ret = -EFAULT;
-        }
+  if (ret < 0)
+    return (ret);
+
+  port->mdata.nbytes += ret;
+  port->mdata.pages_recv += out_data.pages_recv;
+  port->mdata.caps_recv += out_data.caps_recv;
+
+  if (mdata)
+    {
+      out_data.pages_sent = out_data.pages_recv;
+      out_data.caps_sent = out_data.caps_recv;
+      out_data.pages_recv = out_data.caps_recv = 0;
+      if (user_copy_to (mdata, &out_data, sizeof (*mdata)) != 0)
+        ret = -EFAULT;
     }
 
   return (ret);
