@@ -722,25 +722,13 @@ cap_sender_impl (struct cap_flow *flow, uintptr_t tag, struct cap_iters *in,
   return (ret);
 }
 
-static int
-cap_handle_task_thread (struct cap_iters *src, struct cap_iters *dst,
-                        struct cap_base *cap)
-{
-  struct ipc_msg_data mdata;
-
-  return (cap->type == CAP_TYPE_THREAD ?
-          thread_handle_msg (((struct cap_thread *)cap)->thread,
-                             src, dst, &mdata) :
-          task_handle_msg (((struct cap_task *)cap)->task,
-                           src, dst, &mdata));
-}
-
 ssize_t
 cap_send_iters (struct cap_base *cap, struct cap_iters *in,
                 struct cap_iters *out, struct ipc_msg_data *data)
 {
   struct cap_flow *flow;
   uintptr_t tag;
+  struct ipc_msg_data mdata;
 
   if (! cap)
     return (-EBADF);
@@ -761,8 +749,11 @@ cap_send_iters (struct cap_base *cap, struct cap_iters *in,
         break;
 
       case CAP_TYPE_THREAD:
+        return (thread_handle_msg (((struct cap_thread *)cap)->thread,
+                                   in, out, &mdata));
       case CAP_TYPE_TASK:
-        return (cap_handle_task_thread (in, out, cap));
+        return (task_handle_msg (((struct cap_task *)cap)->task,
+                                 in, out, &mdata));
 
       case CAP_TYPE_KERNEL:
         // TODO: Implement.
