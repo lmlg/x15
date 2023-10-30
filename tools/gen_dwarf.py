@@ -351,8 +351,8 @@ def output_dwarf (state):
   print ("static const struct unw_cie unw_cies[] __unwind =\n{")
   for cie in state.raw_cies:
     print ("  { 0x%x, 0x%x, %d, %d, %d }," % (cie.code_align, cie.ret_addr,
-                                                cie.data_align, cie.code_enc,
-                                                cie.opcodes_idx))
+                                              cie.data_align, cie.code_enc,
+                                              cie.opcodes_idx))
   print ("};\n")
 
   # Output FDE's.

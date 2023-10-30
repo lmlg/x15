@@ -172,7 +172,8 @@
 #include <machine/types.h>
 
 // Mapping creation flags.
-#define PMAP_PEF_GLOBAL   0x1   // Create a mapping on all processors.
+#define PMAP_PEF_GLOBAL      0x1   // Operate on all processors.
+#define PMAP_IGNORE_ERRORS   0x2   // Ignore errors when updating.
 
 typedef phys_addr_t pmap_pte_t;
 
@@ -265,13 +266,13 @@ int pmap_enter (struct pmap *pmap, uintptr_t va, phys_addr_t pa,
  * This function may trigger an implicit update.
  */
 
-int pmap_remove_range (struct pmap *pmap, uintptr_t start, uintptr_t end,
-                       const struct cpumap *cpumap);
+int pmap_remove_range (struct pmap *pmap, uintptr_t start,
+                       uintptr_t end, int flags);
 
 static inline int
-pmap_remove (struct pmap *pmap, uintptr_t va, const struct cpumap *cpumap)
+pmap_remove (struct pmap *pmap, uintptr_t va, int flags)
 {
-  return (pmap_remove_range (pmap, va, va + PAGE_SIZE, cpumap));
+  return (pmap_remove_range (pmap, va, va + PAGE_SIZE, flags));
 }
 
 /*
@@ -281,13 +282,12 @@ pmap_remove (struct pmap *pmap, uintptr_t va, const struct cpumap *cpumap)
  */
 
 int pmap_protect_range (struct pmap *pmap, uintptr_t start, uintptr_t end,
-                        int flags, const struct cpumap *cpumap);
+                        int prot, int flags);
 
 static inline int
-pmap_protect (struct pmap *pmap, uintptr_t va, int prot,
-              const struct cpumap *cpumap)
+pmap_protect (struct pmap *pmap, uintptr_t va, int prot, int flags)
 {
-  return (pmap_protect_range (pmap, va, va + PAGE_SIZE, prot, cpumap));
+  return (pmap_protect_range (pmap, va, va + PAGE_SIZE, prot, flags));
 }
 
 /*

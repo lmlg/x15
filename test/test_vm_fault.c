@@ -71,9 +71,9 @@ test_vm_fault_thread (void *arg __unused)
 
   uintptr_t va = PMAP_END_ADDRESS - PAGE_SIZE * 10;
   int flags = VM_MAP_FLAGS (VM_PROT_READ, VM_PROT_READ, VM_INHERIT_DEFAULT,
-                            VM_ADV_DEFAULT, 0);
+                            VM_ADV_RANDOM, 0);
   struct vm_map *map = vm_map_self ();
-  error = vm_map_enter (map, &va, PAGE_SIZE, 0, flags,
+  error = vm_map_enter (map, &va, PAGE_SIZE * 3, 0, flags,
                         test_obj, TEST_OFFSET);
 
   assert (! error);
@@ -85,6 +85,20 @@ test_vm_fault_thread (void *arg __unused)
   // Test that writing to read-only mappings fails with EACCES.
   error = user_copy_to ((void *)va, "???", 3);
   assert (error == EACCES);
+
+  // Test that changing protection creates the necessary entries.
+  {
+    uint32_t nr_entries = vm_map_self()->nr_entries;
+    error = vm_map_protect (vm_map_self (), va + PAGE_SIZE,
+                            va + PAGE_SIZE * 2, VM_PROT_NONE);
+    assert (! error);
+    assert (vm_map_self()->nr_entries == nr_entries + 2);
+
+    error = vm_map_protect (vm_map_self (), va + PAGE_SIZE,
+                            va + PAGE_SIZE * 2, VM_PROT_READ);
+    assert (! error);
+    assert (vm_map_self()->nr_entries == nr_entries);
+  }
 
   struct vm_map_entry entry;
   error = vm_map_lookup (map, va, &entry);

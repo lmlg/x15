@@ -175,6 +175,10 @@ void vm_map_destroy (struct vm_map *map);
 // Allocate anonymous memory in a VM map.
 int vm_map_anon_alloc (void **outp, struct vm_map *map, size_t size);
 
+// Change the protection of a memory range.
+int vm_map_protect (struct vm_map *map, uintptr_t start,
+                    uintptr_t end, int prot);
+
 // Transfer pages between a remote and the local VM map.
 int vm_map_iter_copy (struct vm_map *r_map, struct ipc_page_iter *r_it,
                       struct ipc_page_iter *l_it, int direction);

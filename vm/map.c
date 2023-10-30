@@ -124,20 +124,24 @@ vm_map_entry_pop (struct list *list)
 }
 
 static void
-vm_map_entry_free_obj (struct vm_map_entry *entry)
+vm_map_entry_free_obj (struct vm_map_entry *entry, bool clear)
 {
   struct vm_object *obj = entry->object;
   if (! obj)
     return;
+  else if (clear)
+    {
+      uint64_t off = entry->offset;
+      vm_object_remove (obj, off, off + entry->end - entry->start);
+    }
 
-  uint64_t offset = entry->offset;
-  vm_object_remove (obj, offset, offset + entry->end - entry->start);
+  vm_object_unref (obj);
 }
 
 static void
-vm_map_entry_destroy (struct vm_map_entry *entry)
+vm_map_entry_destroy (struct vm_map_entry *entry, bool clear)
 {
-  vm_map_entry_free_obj (entry);
+  vm_map_entry_free_obj (entry, clear);
   kmem_cache_free (&vm_map_entry_cache, entry);
 }
 
@@ -394,7 +398,7 @@ vm_map_try_merge_near (struct vm_map *map, const struct vm_map_request *request,
       vm_map_unlink (map, first);
       vm_map_unlink (map, second);
       first->end = second->end;
-      vm_map_entry_destroy (second);
+      vm_map_entry_destroy (second, false);
       vm_map_link (map, first, next);
       return (first);
     }
@@ -601,7 +605,8 @@ vm_map_remove_impl (struct vm_map *map, uintptr_t start,
   if (clear)
     { // Don't prevent lookups and page faults from here on.
       sxlock_share (&map->lock);
-      pmap_remove_range (map->pmap, start, end, cpumap_all ());
+      pmap_remove_range (map->pmap, start, end,
+                         PMAP_PEF_GLOBAL | PMAP_IGNORE_ERRORS);
       pmap_update (map->pmap);
     }
 
@@ -617,7 +622,152 @@ vm_map_remove (struct vm_map *map, uintptr_t start, uintptr_t end)
   int error = vm_map_remove_impl (map, start, end, &entries, true);
   if (! error)
     list_for_each_safe (&entries, ex, tmp)
-      vm_map_entry_destroy (list_entry (ex, struct vm_map_entry, list_node));
+      vm_map_entry_destroy (list_entry (ex, struct vm_map_entry,
+                                        list_node), true);
+
+  return (error);
+}
+
+static void
+vm_map_try_merge_entries (struct vm_map *map, struct vm_map_entry *prev,
+                          struct vm_map_entry *next, struct list *dead)
+{
+  if ((prev->flags & VM_MAP_ENTRY_MASK) !=
+      (next->flags & VM_MAP_ENTRY_MASK) ||
+      prev->end != next->start ||
+      prev->object != next->object ||
+      prev->offset + prev->end - prev->start != next->offset)
+    return;
+
+  _Auto new_next = vm_map_next (map, next);
+
+  next->start = prev->start;
+  next->offset = prev->offset;
+  vm_map_unlink (map, prev);
+  vm_map_unlink (map, next);
+  vm_map_link (map, next, new_next);
+  list_insert_tail (dead, &prev->list_node);
+}
+
+#define VM_MAP_PROT_PFLAGS   (PMAP_PEF_GLOBAL | PMAP_IGNORE_ERRORS)
+
+static int
+vm_map_protect_entry (struct vm_map *map, struct vm_map_entry *entry,
+                      uintptr_t start, uintptr_t end,
+                      int prot, struct list *dead)
+{
+  if ((VM_MAP_MAXPROT (entry->flags) & prot) != prot)
+    return (EACCES);
+  else if (VM_MAP_PROT (entry->flags) == prot)
+    return (0);   // Nothing to do.
+
+  struct list entries;
+  list_init (&entries);
+
+  if (start == entry->start)
+    {
+      if (end == entry->end)
+        {
+          VM_MAP_SET_PROT (&entry->flags, prot);
+          /*
+           * The protection of the full entry changed. See if we can merge
+           * some entries.
+           *
+           * This is done by looking to the entry before, since protection
+           * changes are applied while iterating forward.
+           */
+           if (&entry->list_node != list_first (&map->entry_list))
+             vm_map_try_merge_entries (map, list_prev_entry (entry, list_node),
+                                       entry, dead);
+        }
+      else
+        {
+          int error = vm_map_entry_alloc (&entries, 1);
+          if (error)
+            return (error);
+
+          vm_map_clip_end (map, entry, end, &entries);
+          VM_MAP_SET_PROT (&entry->flags, prot);
+        }
+    }
+  else if (end == entry->end)
+    {
+      int error = vm_map_entry_alloc (&entries, 1);
+      if (error)
+        return (error);
+
+      vm_map_clip_start (map, entry, start, &entries);
+      VM_MAP_SET_PROT (&entry->flags, prot);
+    }
+  else
+    {
+      int error = vm_map_entry_alloc (&entries, 2);
+      if (error)
+        return (error);
+
+      vm_map_clip_start (map, entry, start, &entries);
+      vm_map_clip_end (map, entry, end, &entries);
+      VM_MAP_SET_PROT (&entry->flags, prot);
+    }
+
+  assert (list_empty (&entries));
+
+  if (prot == VM_PROT_NONE)
+    pmap_remove_range (map->pmap, start, end, VM_MAP_PROT_PFLAGS);
+  else
+    pmap_protect_range (map->pmap, start, end, prot, VM_MAP_PROT_PFLAGS);
+
+  return (0);
+}
+
+static int
+vm_map_protect_impl (struct vm_map *map, uintptr_t start, uintptr_t end,
+                     int prot, struct list *dead)
+{
+  SXLOCK_EXGUARD (&map->lock);
+  _Auto entry = vm_map_lookup_nearest (map, start);
+  if (! entry)
+    return (ENOMEM);
+
+  int error;
+  struct vm_map_entry *next;
+
+  while (1)
+    {
+      next = vm_map_next (map, entry);
+      error = vm_map_protect_entry (map, entry, start, end, prot, dead);
+
+      if (error || entry->end >= end)
+        break;
+      else if (!next || entry->end != next->start)
+        {
+          error = ENOMEM;
+          break;
+        }
+
+      entry = next;
+    }
+
+  if (!error && next)
+    vm_map_try_merge_entries (map, entry, next, dead);
+
+  return (error);
+}
+
+int
+vm_map_protect (struct vm_map *map, uintptr_t start, uintptr_t end, int prot)
+{
+  if (!vm_page_aligned (start) || !vm_page_aligned (end) || end < start)
+    return (EINVAL);
+
+  struct list dead;
+  list_init (&dead);
+  int error = vm_map_protect_impl (map, start, end, prot, &dead);
+
+  pmap_update (map->pmap);
+  list_for_each_safe (&dead, nd, tmp)
+    vm_map_entry_destroy (list_entry (nd, struct vm_map_entry,
+                                      list_node), false);
 
   return (error);
 }
@@ -1010,7 +1160,7 @@ vm_map_destroy_impl (struct vm_map *map)
   SXLOCK_EXGUARD (&map->lock);
   rbtree_for_each_remove (&map->entry_tree, entry, tmp)
     vm_map_entry_destroy (rbtree_entry (entry, struct vm_map_entry,
-                                        tree_node));
+                                        tree_node), true);
 }
 
 void
@@ -1075,7 +1225,7 @@ vm_map_fork (struct vm_map **mapp, struct vm_map *src)
       else if (VM_MAP_PROT (entry->flags) & VM_PROT_WRITE)
         pmap_protect (pmap, (uintptr_t)page->offset,
                       VM_MAP_PROT (entry->flags) & ~VM_PROT_WRITE,
-                      cpumap_all ());
+                      PMAP_PEF_GLOBAL);
 
       vm_page_set_cow (page);
     }
@@ -1097,9 +1247,10 @@ vm_map_iter_cleanup (struct vm_map *map, struct ipc_page_iter *it, uint32_t ix)
       list_init (&entries);
       vm_map_remove_impl (map, start, end, &entries, false);
       list_for_each_safe (&entries, ex, tmp)
-        vm_map_entry_destroy (list_entry (ex, struct vm_map_entry, list_node));
+        vm_map_entry_destroy (list_entry (ex, struct vm_map_entry,
+                                          list_node), true);
 
-      pmap_remove_range (map->pmap, start, end, cpumap_all ());
+      pmap_remove_range (map->pmap, start, end, PMAP_PEF_GLOBAL);
     }
 
   pmap_update (map->pmap);
