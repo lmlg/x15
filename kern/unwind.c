@@ -279,12 +279,9 @@ unw_read_encptr (uint8_t enc, const unsigned char **ptr,
         return (-EINVAL);
     }
 
-  if (enc & DW_EH_PE_indirect)
-    {
-      p = (const unsigned char *)(uintptr_t)ret;
-      if (unw_read_safe ((uintptr_t)p, &ret) != 0)
-        return (-EFAULT);
-    }
+  if ((enc & DW_EH_PE_indirect) &&
+      unw_read_safe (ret, &ret) != 0)
+    return (-EFAULT);
 
   *ptr = p;
   *out = ret;
