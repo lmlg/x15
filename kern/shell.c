@@ -1055,8 +1055,7 @@ shell_start (uintptr_t value __unused, void *arg __unused)
   thread_attr_init (&attr, THREAD_KERNEL_PREFIX "shell");
   thread_attr_set_detached (&attr);
 
-  struct thread *thread;
-  int error = thread_create (&thread, &attr, shell_main_run, &shell_main);
+  int error = thread_create (NULL, &attr, shell_main_run, &shell_main);
   error_check (error, "thread_create");
 }
 
@@ -1067,7 +1066,6 @@ shell_setup (void)
   shell_init (&shell_main, &shell_main_cmd_set, console_stream);
   bulletin_subscribe (log_get_bulletin (), &shell_log_bulletin_sub,
                       shell_start, NULL);
-
   return (0);
 }
 

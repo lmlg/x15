@@ -153,7 +153,7 @@ struct cap_iters
 {
   struct ipc_iov_iter iov;
   struct ipc_cap_iter cap;
-  struct ipc_page_iter page;
+  struct ipc_vme_iter vme;
 };
 
 struct bulletin;
@@ -281,7 +281,7 @@ void cap_notify_dead (struct bulletin *bulletin);
     {   \
       iov_init (&(it)->iov, (void *)(buf), size);   \
       ipc_cap_iter_init (&(it)->cap, 0, 0);   \
-      ipc_page_iter_init (&(it)->page, 0, 0);   \
+      ipc_vme_iter_init (&(it)->vme, 0, 0);   \
     }   \
   while (0)
 
@@ -296,7 +296,7 @@ void cap_notify_dead (struct bulletin *bulletin);
     {   \
       ipc_iov_iter_init (&(it)->iov, (msg)->iovs, (msg)->iov_cnt);   \
       ipc_cap_iter_init (&(it)->cap, (msg)->caps, (msg)->cap_cnt);   \
-      ipc_page_iter_init (&(it)->page, (msg)->pages, (msg)->page_cnt);   \
+      ipc_vme_iter_init (&(it)->vme, (msg)->vmes, (msg)->vme_cnt);   \
     }   \
   while (0)
 

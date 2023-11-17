@@ -661,56 +661,28 @@ vm_map_protect_entry (struct vm_map *map, struct vm_map_entry *entry,
   else if (VM_MAP_PROT (entry->flags) == prot)
     return (0);   // Nothing to do.
 
-  struct list entries;
-  list_init (&entries);
-
-  if (start == entry->start)
+  int nr_entries = (start != entry->start) + (end != entry->end);
+  if (nr_entries != 0)
     {
-      if (end == entry->end)
-        {
-          VM_MAP_SET_PROT (&entry->flags, prot);
-          /*
-           * The protection of the full entry changed. See if we can merge
-           * some entries.
-           *
-           * This is done by looking to the entry before, since protection
-           * changes are applied while iterating forward.
-           */
-           if (&entry->list_node != list_first (&map->entry_list))
-             vm_map_try_merge_entries (map, list_prev_entry (entry, list_node),
-                                       entry, dead);
-        }
-      else
-        {
-          int error = vm_map_entry_alloc (&entries, 1);
-          if (error)
-            return (error);
+      struct list entries;
+      list_init (&entries);
 
-          vm_map_clip_end (map, entry, end, &entries);
-          VM_MAP_SET_PROT (&entry->flags, prot);
-        }
-    }
-  else if (end == entry->end)
-    {
-      int error = vm_map_entry_alloc (&entries, 1);
-      if (error)
-        return (error);
-
-      vm_map_clip_start (map, entry, start, &entries);
-      VM_MAP_SET_PROT (&entry->flags, prot);
-    }
-  else
-    {
-      int error = vm_map_entry_alloc (&entries, 2);
+      int error = vm_map_entry_alloc (&entries, nr_entries);
       if (error)
         return (error);
 
       vm_map_clip_start (map, entry, start, &entries);
       vm_map_clip_end (map, entry, end, &entries);
       VM_MAP_SET_PROT (&entry->flags, prot);
+      assert (list_empty (&entries));
     }
-
-  assert (list_empty (&entries));
+  else
+    {
+      VM_MAP_SET_PROT (&entry->flags, prot);
+      if (&entry->list_node != list_first (&map->entry_list))
+        vm_map_try_merge_entries (map, list_prev_entry (entry, list_node),
+                                  entry, dead);
+    }
 
   if (prot == VM_PROT_NONE)
     pmap_remove_range (map->pmap, start, end, VM_MAP_PROT_PFLAGS);
@@ -1236,7 +1208,7 @@ vm_map_fork (struct vm_map **mapp, struct vm_map *src)
 }
 
 static void
-vm_map_iter_cleanup (struct vm_map *map, struct ipc_page_iter *it, uint32_t ix)
+vm_map_iter_cleanup (struct vm_map *map, struct ipc_vme_iter *it, uint32_t ix)
 {
   for (; it->cur != ix; --it->cur)
     {
@@ -1264,11 +1236,11 @@ vm_map_iter_fini (struct sxlock **lockp)
 }
 
 int
-vm_map_iter_copy (struct vm_map *r_map, struct ipc_page_iter *r_it,
-                  struct ipc_page_iter *l_it, int direction)
+vm_map_iter_copy (struct vm_map *r_map, struct ipc_vme_iter *r_it,
+                  struct ipc_vme_iter *l_it, int direction)
 {
   struct vm_map *in_map, *out_map;
-  struct ipc_page_iter *in_it, *out_it;
+  struct ipc_vme_iter *in_it, *out_it;
 
   if (direction == IPC_COPY_FROM)
     {
@@ -1282,8 +1254,8 @@ vm_map_iter_copy (struct vm_map *r_map, struct ipc_page_iter *r_it,
     }
 
   uint32_t prev = out_it->cur;
-  int i = 0, nmax = (int)MIN (ipc_page_iter_size (in_it),
-                              ipc_page_iter_size (out_it));
+  int i = 0, nmax = (int)MIN (ipc_vme_iter_size (in_it),
+                              ipc_vme_iter_size (out_it));
   struct sxlock *lock CLEANUP (vm_map_iter_fini) = &in_map->lock;
 
   SXLOCK_EXGUARD (&out_map->lock);
@@ -1301,37 +1273,36 @@ vm_map_iter_copy (struct vm_map *r_map, struct ipc_page_iter *r_it,
         {
           _Auto entry = vm_map_lookup_nearest (in_map, page.addr);
           _Auto outp = &out_it->begin[out_it->cur];
-          uint64_t offset;
 
 #define ERR(code)   \
   return ((vm_map_iter_cleanup (out_map, out_it, prev)), (code))
 
           if (! entry)
             ERR (-ESRCH);
-          else if ((VM_MAP_MAXPROT (entry->flags) & page.prot) != page.prot)
+          else if ((VM_MAP_MAXPROT (entry->flags) & page.max_prot) !=
+                   page.max_prot || (page.max_prot & page.prot) != page.prot)
             ERR (-EACCES);
-          else if (entry->flags & VM_MAP_ANON)
-            offset = entry->offset + (page.addr - entry->start);
-          else
-            offset = entry->offset;
 
           size_t size = MIN (end - page.addr, page.size);
           if (! size)
             ERR (-EINVAL);
 
-          int flags = entry->flags & ~VM_MAP_ANON;
-          VM_MAP_SET_PROT (&flags, page.prot);
-          int error = vm_map_enter_locked (out_map, &outp->addr, size,
+          uint64_t offset = entry->offset + (page.addr - entry->start);
+          int flags = VM_MAP_FLAGS (page.max_prot, page.prot,
+                                    VM_MAP_INHERIT (entry->flags),
+                                    VM_MAP_ADVICE (entry->flags), 0),
+              error = vm_map_enter_locked (out_map, &outp->addr, size,
                                            0, flags, entry->object, offset);
           if (error)
             ERR (-error);
 
           outp->prot = page.prot;
+          outp->max_prot = page.max_prot;
           outp->size = size;
           page.addr += size;
           ++out_it->cur;
         }
-      while (page.addr < end && ipc_page_iter_size (out_it));
+      while (page.addr < end && ipc_vme_iter_size (out_it));
 
       ++in_it->cur;
     }

@@ -318,9 +318,7 @@ vm_page_cpu_pool_pop (struct vm_page_cpu_pool *cpu_pool)
 {
   assert (cpu_pool->nr_pages != 0);
   --cpu_pool->nr_pages;
-  _Auto page = list_first_entry (&cpu_pool->pages, struct vm_page, node);
-  list_remove (&page->node);
-  return (page);
+  return (list_pop (&cpu_pool->pages, struct vm_page, node));
 }
 
 static inline void

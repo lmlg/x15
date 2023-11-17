@@ -26,11 +26,12 @@
 
 #include <kern/types.h>
 
-struct ipc_msg_page
+struct ipc_msg_vme
 {
   uintptr_t addr;
   size_t size;
   int prot;
+  int max_prot;
 };
 
 struct ipc_msg_cap
@@ -58,9 +59,9 @@ struct ipc_cap_iter
   uint32_t end;
 };
 
-struct ipc_page_iter
+struct ipc_vme_iter
 {
-  struct ipc_msg_page *begin;
+  struct ipc_msg_vme *begin;
   uint32_t cur;
   uint32_t end;
 };
@@ -70,8 +71,8 @@ struct ipc_msg
   size_t size;
   struct iovec *iovs;
   uint32_t iov_cnt;
-  struct ipc_msg_page *pages;
-  uint32_t page_cnt;
+  struct ipc_msg_vme *vmes;
+  uint32_t vme_cnt;
   struct ipc_msg_cap *caps;
   uint32_t cap_cnt;
 };
@@ -87,8 +88,8 @@ struct ipc_msg_data
   uint32_t flags;
   uintptr_t tag;
   ssize_t nbytes;
-  uint32_t pages_sent;
-  uint32_t pages_recv;
+  uint32_t vmes_sent;
+  uint32_t vmes_recv;
   uint32_t caps_sent;
   uint32_t caps_recv;
 };
@@ -102,7 +103,7 @@ struct task;
 /*
  * IPC iterator functions.
  *
- * These come in 3 flavors: iovec, capabilities and pages. The former works
+ * These come in 3 flavors: iovec, capabilities and VMEs. The former works
  * by simply copying data; the other 2 by transfering objects across tasks.
  */
 
@@ -121,15 +122,15 @@ ipc_cap_iter_size (const struct ipc_cap_iter *it)
 }
 
 static inline void
-ipc_page_iter_init (struct ipc_page_iter *it,
-                    struct ipc_msg_page *msg, uint32_t nr_msgs)
+ipc_vme_iter_init (struct ipc_vme_iter *it,
+                   struct ipc_msg_vme *msg, uint32_t nr_msgs)
 {
   it->begin = msg;
   it->cur = 0, it->end = nr_msgs;
 }
 
 static inline int
-ipc_page_iter_size (const struct ipc_page_iter *it)
+ipc_vme_iter_size (const struct ipc_vme_iter *it)
 {
   return ((int)(it->end - it->cur));
 }
@@ -171,9 +172,9 @@ ssize_t ipc_iov_iter_copy (struct task *r_task, struct ipc_iov_iter *r_it,
 int ipc_cap_iter_copy (struct task *r_task, struct ipc_cap_iter *r_it,
                        struct ipc_cap_iter *l_it, int direction);
 
-// Transfer pages in iterators between a local and a remote task.
-int ipc_page_iter_copy (struct task *r_task, struct ipc_page_iter *r_it,
-                        struct ipc_page_iter *l_it, int direction);
+// Transfer VMEs in iterators between a local and a remote task.
+int ipc_vme_iter_copy (struct task *r_task, struct ipc_vme_iter *r_it,
+                       struct ipc_vme_iter *l_it, int direction);
 
 // Copy bytes in iovecs between a local and a remote task.
 static inline ssize_t
@@ -186,16 +187,16 @@ ipc_bcopyv (struct task *r_task, struct iovec *r_iov, uint32_t r_niov,
   return (ipc_iov_iter_copy (r_task, &r_it, &l_it, direction));
 }
 
-// Transfer pages between a remote and a local task.
+// Transfer VMEs between a remote and a local task.
 static inline int
-ipc_copy_pages (struct task *r_task, struct ipc_msg_page *r_pages,
-                uint32_t r_npages, struct ipc_msg_page *l_pages,
-                uint32_t l_npages, int direction)
+ipc_copy_vmes (struct task *r_task, struct ipc_msg_vme *r_vmes,
+               uint32_t r_nvmes, struct ipc_msg_vme *l_vmes,
+               uint32_t l_nvmes, int direction)
 {
-  struct ipc_page_iter r_it, l_it;
-  ipc_page_iter_init (&r_it, r_pages, r_npages);
-  ipc_page_iter_init (&l_it, l_pages, l_npages);
-  return (ipc_page_iter_copy (r_task, &r_it, &l_it, direction));
+  struct ipc_vme_iter r_it, l_it;
+  ipc_vme_iter_init (&r_it, r_vmes, r_nvmes);
+  ipc_vme_iter_init (&l_it, l_vmes, l_nvmes);
+  return (ipc_vme_iter_copy (r_task, &r_it, &l_it, direction));
 }
 
 // Transfer capabilities between a remote and a local task.

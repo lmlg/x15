@@ -441,11 +441,11 @@ ipc_cap_iter_copy (struct task *r_task, struct ipc_cap_iter *r_it,
 }
 
 int
-ipc_page_iter_copy (struct task *r_task, struct ipc_page_iter *r_it,
-                    struct ipc_page_iter *l_it, int direction)
+ipc_vme_iter_copy (struct task *r_task, struct ipc_vme_iter *r_it,
+                   struct ipc_vme_iter *l_it, int direction)
 {
-#define ipc_page_copy_impl(task, r_it, l_it, dir)   \
+#define ipc_vme_copy_impl(task, r_it, l_it, dir)   \
   vm_map_iter_copy ((task)->map, (r_it), (l_it), (dir))
-  IPC_ITER_LOOP (page, ipc_page_copy_impl);
-#undef ipc_page_copy_impl
+  IPC_ITER_LOOP (vme, ipc_vme_copy_impl);
+#undef ipc_vme_copy_impl
 }

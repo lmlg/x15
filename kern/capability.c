@@ -383,16 +383,13 @@ cap_transfer_iters (struct task *task, struct cap_iters *r_it,
       data->caps_recv += nr_caps;
     }
 
-  if (ipc_page_iter_size (&r_it->page) && ipc_page_iter_size (&l_it->page))
+  if (ipc_vme_iter_size (&r_it->vme) && ipc_vme_iter_size (&l_it->vme))
     {
-      uint32_t *ptr = dir == IPC_COPY_TO ? &r_it->page.cur : &l_it->page.cur;
-      uint32_t prev = *ptr;
-      int nr_pages = ipc_page_iter_copy (task, &r_it->page, &l_it->page, dir);
+      int nr_vmes = ipc_vme_iter_copy (task, &r_it->vme, &l_it->vme, dir);
+      if (nr_vmes < 0)
+        return (nr_vmes);
 
-      if (nr_pages < 0)
-        return (nr_pages);
-
-      data->pages_recv += *ptr - prev;
+      data->vmes_recv += nr_vmes;
     }
 
   return (ret);
@@ -624,8 +621,8 @@ cap_ipc_msg_data_init (struct ipc_msg_data *data, uintptr_t tag)
   data->tag = tag;
   data->nbytes = 0;
   data->flags = 0;
-  data->pages_sent = data->caps_sent = 0;
-  data->pages_recv = data->caps_recv = 0;
+  data->vmes_sent = data->caps_sent = 0;
+  data->vmes_recv = data->caps_recv = 0;
 }
 
 static void
@@ -644,7 +641,7 @@ cap_iters_copy (struct cap_iters *dst, const struct cap_iters *src)
 
   copy_simple (dst, src, iov);
   copy_simple (dst, src, cap);
-  copy_simple (dst, src, page);
+  copy_simple (dst, src, vme);
 #undef copy_simple
 }
 
@@ -706,9 +703,9 @@ cap_sender_impl (struct cap_flow *flow, uintptr_t tag, struct cap_iters *in,
   user_copy_to ((void *)port->ctx[2], &port->mdata, sizeof (port->mdata));
 
   // After the copy, switch the counters.
-  port->mdata.pages_sent = port->mdata.pages_recv;
+  port->mdata.vmes_sent = port->mdata.vmes_recv;
   port->mdata.caps_sent = port->mdata.caps_recv;
-  port->mdata.pages_recv = port->mdata.caps_recv = 0;
+  port->mdata.vmes_recv = port->mdata.caps_recv = 0;
 
   // Jump to new PC and SP.
   ssize_t ret = cpu_port_swap (port->ctx, cur_port, (void *)flow->entry);
@@ -775,9 +772,7 @@ cap_push_pull_msg (struct cap_iters *l_it, struct ipc_msg_data *mdata,
 ssize_t
 cap_pull_iters (struct cap_iters *it, struct ipc_msg_data *mdata)
 {
-  struct thread *self = thread_self ();
-  struct cap_port_entry *port = self->cur_port;
-
+  struct cap_port_entry *port = thread_self()->cur_port;
   if (! port)
     return (-EINVAL);
 
@@ -788,7 +783,7 @@ cap_pull_iters (struct cap_iters *it, struct ipc_msg_data *mdata)
   if (ret < 0)
     return (ret);
 
-  port->mdata.pages_sent += tmp.pages_recv;
+  port->mdata.vmes_sent += tmp.vmes_recv;
   port->mdata.caps_sent += tmp.caps_recv;
 
   if (mdata && user_copy_to (mdata, &tmp, sizeof (tmp)) != 0)
@@ -814,14 +809,14 @@ cap_push_iters (struct cap_iters *it, struct ipc_msg_data *mdata)
     return (ret);
 
   port->mdata.nbytes += ret;
-  port->mdata.pages_recv += out_data.pages_recv;
+  port->mdata.vmes_recv += out_data.vmes_recv;
   port->mdata.caps_recv += out_data.caps_recv;
 
   if (mdata)
     {
-      out_data.pages_sent = out_data.pages_recv;
+      out_data.vmes_sent = out_data.vmes_recv;
       out_data.caps_sent = out_data.caps_recv;
-      out_data.pages_recv = out_data.caps_recv = 0;
+      out_data.vmes_recv = out_data.caps_recv = 0;
       if (user_copy_to (mdata, &out_data, sizeof (*mdata)) != 0)
         ret = -EFAULT;
     }

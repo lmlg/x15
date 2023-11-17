@@ -50,7 +50,7 @@ struct test_cap_vars
   char buf[16];
   uint32_t bufsize;
   struct iovec iov;
-  struct ipc_msg_page mpage;
+  struct ipc_msg_vme mvme;
   struct ipc_msg_cap mcap;
   struct cap_thread_info info;
 };
@@ -78,7 +78,7 @@ static void
 test_cap_entry (struct ipc_msg *msg, struct ipc_msg_data *mdata)
 {
   assert (mdata->nbytes > 0);
-  assert (mdata->pages_recv == 1);
+  assert (mdata->vmes_recv == 1);
   assert (mdata->caps_recv == 1);
   assert (mdata->tag == TEST_CAP_CHANNEL_TAG);
   assert (mdata->task_id == task_id (thread_self()->task));
@@ -91,11 +91,11 @@ test_cap_entry (struct ipc_msg *msg, struct ipc_msg_data *mdata)
   assert (memcmp (vars->buf, "hello", 5) == 0);
 
   struct vm_map_entry entry;
-  int error = vm_map_lookup (vm_map_self (), vars->mpage.addr, &entry);
+  int error = vm_map_lookup (vm_map_self (), vars->mvme.addr, &entry);
 
   assert (! error);
   assert (VM_MAP_PROT (entry.flags) == VM_PROT_READ);
-  assert (*(char *)vars->mpage.addr == 'x');
+  assert (*(char *)vars->mvme.addr == 'x');
 
   vm_map_entry_put (&entry);
 
@@ -117,8 +117,8 @@ test_cap_entry (struct ipc_msg *msg, struct ipc_msg_data *mdata)
   assert (mp->nbytes == nb);
 
   memset (mem, 'z', 100);
-  vars->mpage.addr = (uintptr_t)mem;
-  vars->mpage.size = PAGE_SIZE;
+  vars->mvme.addr = (uintptr_t)mem;
+  vars->mvme.size = PAGE_SIZE;
   vars->mcap.cap = test_cap_alloc_task (task_self ());
   vars->iov = IOVEC (memset (vars->buf, '?', sizeof (vars->buf)), 8);
 
@@ -170,15 +170,15 @@ test_cap_receiver (void *arg)
     assert (vars->mdata.thread_id = thread_id (thread_self ()));
   }
 
-  vars->mpage = (struct ipc_msg_page) { .addr = PAGE_SIZE * 10 };
+  vars->mvme = (struct ipc_msg_vme) { .addr = PAGE_SIZE * 10 };
   vars->iov = IOVEC (&vars->bufsize, sizeof (vars->bufsize));
   vars->msg = (struct ipc_msg)
     {
       .size = sizeof (struct ipc_msg),
       .iovs = &vars->iov,
       .iov_cnt = 1,
-      .pages = &vars->mpage,
-      .page_cnt = 1,
+      .vmes = &vars->mvme,
+      .vme_cnt = 1,
       .caps = &vars->mcap,
       .cap_cnt = 1,
     };
@@ -207,7 +207,7 @@ test_cap_sender (void *arg)
 
   struct
     {
-      struct ipc_msg_page mpage;
+      struct ipc_msg_vme mvme;
       char buf[6];
       uint32_t bufsize;
       struct iovec iovecs[2];
@@ -216,10 +216,11 @@ test_cap_sender (void *arg)
       struct ipc_msg_cap mcap;
     } *vars = (void *)((char *)mem + PAGE_SIZE);
 
-  vars->mpage = (struct ipc_msg_page)
+  vars->mvme = (struct ipc_msg_vme)
     {
       .addr = (uintptr_t)memset (mem, 'x', PAGE_SIZE),
       .prot = VM_PROT_READ,
+      .max_prot = VM_PROT_READ,
       .size = PAGE_SIZE
     };
 
@@ -239,8 +240,8 @@ test_cap_sender (void *arg)
       .size = sizeof (struct ipc_msg),
       .iovs = vars->iovecs,
       .iov_cnt = 2,
-      .pages = &vars->mpage,
-      .page_cnt = 1,
+      .vmes = &vars->mvme,
+      .vme_cnt = 1,
       .caps = &vars->mcap,
       .cap_cnt = 1,
     };
@@ -250,9 +251,9 @@ test_cap_sender (void *arg)
   assert (nb > 0);
   assert (vars->bufsize == 'Z');
   assert (memcmp (vars->buf, "?????", 5) == 0);
-  assert (*(char *)vars->mpage.addr == 'z');
-  assert (vars->mdata.pages_sent == 1);
-  assert (vars->mdata.pages_recv == 1);
+  assert (*(char *)vars->mvme.addr == 'z');
+  assert (vars->mdata.vmes_sent == 1);
+  assert (vars->mdata.vmes_recv == 1);
   assert (vars->mdata.caps_sent == 1);
   assert (vars->mdata.caps_recv == 1);
 

@@ -259,7 +259,7 @@ static struct perfmon_dev pmu_intel_dev __read_mostly;
 static void
 pmu_intel_percpu_init (void)
 {
-  const struct pmu_intel *pmu = pmu_intel_get();
+  const struct pmu_intel *pmu = pmu_intel_get ();
   uint64_t pmc_mask = (1ULL << pmu->nr_pmcs) - 1;
   cpu_set_msr64 (PMU_INTEL_MSR_GLOBAL_CTRL, 0x700000000 | pmc_mask);
 }
