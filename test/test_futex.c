@@ -173,18 +173,17 @@ test_futex_shared (void *arg __unused)
   int error = vm_map_anon_alloc (&addr, vm_map_self (), 1);
   assert (! error);
 
-  struct vm_map_entry entry;
-  error = vm_map_lookup (vm_map_self (), (uintptr_t)addr, &entry);
-  assert (! error);
+  _Auto entry = vm_map_find (vm_map_self (), (uintptr_t)addr);
+  assert (entry);
 
   struct thread *thr;
   error = test_util_create_thr (&thr, test_futex_shared_helper,
-                                &entry, "futex-sh-fork");
+                                entry, "futex-sh-fork");
 
   test_thread_wait_state (thr, THREAD_SLEEPING);
   error = futex_wake (addr, FUTEX_MUTATE | FUTEX_SHARED, 1);
   thread_join (thr);
-  vm_map_entry_put (&entry);
+  vm_map_entry_put (entry);
 }
 
 static void

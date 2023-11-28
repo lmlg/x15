@@ -47,7 +47,7 @@
 #include <vm/object.h>
 #include <vm/page.h>
 
-// Maximum number of frames to allocate per mapping.
+// Maximum number of frames to allocate when faulting in pages.
 #define VM_MAP_MAX_FRAMES_ORDER   3
 #define VM_MAP_MAX_FRAMES         (1 << VM_MAP_MAX_FRAMES_ORDER)
 
@@ -410,7 +410,7 @@ vm_map_try_merge_near (struct vm_map *map, const struct vm_map_request *request,
 static struct vm_map_entry*
 vm_map_try_merge (struct vm_map *map, const struct vm_map_request *request)
 {
-  // Statically allocated map entries must not be merged */
+  // Statically allocated map entries must not be merged.
   assert (!(request->flags & VM_MAP_NOMERGE));
 
   if (!request->next)
@@ -684,7 +684,8 @@ vm_map_protect_entry (struct vm_map *map, struct vm_map_entry *entry,
                                   entry, dead);
     }
 
-  if (prot == VM_PROT_NONE)
+  if (prot == VM_PROT_NONE &&
+      (VM_MAP_PROT (entry->flags) & VM_PROT_WRITE) == 0)
     pmap_remove_range (map->pmap, start, end, VM_MAP_PROT_PFLAGS);
   else
     pmap_protect_range (map->pmap, start, end, prot, VM_MAP_PROT_PFLAGS);
@@ -723,6 +724,9 @@ vm_map_protect_impl (struct vm_map *map, uintptr_t start, uintptr_t end,
   if (!error && next)
     vm_map_try_merge_entries (map, entry, next, dead);
 
+  // Don't prevent lookups and page faults from here on.
+  sxlock_share (&map->lock);
+  pmap_update (map->pmap);
   return (error);
 }
 
@@ -736,7 +740,6 @@ vm_map_protect (struct vm_map *map, uintptr_t start, uintptr_t end, int prot)
   list_init (&dead);
   int error = vm_map_protect_impl (map, start, end, prot, &dead);
 
-  pmap_update (map->pmap);
   list_for_each_safe (&dead, nd, tmp)
     vm_map_entry_destroy (list_entry (nd, struct vm_map_entry,
                                       list_node), false);

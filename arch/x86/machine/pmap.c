@@ -1466,6 +1466,9 @@ pmap_protect_single (struct pmap_cpu_table *table, uintptr_t addr,
   pmap_pte_t bits = (is_kernel ? PMAP_PTE_G : PMAP_PTE_US) |
                     pmap_prot_table[prot & VM_PROT_ALL];
   pmap_pte_set (pte, *pte, bits, pt_level);
+  if (prot == VM_PROT_NONE)
+    *pte &= ~PMAP_PTE_P;
+
   return (0);
 }
 

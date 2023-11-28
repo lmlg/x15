@@ -100,15 +100,13 @@ test_vm_fault_thread (void *arg __unused)
     assert (vm_map_self()->nr_entries == nr_entries);
   }
 
-  struct vm_map_entry entry;
-  error = vm_map_lookup (map, va, &entry);
-  assert (! error);
-  assert (entry.object == test_obj);
-  assert (VM_MAP_PROT (entry.flags) == VM_PROT_READ);
+  _Auto entry = vm_map_find (map, va);
+  assert (entry);
+  assert (entry->object == test_obj);
+  assert (VM_MAP_PROT (entry->flags) == VM_PROT_READ);
 
   {
     struct vm_map *fmap;
-    struct vm_map_entry e2;
 
     void *buf;
     error = vm_map_anon_alloc (&buf, map, PAGE_SIZE);
@@ -117,17 +115,18 @@ test_vm_fault_thread (void *arg __unused)
     error = vm_map_fork (&fmap, vm_map_self ());
     assert (! error);
 
-    error = vm_map_lookup (fmap, va, &e2);
-    assert (! error);
-    assert (e2.object == entry.object &&
-            e2.flags == entry.flags &&
-            e2.offset == entry.offset);
+    _Auto e2 = vm_map_find (fmap, va);
+    assert (e2);
+    assert (e2->object == entry->object &&
+            e2->flags == entry->flags &&
+            e2->offset == entry->offset);
 
     thread_self()->task->map = fmap;
     thread_yield ();
     *(int *)buf = 42;
 
     thread_self()->task->map = map;
+    vm_map_entry_put (e2);
     vm_map_destroy (fmap);
 
     /*
@@ -141,7 +140,7 @@ test_vm_fault_thread (void *arg __unused)
     assert (*(int *)buf == 0);
   }
 
-  vm_map_entry_put (&entry);
+  vm_map_entry_put (entry);
   vm_object_unref (test_obj);
 }
 
