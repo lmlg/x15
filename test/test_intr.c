@@ -81,7 +81,6 @@ test_intr (void *arg)
   error = cap_recv_alert (flow, &data->alert, sizeof (data->alert), &data->md);
   assert (! error);
 
-  assert (data->md.flags & IPC_MSG_KERNEL);
   assert (data->alert.intr.irq == TEST_INTR_FIRST);
   assert (data->alert.intr.count == 2);
   assert (data->md.task_id == 0);
@@ -96,7 +95,6 @@ test_intr (void *arg)
   error = cap_recv_alert (flow, &data->alert, sizeof (data->alert), &data->md);
   assert (! error);
 
-  assert (data->md.flags & IPC_MSG_KERNEL);
   assert (data->alert.intr.irq == TEST_INTR_FIRST);
   assert (data->alert.intr.count == 1);
   assert (data->md.task_id == 0);

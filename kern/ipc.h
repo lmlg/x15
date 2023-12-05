@@ -78,7 +78,7 @@ struct ipc_msg
 };
 
 // Bits for the 'flags' member of a IPC message metadata.
-#define IPC_MSG_KERNEL   0x01   // Message was sent by the kernel.
+#define IPC_MSG_TRUNC    0x01   // Reply was truncated.
 
 struct ipc_msg_data
 {
@@ -87,10 +87,11 @@ struct ipc_msg_data
   int thread_id;
   uint32_t flags;
   uintptr_t tag;
-  ssize_t nbytes;
+  ssize_t bytes_sent;
   uint32_t vmes_sent;
-  uint32_t vmes_recv;
   uint32_t caps_sent;
+  ssize_t bytes_recv;
+  uint32_t vmes_recv;
   uint32_t caps_recv;
 };
 

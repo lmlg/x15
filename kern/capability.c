@@ -47,6 +47,23 @@ struct cap_alert
     };
 };
 
+#define F(name)   __builtin_offsetof (struct ipc_msg_data, name)
+
+static_assert (F (caps_recv) - F (bytes_recv) ==
+               F (caps_sent) - F (bytes_sent) &&
+               F (vmes_recv) - F (bytes_recv) ==
+               F (vmes_sent) - F (bytes_sent),
+               "invalid layout for struct ipc_msg_data");
+#undef F
+
+#define CAP_VMES_OFF   \
+  (__builtin_offsetof (struct ipc_msg_data, vmes_recv) -   \
+   __builtin_offsetof (struct ipc_msg_data, bytes_recv))
+
+#define CAP_CAPS_OFF   \
+  (__builtin_offsetof (struct ipc_msg_data, caps_recv) -   \
+   __builtin_offsetof (struct ipc_msg_data, bytes_recv))
+
 struct cap_alert_async
 {
   struct cap_alert base;
@@ -367,20 +384,20 @@ cap_flow_hook (struct cap_channel **outp, struct task *task, int capx)
 
 static ssize_t
 cap_transfer_iters (struct task *task, struct cap_iters *r_it,
-                    struct cap_iters *l_it, int dir, struct ipc_msg_data *data)
+                    struct cap_iters *l_it, int dir, ssize_t *bytesp)
 {
   ssize_t ret = ipc_iov_iter_copy (task, &r_it->iov, &l_it->iov, dir);
   if (ret < 0)
     return (ret);
 
-  data->nbytes += ret;
+  *bytesp += ret;
   if (ipc_cap_iter_size (&r_it->cap) && ipc_cap_iter_size (&l_it->cap))
     {
       int nr_caps = ipc_cap_iter_copy (task, &r_it->cap, &l_it->cap, dir);
       if (nr_caps < 0)
         return (nr_caps);
 
-      data->caps_recv += nr_caps;
+      *(uint32_t *)((char *)bytesp + CAP_CAPS_OFF) += nr_caps;
     }
 
   if (ipc_vme_iter_size (&r_it->vme) && ipc_vme_iter_size (&l_it->vme))
@@ -389,7 +406,7 @@ cap_transfer_iters (struct task *task, struct cap_iters *r_it,
       if (nr_vmes < 0)
         return (nr_vmes);
 
-      data->vmes_recv += nr_vmes;
+      *(uint32_t *)((char *)bytesp + CAP_VMES_OFF) += nr_vmes;
     }
 
   return (ret);
@@ -443,41 +460,52 @@ cap_recv_wakeup_fast (struct cap_flow *flow)
   thread_wakeup (recv->thread);
 }
 
+static struct cap_alert*
+cap_recv_pop_alert (struct cap_flow *flow, void *buf, uint32_t flags,
+                    struct ipc_msg_data *mdata, int *outp)
+{
+  if (!pqueue_empty (&flow->pending_alerts))
+    return (pqueue_pop_entry (&flow->pending_alerts, struct cap_alert, pnode));
+  else if (flags & CAP_ALERT_NONBLOCK)
+    {
+      spinlock_unlock (&flow->lock);
+      *outp = EAGAIN;
+      return (NULL);
+    }
+
+  struct cap_receiver recv;
+  cap_receiver_add (flow, &recv, buf);
+
+  do
+    thread_sleep (&flow->lock, flow, "flow-alert");
+  while (pqueue_empty (&flow->pending_alerts));
+
+  if (recv.spurious)
+    return (pqueue_pop_entry (&flow->pending_alerts, struct cap_alert, pnode));
+
+  spinlock_unlock (&flow->lock);
+  if (recv.mdata.bytes_recv >= 0 && mdata)
+    {
+      recv.mdata.bytes_recv = CAP_ALERT_SIZE;
+      user_copy_to (mdata, &recv.mdata, sizeof (*mdata));
+    }
+
+  *outp = recv.mdata.bytes_recv >= 0 ? 0 : (int)-recv.mdata.bytes_recv;
+  return (NULL);
+}
+
 int
 cap_recv_alert (struct cap_flow *flow, void *buf,
                 uint32_t flags, struct ipc_msg_data *mdata)
 {
   spinlock_lock (&flow->lock);
-  if (pqueue_empty (&flow->pending_alerts))
-    {
-      if (flags & CAP_ALERT_NONBLOCK)
-        {
-          spinlock_unlock (&flow->lock);
-          return (EAGAIN);
-        }
 
-      struct cap_receiver recv;
-      cap_receiver_add (flow, &recv, buf);
+  int error;
+  _Auto entry = cap_recv_pop_alert (flow, buf, flags, mdata, &error);
 
-      do
-        thread_sleep (&flow->lock, flow, "flow-alert");
-      while (pqueue_empty (&flow->pending_alerts));
+  if (! entry)
+    return (error);
 
-      if (!recv.spurious)
-        {
-          spinlock_unlock (&flow->lock);
-          if (recv.mdata.nbytes >= 0 && mdata)
-            {
-              recv.mdata.nbytes = CAP_ALERT_SIZE;
-              user_copy_to (mdata, &recv.mdata, sizeof (*mdata));
-            }
-
-          return (recv.mdata.nbytes < 0 ? recv.mdata.nbytes : 0);
-        }
-    }
-
-  _Auto entry = pqueue_pop_entry (&flow->pending_alerts,
-                                  struct cap_alert, pnode);
   void *payload = entry->payload;
   if (cap_alert_type (entry) == CAP_ALERT_INTR)
     { // Copy into a temp buffer so we may reset the counter.
@@ -516,12 +544,8 @@ cap_recv_alert (struct cap_flow *flow, void *buf,
       struct ipc_msg_data tmp;
       memset (&tmp, 0, sizeof (tmp));
 
-      tmp.nbytes = CAP_ALERT_SIZE;
-      if (cap_alert_type (entry) != CAP_ALERT_USER)
-        tmp.flags = IPC_MSG_KERNEL;
-      else
-        tmp.task_id = ids[0], tmp.thread_id = ids[1];
-
+      tmp.bytes_recv = CAP_ALERT_SIZE;
+      tmp.task_id = ids[0], tmp.thread_id = ids[1];
       user_copy_to (mdata, &tmp, sizeof (tmp));
     }
 
@@ -568,7 +592,7 @@ int
       {
         _Auto alert = cap_flow_alloc_alert (flow, flags);
         if (! alert)
-          return (-ENOMEM);
+          return (ENOMEM);
 
         memcpy (alert->payload, abuf, CAP_ALERT_SIZE);
         pqueue_node_init (&alert->pnode, prio);
@@ -582,11 +606,12 @@ int
   }
 
   cap_fill_ids (&recv->mdata.thread_id, &recv->mdata.task_id, thread_self ());
-  recv->mdata.nbytes = ipc_bcopy (recv->thread->task, recv->buf, sizeof (abuf),
-                                  abuf, sizeof (abuf), IPC_COPY_TO);
+  ssize_t rv = ipc_bcopy (recv->thread->task, recv->buf, sizeof (abuf),
+                          abuf, sizeof (abuf), IPC_COPY_TO);
 
   thread_wakeup (recv->thread);
-  return (recv->mdata.nbytes < 0 ? recv->mdata.nbytes : 0);
+  recv->mdata.bytes_recv = rv;
+  return (rv < 0 ? (int)-rv : 0);
 }
 
 static void
@@ -600,7 +625,6 @@ cap_sender_add (struct cap_flow *flow, struct cap_sender *sender,
 static void
 cap_task_swap (struct task **taskp)
 {
-  barrier ();
   cpu_flags_t flags;
   thread_preempt_disable_intr_save (&flags);
 
@@ -619,7 +643,7 @@ cap_ipc_msg_data_init (struct ipc_msg_data *data, uintptr_t tag)
 {
   data->size = sizeof (*data);
   data->tag = tag;
-  data->nbytes = 0;
+  data->bytes_recv = data->bytes_sent = 0;
   data->flags = 0;
   data->vmes_sent = data->caps_sent = 0;
   data->vmes_recv = data->caps_recv = 0;
@@ -628,7 +652,7 @@ cap_ipc_msg_data_init (struct ipc_msg_data *data, uintptr_t tag)
 static void
 cap_iters_copy (struct cap_iters *dst, const struct cap_iters *src)
 {
-#define copy_simple(d, s, type)   \
+#define cap_copy_simple(d, s, type)   \
   d->type.begin = s->type.begin;   \
   d->type.cur = s->type.cur;   \
   d->type.end = s->type.end
@@ -639,9 +663,9 @@ cap_iters_copy (struct cap_iters *dst, const struct cap_iters *src)
   dst->iov.cache_idx = src->iov.cache_idx;
   dst->iov.head = src->iov.head;
 
-  copy_simple (dst, src, iov);
-  copy_simple (dst, src, cap);
-  copy_simple (dst, src, vme);
+  cap_copy_simple (dst, src, iov);
+  cap_copy_simple (dst, src, cap);
+  cap_copy_simple (dst, src, vme);
 #undef copy_simple
 }
 
@@ -658,38 +682,40 @@ cap_flow_push_port (struct cap_flow *flow, struct cap_port_entry *port)
   thread_wakeup (sender->thread);
 }
 
+static struct cap_port_entry*
+cap_pop_port (struct cap_flow *flow, struct thread *self)
+{
+  SPINLOCK_GUARD (&flow->lock);
+  if (slist_empty (&flow->lpads))
+    {
+      struct cap_sender sender;
+      cap_sender_add (flow, &sender, self);
+
+      do
+        thread_sleep (&flow->lock, flow, "flow-sender");
+      while (slist_empty (&flow->lpads));
+
+      list_remove (&sender.lnode);
+    }
+
+  _Auto port = slist_first_entry (&flow->lpads, struct cap_port_entry, snode);
+  slist_remove (&flow->lpads, NULL);
+  return (port);
+}
+
 static ssize_t
 cap_sender_impl (struct cap_flow *flow, uintptr_t tag, struct cap_iters *in,
                  struct cap_iters *out, struct ipc_msg_data *data)
 {
-  struct cap_port_entry *port;
   struct thread *self = thread_self ();
-
-  {
-    SPINLOCK_GUARD (&flow->lock);
-
-    if (slist_empty (&flow->lpads))
-      {
-        struct cap_sender sender;
-        cap_sender_add (flow, &sender, self);
-
-        do
-          thread_sleep (&flow->lock, flow, "flow-sender");
-        while (slist_empty (&flow->lpads));
-
-        list_remove (&sender.lnode);
-      }
-
-    port = slist_first_entry (&flow->lpads, typeof (*port), snode);
-    slist_remove (&flow->lpads, NULL);
-  }
+  _Auto port = cap_pop_port (flow, self);
  
   cap_ipc_msg_data_init (&port->mdata, tag);
   ssize_t nb = cap_transfer_iters (port->task, &port->in_it, in,
-                                   IPC_COPY_TO, &port->mdata);
+                                   IPC_COPY_TO, &port->mdata.bytes_recv);
 
   if (nb < 0)
-    port->mdata.nbytes = nb;
+    port->mdata.bytes_recv = nb;
 
   cap_iters_copy (&port->in_it, in);
   port->out_it = out;
@@ -702,19 +728,14 @@ cap_sender_impl (struct cap_flow *flow, uintptr_t tag, struct cap_iters *in,
   cap_task_swap (&port->task);
   user_copy_to ((void *)port->ctx[2], &port->mdata, sizeof (port->mdata));
 
-  // After the copy, switch the counters.
-  port->mdata.vmes_sent = port->mdata.vmes_recv;
-  port->mdata.caps_sent = port->mdata.caps_recv;
-  port->mdata.vmes_recv = port->mdata.caps_recv = 0;
-
   // Jump to new PC and SP.
   ssize_t ret = cpu_port_swap (port->ctx, cur_port, (void *)flow->entry);
 
   // We're back.
-  cap_flow_push_port (flow, port);
   if (data && user_copy_to (data, &port->mdata, sizeof (*data)) != 0)
     ret = -EFAULT;
 
+  cap_flow_push_port (flow, port);
   self->cur_port = cur_port;
   return (ret);
 }
@@ -761,14 +782,6 @@ cap_send_iters (struct cap_base *cap, struct cap_iters *in,
   return (cap_sender_impl (flow, tag, in, out, data));
 }
 
-static ssize_t
-cap_push_pull_msg (struct cap_iters *l_it, struct ipc_msg_data *mdata,
-                   int dir, struct cap_iters *r_it, struct cap_port_entry *port)
-{
-  cap_ipc_msg_data_init (mdata, port->mdata.tag);
-  return (cap_transfer_iters (port->task, r_it, l_it, dir, mdata));
-}
-
 ssize_t
 cap_pull_iters (struct cap_iters *it, struct ipc_msg_data *mdata)
 {
@@ -777,14 +790,16 @@ cap_pull_iters (struct cap_iters *it, struct ipc_msg_data *mdata)
     return (-EINVAL);
 
   struct ipc_msg_data tmp;
-  ssize_t ret = cap_push_pull_msg (it, &tmp, IPC_COPY_FROM,
-                                   &port->in_it, port);
+  cap_ipc_msg_data_init (&tmp, port->mdata.tag);
 
+  ssize_t ret = cap_transfer_iters (port->task, &port->in_it, it,
+                                    IPC_COPY_FROM, &tmp.bytes_recv);
   if (ret < 0)
     return (ret);
 
-  port->mdata.vmes_sent += tmp.vmes_recv;
-  port->mdata.caps_sent += tmp.caps_recv;
+  port->mdata.bytes_recv += ret;
+  port->mdata.vmes_recv += tmp.vmes_recv;
+  port->mdata.caps_recv += tmp.caps_recv;
 
   if (mdata && user_copy_to (mdata, &tmp, sizeof (tmp)) != 0)
     ret = -EFAULT;
@@ -795,33 +810,44 @@ cap_pull_iters (struct cap_iters *it, struct ipc_msg_data *mdata)
 ssize_t
 cap_push_iters (struct cap_iters *it, struct ipc_msg_data *mdata)
 {
-  struct thread *self = thread_self ();
-  struct cap_port_entry *port = self->cur_port;
-
+  struct cap_port_entry *port = thread_self()->cur_port;
   if (! port)
     return (-EINVAL);
 
-  struct ipc_msg_data out_data;
-  ssize_t ret = cap_push_pull_msg (it, &out_data, IPC_COPY_TO,
-                                   port->out_it, port);
+  struct ipc_msg_data tmp;
+  cap_ipc_msg_data_init (&tmp, port->mdata.tag);
 
+  ssize_t ret = cap_transfer_iters (port->task, port->out_it, it,
+                                    IPC_COPY_TO, &tmp.bytes_sent);
   if (ret < 0)
     return (ret);
 
-  port->mdata.nbytes += ret;
-  port->mdata.vmes_recv += out_data.vmes_recv;
-  port->mdata.caps_recv += out_data.caps_recv;
+  port->mdata.bytes_sent += ret;
+  port->mdata.vmes_sent += tmp.vmes_sent;
+  port->mdata.caps_sent += tmp.caps_sent;
 
-  if (mdata)
-    {
-      out_data.vmes_sent = out_data.vmes_recv;
-      out_data.caps_sent = out_data.caps_recv;
-      out_data.vmes_recv = out_data.caps_recv = 0;
-      if (user_copy_to (mdata, &out_data, sizeof (*mdata)) != 0)
-        ret = -EFAULT;
-    }
+  if (mdata && user_copy_to (mdata, &tmp, sizeof (tmp)) != 0)
+    ret = -EFAULT;
 
   return (ret);
+}
+
+static void
+cap_mdata_swap (struct ipc_msg_data *mdata)
+{
+  SWAP (&mdata->bytes_sent, &mdata->bytes_recv);
+  SWAP (&mdata->caps_sent, &mdata->caps_recv);
+  SWAP (&mdata->vmes_sent, &mdata->vmes_recv);
+}
+
+static bool
+cap_iters_done (const struct cap_iters *it)
+{
+  return (it->cap.cur >= it->cap.end &&
+          it->vme.cur >= it->vme.end &&
+          it->iov.cur >= it->iov.end &&
+          it->iov.head.iov_len == 0 &&
+          it->iov.cache_idx >= IPC_IOV_ITER_CACHE_SIZE);
 }
 
 ssize_t
@@ -833,9 +859,24 @@ cap_reply_iters (struct cap_iters *it, int rv)
   if (! port)
     return (-EINVAL);
   else if (rv >= 0)
-    ret = port->mdata.nbytes =
-      cap_transfer_iters (port->task, port->out_it,
-                          it, IPC_COPY_TO, &port->mdata);
+    {
+      struct ipc_msg_data tmp;
+      tmp.bytes_sent = (tmp.caps_sent = tmp.vmes_sent = 0);
+
+      ret = cap_transfer_iters (port->task, port->out_it, it,
+                                IPC_COPY_TO, &tmp.bytes_sent);
+      if (ret >= 0)
+        {
+          port->mdata.bytes_sent += ret;
+          port->mdata.caps_sent += tmp.caps_sent;
+          port->mdata.vmes_sent += tmp.vmes_sent;
+          cap_mdata_swap (&port->mdata);
+          if (!cap_iters_done (it))
+            port->mdata.flags |= IPC_MSG_TRUNC;
+
+          ret = port->mdata.bytes_recv;
+        }
+    }
   else
     ret = rv;
 
@@ -902,17 +943,6 @@ cap_flow_rem_port (struct cap_flow *flow, uintptr_t stack)
   return (error);
 }
 
-static void
-cap_notify_intr (struct cap_alert_async *alert)
-{
-  SPINLOCK_GUARD (&alert->flow->lock);
-  if (++alert->base.k_alert.intr.count == 1)
-    {
-      pqueue_insert (&alert->flow->pending_alerts, &alert->base.pnode);
-      cap_recv_wakeup_fast (alert->flow);
-    }
-}
-
 static int
 cap_handle_intr (void *arg)
 {
@@ -922,7 +952,15 @@ cap_handle_intr (void *arg)
 
   RCU_GUARD ();
   list_rcu_for_each (list, tmp)
-    cap_notify_intr (list_entry (tmp, struct cap_alert_async, xlink));
+    {
+      _Auto alert = list_entry (tmp, struct cap_alert_async, xlink);
+      SPINLOCK_GUARD (&alert->flow->lock);
+      if (++alert->base.k_alert.intr.count == 1)
+        {
+          pqueue_insert (&alert->flow->pending_alerts, &alert->base.pnode);
+          cap_recv_wakeup_fast (alert->flow);
+        }
+    }
 
   return (EAGAIN);
 }
@@ -931,6 +969,8 @@ static int
 cap_intr_add (uint32_t intr, struct list *node)
 {
   ADAPTIVE_LOCK_GUARD (&cap_intr_lock);
+  assert (intr >= CPU_EXC_INTR_FIRST &&
+          intr - CPU_EXC_INTR_FIRST < ARRAY_SIZE (cap_intr_handlers));
   struct list *list = &cap_intr_handlers[intr - CPU_EXC_INTR_FIRST];
 
   if (list_empty (list))
@@ -1102,8 +1142,8 @@ cap_register_task_thread (struct cap_flow *flow, struct kuid_head *kuid,
       cap_recv_wakeup_fast (flow);
     }
 
-  spinlock_unlock (&flow->lock);
   spinlock_unlock (&outp->lock);
+  spinlock_unlock (&flow->lock);
   return (0);
 }
 

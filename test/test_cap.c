@@ -77,7 +77,7 @@ __attribute__ ((regparm (2)))
 static void
 test_cap_entry (struct ipc_msg *msg, struct ipc_msg_data *mdata)
 {
-  assert (mdata->nbytes > 0);
+  assert (mdata->bytes_recv == sizeof (uint32_t));
   assert (mdata->vmes_recv == 1);
   assert (mdata->caps_recv == 1);
   assert (mdata->tag == TEST_CAP_CHANNEL_TAG);
@@ -90,14 +90,12 @@ test_cap_entry (struct ipc_msg *msg, struct ipc_msg_data *mdata)
   assert (nb == (ssize_t)vars->bufsize);
   assert (memcmp (vars->buf, "hello", 5) == 0);
 
-  struct vm_map_entry entry;
-  int error = vm_map_lookup (vm_map_self (), vars->mvme.addr, &entry);
-
-  assert (! error);
-  assert (VM_MAP_PROT (entry.flags) == VM_PROT_READ);
+  _Auto entry = vm_map_find (vm_map_self (), vars->mvme.addr);
+  assert (entry);
+  assert (VM_MAP_PROT (entry->flags) == VM_PROT_READ);
   assert (*(char *)vars->mvme.addr == 'x');
 
-  vm_map_entry_put (&entry);
+  vm_map_entry_put (entry);
 
   _Auto cap = cspace_get (cspace_self (), vars->mcap.cap);
   assert (cap != NULL);
@@ -108,13 +106,13 @@ test_cap_entry (struct ipc_msg *msg, struct ipc_msg_data *mdata)
   vars->bufsize = 'Z';
 
   void *mem;
-  error = vm_map_anon_alloc (&mem, vm_map_self (), 101);
+  int error = vm_map_anon_alloc (&mem, vm_map_self (), 101);
   assert (! error);
 
   _Auto mp = (struct ipc_msg_data *)mem + 1;
   nb = cap_push_bytes (&vars->bufsize, sizeof (vars->bufsize), mp);
   assert (nb == sizeof (vars->bufsize));
-  assert (mp->nbytes == nb);
+  assert (mp->bytes_sent == nb);
 
   memset (mem, 'z', 100);
   vars->mvme.addr = (uintptr_t)mem;
@@ -166,8 +164,8 @@ test_cap_receiver (void *arg)
     error = cap_recv_alert (flow, vars->buf, 0, &vars->mdata);
     assert (! error);
     assert (memcmp (vars->buf, "abcd", 4) == 0);
-    assert (vars->mdata.task_id = task_id (thread_self()->task));
-    assert (vars->mdata.thread_id = thread_id (thread_self ()));
+    assert (vars->mdata.task_id == task_id (thread_self()->task));
+    assert (vars->mdata.thread_id == thread_id (thread_self ()));
   }
 
   vars->mvme = (struct ipc_msg_vme) { .addr = PAGE_SIZE * 10 };
@@ -248,7 +246,7 @@ test_cap_sender (void *arg)
 
   ssize_t nb = cap_send_msg (data->ch, &vars->msg, &vars->msg, &vars->mdata);
 
-  assert (nb > 0);
+  assert (nb == (ssize_t)(sizeof (uint32_t) + sizeof (vars->buf) - 1));
   assert (vars->bufsize == 'Z');
   assert (memcmp (vars->buf, "?????", 5) == 0);
   assert (*(char *)vars->mvme.addr == 'z');
@@ -256,6 +254,7 @@ test_cap_sender (void *arg)
   assert (vars->mdata.vmes_recv == 1);
   assert (vars->mdata.caps_sent == 1);
   assert (vars->mdata.caps_recv == 1);
+  assert (vars->mdata.flags & IPC_MSG_TRUNC);
 
   _Auto cap = cspace_get (cspace_self (), vars->mcap.cap);
   assert (cap != NULL);
@@ -387,7 +386,6 @@ test_cap_dead_notif (void *arg __unused)
 
   error = cap_recv_alert (flow, &buf->alert, 0, &buf->mdata);
   assert (! error);
-  assert (buf->mdata.flags & IPC_MSG_KERNEL);
   assert (buf->mdata.thread_id == 0);
   assert (buf->mdata.task_id == 0);
 
@@ -402,7 +400,6 @@ test_cap_dead_notif (void *arg __unused)
 
   error = cap_recv_alert (flow, &buf->alert, 0, &buf->mdata);
   assert (! error);
-  assert (buf->mdata.flags & IPC_MSG_KERNEL);
   assert (buf->mdata.thread_id == 0);
   assert (buf->mdata.task_id == 0);
 
