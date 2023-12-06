@@ -78,6 +78,10 @@ test_intr (void *arg)
                                  sizeof (*data));
   assert (! error);
 
+  // Test that the counter is preserved in presence of an error.
+  error = cap_recv_alert (flow, 0, 1, 0);
+  assert (error == EFAULT);
+
   error = cap_recv_alert (flow, &data->alert, sizeof (data->alert), &data->md);
   assert (! error);
 

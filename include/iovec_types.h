@@ -20,8 +20,10 @@
 
 #include <stddef.h>
 
-/* Type for scatter/gather IO.
- * This structure must be in sync with user-space. */
+/*
+ * Type for scatter/gather IO.
+ * This structure must be in sync with user-space.
+ */
 struct iovec
 {
   void *iov_base;
