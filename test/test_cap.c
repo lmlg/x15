@@ -53,6 +53,7 @@ struct test_cap_vars
   struct ipc_msg_vme mvme;
   struct ipc_msg_cap mcap;
   struct cap_thread_info info;
+  struct cap_kern_alert alert;
 };
 
 static struct test_cap_data test_cap_data;
@@ -160,12 +161,16 @@ test_cap_receiver (void *arg)
     error = cap_recv_alert (flow, vars->buf, 0, &vars->mdata);
     assert (! error);
     assert (memcmp (vars->buf, "1234", 4) == 0);
+    assert (vars->mdata.task_id == task_id (thread_self()->task));
+    assert (vars->mdata.thread_id == thread_id (thread_self ()));
+    assert (vars->mdata.tag == data->tag);
 
     error = cap_recv_alert (flow, vars->buf, 0, &vars->mdata);
     assert (! error);
     assert (memcmp (vars->buf, "abcd", 4) == 0);
     assert (vars->mdata.task_id == task_id (thread_self()->task));
     assert (vars->mdata.thread_id == thread_id (thread_self ()));
+    assert (vars->mdata.tag == data->tag);
   }
 
   vars->mvme = (struct ipc_msg_vme) { .addr = PAGE_SIZE * 10 };
@@ -190,6 +195,14 @@ test_cap_receiver (void *arg)
   semaphore_wait (&data->recv_sem);
   vm_page_unref (page);
   cap_base_rel (data->ch);
+
+  error = cap_recv_alert (flow, &vars->alert, 0, &vars->mdata);
+  assert (! error);
+  assert (vars->mdata.task_id == 0);
+  assert (vars->mdata.thread_id == 0);
+  assert (vars->alert.type == CAP_ALERT_CHAN_CLOSED);
+  assert (vars->alert.tag == TEST_CAP_CHANNEL_TAG);
+
   cap_base_rel (flow);
 }
 

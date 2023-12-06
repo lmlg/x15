@@ -23,6 +23,7 @@
 #include <assert.h>
 #include <stdint.h>
 
+#include <kern/hlist.h>
 #include <kern/init.h>
 #include <kern/ipc.h>
 #include <kern/list.h>
@@ -56,6 +57,7 @@ enum
   CAP_ALERT_INTR,
   CAP_ALERT_THREAD_DIED,
   CAP_ALERT_TASK_DIED,
+  CAP_ALERT_CHAN_CLOSED,
 };
 
 // Kernel-sent alert.
@@ -73,6 +75,7 @@ struct cap_kern_alert
       int thread_id;
       int task_id;
       int any_id;
+      uintptr_t tag;
     };
 };
 
@@ -112,7 +115,7 @@ struct cap_flow
   struct list waiters;
   struct list receivers;
   struct slist lpads;
-  struct slist alloc_alerts;
+  struct hlist alloc_alerts;
   struct pqueue pending_alerts;
   uintptr_t tag;
   uintptr_t entry;

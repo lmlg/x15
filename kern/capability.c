@@ -34,9 +34,10 @@ struct cap_alert
         { // Valid for user alerts and when not pending.
           int task_id;
           int thread_id;
+          uintptr_t tag;
         };
 
-      struct slist_node snode;
+      struct hlist_node hnode;
     };
 
   struct pqueue_node pnode;
@@ -47,14 +48,14 @@ struct cap_alert
     };
 };
 
-#define F(name)   __builtin_offsetof (struct ipc_msg_data, name)
+#define CAP_F(name)   __builtin_offsetof (struct ipc_msg_data, name)
 
-static_assert (F (caps_recv) - F (bytes_recv) ==
-               F (caps_sent) - F (bytes_sent) &&
-               F (vmes_recv) - F (bytes_recv) ==
-               F (vmes_sent) - F (bytes_sent),
+static_assert (CAP_F (caps_recv) - CAP_F (bytes_recv) ==
+               CAP_F (caps_sent) - CAP_F (bytes_sent) &&
+               CAP_F (vmes_recv) - CAP_F (bytes_recv) ==
+               CAP_F (vmes_sent) - CAP_F (bytes_sent),
                "invalid layout for struct ipc_msg_data");
-#undef F
+#undef CAP_F
 
 #define CAP_VMES_OFF   \
   (__builtin_offsetof (struct ipc_msg_data, vmes_recv) -   \
@@ -105,6 +106,12 @@ static struct kmem_cache cap_port_cache;
 
 static struct list cap_intr_handlers[CPU_INTR_TABLE_SIZE];
 static struct adaptive_lock cap_intr_lock;
+
+// Priorities for kernel-generated alerts.
+#define CAP_ALERT_TASK_PRIO      ((THREAD_SCHED_RT_PRIO_MAX + 2) << 1)
+#define CAP_ALERT_THREAD_PRIO    (CAP_ALERT_TASK_PRIO << 1)
+#define CAP_ALERT_INTR_PRIO      (CAP_ALERT_THREAD_PRIO << 1)
+#define CAP_ALERT_CHANNEL_PRIO   (1u)
 
 #define CAP_FROM_SREF(ptr, type)   structof (ptr, type, base.sref)
 
@@ -160,15 +167,36 @@ cap_thread_create (struct cap_thread **outp, struct thread *thread)
   return (0);
 }
 
+static void cap_recv_wakeup_fast (struct cap_flow *);
+
 static void
 cap_channel_fini (struct sref_counter *sref)
 {
   _Auto chp = CAP_FROM_SREF (sref, struct cap_channel);
+  _Auto flow = chp->flow;
 
-  if (chp->flow)
-    cap_base_rel (chp->flow);
+  if (! flow)
+    {
+      kmem_cache_free (&cap_misc_cache, chp);
+      return;
+    }
 
-  kmem_cache_free (&cap_misc_cache, chp);
+  uintptr_t tag = chp->tag;
+  // Mutate the type.
+  struct cap_alert *alert = (void *)chp;
+
+  alert->k_alert.type = cap_alert_type(alert) = CAP_ALERT_CHAN_CLOSED;
+  alert->k_alert.tag = tag;
+  pqueue_node_init (&alert->pnode, CAP_ALERT_CHANNEL_PRIO);
+  hlist_node_init (&alert->hnode);
+
+  spinlock_lock (&flow->lock);
+  hlist_insert_head (&flow->alloc_alerts, &alert->hnode);
+  pqueue_insert (&flow->pending_alerts, &alert->pnode);
+  cap_recv_wakeup_fast (flow);
+  spinlock_unlock (&flow->lock);
+
+  cap_base_rel (flow);
 }
 
 int
@@ -228,10 +256,6 @@ cap_alert_free (struct cap_alert *alert)
 
   switch (type)
     {
-      case CAP_ALERT_USER:
-        kmem_free (alert, sizeof (*alert));
-        break;
-
       case CAP_ALERT_INTR:
         cap_intr_rem (k_alert->intr.irq, &async->xlink);
         break;
@@ -244,6 +268,8 @@ cap_alert_free (struct cap_alert *alert)
       default:
         break;
     }
+
+  kmem_cache_free (&cap_misc_cache, alert);
 }
 
 static void
@@ -263,7 +289,7 @@ cap_flow_fini (struct sref_counter *sref)
     if (cap_alert_type (alert) == CAP_ALERT_USER)
       kmem_free (alert, sizeof (*alert));
 
-  slist_for_each_entry_safe (&flow->alloc_alerts, alert, tmp, snode)
+  hlist_for_each_entry_safe (&flow->alloc_alerts, alert, tmp, hnode)
     cap_alert_free (alert);
 
   struct cap_port_entry *port, *pt;
@@ -286,7 +312,7 @@ cap_flow_create (struct cap_flow **outp, uint32_t flags,
   list_init (&ret->waiters);
   list_init (&ret->receivers);
   slist_init (&ret->lpads);
-  slist_init (&ret->alloc_alerts);
+  hlist_init (&ret->alloc_alerts);
   pqueue_init (&ret->pending_alerts);
   ret->flags = flags;
   ret->tag = tag;
@@ -415,27 +441,10 @@ cap_transfer_iters (struct task *task, struct cap_iters *r_it,
 static struct cap_alert*
 cap_flow_alloc_alert (struct cap_flow *flow, uint32_t flg)
 {
-  if (!slist_empty (&flow->alloc_alerts))
-    {
-      /*
-       * The cached user alerts are inserted at the head, whereas the
-       * kernel alerts are appended at the end. Thus, if the first entry is a
-       * user one, it can be recycled.
-       */
-      _Auto entry = slist_first_entry (&flow->alloc_alerts,
-                                       struct cap_alert, snode);
-      if (cap_alert_type (entry) == CAP_ALERT_USER)
-        {
-          slist_remove (&flow->alloc_alerts, NULL);
-          return (entry);
-        }
-    }
-
   spinlock_unlock (&flow->lock);
-  void *ptr = kmem_alloc2 (sizeof (struct cap_alert),
-                           (flg & CAP_ALERT_NONBLOCK) ? 0 : KMEM_ALLOC_SLEEP);
+  void *ptr = kmem_cache_alloc2 (&cap_misc_cache, (flg & CAP_ALERT_NONBLOCK) ?
+                                                  0 : KMEM_ALLOC_SLEEP);
   spinlock_lock (&flow->lock);
-
   return (ptr);
 }
 
@@ -498,6 +507,8 @@ int
 cap_recv_alert (struct cap_flow *flow, void *buf,
                 uint32_t flags, struct ipc_msg_data *mdata)
 {
+  uint32_t ids[2] = { 0, 0 };
+  uintptr_t tag = 0;
   spinlock_lock (&flow->lock);
 
   int error;
@@ -507,17 +518,25 @@ cap_recv_alert (struct cap_flow *flow, void *buf,
     return (error);
 
   void *payload = entry->payload;
-  if (cap_alert_type (entry) == CAP_ALERT_INTR)
+  int type = cap_alert_type (entry);
+
+  if (type == CAP_ALERT_INTR)
     { // Copy into a temp buffer so we may reset the counter.
       payload = alloca (sizeof (entry->k_alert));
       *(struct cap_kern_alert *)payload = entry->k_alert;
       entry->k_alert.intr.count = 0;
     }
+  else if (type != CAP_ALERT_USER)
+    hlist_remove (&entry->hnode);
+  else
+    {
+      ids[0] = entry->task_id;
+      ids[1] = entry->thread_id;
+      tag = entry->tag;
+    }
 
   pqueue_inc (&flow->pending_alerts, 1);
   spinlock_unlock (&flow->lock);
-
-  uint32_t ids[2] = { 0, 0 };
 
   if (unlikely (user_copy_to (buf, payload, CAP_ALERT_SIZE) != 0))
     {
@@ -527,24 +546,19 @@ cap_recv_alert (struct cap_flow *flow, void *buf,
       if (payload != entry->payload)
         entry->k_alert.intr.count +=
           ((struct cap_kern_alert *)payload)->intr.count;
+      else if (type != CAP_ALERT_USER)
+        hlist_insert_head (&flow->alloc_alerts, &entry->hnode);
 
       cap_recv_wakeup_fast (flow);
       return (EFAULT);
     }
-  else if (cap_alert_type (entry) == CAP_ALERT_USER)
-    {
-      ids[0] = entry->task_id, ids[1] = entry->thread_id;
-      SPINLOCK_GUARD (&flow->lock);
-      // Put back the alert so it can be reused.
-      slist_insert_head (&flow->alloc_alerts, &entry->snode);
-    }
-
-  if (mdata)
+  else if (mdata)
     {
       struct ipc_msg_data tmp;
       memset (&tmp, 0, sizeof (tmp));
 
       tmp.bytes_recv = CAP_ALERT_SIZE;
+      tmp.tag = tag;
       tmp.task_id = ids[0], tmp.thread_id = ids[1];
       user_copy_to (mdata, &tmp, sizeof (tmp));
     }
@@ -564,15 +578,20 @@ int
                   uint32_t flags, uint32_t prio)
 {
   struct cap_flow *flow;
+  uintptr_t tag;
 
   if (cap->type == CAP_TYPE_CHANNEL)
     {
       flow = ((struct cap_channel *)cap)->flow;
       if (! flow)
         return (EINVAL);
+      tag = ((struct cap_channel *)cap)->tag;
     }
   else if (cap->type == CAP_TYPE_FLOW)
-    flow = (struct cap_flow *)cap;
+    {
+      flow = (struct cap_flow *)cap;
+      tag = flow->tag;
+    }
   else
     return (EBADF);
 
@@ -599,6 +618,7 @@ int
         pqueue_insert (&flow->pending_alerts, &alert->pnode);
         cap_alert_type(alert) = CAP_ALERT_USER;
         cap_fill_ids (&alert->thread_id, &alert->task_id, thread_self ());
+        alert->tag = tag;
         return (0);
       }
 
@@ -606,6 +626,7 @@ int
   }
 
   cap_fill_ids (&recv->mdata.thread_id, &recv->mdata.task_id, thread_self ());
+  recv->mdata.tag = tag;
   ssize_t rv = ipc_bcopy (recv->thread->task, recv->buf, sizeof (abuf),
                           abuf, sizeof (abuf), IPC_COPY_TO);
 
@@ -623,14 +644,12 @@ cap_sender_add (struct cap_flow *flow, struct cap_sender *sender,
 }
 
 static void
-cap_task_swap (struct task **taskp)
+cap_task_swap (struct task **taskp, struct thread *self)
 {
   cpu_flags_t flags;
   thread_preempt_disable_intr_save (&flags);
 
-  struct thread *self = thread_self ();
   struct task *xtask = self->xtask;
-
   self->xtask = *taskp;
   *taskp = xtask;
 
@@ -725,7 +744,7 @@ cap_sender_impl (struct cap_flow *flow, uintptr_t tag, struct cap_iters *in,
   cap_fill_ids (&port->mdata.thread_id, &port->mdata.task_id, self);
 
   // Switch task (also sets the pmap).
-  cap_task_swap (&port->task);
+  cap_task_swap (&port->task, self);
   user_copy_to ((void *)port->ctx[2], &port->mdata, sizeof (port->mdata));
 
   // Jump to new PC and SP.
@@ -853,7 +872,8 @@ cap_iters_done (const struct cap_iters *it)
 ssize_t
 cap_reply_iters (struct cap_iters *it, int rv)
 {
-  struct cap_port_entry *port = thread_self()->cur_port;
+  struct thread *self = thread_self ();
+  struct cap_port_entry *port = self->cur_port;
   ssize_t ret;
 
   if (! port)
@@ -880,7 +900,7 @@ cap_reply_iters (struct cap_iters *it, int rv)
   else
     ret = rv;
 
-  cap_task_swap (&port->task);
+  cap_task_swap (&port->task, self);
   cpu_port_return (port->ctx[0], ret);
   __builtin_unreachable ();
 }
@@ -968,9 +988,9 @@ cap_handle_intr (void *arg)
 static int
 cap_intr_add (uint32_t intr, struct list *node)
 {
-  ADAPTIVE_LOCK_GUARD (&cap_intr_lock);
   assert (intr >= CPU_EXC_INTR_FIRST &&
           intr - CPU_EXC_INTR_FIRST < ARRAY_SIZE (cap_intr_handlers));
+  ADAPTIVE_LOCK_GUARD (&cap_intr_lock);
   struct list *list = &cap_intr_handlers[intr - CPU_EXC_INTR_FIRST];
 
   if (list_empty (list))
@@ -1003,31 +1023,15 @@ cap_intr_rem (uint32_t intr, struct list *node)
 }
 
 static struct cap_alert_async*
-cap_alert_async_find (struct cap_flow *flow, int type, int id,
-                      struct slist_node **prevp)
+cap_alert_async_find (struct cap_flow *flow, int type, int id)
 {
   struct cap_alert *tmp;
-  struct slist_node *node = NULL;
-
-  slist_for_each_entry (&flow->alloc_alerts, tmp, snode)
-    {
-      if (cap_alert_type (tmp) == type && tmp->k_alert.any_id == id)
-        {
-          if (prevp)
-            *prevp = node;
-
-          return ((void *)tmp);
-        }
-
-      node = &tmp->snode;
-    }
+  hlist_for_each_entry (&flow->alloc_alerts, tmp, hnode)
+    if (cap_alert_type (tmp) == type && tmp->k_alert.any_id == id)
+      return ((void *)tmp);
 
   return (NULL);
 }
-
-#define CAP_ALERT_TASK_PRIO     ((THREAD_SCHED_RT_PRIO_MAX + 2) << 1)
-#define CAP_ALERT_THREAD_PRIO   (CAP_ALERT_TASK_PRIO << 1)
-#define CAP_ALERT_INTR_PRIO     (~0u)
 
 int
 cap_intr_register (struct cap_flow *flow, uint32_t irq)
@@ -1041,7 +1045,7 @@ cap_intr_register (struct cap_flow *flow, uint32_t irq)
 
   pqueue_node_init (&ap->base.pnode, CAP_ALERT_INTR_PRIO);
   cap_alert_type(&ap->base) = CAP_ALERT_INTR;
-  slist_node_init (&ap->base.snode);
+  hlist_node_init (&ap->base.hnode);
   list_node_init (&ap->xlink);
   ap->flow = flow;
 
@@ -1059,7 +1063,7 @@ cap_intr_register (struct cap_flow *flow, uint32_t irq)
     }
 
   spinlock_lock (&flow->lock);
-  if (unlikely (cap_alert_async_find (flow, CAP_ALERT_INTR, irq, NULL)))
+  if (unlikely (cap_alert_async_find (flow, CAP_ALERT_INTR, irq)))
     {
       spinlock_unlock (&flow->lock);
       cap_intr_rem (irq, &ap->xlink);
@@ -1067,7 +1071,7 @@ cap_intr_register (struct cap_flow *flow, uint32_t irq)
       return (EALREADY);
     }
 
-  slist_insert_tail (&flow->alloc_alerts, &ap->base.snode);
+  hlist_insert_head (&flow->alloc_alerts, &ap->base.hnode);
   spinlock_unlock (&flow->lock);
   return (0);
 }
@@ -1077,13 +1081,12 @@ cap_unregister_impl (struct cap_flow *flow, int type,
                      uint32_t id, struct cap_alert_async **outp)
 {
   SPINLOCK_GUARD (&flow->lock);
-  struct slist_node *node = NULL;
-  _Auto entry = cap_alert_async_find (flow, type, id, &node);
+  _Auto entry = cap_alert_async_find (flow, type, id);
 
   if (! entry)
     return (ESRCH);
 
-  slist_remove (&flow->alloc_alerts, node);
+  hlist_remove (&entry->base.hnode);
   if (!pqueue_node_unlinked (&entry->base.pnode))
     pqueue_remove (&flow->pending_alerts, &entry->base.pnode);
 
@@ -1114,7 +1117,7 @@ cap_register_task_thread (struct cap_flow *flow, struct kuid_head *kuid,
 
   pqueue_node_init (&ap->base.pnode, prio);
   cap_alert_type(&ap->base) = type;
-  slist_node_init (&ap->base.snode);
+  hlist_node_init (&ap->base.hnode);
   list_node_init (&ap->xlink);
   ap->flow = flow;
 
@@ -1125,14 +1128,14 @@ cap_register_task_thread (struct cap_flow *flow, struct kuid_head *kuid,
     };
 
   spinlock_lock (&flow->lock);
-  if (unlikely (cap_alert_async_find (flow, type, kuid->id, NULL)))
+  if (unlikely (cap_alert_async_find (flow, type, kuid->id)))
     {
       spinlock_unlock (&flow->lock);
       kmem_cache_free (&cap_misc_cache, ap);
       return (EALREADY);
     }
 
-  slist_insert_tail (&flow->alloc_alerts, &ap->base.snode);
+  hlist_insert_head (&flow->alloc_alerts, &ap->base.hnode);
 
   spinlock_lock (&outp->lock);
   list_insert_tail (&outp->subs, &ap->xlink);
