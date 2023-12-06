@@ -859,16 +859,6 @@ cap_mdata_swap (struct ipc_msg_data *mdata)
   SWAP (&mdata->vmes_sent, &mdata->vmes_recv);
 }
 
-static bool
-cap_iters_done (const struct cap_iters *it)
-{
-  return (it->cap.cur >= it->cap.end &&
-          it->vme.cur >= it->vme.end &&
-          it->iov.cur >= it->iov.end &&
-          it->iov.head.iov_len == 0 &&
-          it->iov.cache_idx >= IPC_IOV_ITER_CACHE_SIZE);
-}
-
 ssize_t
 cap_reply_iters (struct cap_iters *it, int rv)
 {
@@ -891,7 +881,9 @@ cap_reply_iters (struct cap_iters *it, int rv)
           port->mdata.caps_sent += tmp.caps_sent;
           port->mdata.vmes_sent += tmp.vmes_sent;
           cap_mdata_swap (&port->mdata);
-          if (!cap_iters_done (it))
+          if (!ipc_iov_iter_empty (&it->iov) ||
+              ipc_vme_iter_size (&it->vme) ||
+              ipc_cap_iter_size (&it->cap))
             port->mdata.flags |= IPC_MSG_TRUNC;
 
           ret = port->mdata.bytes_recv;
