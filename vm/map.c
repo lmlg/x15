@@ -1210,8 +1210,9 @@ vm_map_fork (struct vm_map **mapp, struct vm_map *src)
   return (0);
 }
 
-static void
-vm_map_iter_cleanup (struct vm_map *map, struct ipc_vme_iter *it, uint32_t ix)
+static int
+vm_map_iter_cleanup (struct vm_map *map, struct ipc_vme_iter *it,
+                     uint32_t ix, int error)
 {
   for (; it->cur != ix; --it->cur)
     {
@@ -1229,6 +1230,7 @@ vm_map_iter_cleanup (struct vm_map *map, struct ipc_vme_iter *it, uint32_t ix)
     }
 
   pmap_update (map->pmap);
+  return (error);
 }
 
 static void
@@ -1277,18 +1279,15 @@ vm_map_iter_copy (struct vm_map *r_map, struct ipc_vme_iter *r_it,
           _Auto entry = vm_map_lookup_nearest (in_map, page.addr);
           _Auto outp = &out_it->begin[out_it->cur];
 
-#define ERR(code)   \
-  return ((vm_map_iter_cleanup (out_map, out_it, prev)), (code))
-
           if (! entry)
-            ERR (-ESRCH);
+            return (vm_map_iter_cleanup (out_map, out_it, prev, -ESRCH));
           else if ((VM_MAP_MAXPROT (entry->flags) & page.max_prot) !=
                    page.max_prot || (page.max_prot & page.prot) != page.prot)
-            ERR (-EACCES);
+            return (vm_map_iter_cleanup (out_map, out_it, prev, -EACCES));
 
           size_t size = MIN (end - page.addr, page.size);
           if (! size)
-            ERR (-EINVAL);
+            return (vm_map_iter_cleanup (out_map, out_it, prev, -EINVAL));
 
           uint64_t offset = entry->offset + (page.addr - entry->start);
           int flags = VM_MAP_FLAGS (page.max_prot, page.prot,
@@ -1297,7 +1296,7 @@ vm_map_iter_copy (struct vm_map *r_map, struct ipc_vme_iter *r_it,
               error = vm_map_enter_locked (out_map, &outp->addr, size,
                                            0, flags, entry->object, offset);
           if (error)
-            ERR (-error);
+            return (vm_map_iter_cleanup (out_map, out_it, prev, -error));
 
           outp->prot = page.prot;
           outp->max_prot = page.max_prot;
@@ -1311,7 +1310,6 @@ vm_map_iter_copy (struct vm_map *r_map, struct ipc_vme_iter *r_it,
     }
 
   return (i);
-#undef ERR
 }
 
 void
