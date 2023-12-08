@@ -105,6 +105,17 @@ test_intr (void *arg)
   assert (data->md.thread_id == 0);
 }
 
+static void
+test_fire_intr (int cnt, int intr)
+{
+  thread_intr_enter ();
+  cpu_intr_disable ();
+  for (int i = 0; i < cnt; ++i)
+    intr_handle (intr);
+  cpu_intr_enable ();
+  thread_intr_leave ();
+}
+
 TEST_DEFERRED (intr)
 {
   semaphore_init (test_intr_sems + 0, 0, 0xff);
@@ -118,24 +129,14 @@ TEST_DEFERRED (intr)
   error = cap_intr_register (flow, TEST_INTR_FIRST);
   assert (! error);
 
-  thread_intr_enter ();
-  cpu_intr_disable ();
-  intr_handle (TEST_INTR_FIRST);
-  intr_handle (TEST_INTR_FIRST);
-  cpu_intr_enable ();
-  thread_intr_leave ();
+  test_fire_intr (2, TEST_INTR_FIRST);
 
   struct thread *thr;
   error = test_util_create_thr (&thr, test_intr, flow, "intr");
   assert (! error);
 
   semaphore_wait (test_intr_sems + 0);
-  thread_intr_enter ();
-  cpu_intr_disable ();
-  intr_handle (TEST_INTR_FIRST);
-  cpu_intr_disable ();
-  thread_intr_leave ();
-
+  test_fire_intr (1, TEST_INTR_FIRST);
   semaphore_post (test_intr_sems + 1);
 
   thread_join (thr);

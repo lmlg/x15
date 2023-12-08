@@ -2061,7 +2061,7 @@ thread_setup_common (uint32_t cpu)
 static int __init
 thread_setup (void)
 {
-  for (uint32_t cpu = 1; cpu < cpu_count (); cpu++)
+  for (uint32_t cpu = 1; cpu < cpu_count (); ++cpu)
     thread_setup_common (cpu);
 
   kmem_cache_init (&thread_cache, "thread", sizeof (struct thread),
@@ -2776,14 +2776,12 @@ thread_ipc_affinity_impl (struct thread *thread, void *map,
   int error = user_copy_from (cpumap->cpus, map, size);
 
   if (error)
-    goto out;
-
-  if (set)
+    ;
+  else if (set)
     error = thread_set_affinity (thread, cpumap);
   else if ((error = thread_get_affinity (thread, cpumap)) == 0)
     error = user_copy_to (map, cpumap->cpus, size);
 
-out:
   cpumap_destroy (cpumap);
   return (-error);
 }

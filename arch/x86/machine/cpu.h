@@ -964,7 +964,7 @@ noreturn void cpu_unw_mctx_set_frame (const uintptr_t *regs, int retval);
 // Switch to a new stack and PC in a flow's port.
 long cpu_port_swap (uintptr_t *args, void *port, void *pc);
 
-// Return from a ported execution context.
+// Return from the execution context in a port.
 noreturn void cpu_port_return (uintptr_t sp, intptr_t ret);
 
 /*

@@ -76,9 +76,6 @@
  */
 #define VM_PAGE_CPU_POOL_TRANSFER_RATIO   2
 
-// Order of pages to accumulate before freeing.
-#define VM_PAGE_LIST_FREE_ORDER   8
-
 // Per-processor cache of pages.
 struct vm_page_cpu_pool
 {

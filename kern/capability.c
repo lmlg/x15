@@ -543,7 +543,7 @@ cap_recv_alert (struct cap_flow *flow, void *buf,
       SPINLOCK_GUARD (&flow->lock);
       pqueue_insert (&flow->pending_alerts, &entry->pnode);
 
-      if (payload != entry->payload)
+      if (type == CAP_ALERT_INTR)
         entry->k_alert.intr.count +=
           ((struct cap_kern_alert *)payload)->intr.count;
       else if (type != CAP_ALERT_USER)
