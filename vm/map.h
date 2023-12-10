@@ -159,7 +159,7 @@ vm_map_entry_put (struct vm_map_entry *entry)
     vm_object_unref (obj);
 }
 
-// Same as 'vm_map_lookup', only more ergonomic
+// Same as 'vm_map_lookup', only more ergonomic.
 #define vm_map_find(map, addr)   \
   ({   \
      struct vm_map_entry *e_ = __builtin_alloca (sizeof (*e_));   \

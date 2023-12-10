@@ -254,20 +254,10 @@ cap_alert_free (struct cap_alert *alert)
   _Auto k_alert = &alert->k_alert;
   int type = cap_alert_type (alert);
 
-  switch (type)
-    {
-      case CAP_ALERT_INTR:
-        cap_intr_rem (k_alert->intr.irq, &async->xlink);
-        break;
-
-      case CAP_ALERT_THREAD_DIED:
-      case CAP_ALERT_TASK_DIED:
-        cap_task_thread_rem (k_alert->any_id, type, &async->xlink);
-        break;
-
-      default:
-        break;
-    }
+  if (type == CAP_ALERT_INTR)
+    cap_intr_rem (k_alert->intr.irq, &async->xlink);
+  else if (type == CAP_ALERT_THREAD_DIED || type == CAP_ALERT_TASK_DIED)
+    cap_task_thread_rem (k_alert->any_id, type, &async->xlink);
 
   kmem_cache_free (&cap_misc_cache, alert);
 }
@@ -813,15 +803,14 @@ cap_pull_iters (struct cap_iters *it, struct ipc_msg_data *mdata)
 
   ssize_t ret = cap_transfer_iters (port->task, &port->in_it, it,
                                     IPC_COPY_FROM, &tmp.bytes_recv);
-  if (ret < 0)
-    return (ret);
+  if (ret > 0)
+    port->mdata.bytes_recv += ret;
 
-  port->mdata.bytes_recv += ret;
   port->mdata.vmes_recv += tmp.vmes_recv;
   port->mdata.caps_recv += tmp.caps_recv;
 
-  if (mdata && user_copy_to (mdata, &tmp, sizeof (tmp)) != 0)
-    ret = -EFAULT;
+  if (mdata)
+    user_copy_to (mdata, &tmp, sizeof (tmp));
 
   return (ret);
 }
@@ -838,15 +827,14 @@ cap_push_iters (struct cap_iters *it, struct ipc_msg_data *mdata)
 
   ssize_t ret = cap_transfer_iters (port->task, port->out_it, it,
                                     IPC_COPY_TO, &tmp.bytes_sent);
-  if (ret < 0)
-    return (ret);
+  if (ret > 0)
+    port->mdata.bytes_sent += ret;
 
-  port->mdata.bytes_sent += ret;
   port->mdata.vmes_sent += tmp.vmes_sent;
   port->mdata.caps_sent += tmp.caps_sent;
 
-  if (mdata && user_copy_to (mdata, &tmp, sizeof (tmp)) != 0)
-    ret = -EFAULT;
+  if (mdata)
+    user_copy_to (mdata, &tmp, sizeof (tmp));
 
   return (ret);
 }
@@ -875,19 +863,19 @@ cap_reply_iters (struct cap_iters *it, int rv)
 
       ret = cap_transfer_iters (port->task, port->out_it, it,
                                 IPC_COPY_TO, &tmp.bytes_sent);
-      if (ret >= 0)
+      if (ret > 0)
         {
           port->mdata.bytes_sent += ret;
-          port->mdata.caps_sent += tmp.caps_sent;
-          port->mdata.vmes_sent += tmp.vmes_sent;
-          cap_mdata_swap (&port->mdata);
-          if (!ipc_iov_iter_empty (&it->iov) ||
-              ipc_vme_iter_size (&it->vme) ||
-              ipc_cap_iter_size (&it->cap))
-            port->mdata.flags |= IPC_MSG_TRUNC;
-
-          ret = port->mdata.bytes_recv;
+          ret = port->mdata.bytes_sent;
         }
+
+      port->mdata.caps_sent += tmp.caps_sent;
+      port->mdata.vmes_sent += tmp.vmes_sent;
+      cap_mdata_swap (&port->mdata);
+      if (!ipc_iov_iter_empty (&it->iov) ||
+          ipc_vme_iter_size (&it->vme) ||
+          ipc_cap_iter_size (&it->cap))
+        port->mdata.flags |= IPC_MSG_TRUNC;
     }
   else
     ret = rv;

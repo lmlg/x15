@@ -50,8 +50,8 @@ struct test_cap_vars
   char buf[16];
   uint32_t bufsize;
   struct iovec iov;
-  struct ipc_msg_vme mvme;
-  struct ipc_msg_cap mcap;
+  struct ipc_msg_vme mvme[2];
+  struct ipc_msg_cap mcap[2];
   struct cap_thread_info info;
   struct cap_kern_alert alert;
 };
@@ -91,14 +91,14 @@ test_cap_entry (struct ipc_msg *msg, struct ipc_msg_data *mdata)
   assert (nb == (ssize_t)vars->bufsize);
   assert (memcmp (vars->buf, "hello", 5) == 0);
 
-  _Auto entry = vm_map_find (vm_map_self (), vars->mvme.addr);
+  _Auto entry = vm_map_find (vm_map_self (), vars->mvme[0].addr);
   assert (entry);
   assert (VM_MAP_PROT (entry->flags) == VM_PROT_READ);
-  assert (*(char *)vars->mvme.addr == 'x');
+  assert (*(char *)vars->mvme[0].addr == 'x');
 
   vm_map_entry_put (entry);
 
-  _Auto cap = cspace_get (cspace_self (), vars->mcap.cap);
+  _Auto cap = cspace_get (cspace_self (), vars->mcap[0].cap);
   assert (cap != NULL);
   assert (cap->type == CAP_TYPE_TASK);
   assert (((struct cap_task *)cap)->task == thread_self()->task);
@@ -107,7 +107,7 @@ test_cap_entry (struct ipc_msg *msg, struct ipc_msg_data *mdata)
   vars->bufsize = 'Z';
 
   void *mem;
-  int error = vm_map_anon_alloc (&mem, vm_map_self (), 101);
+  int error = vm_map_anon_alloc (&mem, vm_map_self (), PAGE_SIZE * 2);
   assert (! error);
 
   _Auto mp = (struct ipc_msg_data *)mem + 1;
@@ -116,10 +116,15 @@ test_cap_entry (struct ipc_msg *msg, struct ipc_msg_data *mdata)
   assert (mp->bytes_sent == nb);
 
   memset (mem, 'z', 100);
-  vars->mvme.addr = (uintptr_t)mem;
-  vars->mvme.size = PAGE_SIZE;
-  vars->mcap.cap = test_cap_alloc_task (task_self ());
+  vars->mvme[0].addr = (uintptr_t)mem;
+  vars->mvme[0].size = vars->mvme[1].size = PAGE_SIZE;
+  vars->mvme[1].addr = (uintptr_t)mem + PAGE_SIZE;
+
+  vars->mcap[0].cap = test_cap_alloc_task (task_self ());
   vars->iov = IOVEC (memset (vars->buf, '?', sizeof (vars->buf)), 8);
+  vars->msg.iov_cnt = 1;
+  vars->msg.cap_cnt = 1;
+  vars->msg.vme_cnt = 2;
 
   cap_reply_msg (&vars->msg, 0);
   panic ("cap_reply_msg returned");
@@ -173,16 +178,16 @@ test_cap_receiver (void *arg)
     assert (vars->mdata.tag == data->tag);
   }
 
-  vars->mvme = (struct ipc_msg_vme) { .addr = PAGE_SIZE * 10 };
+  vars->mvme[0] = (struct ipc_msg_vme) { .addr = PAGE_SIZE * 10 };
   vars->iov = IOVEC (&vars->bufsize, sizeof (vars->bufsize));
   vars->msg = (struct ipc_msg)
     {
       .size = sizeof (struct ipc_msg),
       .iovs = &vars->iov,
       .iov_cnt = 1,
-      .vmes = &vars->mvme,
+      .vmes = vars->mvme,
       .vme_cnt = 1,
-      .caps = &vars->mcap,
+      .caps = vars->mcap,
       .cap_cnt = 1,
     };
 
@@ -225,6 +230,9 @@ test_cap_sender (void *arg)
       struct ipc_msg msg;
       struct ipc_msg_data mdata;
       struct ipc_msg_cap mcap;
+      struct ipc_msg out_msg;
+      struct ipc_msg_vme out_vme[2];
+      struct ipc_msg_cap out_cap[2];
     } *vars = (void *)((char *)mem + PAGE_SIZE);
 
   vars->mvme = (struct ipc_msg_vme)
@@ -257,19 +265,31 @@ test_cap_sender (void *arg)
       .cap_cnt = 1,
     };
 
-  ssize_t nb = cap_send_msg (data->ch, &vars->msg, &vars->msg, &vars->mdata);
+  vars->out_msg = (struct ipc_msg)
+    {
+      .size = sizeof (struct ipc_msg),
+      .iovs = vars->iovecs,
+      .iov_cnt = 2,
+      .vmes = vars->out_vme,
+      .vme_cnt = 2,
+      .caps = vars->out_cap,
+      .cap_cnt = 2
+    };
+
+  ssize_t nb = cap_send_msg (data->ch, &vars->msg,
+                             &vars->out_msg, &vars->mdata);
 
   assert (nb == (ssize_t)(sizeof (uint32_t) + sizeof (vars->buf) - 1));
   assert (vars->bufsize == 'Z');
   assert (memcmp (vars->buf, "?????", 5) == 0);
-  assert (*(char *)vars->mvme.addr == 'z');
+  assert (*(char *)vars->out_vme[0].addr == 'z');
   assert (vars->mdata.vmes_sent == 1);
-  assert (vars->mdata.vmes_recv == 1);
+  assert (vars->mdata.vmes_recv == 2);
   assert (vars->mdata.caps_sent == 1);
   assert (vars->mdata.caps_recv == 1);
   assert (vars->mdata.flags & IPC_MSG_TRUNC);
 
-  _Auto cap = cspace_get (cspace_self (), vars->mcap.cap);
+  _Auto cap = cspace_get (cspace_self (), vars->out_cap[0].cap);
   assert (cap != NULL);
   assert (cap->type == CAP_TYPE_TASK);
   assert (((struct cap_task *)cap)->task == data->receiver);
