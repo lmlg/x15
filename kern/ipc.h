@@ -78,7 +78,8 @@ struct ipc_msg
 };
 
 // Bits for the 'flags' member of a IPC message metadata.
-#define IPC_MSG_TRUNC    0x01   // Reply was truncated.
+#define IPC_MSG_TRUNC   0x01   // Reply was truncated.
+#define IPC_MSG_ERROR   0x02   // There was an error during IPC.
 
 struct ipc_msg_data
 {

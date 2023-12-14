@@ -724,7 +724,7 @@ cap_sender_impl (struct cap_flow *flow, uintptr_t tag, struct cap_iters *in,
                                    IPC_COPY_TO, &port->mdata.bytes_recv);
 
   if (nb < 0)
-    port->mdata.bytes_recv = nb;
+    port->mdata.flags |= IPC_MSG_ERROR;
 
   cap_iters_copy (&port->in_it, in);
   port->out_it = out;
@@ -803,9 +803,8 @@ cap_pull_iters (struct cap_iters *it, struct ipc_msg_data *mdata)
 
   ssize_t ret = cap_transfer_iters (port->task, &port->in_it, it,
                                     IPC_COPY_FROM, &tmp.bytes_recv);
-  if (ret > 0)
-    port->mdata.bytes_recv += ret;
 
+  port->mdata.bytes_recv += tmp.bytes_recv;
   port->mdata.vmes_recv += tmp.vmes_recv;
   port->mdata.caps_recv += tmp.caps_recv;
 
@@ -827,9 +826,8 @@ cap_push_iters (struct cap_iters *it, struct ipc_msg_data *mdata)
 
   ssize_t ret = cap_transfer_iters (port->task, port->out_it, it,
                                     IPC_COPY_TO, &tmp.bytes_sent);
-  if (ret > 0)
-    port->mdata.bytes_sent += ret;
 
+  port->mdata.bytes_sent += tmp.bytes_sent;
   port->mdata.vmes_sent += tmp.vmes_sent;
   port->mdata.caps_sent += tmp.caps_sent;
 
@@ -858,19 +856,11 @@ cap_reply_iters (struct cap_iters *it, int rv)
     return (-EINVAL);
   else if (rv >= 0)
     {
-      struct ipc_msg_data tmp;
-      tmp.bytes_sent = (tmp.caps_sent = tmp.vmes_sent = 0);
-
       ret = cap_transfer_iters (port->task, port->out_it, it,
-                                IPC_COPY_TO, &tmp.bytes_sent);
+                                IPC_COPY_TO, &port->mdata.bytes_sent);
       if (ret > 0)
-        {
-          port->mdata.bytes_sent += ret;
-          ret = port->mdata.bytes_sent;
-        }
+        ret = port->mdata.bytes_sent;
 
-      port->mdata.caps_sent += tmp.caps_sent;
-      port->mdata.vmes_sent += tmp.vmes_sent;
       cap_mdata_swap (&port->mdata);
       if (!ipc_iov_iter_empty (&it->iov) ||
           ipc_vme_iter_size (&it->vme) ||
@@ -970,8 +960,8 @@ cap_intr_add (uint32_t intr, struct list *node)
 {
   assert (intr >= CPU_EXC_INTR_FIRST &&
           intr - CPU_EXC_INTR_FIRST < ARRAY_SIZE (cap_intr_handlers));
-  ADAPTIVE_LOCK_GUARD (&cap_intr_lock);
   struct list *list = &cap_intr_handlers[intr - CPU_EXC_INTR_FIRST];
+  ADAPTIVE_LOCK_GUARD (&cap_intr_lock);
 
   if (list_empty (list))
     {

@@ -938,6 +938,7 @@ vm_map_fault_handle_cow (uintptr_t addr, struct vm_page **pgp)
 
   uintptr_t va = vm_map_ipc_addr ();
   thread_pin ();
+  cpu_intr_enable ();
 
   phys_addr_t prev;
   _Auto pte = pmap_ipc_pte_get (&prev);
@@ -945,28 +946,46 @@ vm_map_fault_handle_cow (uintptr_t addr, struct vm_page **pgp)
   pmap_ipc_pte_set (pte, va, vm_page_to_pa (p2));
   memcpy ((void *)va, (const void *)addr, PAGE_SIZE);
   pmap_ipc_pte_put (pte, va, prev);
+  cpu_intr_disable ();
   thread_unpin ();
 
   // Finally, swap the page from the backing object.
   _Auto page = *pgp;
-  vm_object_replace (page->object, p2, page->offset);
-  *pgp = p2;
-  return (0);
+  int ret = vm_object_replace (page->object, p2, page->offset);
+  if (likely (ret == 0))
+    *pgp = p2;
+
+  return (ret);
 }
 
-int
-vm_map_fault (struct vm_map *map, uintptr_t addr, int prot)
+static bool
+vm_map_fault_soft (struct vm_map *map, struct vm_object *obj, uint64_t off,
+                   uintptr_t addr, int prot)
 {
-  assert (map != vm_map_get_kernel_map ());
-  assert (!cpu_intr_enabled ());
-  addr = vm_page_trunc (addr);
+  _Auto page = vm_object_lookup (obj, off);
+  if (! page)
+    return (false);
+  else if ((prot & VM_PROT_WRITE) && vm_page_is_cow (page) &&
+           vm_map_fault_handle_cow (addr, &page) != 0)
+    goto skip;
+  else if (pmap_enter (map->pmap, addr, vm_page_to_pa (page),
+                       prot, 0) == 0)
+    pmap_update (map->pmap);
 
+skip:
+  vm_page_unref (page);
+  atomic_add_rlx (&map->soft_faults, 1);
+  return (true);
+}
+
+static int
+vm_map_fault_impl (struct vm_map *map, uintptr_t addr, int prot)
+{
   struct vm_map_entry *entry, tmp;
   struct vm_object *final_obj, *object;
   uint64_t final_off, offset;
 
 retry:
-
   {
     SXLOCK_SHGUARD (&map->lock);
     entry = vm_map_lookup_nearest (map, addr);
@@ -986,21 +1005,8 @@ retry:
     else
       final_off = offset, final_obj = object;
 
-    struct vm_page *page = vm_object_lookup (final_obj, final_off);
-
-    if (page)
-      {
-        if ((prot & VM_PROT_WRITE) && vm_page_is_cow (page) &&
-            vm_map_fault_handle_cow (addr, &page) != 0)
-          return (0);
-        else if (pmap_enter (map->pmap, addr, vm_page_to_pa (page),
-                             prot, 0) == 0)
-          pmap_update (map->pmap);
-
-        vm_page_unref (page);
-        atomic_add_rlx (&map->soft_faults, 1);
-        return (0);
-      }
+    if (vm_map_fault_soft (map, final_obj, final_off, addr, prot))
+      return (0);
 
     // Prevent the VM object from going away as we drop the lock.
     vm_map_entry_assign (&tmp, entry);
@@ -1015,16 +1021,11 @@ retry:
                                           addr, &start_off);
 
   if (n_pages < 0)
-    { // Allocation was interrupted. Let userspace handle things.
-      cpu_intr_disable ();
-      return (0);
-    }
+    // Allocation was interrupted. Let userspace handle things.
+    return (0);
 
   n_pages = vm_map_fault_get_data (object, start_off, frames,
                                    prot, 1 << n_pages);
-
-  cpu_intr_disable ();
-
   if (n_pages < 0)
     return (-n_pages);
   else if (unlikely (start_off + n_pages * PAGE_SIZE < offset))
@@ -1034,14 +1035,18 @@ retry:
      */
     return (EIO);
 
+  cpu_intr_disable ();
   SXLOCK_SHGUARD (&map->lock);
   _Auto e2 = vm_map_lookup_nearest (map, addr);
 
   if (!(e2 && e2->object == entry->object &&
         addr >= e2->start &&
+        (prot & VM_MAP_PROT (e2->flags)) == prot &&
         addr - (uintptr_t)(offset - start_off) + n_pages * PAGE_SIZE <= e2->end))
     {
+      cpu_intr_enable ();
       vm_page_free (frames, log2 (n_pages), VM_PAGE_SLEEP);
+      cpu_intr_disable ();
       goto retry;
     }
 
@@ -1068,6 +1073,16 @@ retry:
   pmap_update (map->pmap);
   atomic_add_rlx (&map->hard_faults, 1);
   return (0);
+}
+
+int
+vm_map_fault (struct vm_map *map, uintptr_t addr, int prot)
+{
+  assert (map != vm_map_get_kernel_map ());
+  assert (!cpu_intr_enabled ());
+  int ret = vm_map_fault_impl (map, vm_page_trunc (addr), prot);
+  cpu_intr_disable ();
+  return (ret);
 }
 
 int
