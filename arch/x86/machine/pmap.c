@@ -116,10 +116,15 @@ union pmap_global
     } full;
 };
 
+struct pmap_ipc_pte_t
+{
+  pmap_pte_t *ptes[2];
+};
+
 static union pmap_global pmap_global_pmap;
 struct pmap *pmap_kernel_pmap;
 struct pmap *pmap_current_ptr __percpu;
-static pmap_pte_t* pmap_ipc_ptes __percpu;
+static struct pmap_ipc_pte_t pmap_ipc_ptes __percpu;
 
 #ifdef CONFIG_X86_PAE
 
@@ -184,12 +189,6 @@ struct pmap_update_op
       struct pmap_update_protect_args protect_args;
     };
 };
-
-/*
- * Maximum number of operations that can be batched before an implicit
- * update.
- */
-#define PMAP_UPDATE_MAX_OPS   32
 
 /*
  * List of update operations.
@@ -1253,7 +1252,7 @@ pmap_enter_local_impl (struct pmap_cpu_table *cpu_table, uintptr_t va,
 
 static int
 pmap_enter_local (struct pmap *pmap, uintptr_t va, phys_addr_t pa,
-                  int prot, int flags __unused)
+                  int prot, int flags)
 {
   // TODO Page attributes.
   pmap_pte_t pte_bits = PMAP_PTE_RW;
@@ -1265,12 +1264,15 @@ pmap_enter_local (struct pmap *pmap, uintptr_t va, phys_addr_t pa,
   pmap_pte_t *pte;
   int error = pmap_enter_local_impl (pmap->cpu_tables[cpu_id ()],
                                      va, pte_bits, &pte);
-
   if (error)
     return (error);
+  else if ((flags & PMAP_IGNORE_ERRORS) &&
+           pmap_pte_valid (*pte))
+    return (0);
 
   assert (!pmap_pte_valid (*pte));
   pte_bits = (is_kernel ? PMAP_PTE_G : PMAP_PTE_US) |
+             ((flags & PMAP_SET_COW) ? PMAP_XBIT0 : 0) |
              pmap_prot_table[prot & VM_PROT_ALL];
   pmap_pte_set (pte, pa, pte_bits, &pmap_pt_levels[0]);
   return (0);
@@ -1283,9 +1285,15 @@ pmap_setup_ipc_ptes (uintptr_t va)
 
   for (uint32_t i = 0; i < cpu_count (); ++i)
     {
-      _Auto ptr = percpu_ptr (pmap_ipc_ptes, i);
+      _Auto ptr = &percpu_ptr(pmap_ipc_ptes, i)->ptes[0];
       int error = pmap_enter_local_impl (pmap->cpu_tables[i],
                                          va, PMAP_PTE_RW, ptr);
+      if (error)
+        return (error);
+
+      pmap_pte_clear (*ptr);
+      error = pmap_enter_local_impl (pmap->cpu_tables[i],
+                                     va + PAGE_SIZE, PMAP_PTE_RW, ++ptr);
       if (error)
         return (error);
 
@@ -1293,34 +1301,6 @@ pmap_setup_ipc_ptes (uintptr_t va)
     }
 
   return (0);
-}
-
-void*
-pmap_ipc_pte_get (phys_addr_t *prev)
-{
-  _Auto ret = cpu_local_var (pmap_ipc_ptes);
-  *prev = pmap_pte_valid (*ret) ? (*ret & PMAP_PA_MASK) : 1;
-  return (ret);
-}
-
-void
-pmap_ipc_pte_set (void *pte, uintptr_t va, phys_addr_t pa)
-{
-  cpu_tlb_flush_va (va);
-  // We can assume the lowest level since we don't use huge pages for this.
-  pmap_pte_set ((pmap_pte_t *)pte, pa, PMAP_PTE_G | PMAP_PTE_RW,
-                &pmap_pt_levels[0]);
-}
-
-void
-pmap_ipc_pte_put (void *pte, uintptr_t va, phys_addr_t prev)
-{
-  if (likely (prev == 1))
-    return;   // Will be reset on next use.
-
-  cpu_tlb_flush_va (va);
-  pmap_pte_set ((pmap_pte_t *)pte, prev, PMAP_PTE_RW,
-                &pmap_pt_levels[0]);
 }
 
 static void
@@ -1379,6 +1359,10 @@ pmap_remove_local_single (struct pmap *pmap, uintptr_t va)
       --level;
       ptp = pmap_pte_next (*pte);
     }
+
+  phys_addr_t prev = *pte;
+  if (unlikely (prev & PMAP_XBIT0))
+    vm_page_unref (vm_page_lookup (prev & PMAP_PA_MASK));
 
   pmap_pte_clear (pte);
 }
@@ -1716,6 +1700,56 @@ pmap_sync (void *arg)
           if (--shared->nr_reqs == 0)
             thread_wakeup (request->sender);
         }
+    }
+}
+
+struct thread_pmap_data*
+pmap_ipc_pte_get_idx (uint32_t idx)
+{
+  _Auto ret = &thread_self()->pmap_data[idx];
+  assert (!ret->pte);
+  ret->pte = cpu_local_ptr(pmap_ipc_ptes)->ptes[idx];
+  ret->va = 0;
+  return (ret);
+}
+
+void
+pmap_ipc_pte_set (struct thread_pmap_data *pd, uintptr_t va, phys_addr_t pa)
+{
+  cpu_tlb_flush_va (va);
+  pd->va = va;
+  pmap_pte_set ((pmap_pte_t *)pd->pte, pa,
+                PMAP_PTE_G | PMAP_PTE_RW, &pmap_pt_levels[0]);
+}
+
+void
+pmap_ipc_pte_put (struct thread_pmap_data *pd)
+{
+  pd->pte = NULL;
+}
+
+static void
+pmap_ipc_pte_save (struct thread_pmap_data *pd)
+{
+  if (pd->pte && pd->va)
+    pd->prev = *(pmap_pte_t *)pd->pte & PMAP_PA_MASK;
+}
+
+static void
+pmap_ipc_pte_load (struct thread_pmap_data *pd)
+{
+  if (pd->pte && pd->va)
+    pmap_ipc_pte_set (pd, pd->va, pd->prev);
+}
+
+void
+pmap_ipc_pte_context_switch (struct thread_pmap_data *prev,
+                             struct thread_pmap_data *next)
+{
+  for (size_t i = 0; i < ARRAY_SIZE (((struct thread *)0)->pmap_data); ++i)
+    {
+      pmap_ipc_pte_save (prev + i);
+      pmap_ipc_pte_load (next + i);
     }
 }
 

@@ -663,6 +663,7 @@ thread_runq_schedule (struct thread_runq *runq)
     {
       thread_runq_schedule_unload (prev);
       rcu_report_context_switch (thread_rcu_reader (prev));
+      pmap_ipc_pte_context_switch (prev->pmap_data, next->pmap_data);
       spinlock_transfer_owner (&runq->lock, next);
 
       /*
@@ -1687,6 +1688,7 @@ thread_init (struct thread *thread, void *stack,
   thread->cur_port = NULL;
   thread->futex_td = NULL;
   bulletin_init (&thread->dead_subs);
+  memset (thread->pmap_data, 0, sizeof (thread->pmap_data));
 
 #ifdef CONFIG_PERFMON
   perfmon_td_init (thread_get_perfmon_td (thread));

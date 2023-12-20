@@ -125,34 +125,41 @@ INIT_OP_DEFINE (task_setup,
 int
 task_create (struct task **taskp, const char *name)
 {
+  struct vm_map *map;
+  int error = vm_map_create (&map);
+
+  if (error)
+    return (error);
+
+  error = task_create2 (taskp, name, map);
+  if (error)
+    vm_map_destroy (map);
+
+  return (error);
+}
+
+int
+task_create2 (struct task **taskp, const char *name, struct vm_map *map)
+{
   struct task *task = kmem_cache_alloc (&task_cache);
   if (! task)
     return (ENOMEM);
 
-  struct vm_map *map;
-  int error = vm_map_create (&map);
-  if (error)
-    goto error_map;
-
   task_init (task, name, map);
-  error = kuid_alloc (&task->kuid, KUID_TASK);
+  int error = kuid_alloc (&task->kuid, KUID_TASK);
   if (error)
-    goto error_kuid;
+    {
+      kmem_cache_free (&task_cache, task);
+      return (error);
+    }
 
   cspace_init (&task->caps);
-
   spinlock_lock (&task_list_lock);
   list_insert_tail (&task_list, &task->node);
   spinlock_unlock (&task_list_lock);
 
   *taskp = task;
   return (0);
-
-error_kuid:
-  vm_map_destroy (task->map);
-error_map:
-  kmem_cache_free (&task_cache, task);
-  return (error);
 }
 
 void

@@ -257,7 +257,7 @@ kmem_buf_verify_bytes (void *buf, void *pattern, size_t size)
 {
   char *end = buf + size;
   for (char *ptr = buf, *pattern_ptr = pattern;
-      ptr < end; ptr++, pattern_ptr++)
+      ptr < end; ++ptr, ++pattern_ptr)
     if (*ptr != *pattern_ptr)
       return (ptr);
 
@@ -272,8 +272,8 @@ kmem_buf_fill (void *buf, uint64_t pattern, size_t size)
 
   uint64_t *end = (uint64_t *)((char *)buf + size);
 
-  for (uint64_t *ptr = buf; ptr < end; ptr++)
-    *ptr = pattern;
+  for (uint64_t *ptr = buf; ptr < end; )
+    *ptr++ = pattern;
 }
 
 static void*
@@ -284,7 +284,7 @@ kmem_buf_verify_fill (void *buf, uint64_t old, uint64_t new, size_t size)
 
   uint64_t *end = (uint64_t *)((char *)buf + size);
 
-  for (uint64_t *ptr = buf; ptr < end; ptr++)
+  for (uint64_t *ptr = buf; ptr < end; ++ptr)
     {
       if (*ptr != old)
         return (kmem_buf_verify_bytes (ptr, &old, sizeof (old)));
@@ -478,7 +478,7 @@ kmem_cpu_pool_fill (struct kmem_cpu_pool *cpu_pool, struct kmem_cache *cache)
   ADAPTIVE_LOCK_GUARD (&cache->lock);
 
   int i;
-  for (i = 0; i < cpu_pool->transfer_size; i++)
+  for (i = 0; i < cpu_pool->transfer_size; ++i)
     {
       void *buf = kmem_cache_alloc_from_slab (cache);
       if (! buf)
@@ -660,7 +660,7 @@ kmem_cache_init (struct kmem_cache *cache, const char *name, size_t obj_size,
        buf_size <= cache->cpu_pool_type->buf_size;
        ++cache->cpu_pool_type);
 
-  for (size_t i = 0; i < ARRAY_SIZE (cache->cpu_pools); i++)
+  for (size_t i = 0; i < ARRAY_SIZE (cache->cpu_pools); ++i)
     kmem_cpu_pool_init (&cache->cpu_pools[i], cache);
 #endif
 
@@ -797,8 +797,8 @@ kmem_cache_grow (struct kmem_cache *cache, uint32_t pflags)
     {
       list_insert_head (&cache->free_slabs, &slab->node);
       cache->nr_bufs += cache->bufs_per_slab;
-      cache->nr_slabs++;
-      cache->nr_free_slabs++;
+      ++cache->nr_slabs;
+      ++cache->nr_free_slabs;
 
       if (kmem_cache_registration_required (cache))
         kmem_cache_register (cache, slab);
@@ -1197,7 +1197,7 @@ kmem_bootstrap_cpu (void)
 {
   char name[KMEM_NAME_SIZE];
 
-  for (size_t i = 0; i < ARRAY_SIZE (kmem_cpu_pool_types); i++)
+  for (size_t i = 0; i < ARRAY_SIZE (kmem_cpu_pool_types); ++i)
     {
       struct kmem_cpu_pool_type *cpu_pool_type = &kmem_cpu_pool_types[i];
       cpu_pool_type->array_cache = &kmem_cpu_array_caches[i];
@@ -1229,7 +1229,7 @@ kmem_bootstrap (void)
   size_t size = 1 << KMEM_CACHES_FIRST_ORDER;
   char name[KMEM_NAME_SIZE];
 
-  for (size_t i = 0; i < ARRAY_SIZE (kmem_caches); i++)
+  for (size_t i = 0; i < ARRAY_SIZE (kmem_caches); ++i)
     {
       sprintf (name, "kmem_%zu", size);
       kmem_cache_init (&kmem_caches[i], name, size, 0, NULL, 0);

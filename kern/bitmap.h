@@ -120,7 +120,7 @@ bitmap_clear_atomic (unsigned long *bm, int bit)
   if (bit >= LONG_BIT)
     bitmap_lookup (&bm, &bit);
 
-  atomic_and (bm, ~bitmap_mask (bit), ATOMIC_RELEASE);
+  atomic_and_rel (bm, ~bitmap_mask (bit));
 }
 
 static inline bool
@@ -214,12 +214,12 @@ bitmap_count_set (const unsigned long *bm, int nr_bits)
   for (int bit = 0;   \
        bit < nr_bits &&   \
          (bit = bitmap_find_next (bm, nr_bits, bit)) != -1;   \
-       bit++)
+       ++bit)
 
 #define bitmap_for_each_zero(bm, nr_bits, bit)   \
   for (int bit = 0;   \
        bit < nr_bits &&   \
          (bit = bitmap_find_next_zero (bm, nr_bits, bit)) != -1;  \
-       bit++)
+       ++bit)
 
 #endif

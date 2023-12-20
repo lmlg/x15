@@ -294,6 +294,12 @@ vm_page_is_cow (struct vm_page *page)
   return (((uintptr_t)vm_page_get_priv (page)) & 1);
 }
 
+static inline uintptr_t
+vm_page_anon_va (const struct vm_page *page)
+{
+  return ((uintptr_t)page->offset);
+}
+
 /*
  * This init operation provides :
  *  - module fully initialized

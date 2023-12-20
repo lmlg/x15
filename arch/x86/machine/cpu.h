@@ -917,6 +917,7 @@ cpu_clear_intr (void)
                 "iretq\n"
                 "1:"
                 : "=&r" (tmp) : : "cc", "memory");
+  cpu_intr_enable ();
 }
 
 #else
@@ -930,6 +931,7 @@ cpu_clear_intr (void)
                 "iret\n"
                 "1:"
                 : : : "memory");
+  cpu_intr_enable ();
 }
 
 #endif

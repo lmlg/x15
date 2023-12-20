@@ -72,23 +72,25 @@ void vm_object_init (struct vm_object *object, int flags, const void *ctx);
 int vm_object_create (struct vm_object **objp, int flags, const void *ctx);
 
 /*
- * Insert a page into a VM object.
+ * Swap a page in a VM object.
  *
- * The offset must be page-aligned.
- *
- * The page becomes managed, and gains a reference. If successful,
- * the reference is kept. Otherwise it's dropped. If the page had
- * no references on entry, and a failure occurs, the page is freed.
+ * If the page doesn't exist at the specified offset, or it matches the
+ * passed expected value, the page is inserted and gains a reference.
  */
-int vm_object_insert (struct vm_object *object, struct vm_page *page,
-                      uint64_t offset);
+
+int vm_object_swap (struct vm_object *object, struct vm_page *page,
+                    uint64_t offset, struct vm_page *expected);
 
 /*
- * Same as above, only this function may replace the page at the offset,
- * if it exists.
+ * Specialized version of the above.
+ *
+ * Inserting a page is equivalent to swapping a non-existent one.
  */
-int vm_object_replace (struct vm_object *object, struct vm_page *page,
-                       uint64_t offset);
+static inline int
+vm_object_insert (struct vm_object *obj, struct vm_page *page, uint64_t off)
+{
+  return (vm_object_swap (obj, page, off, (struct vm_page *)1));
+}
 
 /*
  * Remove pages from a VM object.

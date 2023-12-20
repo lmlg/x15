@@ -96,9 +96,9 @@ vm_object_destroy (struct vm_object *object)
   kmem_cache_free (&vm_object_cache, object);
 }
 
-static int
-vm_object_insert_impl (struct vm_object *object, struct vm_page *page,
-                       uint64_t offset, bool replace)
+int
+vm_object_swap (struct vm_object *object, struct vm_page *page,
+                uint64_t offset, struct vm_page *expected)
 {
   assert (vm_page_aligned (offset));
 
@@ -115,7 +115,7 @@ vm_object_insert_impl (struct vm_object *object, struct vm_page *page,
 
   if (error)
     {
-      if (!replace || error != EBUSY)
+      if (error != EBUSY || rdxtree_load_slot (slot) != expected)
         goto error;
 
       vm_page_unref (rdxtree_replace_slot (slot, page));
@@ -133,20 +133,6 @@ error:
   mutex_unlock (&object->lock);
   vm_page_unref (page);
   return (error);
-}
-
-int
-vm_object_insert (struct vm_object *object, struct vm_page *page,
-                  uint64_t offset)
-{
-  return (vm_object_insert_impl (object, page, offset, false));
-}
-
-int
-vm_object_replace (struct vm_object *object, struct vm_page *page,
-                   uint64_t offset)
-{
-  return (vm_object_insert_impl (object, page, offset, true));
 }
 
 void

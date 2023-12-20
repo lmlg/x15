@@ -642,6 +642,7 @@ cpu_exc_page_fault (const struct cpu_exc_frame *frame)
     {
       struct unw_mcontext mctx;
       cpu_unw_mctx_from_frame (mctx.regs, frame);
+      cpu_clear_intr ();
       unw_fixup_restore (self->fixup, &mctx, error);
     }
 

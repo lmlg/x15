@@ -30,8 +30,7 @@ bitmap_cmp (const unsigned long *a, const unsigned long *b, int nr_bits)
   if (n)
     {
       int rv = memcmp (a, b, n * sizeof (unsigned long));
-
-      if (rv)
+      if (rv != 0)
         return (rv);
 
       nr_bits -= n * LONG_BIT;
@@ -40,7 +39,7 @@ bitmap_cmp (const unsigned long *a, const unsigned long *b, int nr_bits)
   unsigned long last_a = a[n], last_b = b[n];
   if (nr_bits != LONG_BIT)
     {
-      unsigned long mask = (1UL << nr_bits) - 1;
+      unsigned long mask = bitmap_mask (nr_bits) - 1;
       last_a &= mask;
       last_b &= mask;
     }
@@ -75,7 +74,7 @@ bitmap_find_next_bit (const unsigned long *bm, int nr_bits, int bit,
     word = bitmap_find_next_compute_complement (word, nr_bits);
 
   if (bit < LONG_BIT)
-    word &= ~ (bitmap_mask (bit) - 1);
+    word &= ~(bitmap_mask (bit) - 1);
 
   while (1)
     {

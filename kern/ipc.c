@@ -35,7 +35,6 @@ struct ipc_data
   int direction;
   int prot;
   void *ipc_pte;
-  phys_addr_t prev;
   struct vm_page *page;
 };
 
@@ -83,7 +82,7 @@ static void
 ipc_data_pte_get (struct ipc_data *data)
 {
   thread_pin ();
-  data->ipc_pte = pmap_ipc_pte_get (&data->prev);
+  data->ipc_pte = pmap_ipc_pte_get ();
 }
 
 static void
@@ -96,7 +95,7 @@ ipc_data_pte_map (struct ipc_data *data, phys_addr_t pa)
 static void
 ipc_data_pte_put (struct ipc_data *data)
 {
-  pmap_ipc_pte_put (data->ipc_pte, data->va, data->prev);
+  pmap_ipc_pte_put (data->ipc_pte);
   thread_unpin ();
   data->ipc_pte = NULL;
 }

@@ -174,11 +174,15 @@
 // Mapping creation flags.
 #define PMAP_PEF_GLOBAL      0x1   // Operate on all processors.
 #define PMAP_IGNORE_ERRORS   0x2   // Ignore errors when updating.
+#define PMAP_SET_COW         0x4   // Set the page as COW.
 
 typedef phys_addr_t pmap_pte_t;
 
 // Physical address map.
 struct pmap;
+
+// Thread-specific pmap data (For IPC).
+struct thread_pmap_data;
 
 static inline struct pmap*
 pmap_get_kernel_pmap (void)
@@ -242,6 +246,12 @@ int pmap_create (struct pmap **pmapp);
 
 // Destroy a pmap allocated for a user task.
 void pmap_destroy (struct pmap *pmap);
+
+/*
+ * Maximum number of operations that can be batched before an implicit
+ * update.
+ */
+#define PMAP_UPDATE_MAX_OPS   32
 
 /*
  * Create a mapping on a physical map.
@@ -337,14 +347,25 @@ pmap_current (void)
   return (cpu_local_read (pmap_current_ptr));
 }
 
-// Get the special PTE used for IPC.
-void* pmap_ipc_pte_get (phys_addr_t *prev);
+// Get the thread-specific data used for IPC.
+struct thread_pmap_data* pmap_ipc_pte_get_idx (uint32_t idx);
+
+static inline struct thread_pmap_data*
+pmap_ipc_pte_get (void)
+{
+  return (pmap_ipc_pte_get_idx (0));
+}
 
 // Make the special PTE map a physical address.
-void pmap_ipc_pte_set (void *pte, uintptr_t va, phys_addr_t pa);
+void pmap_ipc_pte_set (struct thread_pmap_data *pd,
+                       uintptr_t va, phys_addr_t pa);
 
 // Put back the special PTE.
-void pmap_ipc_pte_put (void *pte, uintptr_t va, phys_addr_t prev);
+void pmap_ipc_pte_put (struct thread_pmap_data *pd);
+
+// Handle a context switch for thread-specific pmap data.
+void pmap_ipc_pte_context_switch (struct thread_pmap_data *prev,
+                                  struct thread_pmap_data *next);
 
 /*
  * This init operation provides :

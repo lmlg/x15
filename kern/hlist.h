@@ -91,9 +91,7 @@ hlist_empty (const struct hlist *list)
   return (!list->first);
 }
 
-/*
- * Return true if list contains exactly one node.
- */
+// Return true if list contains exactly one node.
 static inline bool
 hlist_singular (const struct hlist *list)
 {

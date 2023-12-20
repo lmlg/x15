@@ -102,6 +102,13 @@ struct thread_fs_data
   uint16_t work;
 };
 
+struct thread_pmap_data
+{
+  uint64_t prev;
+  void *pte;
+  uintptr_t va;
+};
+
 /*
  * Thread structure.
  *
@@ -133,11 +140,11 @@ struct thread
 
   // Sleep/wake-up synchronization members.
   struct thread_runq *runq;   // (r,*)
-  bool in_runq;               // (r)
   const void *wchan_addr;     // (r)
   const char *wchan_desc;     // (r)
   int wakeup_error;           // (r)
   uint32_t state;             // (a,r)
+  bool in_runq;               // (r)
 
   // Sleep queue available for lending.
   struct sleepq *priv_sleepq;   // (-)
@@ -146,20 +153,17 @@ struct thread
   struct turnstile *priv_turnstile;   // (-)
   struct turnstile_td turnstile_td;   // (t)
 
-  // True if priority must be propagated when preemption is reenabled.
-  bool propagate_priority;    // (-)
-
   // Preemption level, preemption is enabled if 0.
-  uint16_t preempt_level;   // (-)
+  uint16_t preempt_level;     // (-)
 
   // Pin level, migration is allowed if 0.
-  uint16_t pin_level;       // (-)
+  uint16_t pin_level;         // (-)
 
   // Interrupt level, in thread context if 0.
-  uint16_t intr_level;      // (-)
+  uint16_t intr_level;        // (-)
 
   // Page fault enablement level. Page faults are enabled if 0.
-  uint16_t pagefault_level;
+  uint16_t pagefault_level;   // (-)
 
   // RCU per-thread data,
   struct rcu_reader rcu_reader;   // (-)
@@ -181,6 +185,9 @@ struct thread
 
   // True if the thread is marked to suspend.
   bool suspend;   // (r)
+
+  // True if priority must be propagated when preemption is reenabled.
+  bool propagate_priority;    // (-)
 
   union
     {
@@ -218,6 +225,7 @@ struct thread
   struct task *xtask;             // (-)
   struct futex_td *futex_td;      // (-)
   struct bulletin dead_subs;      // ( )
+  struct thread_pmap_data pmap_data[2];   // (-)
 };
 
 // Thread IPC message (TODO: Move to a specific header).
@@ -428,8 +436,6 @@ int thread_timedsleep (struct spinlock *interlock, const void *wchan_addr,
  * If the target thread is NULL, the calling thread, or already in the
  * running state, or in the suspended state, no action is performed and
  * EINVAL is returned.
- *
- * TODO Describe memory ordering with regard to thread_sleep().
  */
 int thread_wakeup (struct thread *thread);
 

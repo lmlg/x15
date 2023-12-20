@@ -63,6 +63,32 @@ static const struct vm_object_pager test_obj_pager =
 };
 
 static void
+test_vm_fault_forked_entry (void *buf)
+{
+  atomic_store_seq ((int *)buf, 42);
+  assert (*((char *)buf + PAGE_SIZE + 1) == 0);
+}
+
+static void
+test_vm_fault_forked (struct vm_map *map, void *buf)
+{
+  struct task *task;
+  int error = task_create2 (&task, "vm_fault_forked", map);
+  assert (! error);
+
+  struct thread *out;
+  struct thread_attr attr;
+
+  thread_attr_init (&attr, "vm_fault_forked/0");
+  thread_attr_set_task (&attr, task);
+
+  error = thread_create (&out, &attr, test_vm_fault_forked_entry, buf);
+  assert (! error);
+
+  thread_join (out);
+}
+
+static void
 test_vm_fault_thread (void *arg __unused)
 {
   struct vm_object *test_obj;
@@ -106,35 +132,26 @@ test_vm_fault_thread (void *arg __unused)
   assert (VM_MAP_PROT (entry->flags) == VM_PROT_READ);
 
   {
-    struct vm_map *fmap;
-
     void *buf;
-    error = vm_map_anon_alloc (&buf, map, PAGE_SIZE);
+    error = vm_map_anon_alloc (&buf, map, PAGE_SIZE * 2);
     assert (! error);
+    // Makre sure a physical page is allocated.
+    atomic_store_seq ((int *)buf, 0);
 
+    struct vm_map *fmap;
     error = vm_map_fork (&fmap, vm_map_self ());
     assert (! error);
+    assert (fmap->nr_entries == vm_map_self()->nr_entries);
 
     _Auto e2 = vm_map_find (fmap, va);
     assert (e2);
+    assert (e2 != entry);
     assert (e2->object == entry->object &&
             e2->flags == entry->flags &&
             e2->offset == entry->offset);
 
-    thread_self()->task->map = fmap;
-    thread_yield ();
-    *(int *)buf = 42;
-
-    thread_self()->task->map = map;
+    test_vm_fault_forked (fmap, buf);
     vm_map_entry_put (e2);
-    vm_map_destroy (fmap);
-
-    /*
-     * Make absolute sure we get rescheduled so that the changes to the
-     * VM map are visible. Calling 'thread_yield' may not be enough,
-     * depending on the conditions of the run queue.
-     */
-    thread_delay (1, false);
 
     // Ensure that COW pages work correctly.
     assert (*(int *)buf == 0);

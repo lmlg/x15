@@ -122,6 +122,9 @@ task_id (const struct task *task)
 // Create a task.
 int task_create (struct task **taskp, const char *name);
 
+// Same as above, only this function allows the caller to specify the VM map.
+int task_create2 (struct task **taskp, const char *name, struct vm_map *map);
+
 /*
  * Look up a task from its name.
  *
