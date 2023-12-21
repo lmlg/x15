@@ -423,7 +423,7 @@ ipc_cap_copy_impl (struct task *r_task, struct ipc_cap_iter *r_it,
       len = rv * sizeof (*ptr);   \
       if (ipc_bcopy (r_task, r_it->begin + r_it->cur, len,   \
                      ptr, len, IPC_COPY_TO) > 0)   \
-        r_it->cur = aux.cur;   \
+        r_it->cur += aux.cur;   \
     }   \
   \
   if (ptr != tmp)   \
