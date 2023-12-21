@@ -939,10 +939,16 @@ static int
 vm_map_fault_handle_cow (uintptr_t addr, struct vm_page **pgp,
                          struct vm_map *map, bool in_obj)
 {
+  thread_pin ();
+  cpu_intr_enable ();
+
   _Auto p2 = vm_page_alloc (0, VM_PAGE_SEL_HIGHMEM,
                             VM_PAGE_OBJECT, VM_PAGE_SLEEP);
   if (! p2)
-    return (EINTR);
+    {
+      thread_unpin ();
+      return (EINTR);
+    }
 
   _Auto page = *pgp;
   uintptr_t va = vm_map_ipc_addr ();
@@ -957,9 +963,6 @@ vm_map_fault_handle_cow (uintptr_t addr, struct vm_page **pgp,
 
   pmap_ipc_pte_set (ipc_dst, va, vm_page_to_pa (p2));
   pmap_ipc_pte_set (ipc_src, va + PAGE_SIZE, vm_page_to_pa (page));
-
-  thread_pin ();
-  cpu_intr_enable ();
   memcpy ((void *)va, (void *)(va + PAGE_SIZE), PAGE_SIZE);
 
   pmap_ipc_pte_put (ipc_dst);
@@ -978,7 +981,10 @@ vm_map_fault_handle_cow (uintptr_t addr, struct vm_page **pgp,
       pmap_remove (map->pmap, addr, 0);
     }
   else
-    vm_page_unref (p2);
+    {
+      cpu_intr_enable ();
+      vm_page_unref (p2);
+    }
 
   return (ret);
 }
@@ -1013,7 +1019,8 @@ vm_map_fault_soft (struct vm_map *map, struct vm_object *obj, uint64_t off,
   if ((prot & VM_PROT_WRITE) && vm_page_is_cow (page) &&
       vm_map_fault_handle_cow (addr, &page, map, in_obj) != 0)
     goto skip;
-  else if (pmap_enter (map->pmap, addr, vm_page_to_pa (page), prot, 0) == 0)
+  else if (pmap_enter (map->pmap, addr, vm_page_to_pa (page),
+                       prot, PMAP_IGNORE_ERRORS) == 0)
     pmap_update (map->pmap);
 
 skip:
