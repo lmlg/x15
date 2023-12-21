@@ -666,9 +666,9 @@ cap_iters_copy (struct cap_iters *dst, const struct cap_iters *src)
   d->type.cur = s->type.cur;   \
   d->type.end = s->type.end
 
-  memcpy (dst->iov.cache, src->iov.cache,
-          (src->iov.cache_idx - IPC_IOV_ITER_CACHE_SIZE) *
-          sizeof (struct iovec));
+  for (uint32_t i = src->iov.cache_idx; i < IPC_IOV_ITER_CACHE_SIZE; ++i)
+    dst->iov.cache[i] = src->iov.cache[i];
+
   dst->iov.cache_idx = src->iov.cache_idx;
   dst->iov.head = src->iov.head;
 
