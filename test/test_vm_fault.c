@@ -99,8 +99,7 @@ test_vm_fault_thread (void *arg __unused)
   int flags = VM_MAP_FLAGS (VM_PROT_READ, VM_PROT_READ, VM_INHERIT_DEFAULT,
                             VM_ADV_RANDOM, 0);
   struct vm_map *map = vm_map_self ();
-  error = vm_map_enter (map, &va, PAGE_SIZE * 3, 0, flags,
-                        test_obj, TEST_OFFSET);
+  error = vm_map_enter (map, &va, PAGE_SIZE * 3, flags, test_obj, TEST_OFFSET);
 
   assert (! error);
   // First fault.

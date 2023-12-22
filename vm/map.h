@@ -126,9 +126,8 @@ uintptr_t vm_map_ipc_addr (void);
 #define vm_map_self()   ((struct vm_map *)thread_self()->xtask->map)
 
 // Create a virtual mapping.
-int vm_map_enter (struct vm_map *map, uintptr_t *startp,
-                  size_t size, size_t align, int flags,
-                  struct vm_object *object, uint64_t offset);
+int vm_map_enter (struct vm_map *map, uintptr_t *startp, size_t size,
+                  int flags, struct vm_object *object, uint64_t offset);
 
 // Remove mappings from start to end.
 int vm_map_remove (struct vm_map *map, uintptr_t start, uintptr_t end);

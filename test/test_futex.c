@@ -156,7 +156,7 @@ test_futex_shared_helper (void *arg)
   uintptr_t start = PAGE_SIZE * 100;
   int flags = VM_MAP_FLAGS (VM_PROT_RDWR, VM_PROT_RDWR, VM_INHERIT_SHARE,
                             VM_ADV_DEFAULT, 0);
-  int error = vm_map_enter (vm_map_self (), &start, PAGE_SIZE, 0,
+  int error = vm_map_enter (vm_map_self (), &start, PAGE_SIZE,
                             flags, entry->object, entry->offset);
   assert (! error);
 

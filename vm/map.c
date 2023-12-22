@@ -74,17 +74,15 @@ struct vm_map_request
 {
   uintptr_t start;
   size_t size;
-  size_t align;
   int flags;
   struct vm_object *object;
   uint64_t offset;
   struct vm_map_entry *next;
 };
 
-static int vm_map_prepare (struct vm_map *map, uintptr_t start,
-                           size_t size, size_t align, int flags,
-                           struct vm_object *object, uint64_t offset,
-                           struct vm_map_request *request);
+static int vm_map_prepare (struct vm_map *map, uintptr_t start, size_t size,
+                           int flags, struct vm_object *object,
+                           uint64_t offset, struct vm_map_request *request);
 
 static int vm_map_insert (struct vm_map *map, struct vm_map_entry *entry,
                           const struct vm_map_request *request);
@@ -174,13 +172,8 @@ vm_map_request_valid (const struct vm_map_request *request)
           vm_page_aligned (request->start) &&
           request->size > 0 && vm_page_aligned (request->size) &&
           request->start + request->size > request->start &&
-          (!request->align || request->align >= PAGE_SIZE) &&
-          ISP2 (request->align) &&
           ((VM_MAP_PROT (request->flags) & VM_MAP_MAXPROT (request->flags)) ==
-            VM_MAP_PROT (request->flags)) &&
-          (!(request->flags & VM_MAP_FIXED) ||
-            !request->align ||
-            P2ALIGNED (request->start, request->align)));
+            VM_MAP_PROT (request->flags)));
 }
 
 /*
@@ -245,16 +238,13 @@ vm_map_find_avail (struct vm_map *map, struct vm_map_request *request)
       vm_map_find_fixed (map, request) == 0)
     return (0);
 
-  size_t size = request->size, align = request->align;
+  size_t size = request->size;
   uintptr_t start = map->start;
   _Auto next = vm_map_lookup_nearest (map, start);
 
   while (1)
     {
       assert (start <= map->end);
-
-      if (align)
-        start = P2ROUND (start, align);
 
       if (map->end - start < size)
         // The end of the map has been reached and no space could be found.
@@ -310,13 +300,11 @@ vm_map_unlink (struct vm_map *map, struct vm_map_entry *entry)
  */
 static int
 vm_map_prepare (struct vm_map *map, uintptr_t start,
-                size_t size, size_t align, int flags,
-                struct vm_object *object, uint64_t offset,
-                struct vm_map_request *request)
+                size_t size, int flags, struct vm_object *object,
+                uint64_t offset, struct vm_map_request *request)
 {
   request->start = start;
   request->size = size;
-  request->align = align;
   request->flags = flags;
   request->object = object;
   request->offset = offset;
@@ -475,12 +463,11 @@ out:
 }
 
 static inline int
-vm_map_enter_locked (struct vm_map *map, uintptr_t *startp,
-                     size_t size, size_t align, int flags,
-                     struct vm_object *object, uint64_t offset)
+vm_map_enter_locked (struct vm_map *map, uintptr_t *startp, size_t size,
+                     int flags, struct vm_object *object, uint64_t offset)
 {
   struct vm_map_request request;
-  int error = vm_map_prepare (map, *startp, size, align, flags, object,
+  int error = vm_map_prepare (map, *startp, size, flags, object,
                               offset, &request);
 
   if (error != 0 ||
@@ -492,13 +479,11 @@ vm_map_enter_locked (struct vm_map *map, uintptr_t *startp,
 }
 
 int
-vm_map_enter (struct vm_map *map, uintptr_t *startp,
-              size_t size, size_t align, int flags,
-              struct vm_object *object, uint64_t offset)
+vm_map_enter (struct vm_map *map, uintptr_t *startp, size_t size,
+              int flags, struct vm_object *object, uint64_t offset)
 {
   SXLOCK_EXGUARD (&map->lock);
-  return (vm_map_enter_locked (map, startp, size, align,
-                               flags, object, offset));
+  return (vm_map_enter_locked (map, startp, size, flags, object, offset));
 }
 
 static void
@@ -857,8 +842,8 @@ vm_map_setup (void)
 
   // Allocate a page for IPC mapping purposes.
   if (vm_map_enter (&vm_map_kernel_map, &vm_map_ipc_va, PAGE_SIZE * 2,
-                    0, VM_MAP_FLAGS (VM_PROT_RDWR, VM_PROT_RDWR,
-                                     VM_INHERIT_NONE, VM_ADV_DEFAULT, 0),
+                    VM_MAP_FLAGS (VM_PROT_RDWR, VM_PROT_RDWR,
+                                  VM_INHERIT_NONE, VM_ADV_DEFAULT, 0),
                     NULL, 0) != 0)
     panic ("vm-map: could not create internal IPC mapping");
 
@@ -1197,7 +1182,7 @@ vm_map_anon_alloc (void **outp, struct vm_map *map, size_t size)
   uintptr_t va = (map->end - map->start) >> 1;
   int flags = VM_MAP_FLAGS (VM_PROT_RDWR, VM_PROT_RDWR, VM_INHERIT_DEFAULT,
                             VM_ADV_DEFAULT, VM_MAP_ANON);
-  int error = vm_map_enter (map, &va, vm_page_round (size), 0, flags,
+  int error = vm_map_enter (map, &va, vm_page_round (size), flags,
                             map->priv_cache, 0);
   if (! error)
     *outp = (void *)va;
@@ -1438,7 +1423,7 @@ vm_map_iter_copy (struct vm_map *r_map, struct ipc_vme_iter *r_it,
                                     VM_MAP_INHERIT (entry->flags),
                                     VM_MAP_ADVICE (entry->flags), 0),
               error = vm_map_enter_locked (out_map, &outp->addr, size,
-                                           0, flags, entry->object, offset);
+                                           flags, entry->object, offset);
           if (error)
             return (vm_map_iter_cleanup (out_map, out_it, prev, error));
 
