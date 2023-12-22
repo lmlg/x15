@@ -114,7 +114,7 @@ struct cap_flow
   CAPABILITY;
   struct list waiters;
   struct list receivers;
-  struct slist lpads;
+  struct slist ports;
   struct hlist alloc_alerts;
   struct pqueue pending_alerts;
   uintptr_t tag;

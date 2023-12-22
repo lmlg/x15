@@ -283,7 +283,7 @@ cap_flow_fini (struct sref_counter *sref)
     cap_alert_free (alert);
 
   struct cap_port_entry *port, *pt;
-  slist_for_each_entry_safe (&flow->lpads, port, pt, snode)
+  slist_for_each_entry_safe (&flow->ports, port, pt, snode)
     cap_port_entry_fini (port);
 
   kmem_cache_free (&cap_flow_cache, flow);
@@ -301,7 +301,7 @@ cap_flow_create (struct cap_flow **outp, uint32_t flags,
   spinlock_init (&ret->lock);
   list_init (&ret->waiters);
   list_init (&ret->receivers);
-  slist_init (&ret->lpads);
+  slist_init (&ret->ports);
   hlist_init (&ret->alloc_alerts);
   pqueue_init (&ret->pending_alerts);
   ret->flags = flags;
@@ -682,7 +682,7 @@ static void
 cap_flow_push_port (struct cap_flow *flow, struct cap_port_entry *port)
 {
   SPINLOCK_GUARD (&flow->lock);
-  slist_insert_head (&flow->lpads, &port->snode);
+  slist_insert_head (&flow->ports, &port->snode);
 
   if (list_empty (&flow->waiters))
     return;
@@ -695,20 +695,20 @@ static struct cap_port_entry*
 cap_pop_port (struct cap_flow *flow, struct thread *self)
 {
   SPINLOCK_GUARD (&flow->lock);
-  if (slist_empty (&flow->lpads))
+  if (slist_empty (&flow->ports))
     {
       struct cap_sender sender;
       cap_sender_add (flow, &sender, self);
 
       do
         thread_sleep (&flow->lock, flow, "flow-sender");
-      while (slist_empty (&flow->lpads));
+      while (slist_empty (&flow->ports));
 
       list_remove (&sender.lnode);
     }
 
-  _Auto port = slist_first_entry (&flow->lpads, struct cap_port_entry, snode);
-  slist_remove (&flow->lpads, NULL);
+  _Auto port = slist_first_entry (&flow->ports, struct cap_port_entry, snode);
+  slist_remove (&flow->ports, NULL);
   return (port);
 }
 
@@ -903,7 +903,7 @@ cap_flow_rem_port (struct cap_flow *flow, uintptr_t stack)
   struct cap_port_entry *entry;
   struct slist_node *prev = NULL;
 
-  slist_for_each_entry (&flow->lpads, entry, snode)
+  slist_for_each_entry (&flow->ports, entry, snode)
     {
       if (entry->task == task_self () &&
           (stack == ~(uintptr_t)0 || stack == entry->ctx[0]))
@@ -918,7 +918,7 @@ cap_flow_rem_port (struct cap_flow *flow, uintptr_t stack)
       return (ESRCH);
     }
 
-  slist_remove (&flow->lpads, prev);
+  slist_remove (&flow->ports, prev);
   spinlock_unlock (&flow->lock);
 
   // Unmap the stack if the user didn't specify one.
