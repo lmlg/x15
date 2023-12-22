@@ -93,9 +93,9 @@ clock_get_time (void)
   uint32_t high1, low, high2;
 
   /*
-   * For machines with no 64-bits atomic accessors, this implementation uses
-   * a variant of the two-digit monotonic-clock algorithm, described in the
-   * paper "Concurrent Reading and Writing of Clocks" by Leslie Lamport.
+   * For 32-bit machines, this implementation uses a variant of the two-digit
+   * monotonic-clock algorithm, described in the paper "Concurrent Reading and
+   * Writing of Clocks" by Leslie Lamport.
    */
 
   do
