@@ -199,10 +199,7 @@ struct sleepq*
 sleepq_create (void)
 {
   struct sleepq *sleepq = kmem_cache_alloc (&sleepq_cache);
-  if (! sleepq)
-    return (NULL);
-
-  assert (sleepq_init_state_valid (sleepq));
+  assert (!sleepq || sleepq_init_state_valid (sleepq));
   return (sleepq);
 }
 

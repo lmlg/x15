@@ -492,10 +492,7 @@ struct turnstile*
 turnstile_create (void)
 {
   struct turnstile *turnstile = kmem_cache_alloc (&turnstile_cache);
-  if (! turnstile)
-    return (NULL);
-
-  assert (turnstile_init_state_valid (turnstile));
+  assert (!turnstile || turnstile_init_state_valid (turnstile));
   return (turnstile);
 }
 
