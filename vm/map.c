@@ -1126,8 +1126,18 @@ vm_map_fault (struct vm_map *map, uintptr_t addr, int prot)
 {
   assert (map != vm_map_get_kernel_map ());
   assert (!cpu_intr_enabled ());
+
+  // Save the special PTEs, since they are used by the implementation.
+  uint64_t prev[THREAD_NR_PMAP_DATA];
+  for (size_t i = 0; i < ARRAY_SIZE (prev); ++i)
+    pmap_ipc_pte_save (&thread_self()->pmap_data[i], &prev[i]);
+
   int ret = vm_map_fault_impl (map, vm_page_trunc (addr), prot);
   cpu_intr_disable ();
+
+  for (size_t i = 0; i < ARRAY_SIZE (prev); ++i)
+    pmap_ipc_pte_load (&thread_self()->pmap_data[i], prev[i]);
+
   return (ret);
 }
 
