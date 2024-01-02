@@ -391,7 +391,7 @@ ipc_cap_copy_impl (struct task *r_task, struct ipc_cap_iter *r_it,
     {   \
       _Auto page = vm_page_alloc (vm_page_order (size),   \
                                   VM_PAGE_SEL_DIRECTMAP,   \
-                                  VM_PAGE_KERNEL, 0);   \
+                                  VM_PAGE_KERNEL, VM_PAGE_SLEEP);   \
       if (! page)   \
         return (-ENOMEM);   \
       \
@@ -405,7 +405,7 @@ ipc_cap_copy_impl (struct task *r_task, struct ipc_cap_iter *r_it,
     {   \
       if (ptr != tmp)   \
         vm_page_free (vm_page_lookup (vm_page_direct_pa ((uintptr_t)ptr)),   \
-                      vm_page_order (size), 0);   \
+                      vm_page_order (size), VM_PAGE_SLEEP);   \
       \
       return (rv);   \
     }   \
@@ -428,7 +428,7 @@ ipc_cap_copy_impl (struct task *r_task, struct ipc_cap_iter *r_it,
   \
   if (ptr != tmp)   \
     vm_page_free (vm_page_lookup (vm_page_direct_pa ((uintptr_t)ptr)),   \
-                  vm_page_order (size), 0);   \
+                  vm_page_order (size), VM_PAGE_SLEEP);   \
   \
   return (rv)
 
