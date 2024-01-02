@@ -1688,7 +1688,8 @@ thread_init (struct thread *thread, void *stack,
   thread->cur_port = NULL;
   thread->futex_td = NULL;
   bulletin_init (&thread->dead_subs);
-  memset (thread->pmap_data, 0, sizeof (thread->pmap_data));
+  for (size_t i = 0; i < THREAD_NR_PMAP_DATA; ++i)
+    pmap_ipc_pte_init (&thread->pmap_data[i]);
 
 #ifdef CONFIG_PERFMON
   perfmon_td_init (thread_get_perfmon_td (thread));

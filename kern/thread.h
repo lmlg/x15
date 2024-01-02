@@ -109,6 +109,8 @@ struct thread_pmap_data
   uintptr_t va;
 };
 
+#define THREAD_NR_PMAP_DATA   2
+
 /*
  * Thread structure.
  *
@@ -225,7 +227,7 @@ struct thread
   struct task *xtask;             // (-)
   struct futex_td *futex_td;      // (-)
   struct bulletin dead_subs;      // ( )
-  struct thread_pmap_data pmap_data[2];   // (-)
+  struct thread_pmap_data pmap_data[THREAD_NR_PMAP_DATA];   // (-)
 };
 
 // Thread IPC message (TODO: Move to a specific header).
