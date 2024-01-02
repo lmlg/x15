@@ -126,10 +126,7 @@ cspace_dup3 (struct cspace *sp, int cap_idx, int new_idx,
     // Release the older capability.
     cap_base_rel (rdxtree_replace_slot (slot, cap));
   else if (rv)
-    {
-      cap_base_rel (cap);
-      return (ENOMEM);
-    }
+    return (ENOMEM);
 
   cap_base_acq (cap);
   return (0);
