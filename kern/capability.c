@@ -55,15 +55,9 @@ static_assert (CAP_F (caps_recv) - CAP_F (bytes_recv) ==
                CAP_F (vmes_recv) - CAP_F (bytes_recv) ==
                CAP_F (vmes_sent) - CAP_F (bytes_sent),
                "invalid layout for struct ipc_msg_data");
-#undef CAP_F
 
-#define CAP_VMES_OFF   \
-  (__builtin_offsetof (struct ipc_msg_data, vmes_recv) -   \
-   __builtin_offsetof (struct ipc_msg_data, bytes_recv))
-
-#define CAP_CAPS_OFF   \
-  (__builtin_offsetof (struct ipc_msg_data, caps_recv) -   \
-   __builtin_offsetof (struct ipc_msg_data, bytes_recv))
+#define CAP_VMES_OFF   (CAP_F (vmes_recv) - CAP_F (bytes_recv))
+#define CAP_CAPS_OFF   (CAP_F (caps_recv) - CAP_F (bytes_recv))
 
 struct cap_alert_async
 {
@@ -74,7 +68,7 @@ struct cap_alert_async
 
 #define cap_alert_type(alert)   ((alert)->payload[CAP_ALERT_SIZE])
 
-struct cap_port_entry
+struct cap_port
 {
   struct slist_node snode;
   struct task *task;
@@ -263,7 +257,7 @@ cap_alert_free (struct cap_alert *alert)
 }
 
 static void
-cap_port_entry_fini (struct cap_port_entry *port)
+cap_port_fini (struct cap_port *port)
 {
   task_unref (port->task);
   kmem_cache_free (&cap_port_cache, port);
@@ -282,9 +276,9 @@ cap_flow_fini (struct sref_counter *sref)
   hlist_for_each_entry_safe (&flow->alloc_alerts, alert, tmp, hnode)
     cap_alert_free (alert);
 
-  struct cap_port_entry *port, *pt;
+  struct cap_port *port, *pt;
   slist_for_each_entry_safe (&flow->ports, port, pt, snode)
-    cap_port_entry_fini (port);
+    cap_port_fini (port);
 
   kmem_cache_free (&cap_flow_cache, flow);
 }
@@ -679,7 +673,7 @@ cap_iters_copy (struct cap_iters *dst, const struct cap_iters *src)
 }
 
 static void
-cap_flow_push_port (struct cap_flow *flow, struct cap_port_entry *port)
+cap_flow_push_port (struct cap_flow *flow, struct cap_port *port)
 {
   SPINLOCK_GUARD (&flow->lock);
   slist_insert_head (&flow->ports, &port->snode);
@@ -691,7 +685,7 @@ cap_flow_push_port (struct cap_flow *flow, struct cap_port_entry *port)
   thread_wakeup (sender->thread);
 }
 
-static struct cap_port_entry*
+static struct cap_port*
 cap_pop_port (struct cap_flow *flow, struct thread *self)
 {
   SPINLOCK_GUARD (&flow->lock);
@@ -707,7 +701,7 @@ cap_pop_port (struct cap_flow *flow, struct thread *self)
       list_remove (&sender.lnode);
     }
 
-  _Auto port = slist_first_entry (&flow->ports, struct cap_port_entry, snode);
+  _Auto port = slist_first_entry (&flow->ports, struct cap_port, snode);
   slist_remove (&flow->ports, NULL);
   return (port);
 }
@@ -729,7 +723,7 @@ cap_sender_impl (struct cap_flow *flow, uintptr_t tag, struct cap_iters *in,
   cap_iters_copy (&port->in_it, in);
   port->out_it = out;
 
-  struct cap_port_entry *cur_port = self->cur_port;
+  struct cap_port *cur_port = self->cur_port;
   self->cur_port = port;
   cap_fill_ids (&port->mdata.thread_id, &port->mdata.task_id, self);
 
@@ -794,7 +788,7 @@ cap_send_iters (struct cap_base *cap, struct cap_iters *in,
 ssize_t
 cap_pull_iters (struct cap_iters *it, struct ipc_msg_data *mdata)
 {
-  struct cap_port_entry *port = thread_self()->cur_port;
+  struct cap_port *port = thread_self()->cur_port;
   if (! port)
     return (-EINVAL);
 
@@ -817,7 +811,7 @@ cap_pull_iters (struct cap_iters *it, struct ipc_msg_data *mdata)
 ssize_t
 cap_push_iters (struct cap_iters *it, struct ipc_msg_data *mdata)
 {
-  struct cap_port_entry *port = thread_self()->cur_port;
+  struct cap_port *port = thread_self()->cur_port;
   if (! port)
     return (-EINVAL);
 
@@ -849,7 +843,7 @@ ssize_t
 cap_reply_iters (struct cap_iters *it, int rv)
 {
   struct thread *self = thread_self ();
-  struct cap_port_entry *port = self->cur_port;
+  struct cap_port *port = self->cur_port;
   ssize_t ret;
 
   if (! port)
@@ -880,7 +874,7 @@ cap_flow_add_port (struct cap_flow *flow, void *stack, size_t size,
                    struct ipc_msg *msg, struct ipc_msg_data *mdata,
                    struct cap_thread_info *info __unused)
 {
-  struct cap_port_entry *entry = kmem_cache_alloc (&cap_port_cache);
+  struct cap_port *entry = kmem_cache_alloc (&cap_port_cache);
   if (! entry)
     return (ENOMEM);
 
@@ -900,7 +894,7 @@ int
 cap_flow_rem_port (struct cap_flow *flow, uintptr_t stack)
 {
   spinlock_lock (&flow->lock);
-  struct cap_port_entry *entry;
+  struct cap_port *entry;
   struct slist_node *prev = NULL;
 
   slist_for_each_entry (&flow->ports, entry, snode)
@@ -926,7 +920,7 @@ cap_flow_rem_port (struct cap_flow *flow, uintptr_t stack)
               vm_map_remove (vm_map_self (), entry->ctx[0], entry->size);
 
   if (! error)
-    kmem_free (entry, sizeof (*entry));
+    kmem_cache_free (&cap_port_cache, entry);
   else
     cap_flow_push_port (flow, entry);
 
@@ -1239,7 +1233,7 @@ cap_setup (void)
   kmem_cache_init (&cap_flow_cache, "cap_flow",
                    sizeof (struct cap_flow), 0, NULL, 0);
   kmem_cache_init (&cap_port_cache, "cap_port",
-                   sizeof (struct cap_port_entry), 0, NULL, 0);
+                   sizeof (struct cap_port), 0, NULL, 0);
 
   adaptive_lock_init (&cap_intr_lock);
   for (size_t i = 0; i < ARRAY_SIZE (cap_intr_handlers); ++i)
