@@ -1728,28 +1728,14 @@ pmap_ipc_pte_put (struct thread_pmap_data *pd)
   pd->pte = NULL;
 }
 
-static void
-pmap_ipc_pte_save (struct thread_pmap_data *pd)
-{
-  if (pd->pte && pd->va)
-    pd->prev = *(pmap_pte_t *)pd->pte & PMAP_PA_MASK;
-}
-
-static void
-pmap_ipc_pte_load (struct thread_pmap_data *pd)
-{
-  if (pd->pte && pd->va)
-    pmap_ipc_pte_set (pd, pd->va, pd->prev);
-}
-
 void
 pmap_ipc_pte_context_switch (struct thread_pmap_data *prev,
                              struct thread_pmap_data *next)
 {
-  for (size_t i = 0; i < ARRAY_SIZE (((struct thread *)0)->pmap_data); ++i)
+  for (size_t i = 0; i < THREAD_NR_PMAP_DATA; ++i, ++prev, ++next)
     {
-      pmap_ipc_pte_save (prev + i);
-      pmap_ipc_pte_load (next + i);
+      pmap_ipc_pte_save (prev, &prev->prev);
+      pmap_ipc_pte_load (next, next->prev);
     }
 }
 

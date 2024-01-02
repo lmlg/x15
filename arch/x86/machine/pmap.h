@@ -181,9 +181,6 @@ typedef phys_addr_t pmap_pte_t;
 // Physical address map.
 struct pmap;
 
-// Thread-specific pmap data (For IPC).
-struct thread_pmap_data;
-
 static inline struct pmap*
 pmap_get_kernel_pmap (void)
 {
@@ -347,6 +344,14 @@ pmap_current (void)
   return (cpu_local_read (pmap_current_ptr));
 }
 
+static inline void
+pmap_ipc_pte_init (struct thread_pmap_data *pd)
+{
+  pd->pte = NULL;
+  pd->va = 0;
+  pd->prev = 1;
+}
+
 // Get the thread-specific data used for IPC.
 struct thread_pmap_data* pmap_ipc_pte_get_idx (uint32_t idx);
 
@@ -366,6 +371,19 @@ void pmap_ipc_pte_put (struct thread_pmap_data *pd);
 // Handle a context switch for thread-specific pmap data.
 void pmap_ipc_pte_context_switch (struct thread_pmap_data *prev,
                                   struct thread_pmap_data *next);
+
+static inline void
+pmap_ipc_pte_save (struct thread_pmap_data *pd, uint64_t *prev)
+{
+  *prev = pd->pte && pd->va ? (*(pmap_pte_t *)pd->pte & PMAP_PA_MASK) : 1;
+}
+
+static inline void
+pmap_ipc_pte_load (struct thread_pmap_data *pd, phys_addr_t pa)
+{
+  if (pa != 1)
+    pmap_ipc_pte_set (pd, pd->va, pa);
+}
 
 /*
  * This init operation provides :
