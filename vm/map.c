@@ -551,6 +551,8 @@ vm_map_clip_end (struct vm_map *map, struct vm_map_entry *entry,
   vm_map_link (map, new_entry, next);
 }
 
+#define VM_MAP_PMAP_FLAGS   (PMAP_PEF_GLOBAL | PMAP_IGNORE_ERRORS)
+
 static int
 vm_map_remove_impl (struct vm_map *map, uintptr_t start,
                     uintptr_t end, struct list *list, bool clear)
@@ -603,8 +605,7 @@ vm_map_remove_impl (struct vm_map *map, uintptr_t start,
   if (clear)
     { // Don't prevent lookups and page faults from here on.
       sxlock_share (&map->lock);
-      pmap_remove_range (map->pmap, start, end,
-                         PMAP_PEF_GLOBAL | PMAP_IGNORE_ERRORS);
+      pmap_remove_range (map->pmap, start, end, VM_MAP_PMAP_FLAGS);
       pmap_update (map->pmap);
     }
 
@@ -647,8 +648,6 @@ vm_map_try_merge_entries (struct vm_map *map, struct vm_map_entry *prev,
   list_insert_tail (dead, &prev->list_node);
 }
 
-#define VM_MAP_PROT_PFLAGS   (PMAP_PEF_GLOBAL | PMAP_IGNORE_ERRORS)
-
 static int
 vm_map_protect_entry (struct vm_map *map, struct vm_map_entry *entry,
                       uintptr_t start, uintptr_t end,
@@ -682,9 +681,9 @@ vm_map_protect_entry (struct vm_map *map, struct vm_map_entry *entry,
 
   if (prot == VM_PROT_NONE &&
       (VM_MAP_PROT (entry->flags) & VM_PROT_WRITE) == 0)
-    pmap_remove_range (map->pmap, start, end, VM_MAP_PROT_PFLAGS);
+    pmap_remove_range (map->pmap, start, end, VM_MAP_PMAP_FLAGS);
   else
-    pmap_protect_range (map->pmap, start, end, prot, VM_MAP_PROT_PFLAGS);
+    pmap_protect_range (map->pmap, start, end, prot, VM_MAP_PMAP_FLAGS);
 
   return (0);
 }

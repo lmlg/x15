@@ -201,6 +201,7 @@ test_cap_receiver (void *arg)
   vm_page_unref (page);
   cap_base_rel (data->ch);
 
+  // Test that we receive an alert on a channel closed.
   error = cap_recv_alert (flow, &vars->alert, 0, &vars->mdata);
   assert (! error);
   assert (vars->mdata.task_id == 0);
