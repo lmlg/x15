@@ -101,8 +101,7 @@ spinlock_unlock_common (struct spinlock *lock)
 static inline bool
 spinlock_locked (const struct spinlock *lock)
 {
-  uint32_t value = atomic_load_rlx (&lock->value);
-  return (value != SPINLOCK_UNLOCKED);
+  return (atomic_load_rlx (&lock->value) != SPINLOCK_UNLOCKED);
 }
 
 #ifdef SPINLOCK_TRACK_OWNER

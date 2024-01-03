@@ -55,22 +55,26 @@ user_iov_next (struct ipc_iov_iter *it, int check, int *errp)
     {
       if (it->head.iov_len)
         return (&it->head);
-      else if (it->cur < it->end)
-        {
-          _Auto iov = it->begin + it->cur;
-          if (check && (!user_check_range (iov, sizeof (*iov)) ||
-                        !user_check_range (iov->iov_base, iov->iov_len)))
-            {
-              *errp = -EFAULT;
-              return (NULL);
-            }
-
-          it->head = *iov;
-          ++it->cur;
-        }
-      else
+      else if (it->cur >= it->end)
         return (NULL);
+
+      _Auto iov = it->begin + it->cur;
+      if (check && !user_check_range (iov->iov_base, iov->iov_len))
+        {
+          *errp = -EFAULT;
+          return (NULL);
+        }
+
+      it->head = *iov;
+      ++it->cur;
     }
+}
+
+static bool
+user_check_iov_iter (struct ipc_iov_iter *iov)
+{
+  return (iov->begin == &iov->head ||
+          user_check_range (iov->begin, iov->end * sizeof (*iov->begin)));
 }
 
 ssize_t
@@ -81,6 +85,9 @@ user_copyv_impl (struct ipc_iov_iter *dst,
   int error = unw_fixup_save (&fixup);
   if (unlikely (error))
     return (-error);
+  else if ((to_user && !user_check_iov_iter (dst)) ||
+           (!to_user && !user_check_iov_iter (src)))
+    return (-EFAULT);
 
   for (ssize_t ret = 0 ; ; )
     {
