@@ -603,6 +603,13 @@ int
         cap_alert_type(alert) = CAP_ALERT_USER;
         cap_fill_ids (&alert->thread_id, &alert->task_id, thread_self ());
         alert->tag = tag;
+
+        /*
+         * Allocating an alert temporarily drops the flow lock. Since a
+         * receiver could have been added in the meantime, we need to
+         * check again before returning.
+         */
+        cap_recv_wakeup_fast (flow);
         return (0);
       }
 
@@ -659,9 +666,6 @@ cap_iters_copy (struct cap_iters *dst, const struct cap_iters *src)
   d->type.begin = s->type.begin;   \
   d->type.cur = s->type.cur;   \
   d->type.end = s->type.end
-
-  for (uint32_t i = src->iov.cache_idx; i < IPC_IOV_ITER_CACHE_SIZE; ++i)
-    dst->iov.cache[i] = src->iov.cache[i];
 
   dst->iov.cache_idx = src->iov.cache_idx;
   dst->iov.head = src->iov.head;

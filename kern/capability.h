@@ -252,6 +252,7 @@ int cap_send_alert (struct cap_base *cap, const void *buf,
 #define cap_send_alert(cap, buf, flags, prio)   \
   (cap_send_alert) (CAP (cap), buf, flags, prio)
 
+// Add and remove a port to/from a flow.
 int cap_flow_add_port (struct cap_flow *flow, void *stack, size_t size,
                        struct ipc_msg *msg, struct ipc_msg_data *mdata,
                        struct cap_thread_info *info);
