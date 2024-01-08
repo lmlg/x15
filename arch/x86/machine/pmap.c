@@ -1619,10 +1619,10 @@ pmap_update (struct pmap *pmap)
       assert (!oplist->pmap);
       return (0);
     }
+  else if (!oplist->nr_ops)
+    return (0);
 
-  assert (oplist->nr_ops);
   int error = 0;
-
   if (! pmap_do_remote_updates)
     {
       uint32_t nr_mappings =

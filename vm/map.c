@@ -63,6 +63,8 @@ struct vm_map_fork_buf
   int prot;
 };
 
+#define VM_MAP_PMAP_FLAGS   (PMAP_PEF_GLOBAL | PMAP_IGNORE_ERRORS)
+
 /*
  * Mapping request.
  *
@@ -147,6 +149,14 @@ vm_map_entry_destroy (struct vm_map_entry *entry, bool clear)
 {
   vm_map_entry_free_obj (entry, clear);
   kmem_cache_free (&vm_map_entry_cache, entry);
+}
+
+static void
+vm_map_entry_list_destroy (struct list *list, bool clear)
+{
+  list_for_each_safe (list, ex, tmp)
+    vm_map_entry_destroy (list_entry (ex, struct vm_map_entry,
+                                      list_node), clear);
 }
 
 static inline int
@@ -551,8 +561,6 @@ vm_map_clip_end (struct vm_map *map, struct vm_map_entry *entry,
   vm_map_link (map, new_entry, next);
 }
 
-#define VM_MAP_PMAP_FLAGS   (PMAP_PEF_GLOBAL | PMAP_IGNORE_ERRORS)
-
 static int
 vm_map_remove_impl (struct vm_map *map, uintptr_t start,
                     uintptr_t end, struct list *list, bool clear)
@@ -620,9 +628,7 @@ vm_map_remove (struct vm_map *map, uintptr_t start, uintptr_t end)
 
   int error = vm_map_remove_impl (map, start, end, &entries, true);
   if (! error)
-    list_for_each_safe (&entries, ex, tmp)
-      vm_map_entry_destroy (list_entry (ex, struct vm_map_entry,
-                                        list_node), true);
+    vm_map_entry_list_destroy (&entries, true);
 
   return (error);
 }
@@ -734,11 +740,7 @@ vm_map_protect (struct vm_map *map, uintptr_t start, uintptr_t end, int prot)
   struct list dead;
   list_init (&dead);
   int error = vm_map_protect_impl (map, start, end, prot, &dead);
-
-  list_for_each_safe (&dead, nd, tmp)
-    vm_map_entry_destroy (list_entry (nd, struct vm_map_entry,
-                                      list_node), false);
-
+  vm_map_entry_list_destroy (&dead, false);
   return (error);
 }
 
@@ -1348,7 +1350,6 @@ static int
 vm_map_iter_cleanup (struct vm_map *map, struct ipc_vme_iter *it,
                      uint32_t ix, int error)
 {
-  bool changed = false;
   for (; it->cur != ix; --it->cur)
     {
       _Auto page = it->begin + it->cur - 1;
@@ -1357,17 +1358,12 @@ vm_map_iter_cleanup (struct vm_map *map, struct ipc_vme_iter *it,
 
       list_init (&entries);
       vm_map_remove_impl (map, start, end, &entries, false);
-      list_for_each_safe (&entries, ex, tmp)
-        vm_map_entry_destroy (list_entry (ex, struct vm_map_entry,
-                                          list_node), true);
+      vm_map_entry_list_destroy (&entries, true);
 
-      pmap_remove_range (map->pmap, start, end,
-                         PMAP_PEF_GLOBAL | PMAP_IGNORE_ERRORS);
-      changed = true;
+      pmap_remove_range (map->pmap, start, end, VM_MAP_PMAP_FLAGS);
     }
 
-  if (changed)
-    pmap_update (map->pmap);
+  pmap_update (map->pmap);
   return (-error);
 }
 

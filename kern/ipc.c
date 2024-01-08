@@ -317,14 +317,17 @@ ipc_cspace_guard_fini (struct adaptive_lock **lockp)
     adaptive_lock_release (*lockp);
 }
 
-static void
-ipc_cap_iter_cleanup (struct cspace *sp, struct ipc_cap_iter *it, uint32_t idx)
+static int
+ipc_cap_iter_cleanup (struct cspace *sp, struct ipc_cap_iter *it,
+                      uint32_t idx, int error)
 {
   for (; it->cur != idx; --it->cur)
     {
       _Auto mp = it->begin + it->cur - 1;
       cspace_rem_locked (sp, mp->cap);
     }
+
+  return (error);
 }
 
 static int
@@ -362,20 +365,14 @@ ipc_cap_copy_impl (struct task *r_task, struct ipc_cap_iter *r_it,
       _Auto cap = cspace_get (in_cs, capx);
 
       if (unlikely (! cap))
-        {
-          ipc_cap_iter_cleanup (out_cs, out_it, prev);
-          return (-EBADF);
-        }
+        return (ipc_cap_iter_cleanup (out_cs, out_it, prev, -EBADF));
 
       _Auto outp = out_it->begin + out_it->cur;
       capx = cspace_add_free_locked (out_cs, cap, outp->flags);
       cap_base_rel (cap);
 
       if (unlikely (capx < 0))
-        {
-          ipc_cap_iter_cleanup (out_cs, out_it, prev);
-          return (capx);
-        }
+        return (ipc_cap_iter_cleanup (out_cs, out_it, prev, capx));
 
       outp->cap = capx;
     }

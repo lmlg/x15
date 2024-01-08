@@ -128,6 +128,9 @@
   #endif
 #endif
 
+// Standard offsetof.
+#define OFFSETOF   __builtin_offsetof
+
 // Type inference.
 #define _Auto   __auto_type
 

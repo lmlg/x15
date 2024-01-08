@@ -82,10 +82,10 @@ struct cap_kern_alert
 static_assert (sizeof (struct cap_kern_alert) <= CAP_ALERT_SIZE,
                "struct cap_kern_alert is too big");
 
-static_assert (__builtin_offsetof (struct cap_kern_alert, intr.irq) ==
-               __builtin_offsetof (struct cap_kern_alert, thread_id) &&
-               __builtin_offsetof (struct cap_kern_alert, thread_id) ==
-               __builtin_offsetof (struct cap_kern_alert, task_id),
+static_assert (OFFSETOF (struct cap_kern_alert, intr.irq) ==
+               OFFSETOF (struct cap_kern_alert, thread_id) &&
+               OFFSETOF (struct cap_kern_alert, thread_id) ==
+               OFFSETOF (struct cap_kern_alert, task_id),
                "invalid layout for cap_kern_alert");
 
 struct cap_base

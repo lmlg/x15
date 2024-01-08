@@ -58,7 +58,7 @@ futex_td_init (struct futex_td *td)
 static_assert (sizeof (struct futex_robust_list) == 16,
                "invalid size for futex_robust_list");
 
-static_assert (__builtin_offsetof (struct futex_robust_list, next) == 8,
+static_assert (OFFSETOF (struct futex_robust_list, next) == 8,
                "invalid layout for futex_robust_list");
 
 /*

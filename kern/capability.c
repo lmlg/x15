@@ -48,7 +48,7 @@ struct cap_alert
     };
 };
 
-#define CAP_F(name)   __builtin_offsetof (struct ipc_msg_data, name)
+#define CAP_F(name)   OFFSETOF (struct ipc_msg_data, name)
 
 static_assert (CAP_F (caps_recv) - CAP_F (bytes_recv) ==
                CAP_F (caps_sent) - CAP_F (bytes_sent) &&
@@ -921,7 +921,7 @@ cap_flow_rem_port (struct cap_flow *flow, uintptr_t stack)
 
   // Unmap the stack if the user didn't specify one.
   int error = stack != ~(uintptr_t)0 ? 0 :
-              vm_map_remove (vm_map_self (), entry->ctx[0], entry->size);
+              vm_map_remove (vm_map_self (), stack, entry->size);
 
   if (! error)
     kmem_cache_free (&cap_port_cache, entry);
