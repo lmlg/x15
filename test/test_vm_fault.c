@@ -134,7 +134,7 @@ test_vm_fault_thread (void *arg __unused)
     void *buf;
     error = vm_map_anon_alloc (&buf, map, PAGE_SIZE * 2);
     assert (! error);
-    // Makre sure a physical page is allocated.
+    // Make sure a physical page is allocated.
     atomic_store_seq ((int *)buf, 0);
 
     struct vm_map *fmap;

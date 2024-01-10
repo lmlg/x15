@@ -1065,12 +1065,20 @@ cap_unregister_impl (struct cap_flow *flow, int type,
 int
 cap_intr_unregister (struct cap_flow *flow, uint32_t irq)
 {
-  CPU_INTR_GUARD ();
+  cpu_flags_t flags;
   struct cap_alert_async *entry;
+
+  cpu_intr_save (&flags);
   int error = cap_unregister_impl (flow, CAP_ALERT_INTR, irq, &entry);
 
   if (! error)
-    cap_intr_rem (irq, &entry->xlink);
+    {
+      cap_intr_rem (irq, &entry->xlink);
+      cpu_intr_restore (flags);
+      kmem_cache_free (&cap_misc_cache, entry);
+    }
+  else
+    cpu_intr_restore (flags);
 
   return (error);
 }
@@ -1127,8 +1135,10 @@ cap_task_thread_unregister (struct cap_flow *flow, int type,
 
   if (! error)
     {
-      SPINLOCK_GUARD (&outp->lock);
+      spinlock_lock (&outp->lock);
       list_remove (&entry->xlink);
+      spinlock_unlock (&outp->lock);
+      kmem_cache_free (&cap_misc_cache, entry);
     }
 
   return (error);

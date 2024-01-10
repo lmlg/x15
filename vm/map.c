@@ -1201,18 +1201,10 @@ vm_map_anon_alloc (void **outp, struct vm_map *map, size_t size)
   return (error);
 }
 
-static void
-vm_map_destroy_impl (struct vm_map *map)
-{
-  rbtree_for_each_remove (&map->entry_tree, entry, tmp)
-    vm_map_entry_destroy (rbtree_entry (entry, struct vm_map_entry,
-                                        tree_node), true);
-}
-
 void
 vm_map_destroy (struct vm_map *map)
 {
-  vm_map_destroy_impl (map);
+  vm_map_entry_list_destroy (&map->entry_list, true);
   vm_object_unref (map->priv_cache);
   kmem_cache_free (&vm_map_cache, map);
 }
