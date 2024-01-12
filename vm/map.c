@@ -821,7 +821,6 @@ vm_map_bootstrap (void)
 }
 
 INIT_OP_DEFINE (vm_map_bootstrap,
-                INIT_OP_DEP (mutex_setup, true),
                 INIT_OP_DEP (kmem_bootstrap, true),
                 INIT_OP_DEP (thread_bootstrap, true));
 

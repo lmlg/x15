@@ -1115,11 +1115,6 @@ cap_register_task_thread (struct cap_flow *flow, struct kuid_head *kuid,
 
   spinlock_lock (&outp->lock);
   list_insert_tail (&outp->subs, &ap->xlink);
-  if (atomic_load_rlx (&kuid->nr_refs) == 1)
-    {
-      pqueue_insert (&flow->pending_alerts, &ap->base.pnode);
-      cap_recv_wakeup_fast (flow);
-    }
 
   spinlock_unlock (&outp->lock);
   spinlock_unlock (&flow->lock);
