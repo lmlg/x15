@@ -52,6 +52,7 @@
 #include <vm/kmem.h>
 #include <vm/map.h>
 #include <vm/page.h>
+#include <vm/rmap.h>
 
 // Properties of a page translation level.
 struct pmap_pt_level
@@ -1270,6 +1271,19 @@ pmap_enter_local (struct pmap *pmap, uintptr_t va, phys_addr_t pa,
            pmap_pte_valid (*pte))
     return (0);
 
+  if (! is_kernel)
+    {
+      _Auto entry = vm_rmap_entry_create ();
+      if (! entry)
+        return (ENOMEM);
+
+      _Auto page = vm_page_lookup (pa);
+      assert (page);
+
+      SPINLOCK_GUARD (&page->rmap_lock);
+      vm_rmap_add (&page->node, entry, pte);
+    }
+
   assert (!pmap_pte_valid (*pte));
   pte_bits = (is_kernel ? PMAP_PTE_G : PMAP_PTE_US) |
              ((flags & PMAP_SET_COW) ? PMAP_XBIT0 : 0) |
@@ -1341,7 +1355,7 @@ pmap_enter (struct pmap *pmap, uintptr_t va, phys_addr_t pa,
 }
 
 static void
-pmap_remove_local_single (struct pmap *pmap, uintptr_t va)
+pmap_remove_local_single (struct pmap *pmap, uintptr_t va, bool is_kernel)
 {
   uint32_t level = PMAP_NR_LEVELS - 1;
   pmap_pte_t *pte, *ptp = pmap_get_root_ptp (pmap, cpu_id ());
@@ -1360,9 +1374,20 @@ pmap_remove_local_single (struct pmap *pmap, uintptr_t va)
       ptp = pmap_pte_next (*pte);
     }
 
-  phys_addr_t prev = *pte;
-  if (unlikely (prev & PMAP_XBIT0))
-    vm_page_unref (vm_page_lookup (prev & PMAP_PA_MASK));
+  if (! is_kernel)
+    { // Remove RMAP entry for the PTE.
+      _Auto prev = *pte;
+      _Auto page = vm_page_lookup (prev & PMAP_PA_MASK);
+
+      assert (page);
+      spinlock_lock (&page->rmap_lock);
+      vm_rmap_del (&page->node, pte);
+      spinlock_unlock (&page->rmap_lock);
+
+      // If the page is COW, remove a reference.
+      if (unlikely (prev & PMAP_XBIT0))
+        vm_page_unref (page);
+    }
 
   pmap_pte_clear (pte);
 }
@@ -1370,8 +1395,9 @@ pmap_remove_local_single (struct pmap *pmap, uintptr_t va)
 static void
 pmap_remove_local (struct pmap *pmap, uintptr_t start, uintptr_t end)
 {
+  bool is_kernel = pmap == pmap_get_kernel_pmap ();
   for (; start < end; start += PAGE_SIZE)
-    pmap_remove_local_single (pmap, start);
+    pmap_remove_local_single (pmap, start, is_kernel);
 }
 
 static bool

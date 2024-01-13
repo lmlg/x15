@@ -35,6 +35,7 @@
 #include <kern/list.h>
 #include <kern/log2.h>
 #include <kern/macros.h>
+#include <kern/spinlock_types.h>
 #include <kern/stream.h>
 
 #include <machine/page.h>
@@ -96,6 +97,8 @@ struct vm_page
   // VM object back reference.
   struct vm_object *object;
   uint64_t offset;
+  // RMAP-specific members.
+  struct spinlock rmap_lock;
 };
 
 static inline uint16_t

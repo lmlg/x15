@@ -187,7 +187,11 @@ void
 vm_page_set_type (struct vm_page *page, uint32_t order, uint16_t type)
 {
   for (uint32_t i = 0; i < (1u << order); i++)
-    page[i].type = type;
+    {
+      page[i].type = type;
+      spinlock_init (&page[i].rmap_lock);
+      list_init (&page[i].node);
+    }
 }
 
 static void
