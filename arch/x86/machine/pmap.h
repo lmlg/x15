@@ -366,11 +366,11 @@ void pmap_ipc_pte_set (struct thread_pmap_data *pd,
                        uintptr_t va, phys_addr_t pa);
 
 // Put back the special PTE.
-void pmap_ipc_pte_put (struct thread_pmap_data *pd);
-
-// Handle a context switch for thread-specific pmap data.
-void pmap_ipc_pte_context_switch (struct thread_pmap_data *prev,
-                                  struct thread_pmap_data *next);
+static inline void
+pmap_ipc_pte_put (struct thread_pmap_data *pd)
+{
+  pd->pte = NULL;
+}
 
 static inline void
 pmap_ipc_pte_save (struct thread_pmap_data *pd, uint64_t *prev)

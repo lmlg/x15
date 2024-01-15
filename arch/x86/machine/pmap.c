@@ -1749,23 +1749,6 @@ pmap_ipc_pte_set (struct thread_pmap_data *pd, uintptr_t va, phys_addr_t pa)
 }
 
 void
-pmap_ipc_pte_put (struct thread_pmap_data *pd)
-{
-  pd->pte = NULL;
-}
-
-void
-pmap_ipc_pte_context_switch (struct thread_pmap_data *prev,
-                             struct thread_pmap_data *next)
-{
-  for (size_t i = 0; i < THREAD_NR_PMAP_DATA; ++i, ++prev, ++next)
-    {
-      pmap_ipc_pte_save (prev, &prev->prev);
-      pmap_ipc_pte_load (next, next->prev);
-    }
-}
-
-void
 pmap_load (struct pmap *pmap)
 {
   assert (!cpu_intr_enabled ());

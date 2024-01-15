@@ -1,4 +1,4 @@
-X15 is an open source real-time microkernel intended to provide a performant
+X15 is a free real-time microkernel intended to provide a performant
 and scalable environment for cache-coherent multiprocessor machines.
 
 The doc/intro.9.txt file is the starting page of the kernel manual, where
@@ -7,4 +7,4 @@ the coding style, can be found.
 
 See https://www.sceen.net/x15/.
 
-Bug reports should be sent to rbraun@sceen.net.
+Bug reports should be sent to rbraun@sceen.net and/or avarzille@riseup.net.

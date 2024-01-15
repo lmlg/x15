@@ -43,23 +43,18 @@ vm_rmap_entry_create (void)
 void
 vm_rmap_del (struct list *list, void *pte)
 {
-  rcu_read_enter ();
-
   struct vm_rmap_entry *entry;
   list_rcu_for_each_entry (list, entry, link)
     if (pte == entry->pte)
       {
         list_rcu_remove (&entry->link);
-        rcu_read_leave ();
         rcu_defer (&entry->work);
         return;
       }
-
-  rcu_read_leave ();
 }
 
 bool
-vm_map_test_clr (struct list *list, uintptr_t bits)
+vm_rmap_test_clr (struct list *list, uintptr_t bits)
 {
   RCU_GUARD ();
 

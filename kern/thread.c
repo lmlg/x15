@@ -627,6 +627,17 @@ thread_runq_guard_fini (struct thread_runq_guard_t *guard)
 #define thread_runq_guard   \
   thread_runq_guard_t CLEANUP (thread_runq_guard_fini) __unused
 
+static void
+thread_pmap_context_switch (struct thread_pmap_data *prev,
+                            struct thread_pmap_data *next)
+{
+  for (size_t i = 0; i < THREAD_NR_PMAP_DATA; ++i)
+    {
+      pmap_ipc_pte_save (prev, &prev->prev);
+      pmap_ipc_pte_load (next, next->prev);
+    }
+}
+
 static struct thread_runq*
 thread_runq_schedule (struct thread_runq *runq)
 {
@@ -663,7 +674,7 @@ thread_runq_schedule (struct thread_runq *runq)
     {
       thread_runq_schedule_unload (prev);
       rcu_report_context_switch (thread_rcu_reader (prev));
-      pmap_ipc_pte_context_switch (prev->pmap_data, next->pmap_data);
+      thread_pmap_context_switch (prev->pmap_data, next->pmap_data);
       spinlock_transfer_owner (&runq->lock, next);
 
       /*

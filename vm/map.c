@@ -941,8 +941,8 @@ vm_map_fault_handle_cow (uintptr_t addr, struct vm_page **pgp,
    * address may not be mapped.
    */
 
-  struct thread_pmap_data *ipc_dst = pmap_ipc_pte_get_idx (0),
-                          *ipc_src = pmap_ipc_pte_get_idx (1);
+  _Auto ipc_dst = pmap_ipc_pte_get_idx (0);
+  _Auto ipc_src = pmap_ipc_pte_get_idx (1);
 
   pmap_ipc_pte_set (ipc_dst, va, vm_page_to_pa (p2));
   pmap_ipc_pte_set (ipc_src, va + PAGE_SIZE, vm_page_to_pa (page));
