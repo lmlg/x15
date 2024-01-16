@@ -1473,9 +1473,18 @@ pmap_protect_single (struct pmap_cpu_table *table, uintptr_t addr,
     }
 
   assert (pmap_pte_valid (*pte));
+  phys_addr_t pa = *pte;
+  if (!is_kernel && (prot & VM_PROT_WRITE) &&
+      vm_page_is_cow (vm_page_lookup (pa)))
+    /*
+     * For COW pages, don't do anything when changing the protection to write,
+     * so that the normal page fault path handles this case.
+     */
+    return (0);
+
   pmap_pte_t bits = (is_kernel ? PMAP_PTE_G : PMAP_PTE_US) |
                     pmap_prot_table[prot & VM_PROT_ALL];
-  pmap_pte_set (pte, *pte, bits, pt_level);
+  pmap_pte_set (pte, pa, bits, pt_level);
   if (prot == VM_PROT_NONE)
     *pte &= ~PMAP_PTE_P;
 
