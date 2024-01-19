@@ -109,16 +109,24 @@ vm_object_swap (struct vm_object *object, struct vm_page *page,
   vm_page_ref (page);
   mutex_lock (&object->lock);
 
+  struct vm_page *prev = NULL;
   void **slot;
   int error = rdxtree_insert_slot (&object->pages, vm_page_btop (offset),
                                    page, &slot);
 
   if (error)
     {
-      if (error != EBUSY || rdxtree_load_slot (slot) != expected)
+      if (error != EBUSY || atomic_load_rlx (slot) != expected)
         goto error;
 
-      vm_page_unref (rdxtree_replace_slot (slot, page));
+      /*
+       * Replace the page slot. Also, if this is the page's last
+       * reference, free it after the critical section.
+       */
+
+      prev = rdxtree_replace_slot (slot, page);
+      if (!vm_page_unref_nofree (prev))
+        prev = NULL;
     }
 
   vm_page_link (page, object, offset);
@@ -127,6 +135,9 @@ vm_object_swap (struct vm_object *object, struct vm_page *page,
   vm_object_ref (object);
 
   mutex_unlock (&object->lock);
+  if (prev)
+    vm_page_free (prev, 0, VM_PAGE_SLEEP);
+
   return (0);
 
 error:
@@ -151,16 +162,21 @@ vm_object_remove (struct vm_object *object, uint64_t start, uint64_t end)
     MUTEX_GUARD (&object->lock);
     for (uint64_t offset = start; offset < end; offset += PAGE_SIZE)
       {
-        struct vm_page *page = rdxtree_remove (&object->pages,
-                                               vm_page_btop (offset));
-
-        if (! page)
+        void *node;
+        int idx;
+        void **slot = rdxtree_lookup_common (&object->pages,
+                                             vm_page_btop (offset), true,
+                                             &node, &idx);
+        if (! slot)
           continue;
 
-        vm_page_unlink (page);
-        if (vm_page_unref_nofree (page))
-          list_insert_tail (&pages, &page->node);
+        struct vm_page *page = atomic_load_rlx (slot);
+        if (!vm_page_unref_nofree (page))
+          continue;
 
+        rdxtree_remove_node_idx (&object->pages, slot, node, idx);
+        vm_page_unlink (page);
+        list_insert_tail (&pages, &page->node);
         assert (object->nr_pages != 0);
         ++cnt;
       }
@@ -170,6 +186,17 @@ vm_object_remove (struct vm_object *object, uint64_t start, uint64_t end)
 
   vm_object_unref_many (object, cnt);
   vm_page_list_free (&pages);
+}
+
+void
+vm_object_detach (struct vm_object *object, uint64_t offset)
+{
+  MUTEX_GUARD (&object->lock);
+  if (rdxtree_remove (&object->pages, vm_page_btop (offset)))
+    {
+      --object->nr_pages;
+      vm_object_unref (object);
+    }
 }
 
 struct vm_page*

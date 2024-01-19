@@ -497,6 +497,13 @@ vm_page_wakeup (struct vm_page_bucket *bucket, uint32_t order)
   return (false);
 }
 
+void
+vm_page_detach (struct vm_page *page)
+{
+  vm_object_detach (page->object, page->offset);
+  vm_page_unlink (page);
+}
+
 static void
 vm_page_zone_free (struct vm_page_zone *zone, struct vm_page *page,
                    uint32_t order, uint32_t flags)

@@ -1273,20 +1273,18 @@ pmap_enter_local (struct pmap *pmap, uintptr_t va, phys_addr_t pa,
 
   if (! is_kernel)
     {
-      _Auto entry = vm_rmap_entry_create ();
-      if (! entry)
-        return (ENOMEM);
-
       _Auto page = vm_page_lookup (pa);
       assert (page);
+      error = vm_rmap_page_link (page, pte);
 
-      SPINLOCK_GUARD (&page->rmap_lock);
-      vm_rmap_add (&page->node, entry, pte);
+      if (error)
+        return (error);
+
+      vm_page_ref (page);
     }
 
   assert (!pmap_pte_valid (*pte));
   pte_bits = (is_kernel ? PMAP_PTE_G : PMAP_PTE_US) |
-             ((flags & PMAP_SET_COW) ? PMAP_XBIT0 : 0) |
              pmap_prot_table[prot & VM_PROT_ALL];
   pmap_pte_set (pte, pa, pte_bits, &pmap_pt_levels[0]);
   return (0);
@@ -1384,9 +1382,7 @@ pmap_remove_local_single (struct pmap *pmap, uintptr_t va, bool is_kernel)
       vm_rmap_del (&page->node, pte);
       spinlock_unlock (&page->rmap_lock);
 
-      // If the page is COW, remove a reference.
-      if (unlikely (prev & PMAP_XBIT0))
-        vm_page_unref (page);
+      vm_page_unref (page);
     }
 
   pmap_pte_clear (pte);

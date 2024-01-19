@@ -222,6 +222,9 @@ struct vm_page* vm_page_alloc (uint32_t order, uint32_t selector,
  */
 void vm_page_free (struct vm_page *page, uint32_t order, uint32_t flags);
 
+// Detach a page from the containing VM object, if any.
+void vm_page_detach (struct vm_page *page);
+
 // Deallocate a list of pages.
 void vm_page_list_free (struct list *pages);
 
@@ -256,7 +259,12 @@ static inline void
 vm_page_unref (struct vm_page *page)
 {
   if (vm_page_unref_nofree (page))
-    vm_page_free (page, 0, page->type == VM_PAGE_OBJECT ? VM_PAGE_SLEEP : 0);
+    {
+      int flags = page->type == VM_PAGE_OBJECT ? VM_PAGE_SLEEP : 0;
+      if (flags == VM_PAGE_SLEEP && unlikely (page->object))
+        vm_page_detach (page);
+      vm_page_free (page, 0, flags);
+    }
 }
 
 static inline int

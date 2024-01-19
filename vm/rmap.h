@@ -38,6 +38,8 @@ struct vm_rmap_entry
   void *pte;
 };
 
+struct vm_page;
+
 // Allocate a new RMAP entry.
 struct vm_rmap_entry* vm_rmap_entry_create (void);
 
@@ -48,6 +50,9 @@ vm_rmap_add (struct list *list, struct vm_rmap_entry *entry, void *pte)
   entry->pte = pte;
   list_rcu_insert_tail (list, &entry->link);
 }
+
+// Link a page to a PTE.
+int vm_rmap_page_link (struct vm_page *page, void *pte);
 
 /*
  * Remove an RMAP corresponding to a PTE.

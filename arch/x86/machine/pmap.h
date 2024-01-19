@@ -174,7 +174,6 @@
 // Mapping creation flags.
 #define PMAP_PEF_GLOBAL      0x1   // Operate on all processors.
 #define PMAP_IGNORE_ERRORS   0x2   // Ignore errors when updating.
-#define PMAP_SET_COW         0x4   // Set the page as COW.
 
 typedef phys_addr_t pmap_pte_t;
 

@@ -958,7 +958,6 @@ vm_map_fault_handle_cow (uintptr_t addr, struct vm_page **pgp,
 
   if (likely (ret == 0))
     {
-      vm_page_ref (p2);
       *pgp = p2;
       // Removing the physical mapping will unreference the source page.
       pmap_remove (map->pmap, addr, 0);
@@ -999,14 +998,12 @@ vm_map_fault_soft (struct vm_map *map, struct vm_object *obj, uint64_t off,
       in_obj = false;
     }
 
-  if ((prot & VM_PROT_WRITE) && vm_page_is_cow (page) &&
-      vm_map_fault_handle_cow (addr, &page, map, in_obj) != 0)
-    goto skip;
-  else if (pmap_enter (map->pmap, addr, vm_page_to_pa (page),
-                       prot, PMAP_IGNORE_ERRORS) == 0)
+  if (((prot & VM_PROT_WRITE) == 0 || !vm_page_is_cow (page) ||
+       vm_map_fault_handle_cow (addr, &page, map, in_obj) == 0) &&
+      pmap_enter (map->pmap, addr, vm_page_to_pa (page),
+                  prot, PMAP_IGNORE_ERRORS) == 0)
     pmap_update (map->pmap);
 
-skip:
   vm_page_unref (page);
   atomic_add_rlx (&map->soft_faults, 1);
   return (true);
@@ -1243,7 +1240,7 @@ vm_map_fork_apply_enter (struct pmap *pmap, struct vm_map_fork_buf *buf, int n)
 
       int error = pmap_enter (pmap, va, vm_page_to_pa (page),
                               prot & ~VM_PROT_WRITE,
-                              PMAP_SET_COW | PMAP_PEF_GLOBAL);
+                              PMAP_PEF_GLOBAL);
       if (error)
         return (error);
 

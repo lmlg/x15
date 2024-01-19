@@ -17,9 +17,11 @@
  */
 
 #include <kern/kmem.h>
+#include <kern/spinlock.h>
 
 #include <machine/pmap.h>
 
+#include <vm/page.h>
 #include <vm/rmap.h>
 
 static struct kmem_cache vm_rmap_cache;
@@ -38,6 +40,18 @@ vm_rmap_entry_create (void)
     work_init (&ret->work, vm_rmap_entry_fini);
 
   return (ret);
+}
+
+int
+vm_rmap_page_link (struct vm_page *page, void *pte)
+{
+  _Auto entry = vm_rmap_entry_create ();
+  if (! entry)
+    return (ENOMEM);
+
+  SPINLOCK_GUARD (&page->rmap_lock);
+  vm_rmap_add (&page->node, entry, pte);
+  return (0);
 }
 
 void

@@ -54,9 +54,7 @@
 // Allocation bitmap size in bits.
 #define RDXTREE_BM_SIZE   (sizeof (rdxtree_bm_t) * CHAR_BIT)
 
-/*
- * Empty/full allocation bitmap words.
- */
+// Empty/full allocation bitmap words.
 #define RDXTREE_BM_EMPTY    ((rdxtree_bm_t)0)
 #define RDXTREE_BM_FULL \
   ((~(rdxtree_bm_t)0) >> (RDXTREE_BM_SIZE - RDXTREE_RADIX_SIZE))
@@ -645,7 +643,7 @@ rdxtree_remove (struct rdxtree *tree, rdxtree_key_t key)
 
 void*
 rdxtree_lookup_common (const struct rdxtree *tree, rdxtree_key_t key,
-                       bool get_slot)
+                       bool get_slot, void **nodep, int *idxp)
 {
   struct rdxtree_node *node;
   uint16_t height;
@@ -684,6 +682,8 @@ rdxtree_lookup_common (const struct rdxtree *tree, rdxtree_key_t key,
     }
   while (height > 0);
 
+  *nodep = prev;
+  *idxp = index;
   return (node && get_slot ? (void *)&prev->entries[index] : node);
 }
 
@@ -698,6 +698,24 @@ rdxtree_replace_slot (void **slot, void *ptr)
   assert (rdxtree_alignment_valid (old));
   rcu_store (slot, ptr);
   return (old);
+}
+
+void
+rdxtree_remove_node_idx (struct rdxtree *tree, void **slot,
+                         void *node, int idx)
+{
+  if (slot == &tree->root)
+    {
+      rcu_store (slot, NULL);
+      return;
+    }
+
+  struct rdxtree_node *prev = node;
+  if (rdxtree_key_alloc_enabled (tree))
+    rdxtree_remove_bm_set (prev, idx);
+
+  rdxtree_node_remove (prev, idx);
+  rdxtree_cleanup (tree, prev);
 }
 
 static void*
