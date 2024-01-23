@@ -189,14 +189,21 @@ vm_object_remove (struct vm_object *object, uint64_t start, uint64_t end)
 }
 
 void
-vm_object_detach (struct vm_object *object, uint64_t offset)
+vm_object_detach (struct vm_object *object, struct vm_page *page)
 {
   MUTEX_GUARD (&object->lock);
-  if (rdxtree_remove (&object->pages, vm_page_btop (offset)))
-    {
-      --object->nr_pages;
-      vm_object_unref (object);
-    }
+  void *node;
+  int idx;
+  void **slot = rdxtree_lookup_common (&object->pages,
+                                       vm_page_btop (page->offset), true,
+                                       &node, &idx);
+
+  if (!slot || atomic_load_rlx (slot) != page)
+    return;
+
+  rdxtree_remove_node_idx (&object->pages, slot, node, idx);
+  --object->nr_pages;
+  vm_object_unref (object);
 }
 
 struct vm_page*

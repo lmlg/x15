@@ -1200,6 +1200,7 @@ vm_map_anon_alloc (void **outp, struct vm_map *map, size_t size)
 void
 vm_map_destroy (struct vm_map *map)
 {
+  pmap_destroy (map->pmap);
   vm_map_entry_list_destroy (&map->entry_list, true);
   vm_object_unref (map->priv_cache);
   kmem_cache_free (&vm_map_cache, map);
@@ -1243,8 +1244,6 @@ vm_map_fork_apply_enter (struct pmap *pmap, struct vm_map_fork_buf *buf, int n)
                               PMAP_PEF_GLOBAL);
       if (error)
         return (error);
-
-      vm_page_ref (page);
     }
 
   return (pmap_update (pmap));

@@ -1150,22 +1150,60 @@ pmap_alloc_root (struct pmap_cpu_table *tabp, pmap_pte_t **dptp)
 static void
 pmap_free_root (struct pmap_cpu_table *tabp)
 {
-  vm_page_free (vm_page_lookup (tabp->root_ptp_pa), 0, 0);
+  vm_page_free (vm_page_lookup (tabp->root_ptp_pa & PMAP_PA_MASK), 0, 0);
 }
 
 #endif
+
+static void
+pmap_cpu_table_destroy_level (pmap_pte_t *pte, uint32_t level)
+{
+  _Auto pt_level = &pmap_pt_levels[level];
+  uintptr_t nmax = level == PMAP_NR_LEVELS - 1 ?
+                   pmap_pte_index (PMAP_END_ADDRESS, pt_level) :
+                   pt_level->ptes_per_pt;
+
+  for (uintptr_t i = 0; i < nmax; ++i)
+    {
+      if (!pmap_pte_valid (pte[i]))
+        continue;
+
+      pmap_pte_t *nx = pmap_pte_next (pte[i]);
+      if (pmap_pte_large (pte[i]) || level == 1)
+        {
+          pt_level = &pmap_pt_levels[level - 1];
+          for (uintptr_t j = 0; j < pt_level->ptes_per_pt; ++j)
+            if (pmap_pte_valid (nx[j]))
+              {
+                _Auto page = vm_page_lookup (nx[j] & PMAP_PA_MASK);
+                if (page->type == VM_PAGE_OBJECT)
+                  vm_page_unref (page);
+              }
+        }
+      else
+        pmap_cpu_table_destroy_level (nx, level - 1);
+    }
+}
+
+static void
+pmap_cpu_table_destroy (struct pmap_cpu_table *table)
+{
+  if (!(table->root_ptp_pa & PMAP_XBIT0))
+    {
+      _Auto root = pmap_ptp_from_pa (table->root_ptp_pa);
+      pmap_cpu_table_destroy_level (root, PMAP_NR_LEVELS - 1);
+      pmap_free_root (table);
+    }
+
+  vm_page_list_free (&table->pages);
+}
 
 void
 pmap_destroy (struct pmap *pmap)
 {
   assert (pmap != pmap_get_kernel_pmap ());
   for (uint32_t i = 0; i < cpu_count (); ++i)
-    {
-      _Auto cpu_table = pmap->cpu_tables[i];
-      vm_page_list_free (&cpu_table->pages);
-      if (!(cpu_table->root_ptp_pa & PMAP_XBIT0))
-        pmap_free_root (cpu_table);
-    }
+    pmap_cpu_table_destroy (pmap->cpu_tables[i]);
 
   kmem_cache_free (&pmap_cache, pmap);
 }

@@ -102,7 +102,7 @@ vm_object_insert (struct vm_object *obj, struct vm_page *page, uint64_t off)
  */
 void vm_object_remove (struct vm_object *object, uint64_t start, uint64_t end);
 
-void vm_object_detach (struct vm_object *object, uint64_t offset);
+void vm_object_detach (struct vm_object *object, struct vm_page *page);
 
 /*
  * Look up a page in a VM object.
