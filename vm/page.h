@@ -97,8 +97,8 @@ struct vm_page
   // VM object back reference.
   struct vm_object *object;
   uint64_t offset;
-  // RMAP-specific members.
-  struct spinlock rmap_lock;
+  // RSET-specific members.
+  struct spinlock rset_lock;
 };
 
 static inline uint16_t

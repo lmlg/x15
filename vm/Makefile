@@ -3,4 +3,4 @@ x15_SOURCES-y += \
         vm/map.c \
         vm/object.c \
         vm/page.c \
-        vm/rmap.c
+        vm/rset.c

@@ -52,7 +52,7 @@
 #include <vm/kmem.h>
 #include <vm/map.h>
 #include <vm/page.h>
-#include <vm/rmap.h>
+#include <vm/rset.h>
 
 // Properties of a page translation level.
 struct pmap_pt_level
@@ -1313,7 +1313,7 @@ pmap_enter_local (struct pmap *pmap, uintptr_t va, phys_addr_t pa,
     {
       _Auto page = vm_page_lookup (pa);
       assert (page);
-      error = vm_rmap_page_link (page, pte);
+      error = vm_rset_page_link (page, pte);
 
       if (error)
         return (error);
@@ -1411,14 +1411,14 @@ pmap_remove_local_single (struct pmap *pmap, uintptr_t va, bool is_kernel)
     }
 
   if (! is_kernel)
-    { // Remove RMAP entry for the PTE.
+    { // Remove RSET entry for the PTE.
       _Auto prev = *pte;
       _Auto page = vm_page_lookup (prev & PMAP_PA_MASK);
 
       assert (page);
-      spinlock_lock (&page->rmap_lock);
-      vm_rmap_del (&page->node, pte);
-      spinlock_unlock (&page->rmap_lock);
+      spinlock_lock (&page->rset_lock);
+      vm_rset_del (&page->node, pte);
+      spinlock_unlock (&page->rset_lock);
 
       vm_page_unref (page);
     }

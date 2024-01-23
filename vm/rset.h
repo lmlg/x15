@@ -22,8 +22,8 @@
  * is dirty or has been recently accesed, for instance.
  */
 
-#ifndef VM_RMAP_H
-#define VM_RMAP_H
+#ifndef VM_RSET_H
+#define VM_RSET_H
 
 #include <stdint.h>
 
@@ -31,7 +31,7 @@
 #include <kern/list.h>
 #include <kern/work.h>
 
-struct vm_rmap_entry
+struct vm_rset_entry
 {
   struct list link;
   struct work work;
@@ -40,36 +40,36 @@ struct vm_rmap_entry
 
 struct vm_page;
 
-// Allocate a new RMAP entry.
-struct vm_rmap_entry* vm_rmap_entry_create (void);
+// Allocate a new RSET entry.
+struct vm_rset_entry* vm_rset_entry_create (void);
 
-// Add a new RMAP entry to a list. The caller is responsible for any locking.
+// Add a new RSET entry to a list. The caller is responsible for any locking.
 static inline void
-vm_rmap_add (struct list *list, struct vm_rmap_entry *entry, void *pte)
+vm_rset_add (struct list *list, struct vm_rset_entry *entry, void *pte)
 {
   entry->pte = pte;
   list_rcu_insert_tail (list, &entry->link);
 }
 
 // Link a page to a PTE.
-int vm_rmap_page_link (struct vm_page *page, void *pte);
+int vm_rset_page_link (struct vm_page *page, void *pte);
 
 /*
- * Remove an RMAP corresponding to a PTE.
+ * Remove an RSET corresponding to a PTE.
  * The caller is responsible for any locking.
  */
-void vm_rmap_del (struct list *list, void *pte);
+void vm_rset_del (struct list *list, void *pte);
 
 /*
- * Traverse the RMAP entries in a list, testing for the presence of, and
+ * Traverse the RSET entries in a list, testing for the presence of, and
  * clearing the specified bits. Returns true if any of the bits were present.
  */
-bool vm_rmap_test_clr (struct list *list, uintptr_t bits);
+bool vm_rset_test_clr (struct list *list, uintptr_t bits);
 
 /*
  * This init operation provides :
  *  - module fully initialized
  */
-INIT_OP_DECLARE (vm_rmap_setup);
+INIT_OP_DECLARE (vm_rset_setup);
 
 #endif
