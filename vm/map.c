@@ -920,7 +920,7 @@ vm_map_fault_get_data (struct vm_object *obj, uint64_t off,
 
 static int
 vm_map_fault_handle_cow (uintptr_t addr, struct vm_page **pgp,
-                         struct vm_map *map, bool in_obj)
+                         struct vm_map *map)
 {
   thread_pin ();
   cpu_intr_enable ();
@@ -953,9 +953,7 @@ vm_map_fault_handle_cow (uintptr_t addr, struct vm_page **pgp,
   cpu_intr_disable ();
   thread_unpin ();
 
-  int ret = in_obj ? vm_object_swap (map->priv_cache, p2, page->offset, page) :
-                     vm_object_insert (map->priv_cache, p2, page->offset);
-
+  int ret = vm_object_swap (map->priv_cache, p2, page->offset, page);
   if (likely (ret == 0))
     {
       *pgp = p2;
@@ -975,33 +973,13 @@ static bool
 vm_map_fault_soft (struct vm_map *map, struct vm_object *obj, uint64_t off,
                    uintptr_t addr, int prot)
 {
-  bool in_obj = true;
   _Auto page = vm_object_lookup (obj, off);
   if (! page)
-    {
-      /*
-       * The page wasn't found in the VM object. However, it's possible that
-       * it's resident. This can happen with forked maps or COW pages.
-       */
-
-      if (obj != map->priv_cache)
-        return (false);
-
-      phys_addr_t tmp;
-      if (pmap_extract (map->pmap, addr, &tmp) != 0)
-        return (false);
-
-      page = vm_page_lookup (tmp);
-      if (!vm_page_is_cow (page))
-        return (false);
-
-      in_obj = false;
-    }
-
-  if (((prot & VM_PROT_WRITE) == 0 || !vm_page_is_cow (page) ||
-       vm_map_fault_handle_cow (addr, &page, map, in_obj) == 0) &&
-      pmap_enter (map->pmap, addr, vm_page_to_pa (page),
-                  prot, PMAP_IGNORE_ERRORS) == 0)
+    return (false);
+  else if (((prot & VM_PROT_WRITE) == 0 || !vm_page_is_cow (page) ||
+           vm_map_fault_handle_cow (addr, &page, map) == 0) &&
+           pmap_enter (map->pmap, addr, vm_page_to_pa (page),
+                       prot, PMAP_IGNORE_ERRORS) == 0)
     pmap_update (map->pmap);
 
   vm_page_unref (page);
@@ -1212,54 +1190,6 @@ vm_map_destroy (struct vm_map *map)
 #  error "page buffer size too big"
 #endif
 
-static void
-vm_map_fork_apply_prot (struct pmap *pmap, struct vm_map_fork_buf *buf, int n)
-{
-  for (int i = 0; i < n; ++i)
-    {
-      _Auto page = buf[i].page;
-      int prot = buf[i].prot;
-      uintptr_t va = vm_page_anon_va (page);
-
-      if (prot & VM_PROT_WRITE)
-        pmap_protect (pmap, va, prot & ~VM_PROT_WRITE, PMAP_PEF_GLOBAL);
-
-      vm_page_set_cow (page);
-    }
-
-  pmap_update (pmap);
-}
-
-static int
-vm_map_fork_apply_enter (struct pmap *pmap, struct vm_map_fork_buf *buf, int n)
-{
-  for (int i = 0; i < n; ++i)
-    {
-      _Auto page = buf[i].page;
-      int prot = buf[i].prot;
-      uintptr_t va = vm_page_anon_va (page);
-
-      int error = pmap_enter (pmap, va, vm_page_to_pa (page),
-                              prot & ~VM_PROT_WRITE,
-                              PMAP_PEF_GLOBAL);
-      if (error)
-        return (error);
-    }
-
-  return (pmap_update (pmap));
-}
-
-static int
-vm_map_fork_flush (struct pmap *spmap, struct vm_map *dst,
-                   struct vm_map_fork_buf *buf, int cnt)
-{
-  vm_map_fork_apply_prot (spmap, buf, cnt);
-  int error = vm_map_fork_apply_enter (dst->pmap, buf, cnt);
-  if (error)
-    vm_map_destroy (dst);
-  return (error);
-}
-
 int
 vm_map_fork (struct vm_map **mapp, struct vm_map *src)
 {
@@ -1271,7 +1201,7 @@ vm_map_fork (struct vm_map **mapp, struct vm_map *src)
   _Auto priv = src->priv_cache;
   _Auto pmap = src->pmap;
 
-  SXLOCK_SHGUARD (&src->lock);
+  SXLOCK_EXGUARD (&src->lock);
   MUTEX_GUARD (&priv->lock);   // Prevent modifications to private mappings.
 
   if (vm_map_entry_alloc (&dst->entry_list, src->nr_entries) != 0)
@@ -1304,31 +1234,36 @@ vm_map_fork (struct vm_map **mapp, struct vm_map *src)
 
   struct rdxtree_iter it;
   struct vm_page *page;
-  struct vm_map_fork_buf buf[VM_MAP_FORK_BUFSIZE];
-  int nr_buf = 0;
+  _Auto dst_priv = dst->priv_cache;
 
   rdxtree_for_each (&priv->pages, &it, page)
     {
-      entry = vm_map_lookup_nearest (dst, vm_page_anon_va (page));
+      entry = vm_map_lookup_nearest (src, vm_page_anon_va (page));
       if (!entry || VM_MAP_INHERIT (entry->flags) != VM_INHERIT_COPY)
         continue;
 
-      buf[nr_buf] = (typeof (*buf)) { page, VM_MAP_PROT (entry->flags) };
-      if (++nr_buf == (int)ARRAY_SIZE (buf))
-        {
-          error = vm_map_fork_flush (pmap, dst, buf, nr_buf);
-          if (error)
-            return (error);
-        }
-    }
-
-  if (nr_buf)
-    {
-      error = vm_map_fork_flush (pmap, dst, buf, nr_buf);
+      error = rdxtree_insert (&dst_priv->pages,
+                              vm_page_btop (page->offset), page);
       if (error)
-        return (error);
+        {
+          vm_map_destroy (dst);
+          return (error);
+        }
+
+      vm_page_ref (page);
+      ++dst_priv->nr_pages;
+      vm_object_ref (dst_priv);
+
+      int prot = VM_MAP_PROT (entry->flags);
+      if (prot & VM_PROT_WRITE)
+        pmap_protect (pmap, vm_page_anon_va (page),
+                      prot & ~VM_PROT_WRITE, PMAP_PEF_GLOBAL);
+
+      vm_page_ref (page);
+      vm_page_set_cow (page);
     }
 
+  pmap_update (pmap);
   dst->nr_entries = src->nr_entries;
   return (0);
 }
