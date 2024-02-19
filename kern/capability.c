@@ -163,6 +163,45 @@ cap_thread_create (struct cap_thread **outp, struct thread *thread)
   return (0);
 }
 
+struct cap_flow_guard
+{
+  struct spinlock *lock;
+  cpu_flags_t flags;
+  bool use_flags;
+};
+
+static void
+cap_flow_guard_lock (struct cap_flow_guard *guard)
+{
+  if (guard->use_flags)
+    spinlock_lock_intr_save (guard->lock, &guard->flags);
+  else
+    spinlock_lock (guard->lock);
+}
+
+static struct cap_flow_guard
+cap_flow_guard_make (struct cap_flow *flow)
+{
+  struct cap_flow_guard guard = { .lock = &flow->lock };
+  guard.use_flags = (flow->base.flags & CAP_FLOW_HANDLE_INTR) != 0;
+  cap_flow_guard_lock (&guard);
+  return (guard);
+}
+
+static void
+cap_flow_guard_fini (void *p)
+{
+  struct cap_flow_guard *guard = p;
+  if (guard->use_flags)
+    spinlock_unlock_intr_restore (guard->lock, guard->flags);
+  else
+    spinlock_unlock (guard->lock);
+}
+
+#define CAP_FLOW_LOCK_GUARD(flow)   \
+  CLEANUP (cap_flow_guard_fini) _Auto __unused UNIQ (cfg) =   \
+    cap_flow_guard_make (flow)
+
 static void cap_recv_wakeup_fast (struct cap_flow *);
 
 static void
@@ -186,11 +225,11 @@ cap_channel_fini (struct sref_counter *sref)
   pqueue_node_init (&alert->pnode, CAP_ALERT_CHANNEL_PRIO);
   hlist_node_init (&alert->hnode);
 
-  spinlock_lock (&flow->lock);
+  _Auto guard = cap_flow_guard_make (flow);
   hlist_insert_head (&flow->alloc_alerts, &alert->hnode);
   pqueue_insert (&flow->pending_alerts, &alert->pnode);
   cap_recv_wakeup_fast (flow);
-  spinlock_unlock (&flow->lock);
+  cap_flow_guard_fini (&guard);
 
   cap_base_rel (flow);
 }
@@ -430,12 +469,12 @@ cap_transfer_iters (struct task *task, struct cap_iters *r_it,
 }
 
 static struct cap_alert*
-cap_flow_alloc_alert (struct cap_flow *flow, uint32_t flg)
+cap_flow_alloc_alert (struct cap_flow_guard *guard, uint32_t flg)
 {
-  spinlock_unlock (&flow->lock);
+  cap_flow_guard_fini (guard);
   void *ptr = kmem_cache_alloc2 (&cap_misc_cache, (flg & CAP_ALERT_NONBLOCK) ?
                                                   0 : KMEM_ALLOC_SLEEP);
-  spinlock_lock (&flow->lock);
+  cap_flow_guard_lock (guard);
   return (ptr);
 }
 
@@ -459,45 +498,6 @@ cap_recv_wakeup_fast (struct cap_flow *flow)
   recv->spurious = true;
   thread_wakeup (recv->thread);
 }
-
-struct cap_flow_guard
-{
-  struct spinlock *lock;
-  cpu_flags_t flags;
-  bool use_flags;
-};
-
-static void
-cap_flow_guard_lock (struct cap_flow_guard *guard)
-{
-  if (guard->use_flags)
-    spinlock_lock_intr_save (guard->lock, &guard->flags);
-  else
-    spinlock_lock (guard->lock);
-}
-
-static struct cap_flow_guard
-cap_flow_guard_make (struct cap_flow *flow)
-{
-  struct cap_flow_guard guard = { .lock = &flow->lock };
-  guard.use_flags = (flow->base.flags & CAP_FLOW_HANDLE_INTR) != 0;
-  cap_flow_guard_lock (&guard);
-  return (guard);
-}
-
-static void
-cap_flow_guard_fini (void *p)
-{
-  struct cap_flow_guard *guard = p;
-  if (guard->use_flags)
-    spinlock_unlock_intr_restore (guard->lock, guard->flags);
-  else
-    spinlock_unlock (guard->lock);
-}
-
-#define CAP_FLOW_LOCK_GUARD(flow)   \
-  CLEANUP (cap_flow_guard_fini) _Auto __unused UNIQ (cfg) =   \
-    cap_flow_guard_make (flow)
 
 static struct cap_alert*
 cap_recv_pop_alert (struct cap_flow *flow, void *buf, uint32_t flags,
@@ -638,10 +638,10 @@ int
   struct cap_receiver *recv;
 
   {
-    CAP_FLOW_LOCK_GUARD (flow);
+    CLEANUP (cap_flow_guard_fini) _Auto guard = cap_flow_guard_make (flow);
     if (list_empty (&flow->receivers))
       {
-        _Auto alert = cap_flow_alloc_alert (flow, flags);
+        _Auto alert = cap_flow_alloc_alert (&guard, flags);
         if (! alert)
           return (ENOMEM);
 
@@ -956,7 +956,7 @@ cap_flow_add_port (struct cap_flow *flow, void *stack, size_t size,
 int
 cap_flow_rem_port (struct cap_flow *flow, uintptr_t stack)
 {
-  spinlock_lock (&flow->lock);
+  _Auto guard = cap_flow_guard_make (flow);
   struct cap_port *entry;
   struct slist_node *prev = NULL;
 
@@ -971,12 +971,12 @@ cap_flow_rem_port (struct cap_flow *flow, uintptr_t stack)
 
   if (! entry)
     {
-      spinlock_unlock (&flow->lock);
+      cap_flow_guard_fini (&guard);
       return (ESRCH);
     }
 
   slist_remove (&flow->ports, prev);
-  spinlock_unlock (&flow->lock);
+  cap_flow_guard_fini (&guard);
 
   // Unmap the stack if the user didn't specify one.
   int error = stack != ~(uintptr_t)0 ? 0 :
@@ -1089,17 +1089,17 @@ cap_intr_register (struct cap_flow *flow, uint32_t irq)
       return (error);
     }
 
-  spinlock_lock (&flow->lock);
+  _Auto guard = cap_flow_guard_make (flow);
   if (unlikely (cap_alert_async_find (flow, CAP_ALERT_INTR, irq)))
     {
-      spinlock_unlock (&flow->lock);
+      cap_flow_guard_fini (&guard);
       cap_intr_rem (irq, &ap->xlink);
       kmem_cache_free (&cap_misc_cache, ap);
       return (EALREADY);
     }
 
   hlist_insert_head (&flow->alloc_alerts, &ap->base.hnode);
-  spinlock_unlock (&flow->lock);
+  cap_flow_guard_fini (&guard);
   return (0);
 }
 
@@ -1162,10 +1162,10 @@ cap_register_task_thread (struct cap_flow *flow, struct kuid_head *kuid,
       .any_id = kuid->id
     };
 
-  spinlock_lock (&flow->lock);
+  _Auto guard = cap_flow_guard_make (flow);
   if (unlikely (cap_alert_async_find (flow, type, kuid->id)))
     {
-      spinlock_unlock (&flow->lock);
+      cap_flow_guard_fini (&guard);
       kmem_cache_free (&cap_misc_cache, ap);
       return (EALREADY);
     }
@@ -1176,7 +1176,7 @@ cap_register_task_thread (struct cap_flow *flow, struct kuid_head *kuid,
   list_insert_tail (&outp->subs, &ap->xlink);
 
   spinlock_unlock (&outp->lock);
-  spinlock_unlock (&flow->lock);
+  cap_flow_guard_fini (&guard);
   return (0);
 }
 
