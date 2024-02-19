@@ -90,7 +90,8 @@ static_assert (OFFSETOF (struct cap_kern_alert, intr.irq) ==
 
 struct cap_base
 {
-  unsigned int type;
+  unsigned char type;
+  unsigned int flags:24;
   struct sref_counter sref;
 };
 
@@ -109,6 +110,9 @@ struct cap_thread_info
 
 #define CAPABILITY   struct cap_base base
 
+#define CAP_FLOW_HANDLE_INTR   0x01   // Flow can handle interrupts.
+#define CAP_FLOW_EXT_PAGER     0x02   // Flow is an external pager.
+
 struct cap_flow
 {
   CAPABILITY;
@@ -119,7 +123,6 @@ struct cap_flow
   struct pqueue pending_alerts;
   uintptr_t tag;
   uintptr_t entry;
-  uint32_t flags;
 #if CONFIG_MAX_CPUS > 1
   char pad[CPU_L1_SIZE];
 #endif
