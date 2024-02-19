@@ -81,7 +81,7 @@ int rdxtree_insert_alloc_common (struct rdxtree *tree, void *ptr,
                                  rdxtree_key_t *keyp, void ***slotp);
 
 void* rdxtree_lookup_common (const struct rdxtree *tree, rdxtree_key_t key,
-                             bool get_slot);
+                             bool get_slot, void **node, int *idxp);
 
 void* rdxtree_walk (struct rdxtree *tree, struct rdxtree_iter *iter);
 
@@ -164,7 +164,9 @@ void* rdxtree_remove (struct rdxtree *tree, rdxtree_key_t key);
 static inline void*
 rdxtree_lookup (const struct rdxtree *tree, rdxtree_key_t key)
 {
-  return (rdxtree_lookup_common (tree, key, false));
+  void *node;
+  int idx;
+  return (rdxtree_lookup_common (tree, key, false, &node, &idx));
 }
 
 /*
@@ -181,7 +183,9 @@ rdxtree_lookup (const struct rdxtree *tree, rdxtree_key_t key)
 static inline void**
 rdxtree_lookup_slot (const struct rdxtree *tree, rdxtree_key_t key)
 {
-  return (rdxtree_lookup_common (tree, key, true));
+  void *node;
+  int idx;
+  return (rdxtree_lookup_common (tree, key, true, &node, &idx));
 }
 
 static inline void*
@@ -198,6 +202,10 @@ rdxtree_load_slot (void **slot)
  * See rdxtree_lookup_slot().
  */
 void* rdxtree_replace_slot (void **slot, void *ptr);
+
+// Remove a node and index from a tree.
+void rdxtree_remove_node_idx (struct rdxtree *tree, void **slot,
+                              void *node, int idx);
 
 /*
  * Forge a loop to process all pointers of a tree.

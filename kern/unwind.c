@@ -260,7 +260,8 @@ unw_read_encptr (uint8_t enc, const unsigned char **ptr,
   case DW_EH_PE_##enc_val:   \
     {   \
       type tmp;   \
-      memcpy (&tmp, p, sizeof (tmp));   \
+      for (size_t i = 0; i < sizeof (tmp); ++i)   \
+        ((unsigned char *)&tmp)[i] = p[i];   \
       p += sizeof (tmp);   \
       ret = base + tmp;   \
     }   \

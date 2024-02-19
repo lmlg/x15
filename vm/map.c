@@ -57,12 +57,6 @@ struct vm_map_page_target
   uintptr_t back;
 };
 
-struct vm_map_fork_buf
-{
-  struct vm_page *page;
-  int prot;
-};
-
 #define VM_MAP_PMAP_FLAGS   (PMAP_PEF_GLOBAL | PMAP_IGNORE_ERRORS)
 
 /*
@@ -240,6 +234,9 @@ vm_map_next (struct vm_map *map, struct vm_map_entry *entry)
           NULL : list_entry (node, struct vm_map_entry, list_node));
 }
 
+// Always try to map address above this threshold.
+#define VM_MAP_FIRST_ADDR   ((1 << 20) * 4)
+
 static int
 vm_map_find_avail (struct vm_map *map, struct vm_map_request *request)
 {
@@ -249,7 +246,7 @@ vm_map_find_avail (struct vm_map *map, struct vm_map_request *request)
     return (0);
 
   size_t size = request->size;
-  uintptr_t start = map->start;
+  uintptr_t start = MAX (map->start, VM_MAP_FIRST_ADDR);
   _Auto next = vm_map_lookup_nearest (map, start);
 
   while (1)
@@ -685,8 +682,7 @@ vm_map_protect_entry (struct vm_map *map, struct vm_map_entry *entry,
                                   entry, dead);
     }
 
-  if (prot == VM_PROT_NONE &&
-      (VM_MAP_PROT (entry->flags) & VM_PROT_WRITE) == 0)
+  if (prot == VM_PROT_NONE)
     pmap_remove_range (map->pmap, start, end, VM_MAP_PMAP_FLAGS);
   else
     pmap_protect_range (map->pmap, start, end, prot, VM_MAP_PMAP_FLAGS);
@@ -840,7 +836,7 @@ vm_map_setup (void)
   kmem_cache_init (&vm_map_cache, "vm_map", sizeof (struct vm_map),
                    0, NULL, KMEM_CACHE_PAGE_ONLY);
 
-  // Allocate a page for IPC mapping purposes.
+  // Allocate pages for IPC mapping purposes.
   if (vm_map_enter (&vm_map_kernel_map, &vm_map_ipc_va, PAGE_SIZE * 2,
                     VM_MAP_FLAGS (VM_PROT_RDWR, VM_PROT_RDWR,
                                   VM_INHERIT_NONE, VM_ADV_DEFAULT, 0),
@@ -862,7 +858,7 @@ INIT_OP_DEFINE (vm_map_setup,
                 INIT_OP_DEP (vm_map_bootstrap, true));
 
 static int
-vm_map_alloc_fault_pages (struct vm_map_entry *entry, struct vm_page **outp,
+vm_map_fault_alloc_pages (struct vm_map_entry *entry, struct vm_page **outp,
                           uint64_t offset, uintptr_t addr, uint64_t *startp)
 {
   size_t adv = VM_MAP_ADVICE (entry->flags);
@@ -920,7 +916,7 @@ vm_map_fault_get_data (struct vm_object *obj, uint64_t off,
 
 static int
 vm_map_fault_handle_cow (uintptr_t addr, struct vm_page **pgp,
-                         struct vm_map *map, bool in_obj)
+                         struct vm_map *map)
 {
   thread_pin ();
   cpu_intr_enable ();
@@ -941,8 +937,8 @@ vm_map_fault_handle_cow (uintptr_t addr, struct vm_page **pgp,
    * address may not be mapped.
    */
 
-  struct thread_pmap_data *ipc_dst = pmap_ipc_pte_get_idx (0),
-                          *ipc_src = pmap_ipc_pte_get_idx (1);
+  _Auto ipc_dst = pmap_ipc_pte_get_idx (0);
+  _Auto ipc_src = pmap_ipc_pte_get_idx (1);
 
   pmap_ipc_pte_set (ipc_dst, va, vm_page_to_pa (p2));
   pmap_ipc_pte_set (ipc_src, va + PAGE_SIZE, vm_page_to_pa (page));
@@ -953,12 +949,9 @@ vm_map_fault_handle_cow (uintptr_t addr, struct vm_page **pgp,
   cpu_intr_disable ();
   thread_unpin ();
 
-  int ret = in_obj ? vm_object_swap (map->priv_cache, p2, page->offset, page) :
-                     vm_object_insert (map->priv_cache, p2, page->offset);
-
+  int ret = vm_object_swap (map->priv_cache, p2, page->offset, page);
   if (likely (ret == 0))
     {
-      vm_page_ref (p2);
       *pgp = p2;
       // Removing the physical mapping will unreference the source page.
       pmap_remove (map->pmap, addr, 0);
@@ -976,37 +969,15 @@ static bool
 vm_map_fault_soft (struct vm_map *map, struct vm_object *obj, uint64_t off,
                    uintptr_t addr, int prot)
 {
-  bool in_obj = true;
   _Auto page = vm_object_lookup (obj, off);
   if (! page)
-    {
-      /*
-       * The page wasn't found in the VM object. However, it's possible that
-       * it's resident. This can happen with forked maps or COW pages.
-       */
-
-      if (obj != map->priv_cache)
-        return (false);
-
-      phys_addr_t tmp;
-      if (pmap_extract (map->pmap, addr, &tmp) != 0)
-        return (false);
-
-      page = vm_page_lookup (tmp);
-      if (!vm_page_is_cow (page))
-        return (false);
-
-      in_obj = false;
-    }
-
-  if ((prot & VM_PROT_WRITE) && vm_page_is_cow (page) &&
-      vm_map_fault_handle_cow (addr, &page, map, in_obj) != 0)
-    goto skip;
-  else if (pmap_enter (map->pmap, addr, vm_page_to_pa (page),
+    return (false);
+  else if (((prot & VM_PROT_WRITE) == 0 || !vm_page_is_cow (page) ||
+           vm_map_fault_handle_cow (addr, &page, map) == 0) &&
+           pmap_enter (map->pmap, addr, vm_page_to_pa (page),
                        prot, PMAP_IGNORE_ERRORS) == 0)
     pmap_update (map->pmap);
 
-skip:
   vm_page_unref (page);
   atomic_add_rlx (&map->soft_faults, 1);
   return (true);
@@ -1063,7 +1034,7 @@ retry:
   CLEANUP (vm_map_cleanup_object) __unused _Auto objg = object;
   struct vm_page *frames;
   uint64_t start_off;
-  int n_pages = vm_map_alloc_fault_pages (entry, &frames, offset,
+  int n_pages = vm_map_fault_alloc_pages (entry, &frames, offset,
                                           addr, &start_off);
 
   if (n_pages < 0)
@@ -1189,7 +1160,7 @@ vm_map_anon_alloc (void **outp, struct vm_map *map, size_t size)
   if (!map->priv_cache)
     return (EINVAL);
 
-  uintptr_t va = (map->end - map->start) >> 1;
+  uintptr_t va = 0;
   int flags = VM_MAP_FLAGS (VM_PROT_RDWR, VM_PROT_RDWR, VM_INHERIT_DEFAULT,
                             VM_ADV_DEFAULT, VM_MAP_ANON);
   int error = vm_map_enter (map, &va, vm_page_round (size), flags,
@@ -1203,86 +1174,17 @@ vm_map_anon_alloc (void **outp, struct vm_map *map, size_t size)
 void
 vm_map_destroy (struct vm_map *map)
 {
+  pmap_destroy (map->pmap);
   vm_map_entry_list_destroy (&map->entry_list, true);
   vm_object_unref (map->priv_cache);
   kmem_cache_free (&vm_map_cache, map);
 }
 
-#define VM_MAP_FORK_BUFSIZE   (16)
-
-#if VM_MAP_FORK_BUFSIZE > PMAP_UPDATE_MAX_OPS
-#  error "page buffer size too big"
-#endif
-
-static void
-vm_map_fork_apply_prot (struct pmap *pmap, struct vm_map_fork_buf *buf, int n)
-{
-  for (int i = 0; i < n; ++i)
-    {
-      _Auto page = buf[i].page;
-      int prot = buf[i].prot;
-      uintptr_t va = vm_page_anon_va (page);
-
-      if (prot & VM_PROT_WRITE)
-        pmap_protect (pmap, va, prot & ~VM_PROT_WRITE, PMAP_PEF_GLOBAL);
-
-      vm_page_set_cow (page);
-    }
-
-  pmap_update (pmap);
-}
-
 static int
-vm_map_fork_apply_enter (struct pmap *pmap, struct vm_map_fork_buf *buf, int n)
+vm_map_fork_copy_entries (struct vm_map *dst, struct vm_map *src)
 {
-  for (int i = 0; i < n; ++i)
-    {
-      _Auto page = buf[i].page;
-      int prot = buf[i].prot;
-      uintptr_t va = vm_page_anon_va (page);
-
-      int error = pmap_enter (pmap, va, vm_page_to_pa (page),
-                              prot & ~VM_PROT_WRITE,
-                              PMAP_SET_COW | PMAP_PEF_GLOBAL);
-      if (error)
-        return (error);
-
-      vm_page_ref (page);
-    }
-
-  return (pmap_update (pmap));
-}
-
-static int
-vm_map_fork_flush (struct pmap *spmap, struct vm_map *dst,
-                   struct vm_map_fork_buf *buf, int cnt)
-{
-  vm_map_fork_apply_prot (spmap, buf, cnt);
-  int error = vm_map_fork_apply_enter (dst->pmap, buf, cnt);
-  if (error)
-    vm_map_destroy (dst);
-  return (error);
-}
-
-int
-vm_map_fork (struct vm_map **mapp, struct vm_map *src)
-{
-  int error = vm_map_create (mapp);
-  if (error)
-    return (error);
-
-  struct vm_map *dst = *mapp;
-  _Auto priv = src->priv_cache;
-  _Auto pmap = src->pmap;
-
-  SXLOCK_SHGUARD (&src->lock);
-  MUTEX_GUARD (&priv->lock);   // Prevent modifications to private mappings.
-
   if (vm_map_entry_alloc (&dst->entry_list, src->nr_entries) != 0)
-    {
-      vm_map_destroy (dst);
-      return (ENOMEM);
-    }
+    return (ENOMEM);
 
   struct vm_map_entry *entry, *out;
   out = list_first_entry (&dst->entry_list, typeof (*out), list_node);
@@ -1306,35 +1208,62 @@ vm_map_fork (struct vm_map **mapp, struct vm_map *src)
       out = list_next_entry (out, list_node);
     }
 
+  dst->nr_entries = src->nr_entries;
+  return (0);
+}
+
+static int
+vm_map_fork_update_obj (struct vm_map *dst, struct vm_map *src)
+{
   struct rdxtree_iter it;
   struct vm_page *page;
-  struct vm_map_fork_buf buf[VM_MAP_FORK_BUFSIZE];
-  int nr_buf = 0;
+  _Auto dst_priv = dst->priv_cache;
 
-  rdxtree_for_each (&priv->pages, &it, page)
+  rdxtree_for_each (&src->priv_cache->pages, &it, page)
     {
-      entry = vm_map_lookup_nearest (dst, vm_page_anon_va (page));
+      _Auto entry = vm_map_lookup_nearest (src, vm_page_anon_va (page));
       if (!entry || VM_MAP_INHERIT (entry->flags) != VM_INHERIT_COPY)
         continue;
 
-      buf[nr_buf] = (typeof (*buf)) { page, VM_MAP_PROT (entry->flags) };
-      if (++nr_buf == (int)ARRAY_SIZE (buf))
-        {
-          error = vm_map_fork_flush (pmap, dst, buf, nr_buf);
-          if (error)
-            return (error);
-        }
-    }
-
-  if (nr_buf)
-    {
-      error = vm_map_fork_flush (pmap, dst, buf, nr_buf);
+      int error = rdxtree_insert (&dst_priv->pages,
+                                  vm_page_btop (page->offset), page);
       if (error)
         return (error);
+
+      vm_page_ref (page);
+      ++dst_priv->nr_pages;
+
+      int prot = VM_MAP_PROT (entry->flags);
+      if (prot & VM_PROT_WRITE)
+        pmap_protect (src->pmap, vm_page_anon_va (page),
+                      prot & ~VM_PROT_WRITE,
+                      PMAP_PEF_GLOBAL | PMAP_IGNORE_ERRORS);
+
+      vm_page_ref (page);
+      vm_page_set_cow (page);
     }
 
-  dst->nr_entries = src->nr_entries;
+  pmap_update (src->pmap);
+  dst_priv->refcount += dst_priv->nr_pages;
   return (0);
+}
+
+int
+vm_map_fork (struct vm_map **mapp, struct vm_map *src)
+{
+  int error = vm_map_create (mapp);
+  if (error)
+    return (error);
+
+  struct vm_map *dst = *mapp;
+  SXLOCK_EXGUARD (&src->lock);
+  MUTEX_GUARD (&src->priv_cache->lock);
+
+  error = vm_map_fork_copy_entries (dst, src);
+  if (error || (error = vm_map_fork_update_obj (dst, src)))
+    vm_map_destroy (dst);
+
+  return (error);
 }
 
 static int

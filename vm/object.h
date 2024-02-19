@@ -55,7 +55,7 @@ struct vm_object
       const struct vm_object_pager *pager;
       void *capability;
     };
-  int flags;
+  uint32_t flags;
 };
 
 static inline struct vm_object*
@@ -66,10 +66,10 @@ vm_object_get_kernel_object (void)
 }
 
 // Initialize a VM object.
-void vm_object_init (struct vm_object *object, int flags, const void *ctx);
+void vm_object_init (struct vm_object *object, uint32_t flg, const void *ctx);
 
 // Create a VM object.
-int vm_object_create (struct vm_object **objp, int flags, const void *ctx);
+int vm_object_create (struct vm_object **objp, uint32_t flg, const void *ctx);
 
 /*
  * Swap a page in a VM object.
@@ -89,7 +89,7 @@ int vm_object_swap (struct vm_object *object, struct vm_page *page,
 static inline int
 vm_object_insert (struct vm_object *obj, struct vm_page *page, uint64_t off)
 {
-  return (vm_object_swap (obj, page, off, (struct vm_page *)1));
+  return (vm_object_swap (obj, page, off, 0));
 }
 
 /*
@@ -101,6 +101,16 @@ vm_object_insert (struct vm_object *obj, struct vm_page *page, uint64_t off)
  * become unmanaged and lose a reference.
  */
 void vm_object_remove (struct vm_object *object, uint64_t start, uint64_t end);
+
+/*
+ * Forcefully remove a page from an object.
+ *
+ * Once a page is inserted into an object, it is kept until its last reference
+ * is dropped. Normally, the last reference comes from the object itself, but
+ * there are cases where it may not be so. In those cases, it is necessary to
+ * call this function to make sure the page is removed from the object.
+ */
+void vm_object_detach (struct vm_object *object, struct vm_page *page);
 
 /*
  * Look up a page in a VM object.

@@ -134,9 +134,7 @@ vm_kmem_free (void *addr, size_t size)
   uintptr_t end = va + size;
   _Auto kernel_pmap = pmap_get_kernel_pmap ();
 
-  for (; va < end; va += PAGE_SIZE)
-    pmap_remove (kernel_pmap, va, PMAP_PEF_GLOBAL);
-
+  pmap_remove_range (kernel_pmap, va, end, PMAP_PEF_GLOBAL);
   pmap_update (kernel_pmap);
   vm_object_remove (vm_object_get_kernel_object (),
                     vm_kmem_offset ((uintptr_t) addr),

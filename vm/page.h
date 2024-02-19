@@ -35,6 +35,7 @@
 #include <kern/list.h>
 #include <kern/log2.h>
 #include <kern/macros.h>
+#include <kern/spinlock_types.h>
 #include <kern/stream.h>
 
 #include <machine/page.h>
@@ -86,19 +87,22 @@ struct vm_object;
 struct vm_page
 {
   struct list node;
-  uint16_t type;
-  uint16_t zone_index;
-  uint16_t order;
   phys_addr_t phys_addr;
-  void *priv;
+  uint8_t type;
+  uint8_t zone_index;
+  uint8_t order;
+  uint8_t dirty;
   uint32_t nr_refs;
+  void *priv;
 
   // VM object back reference.
   struct vm_object *object;
   uint64_t offset;
+  // RSET-specific members.
+  struct spinlock rset_lock;
 };
 
-static inline uint16_t
+static inline uint32_t
 vm_page_type (const struct vm_page *page)
 {
   return (page->type);
@@ -196,7 +200,7 @@ int vm_page_ready (void);
  * If additional memory can be made usable after the VM system is initialized,
  * it should be reported through this function.
  */
-void vm_page_manage (struct vm_page *page);
+void vm_page_handle (struct vm_page *page);
 
 // Return the page descriptor for the given physical address.
 struct vm_page* vm_page_lookup (phys_addr_t pa);
@@ -210,7 +214,7 @@ struct vm_page* vm_page_lookup (phys_addr_t pa);
  * If successful, the returned pages have no references.
  */
 struct vm_page* vm_page_alloc (uint32_t order, uint32_t selector,
-                               uint16_t type, uint32_t flags);
+                               uint32_t type, uint32_t flags);
 
 /*
  * Release a block of 2^order physical pages.
@@ -250,10 +254,23 @@ vm_page_unref_nofree (struct vm_page *page)
 }
 
 static inline void
+vm_page_detach (struct vm_page *page)
+{
+  void vm_object_detach (struct vm_object *, struct vm_page *);
+  vm_object_detach (page->object, page);
+  vm_page_unlink (page);
+}
+
+static inline void
 vm_page_unref (struct vm_page *page)
 {
   if (vm_page_unref_nofree (page))
-    vm_page_free (page, 0, page->type == VM_PAGE_OBJECT ? VM_PAGE_SLEEP : 0);
+    {
+      int flags = page->type == VM_PAGE_OBJECT ? VM_PAGE_SLEEP : 0;
+      if (flags == VM_PAGE_SLEEP && page->object)
+        vm_page_detach (page);
+      vm_page_free (page, 0, flags);
+    }
 }
 
 static inline int

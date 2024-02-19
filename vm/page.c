@@ -90,7 +90,7 @@ struct vm_page_cpu_pool
  * Special order value for pages that aren't in a free list. Such pages are
  * either allocated, or part of a free block of pages but not the head page.
  */
-#define VM_PAGE_ORDER_UNLISTED   ((unsigned short)-1)
+#define VM_PAGE_ORDER_UNLISTED   (0xff)
 
 // Doubly-linked list of free blocks.
 struct vm_page_free_list
@@ -187,7 +187,11 @@ void
 vm_page_set_type (struct vm_page *page, uint32_t order, uint16_t type)
 {
   for (uint32_t i = 0; i < (1u << order); i++)
-    page[i].type = type;
+    {
+      page[i].type = type;
+      spinlock_init (&page[i].rset_lock);
+      list_init (&page[i].node);
+    }
 }
 
 static void
@@ -197,6 +201,7 @@ vm_page_clear (struct vm_page *page, uint32_t order)
     {
       page[i].type = VM_PAGE_FREE;
       page[i].priv = NULL;
+      page[i].dirty = 0;
     }
 }
 
@@ -433,7 +438,7 @@ vm_page_wait (struct vm_page_zone *zone, struct mutex *mtx,
 
 static struct vm_page*
 vm_page_zone_alloc (struct vm_page_zone *zone, uint32_t order,
-                    uint16_t type, struct vm_page_waiter *waiter)
+                    uint32_t type, struct vm_page_waiter *waiter)
 {
   assert (order < VM_PAGE_NR_FREE_LISTS);
 
@@ -745,9 +750,8 @@ INIT_OP_DEFINE (vm_page_setup,
                 INIT_OP_DEP (log_setup, true),
                 INIT_OP_DEP (printf_setup, true));
 
-// TODO Rename to avoid confusion with "managed pages".
 void __init
-vm_page_manage (struct vm_page *page)
+vm_page_handle (struct vm_page *page)
 {
   assert (page->zone_index < ARRAY_SIZE (vm_page_zones));
   assert (page->type == VM_PAGE_RESERVED);
@@ -790,7 +794,7 @@ vm_page_waiter_init (struct vm_page_waiter *wp, uint32_t order)
 
 struct vm_page*
 vm_page_alloc (uint32_t order, uint32_t selector,
-               uint16_t type, uint32_t flags)
+               uint32_t type, uint32_t flags)
 {
   struct vm_page_waiter *waiter = NULL;
   if (flags & VM_PAGE_SLEEP)

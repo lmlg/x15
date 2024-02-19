@@ -174,7 +174,6 @@
 // Mapping creation flags.
 #define PMAP_PEF_GLOBAL      0x1   // Operate on all processors.
 #define PMAP_IGNORE_ERRORS   0x2   // Ignore errors when updating.
-#define PMAP_SET_COW         0x4   // Set the page as COW.
 
 typedef phys_addr_t pmap_pte_t;
 
@@ -366,11 +365,11 @@ void pmap_ipc_pte_set (struct thread_pmap_data *pd,
                        uintptr_t va, phys_addr_t pa);
 
 // Put back the special PTE.
-void pmap_ipc_pte_put (struct thread_pmap_data *pd);
-
-// Handle a context switch for thread-specific pmap data.
-void pmap_ipc_pte_context_switch (struct thread_pmap_data *prev,
-                                  struct thread_pmap_data *next);
+static inline void
+pmap_ipc_pte_put (struct thread_pmap_data *pd)
+{
+  pd->pte = NULL;
+}
 
 static inline void
 pmap_ipc_pte_save (struct thread_pmap_data *pd, uint64_t *prev)
@@ -383,6 +382,12 @@ pmap_ipc_pte_load (struct thread_pmap_data *pd, phys_addr_t pa)
 {
   if (pa != 1)
     pmap_ipc_pte_set (pd, pd->va, pa);
+}
+
+static inline bool
+pmap_pte_isdirty (pmap_pte_t *pte)
+{
+  return ((*pte & PMAP_PTE_D) != 0);
 }
 
 /*

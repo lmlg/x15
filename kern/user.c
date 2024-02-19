@@ -85,8 +85,7 @@ user_copyv_impl (struct ipc_iov_iter *dst,
   int error = unw_fixup_save (&fixup);
   if (unlikely (error))
     return (-error);
-  else if ((to_user && !user_check_iov_iter (dst)) ||
-           (!to_user && !user_check_iov_iter (src)))
+  else if (!user_check_iov_iter (to_user ? dst : src))
     return (-EFAULT);
 
   for (ssize_t ret = 0 ; ; )

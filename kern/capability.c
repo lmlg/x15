@@ -75,8 +75,10 @@ struct cap_port
   size_t size;
   uintptr_t ctx[3];   // SP and function arguments.
   struct ipc_msg_data mdata;
+  uint32_t nr_cached_iovs;
   struct cap_iters in_it;
-  struct cap_iters *out_it;
+  struct cap_iters *cur_in;
+  struct cap_iters *cur_out;
 };
 
 struct cap_receiver
@@ -660,23 +662,6 @@ cap_ipc_msg_data_init (struct ipc_msg_data *data, uintptr_t tag)
 }
 
 static void
-cap_iters_copy (struct cap_iters *dst, const struct cap_iters *src)
-{
-#define cap_copy_simple(d, s, type)   \
-  d->type.begin = s->type.begin;   \
-  d->type.cur = s->type.cur;   \
-  d->type.end = s->type.end
-
-  dst->iov.cache_idx = src->iov.cache_idx;
-  dst->iov.head = src->iov.head;
-
-  cap_copy_simple (dst, src, iov);
-  cap_copy_simple (dst, src, cap);
-  cap_copy_simple (dst, src, vme);
-#undef copy_simple
-}
-
-static void
 cap_flow_push_port (struct cap_flow *flow, struct cap_port *port)
 {
   SPINLOCK_GUARD (&flow->lock);
@@ -724,8 +709,8 @@ cap_sender_impl (struct cap_flow *flow, uintptr_t tag, struct cap_iters *in,
   if (nb < 0)
     port->mdata.flags |= IPC_MSG_ERROR;
 
-  cap_iters_copy (&port->in_it, in);
-  port->out_it = out;
+  port->cur_in = in;
+  port->cur_out = out;
 
   struct cap_port *cur_port = self->cur_port;
   self->cur_port = port;
@@ -799,7 +784,7 @@ cap_pull_iters (struct cap_iters *it, struct ipc_msg_data *mdata)
   struct ipc_msg_data tmp;
   cap_ipc_msg_data_init (&tmp, port->mdata.tag);
 
-  ssize_t ret = cap_transfer_iters (port->task, &port->in_it, it,
+  ssize_t ret = cap_transfer_iters (port->task, port->cur_in, it,
                                     IPC_COPY_FROM, &tmp.bytes_recv);
 
   port->mdata.bytes_recv += tmp.bytes_recv;
@@ -822,7 +807,7 @@ cap_push_iters (struct cap_iters *it, struct ipc_msg_data *mdata)
   struct ipc_msg_data tmp;
   cap_ipc_msg_data_init (&tmp, port->mdata.tag);
 
-  ssize_t ret = cap_transfer_iters (port->task, port->out_it, it,
+  ssize_t ret = cap_transfer_iters (port->task, port->cur_out, it,
                                     IPC_COPY_TO, &tmp.bytes_sent);
 
   port->mdata.bytes_sent += tmp.bytes_sent;
@@ -843,6 +828,21 @@ cap_mdata_swap (struct ipc_msg_data *mdata)
   SWAP (&mdata->vmes_sent, &mdata->vmes_recv);
 }
 
+static void
+cap_port_iters_reset (struct cap_port *port)
+{
+#define cap_reset_iter(name)   \
+  ipc_##name##_iter_init (&port->in_it.name, port->in_it.name.begin,   \
+                          port->in_it.name.end)
+  cap_reset_iter (iov);
+  cap_reset_iter (cap);
+  cap_reset_iter (vme);
+
+#undef cap_reset_iter
+
+  port->in_it.iov.cache_idx = port->nr_cached_iovs;
+}
+
 ssize_t
 cap_reply_iters (struct cap_iters *it, int rv)
 {
@@ -854,7 +854,7 @@ cap_reply_iters (struct cap_iters *it, int rv)
     return (-EINVAL);
   else if (rv >= 0)
     {
-      ret = cap_transfer_iters (port->task, port->out_it, it,
+      ret = cap_transfer_iters (port->task, port->cur_out, it,
                                 IPC_COPY_TO, &port->mdata.bytes_sent);
       if (ret > 0)
         ret = port->mdata.bytes_sent;
@@ -868,9 +868,21 @@ cap_reply_iters (struct cap_iters *it, int rv)
   else
     ret = rv;
 
+  cap_port_iters_reset (port);
   cap_task_swap (&port->task, self);
   cpu_port_return (port->ctx[0], ret);
   __builtin_unreachable ();
+}
+
+static void
+cap_port_fill_cache (struct cap_port *port, struct ipc_msg *msg)
+{
+  uint32_t nmax = MIN (msg->iov_cnt, IPC_IOV_ITER_CACHE_SIZE);
+  _Auto outv = port->in_it.iov.cache + IPC_IOV_ITER_CACHE_SIZE;
+
+  if (unlikely (user_copy_from (outv - nmax, msg->iovs,
+                                nmax * sizeof (*outv)) == 0))
+    port->nr_cached_iovs = nmax;
 }
 
 int
@@ -888,6 +900,7 @@ cap_flow_add_port (struct cap_flow *flow, void *stack, size_t size,
   entry->ctx[2] = (uintptr_t)mdata;
   memset (&entry->mdata, 0, sizeof (entry->mdata));
   cap_iters_init_msg (&entry->in_it, msg);
+  cap_port_fill_cache (entry, msg);
   task_ref (entry->task = task_self ());
 
   cap_flow_push_port (flow, entry);

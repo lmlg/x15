@@ -42,7 +42,7 @@ TEST_DEFERRED (rdxtree)
   struct rdxtree tree;
   int error;
   void *ptr;
-  int *val = ((int *)0) + 1;
+  int *val = alloca (sizeof (int));
 
   rdxtree_init (&tree, RDXTREE_KEY_ALLOC);
 
@@ -83,8 +83,15 @@ TEST_DEFERRED (rdxtree)
   assert (!rdxtree_lookup_slot (&tree, key + 2));
   assert (!rdxtree_remove (&tree, key + 2));
 
-  rdxtree_remove_all (&tree);
+  void *node;
+  int idx;
+  slot = rdxtree_lookup_common (&tree, 64, true, &node, &idx);
+  assert (slot);
+  rdxtree_remove_node_idx (&tree, slot, node, idx);
+  assert (!rdxtree_lookup (&tree, 64));
+
   rcu_wait ();
+  rdxtree_remove_all (&tree);
   assert (rdxtree_count (&tree) == 0);
 
   return (TEST_OK);

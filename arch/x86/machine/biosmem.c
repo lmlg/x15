@@ -810,7 +810,7 @@ biosmem_free_usable_range (phys_addr_t start, phys_addr_t end)
     {
       _Auto page = vm_page_lookup (start);
       assert (page);
-      vm_page_manage (page);
+      vm_page_handle (page);
       start += PAGE_SIZE;
     }
 }
