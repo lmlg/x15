@@ -273,7 +273,7 @@ cap_flow_fini (struct sref_counter *sref)
   struct cap_alert *alert, *tmp;
   pqueue_for_each_entry_safe (&flow->pending_alerts, alert, tmp, pnode)
     if (cap_alert_type (alert) == CAP_ALERT_USER)
-      kmem_free (alert, sizeof (*alert));
+      kmem_cache_free (&cap_misc_cache, alert);
 
   hlist_for_each_entry_safe (&flow->alloc_alerts, alert, tmp, hnode)
     cap_alert_free (alert);
