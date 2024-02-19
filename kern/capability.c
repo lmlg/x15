@@ -179,7 +179,7 @@ cap_channel_fini (struct sref_counter *sref)
 
   uintptr_t tag = chp->tag;
   // Mutate the type.
-  struct cap_alert *alert = (void *)chp;
+  struct cap_alert *alert __attribute__ ((may_alias)) = (void *)chp;
 
   alert->k_alert.type = cap_alert_type(alert) = CAP_ALERT_CHAN_CLOSED;
   alert->k_alert.tag = tag;
