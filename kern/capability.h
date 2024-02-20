@@ -118,7 +118,7 @@ struct cap_flow
   CAPABILITY;
   struct list waiters;
   struct list receivers;
-  struct slist ports;
+  struct slist lpads;
   struct hlist alloc_alerts;
   struct pqueue pending_alerts;
   uintptr_t tag;
@@ -255,12 +255,12 @@ int cap_send_alert (struct cap_base *cap, const void *buf,
 #define cap_send_alert(cap, buf, flags, prio)   \
   (cap_send_alert) (CAP (cap), buf, flags, prio)
 
-// Add and remove a port to/from a flow.
-int cap_flow_add_port (struct cap_flow *flow, void *stack, size_t size,
+// Add and remove a landing pad to/from a flow.
+int cap_flow_add_lpad (struct cap_flow *flow, void *stack, size_t size,
                        struct ipc_msg *msg, struct ipc_msg_data *mdata,
                        struct cap_thread_info *info);
 
-int cap_flow_rem_port (struct cap_flow *flow, uintptr_t stack);
+int cap_flow_rem_lpad (struct cap_flow *flow, uintptr_t stack);
 
 // Register a flow for interrupt handling.
 int cap_intr_register (struct cap_flow *flow, uint32_t irq);

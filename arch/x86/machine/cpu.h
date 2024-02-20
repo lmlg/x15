@@ -963,11 +963,11 @@ noreturn void cpu_unw_mctx_jmp (const uintptr_t *regs, int retval);
 // Restore the CPU context from an unwind frame with a return value.
 noreturn void cpu_unw_mctx_set_frame (const uintptr_t *regs, int retval);
 
-// Switch to a new stack and PC in a flow's port.
-long cpu_port_swap (uintptr_t *args, void *port, void *pc);
+// Switch to a new stack and PC in a flow's landing pad.
+long cpu_lpad_swap (uintptr_t *args, void *lpad, void *pc);
 
-// Return from the execution context in a port.
-noreturn void cpu_port_return (uintptr_t sp, intptr_t ret);
+// Return from the execution context in a landing pad.
+noreturn void cpu_lpad_return (uintptr_t sp, intptr_t ret);
 
 /*
  * This init operation provides :

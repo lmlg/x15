@@ -883,7 +883,7 @@ ASM_ENTRY (cpu_unw_mctx_jmp)
 .cfi_endproc
 ASM_END (cpu_unw_mctx_jmp)
 
-ASM_ENTRY (cpu_port_swap)
+ASM_ENTRY (cpu_lpad_swap)
 .cfi_startproc
 #ifdef __LP64__
   # Store registers required by the ABI.
@@ -897,7 +897,7 @@ ASM_ENTRY (cpu_port_swap)
   movq 0(%rdi), %rcx
   movq %rsp, 0(%rdi)
   movq %rcx, %rsp
-  # Save old port and load entry point arguments.
+  # Save old landing pad and load entry point arguments.
   movq 16(%rdi), %rsi
   movq 8(%rdi), %rcx
   movq %rdx, 8(%rdi)
@@ -916,7 +916,7 @@ ASM_ENTRY (cpu_port_swap)
   movl 0(%eax), %edx
   movl %esp, 0(%eax)
   movl %edx, %esp
-  # Save old port and load entry point arguments.
+  # Save old landing pad and load entry point arguments.
   movl 8(%eax), %edx
   movl 4(%eax), %eax
   movl 12(%ecx), %ecx
@@ -924,9 +924,9 @@ ASM_ENTRY (cpu_port_swap)
   jmp *%ecx
 #endif
 .cfi_endproc
-ASM_END (cpu_port_swap)
+ASM_END (cpu_lpad_swap)
 
-ASM_ENTRY (cpu_port_return)
+ASM_ENTRY (cpu_lpad_return)
 .cfi_startproc
 #ifdef __LP64__
   movq %rdi, %rsp
@@ -947,4 +947,4 @@ ASM_ENTRY (cpu_port_return)
 #endif
   ret
 .cfi_endproc
-ASM_END (cpu_port_return)
+ASM_END (cpu_lpad_return)

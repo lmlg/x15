@@ -643,7 +643,7 @@ thread_runq_schedule (struct thread_runq *runq)
 {
   struct thread *prev = thread_self ();
 
-  assert (prev->cur_port ||
+  assert (prev->cur_lpad ||
       (__builtin_frame_address (0) >= prev->stack &&
        __builtin_frame_address (0) < prev->stack + TCB_STACK_SIZE));
   assert (prev->preempt_level == THREAD_SUSPEND_PREEMPT_LEVEL);
@@ -1696,7 +1696,7 @@ thread_init (struct thread *thread, void *stack,
   thread->stack = stack;
   strlcpy (thread->name, attr->name, sizeof (thread->name));
   thread->fixup = NULL;
-  thread->cur_port = NULL;
+  thread->cur_lpad = NULL;
   thread->futex_td = NULL;
   bulletin_init (&thread->dead_subs);
   for (size_t i = 0; i < THREAD_NR_PMAP_DATA; ++i)

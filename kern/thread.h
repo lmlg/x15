@@ -223,7 +223,7 @@ struct thread
 #endif
 
   struct unw_fixup_t *fixup;      // (-)
-  void *cur_port;                 // (-)
+  void *cur_lpad;                 // (-)
   struct task *xtask;             // (-)
   struct futex_td *futex_td;      // (-)
   struct bulletin dead_subs;      // ( )
