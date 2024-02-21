@@ -260,7 +260,7 @@ int cap_flow_add_lpad (struct cap_flow *flow, void *stack, size_t size,
                        struct ipc_msg *msg, struct ipc_msg_data *mdata,
                        struct cap_thread_info *info);
 
-int cap_flow_rem_lpad (struct cap_flow *flow, uintptr_t stack);
+int cap_flow_rem_lpad (struct cap_flow *flow, uintptr_t stack, bool unmap);
 
 // Register a flow for interrupt handling.
 int cap_intr_register (struct cap_flow *flow, uint32_t irq);

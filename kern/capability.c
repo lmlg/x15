@@ -472,8 +472,8 @@ static struct cap_alert*
 cap_flow_alloc_alert (struct cap_flow_guard *guard, uint32_t flg)
 {
   cap_flow_guard_fini (guard);
-  void *ptr = kmem_cache_alloc2 (&cap_misc_cache, (flg & CAP_ALERT_NONBLOCK) ?
-                                                  0 : KMEM_ALLOC_SLEEP);
+  uint32_t alflags = (flg & CAP_ALERT_NONBLOCK) ? 0 : KMEM_ALLOC_SLEEP;
+  void *ptr = kmem_cache_alloc2 (&cap_misc_cache, alflags);
   cap_flow_guard_lock (guard);
   return (ptr);
 }
@@ -954,7 +954,7 @@ cap_flow_add_lpad (struct cap_flow *flow, void *stack, size_t size,
 }
 
 int
-cap_flow_rem_lpad (struct cap_flow *flow, uintptr_t stack)
+cap_flow_rem_lpad (struct cap_flow *flow, uintptr_t stack, bool unmap)
 {
   _Auto guard = cap_flow_guard_make (flow);
   struct cap_lpad *entry;
@@ -978,8 +978,7 @@ cap_flow_rem_lpad (struct cap_flow *flow, uintptr_t stack)
   slist_remove (&flow->lpads, prev);
   cap_flow_guard_fini (&guard);
 
-  // Unmap the stack if the user didn't specify one.
-  int error = stack != ~(uintptr_t)0 ? 0 :
+  int error = stack != ~(uintptr_t)0 || !unmap ? 0 :
               vm_map_remove (vm_map_self (), stack, entry->size);
 
   if (! error)
@@ -1001,7 +1000,7 @@ cap_handle_intr (void *arg)
   list_rcu_for_each (list, tmp)
     {
       _Auto alert = list_entry (tmp, struct cap_alert_async, xlink);
-      SPINLOCK_INTR_GUARD (&alert->flow->lock);
+      SPINLOCK_GUARD (&alert->flow->lock);
       if (++alert->base.k_alert.intr.count == 1)
         {
           pqueue_insert (&alert->flow->pending_alerts, &alert->base.pnode);
@@ -1039,14 +1038,10 @@ cap_intr_add (uint32_t intr, struct list *node)
 static void
 cap_intr_rem (uint32_t intr, struct list *node)
 {
-  adaptive_lock_acquire (&cap_intr_lock);
+  ADAPTIVE_LOCK_GUARD (&cap_intr_lock);
   list_rcu_remove (node);
-
   if (list_empty (&cap_intr_handlers[intr - CPU_EXC_INTR_FIRST]))
     intr_unregister (intr, cap_handle_intr);
-
-  adaptive_lock_release (&cap_intr_lock);
-  rcu_wait ();
 }
 
 static struct cap_alert_async*
@@ -1094,6 +1089,7 @@ cap_intr_register (struct cap_flow *flow, uint32_t irq)
     {
       cap_flow_guard_fini (&guard);
       cap_intr_rem (irq, &ap->xlink);
+      rcu_wait ();
       kmem_cache_free (&cap_misc_cache, ap);
       return (EALREADY);
     }
@@ -1134,6 +1130,7 @@ cap_intr_unregister (struct cap_flow *flow, uint32_t irq)
     {
       cap_intr_rem (irq, &entry->xlink);
       cpu_intr_restore (flags);
+      rcu_wait ();
       kmem_cache_free (&cap_misc_cache, entry);
     }
   else
