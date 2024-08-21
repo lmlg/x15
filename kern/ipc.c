@@ -28,6 +28,8 @@
 #include <vm/map.h>
 #include <vm/page.h>
 
+#include <stdio.h>
+
 struct ipc_data
 {
   cpu_flags_t cpu_flags;
@@ -172,7 +174,7 @@ ipc_map_addr (struct vm_map *map, const void *addr,
       assert (! error);
     }
 
-  return (0);
+  return (error);
 }
 
 static ssize_t
@@ -199,21 +201,36 @@ ipc_bcopyv_impl (struct vm_map *r_map, const struct iovec *r_v,
 
   ipc_data_pte_put (data);
   ipc_data_page_unref (data);
+
   return ((ssize_t)ret);
+}
+
+struct iovec*
+ipc_iov_iter_usrnext (struct ipc_iov_iter *it, bool check, ssize_t *errp)
+{
+  while (1)
+    {
+      if (it->head.iov_len)
+        return (&it->head);
+      else if (it->cur >= it->end)
+        return (NULL);
+
+      _Auto iov = it->begin + it->cur;
+      if (check && !user_check_range (iov->iov_base, iov->iov_len))
+        {
+          *errp = -EFAULT;
+          return (NULL);
+        }
+
+      it->head = *iov;
+      ++it->cur;
+    }
 }
 
 static struct iovec*
 ipc_iov_iter_next (struct ipc_iov_iter *it)
 { // Get the next iovec from a local iterator, or NULL if exhausted.
-  while (1)
-    {
-      if (it->head.iov_len)
-        return (&it->head);
-      else if (it->cur < it->end)
-        it->head = it->begin[it->cur++];
-      else
-        return (NULL);
-    }
+  return (ipc_iov_iter_usrnext (it, false, 0));
 }
 
 static struct iovec*

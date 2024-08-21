@@ -57,7 +57,7 @@ test_spin (void *arg)
 {
   unsigned long *lock = arg;
   while (atomic_cas (lock, 0, 1, ATOMIC_ACQ_REL) != 0)
-    cpu_pause ();
+    atomic_spin_nop ();
 }
 
 static void

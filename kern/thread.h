@@ -109,7 +109,7 @@ struct thread_pmap_data
   uintptr_t va;
 };
 
-#define THREAD_NR_PMAP_DATA   2
+#define THREAD_NR_PMAP_DATA   3
 
 /*
  * Thread structure.

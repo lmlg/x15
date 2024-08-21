@@ -95,6 +95,10 @@
 
 #define atomic_fence(mo)   __atomic_thread_fence (mo)
 
+#ifndef atomic_spin_nop
+  #define atomic_spin_nop()   atomic_fence (ATOMIC_SEQ_CST)
+#endif
+
 // Common shortcuts.
 
 #define atomic_load_rlx(place)   atomic_load ((place), ATOMIC_RELAXED)
@@ -163,6 +167,9 @@
 
 #define atomic_cas_bool_rel(place, exp, val)   \
   atomic_cas_bool ((place), (exp), (val), ATOMIC_RELEASE)
+
+#define atomic_cas_bool_acq_rel(place, exp, val)   \
+  atomic_cas_bool ((place), (exp), (val), ATOMIC_ACQ_REL)
 
 #define atomic_swap_rlx(place, val)   \
   atomic_swap ((place), (val), ATOMIC_RELAXED)

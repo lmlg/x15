@@ -39,9 +39,11 @@
  *
  * Unless otherwise mentioned, these can also be used as map entry flags.
  */
-#define VM_MAP_NOMERGE   0x10000
-#define VM_MAP_FIXED     0x20000   // Not an entry flag.
-#define VM_MAP_ANON      0x40000
+#define VM_MAP_NOMERGE   0x010000
+#define VM_MAP_FIXED     0x020000   // Not an entry flag.
+#define VM_MAP_ANON      0x040000
+#define VM_MAP_PHYS      0x080000
+#define VM_MAP_CLEAN     0x100000
 
 // Macro used to forge "packed" flags.
 #define VM_MAP_FLAGS(prot, maxprot, inherit, advice, mapflags)   \
@@ -53,7 +55,8 @@
  *
  * Map entry flags also use the packed format.
  */
-#define VM_MAP_ENTRY_MASK   (VM_MAP_NOMERGE | VM_MAP_ANON | 0xffff)
+#define VM_MAP_ENTRY_MASK   \
+  (VM_MAP_NOMERGE | VM_MAP_ANON | VM_MAP_PHYS | VM_MAP_CLEAN | 0xffff)
 
 // Macros used to extract specific properties out of packed flags.
 #define VM_MAP_PROT(flags)      ((flags) & 0xf)
@@ -89,7 +92,11 @@ struct vm_map_entry
   uintptr_t start;
   uintptr_t end;
   struct vm_object *object;
-  uint64_t offset;
+  union
+    {
+      uint64_t offset;
+      struct vm_page *pages;
+    };
   int flags;
 };
 
@@ -181,6 +188,10 @@ int vm_map_protect (struct vm_map *map, uintptr_t start,
 // Transfer VMEs between a remote and the local VM map.
 int vm_map_iter_copy (struct vm_map *r_map, struct ipc_vme_iter *r_it,
                       struct ipc_vme_iter *l_it, int direction);
+
+// Reply to a page request message.
+int vm_map_reply_pagereq (const uintptr_t *src, uint32_t cnt,
+                          struct vm_page **pages);
 
 // Display information about a memory map.
 void vm_map_info (struct vm_map *map, struct stream *stream);

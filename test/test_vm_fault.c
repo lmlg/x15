@@ -23,8 +23,6 @@
 #include <stdio.h>
 #include <string.h>
 
-#include <kern/clock.h>
-#include <kern/cpumap.h>
 #include <kern/error.h>
 #include <kern/init.h>
 #include <kern/list.h>
@@ -57,11 +55,6 @@ test_pager_get (struct vm_object *obj __unused, uint64_t off,
   return ((int)(bytes >> PAGE_SHIFT));
 }
 
-static const struct vm_object_pager test_obj_pager =
-{
-  .get = test_pager_get
-};
-
 static void
 test_vm_fault_forked_entry (void *buf)
 {
@@ -92,7 +85,7 @@ static void
 test_vm_fault_thread (void *arg __unused)
 {
   struct vm_object *test_obj;
-  int error = vm_object_create (&test_obj, 0, &test_obj_pager);
+  int error = vm_object_create (&test_obj, 0, test_pager_get);
   assert (! error);
 
   uintptr_t va = PMAP_END_ADDRESS - PAGE_SIZE * 10;

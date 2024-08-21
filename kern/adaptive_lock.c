@@ -75,7 +75,7 @@ adaptive_lock_acquire_slow (struct adaptive_lock *lock)
         {
           if (thread_is_running (thr) &&
               !sleepq_test_circular (sleepq, thread_wchan_addr (thr)))
-            cpu_pause ();
+            atomic_spin_nop ();
           else
             sleepq_wait (sleepq, "adptlk");
         }

@@ -377,7 +377,7 @@ cpu_delay (size_t usecs)
               diff = count - prev;
       prev = count;
       total -= diff;
-      cpu_pause ();
+      atomic_spin_nop ();
     }
   while (total > 0);
 }

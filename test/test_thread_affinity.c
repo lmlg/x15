@@ -112,8 +112,7 @@ TEST_DEFERRED (thread_affinity)
   error = thread_create (&thread, &attr, test_affinity_suspended, cpumap);
   error_check (error, "thread_create(2)");
 
-  while (thread_state (thread) == THREAD_RUNNING)
-    cpu_pause ();
+  test_thread_wait_state (thread, THREAD_RUNNING);
 
   cpumap_zero (cpumap);
   cpumap_set (cpumap, 0);

@@ -35,7 +35,7 @@ sxlock_exmark (struct sxlock *sxp)
                atomic_cas_bool_acq (&sxp->lock, val, val | SXLOCK_WAITERS))
         return (1);
 
-      cpu_pause ();
+      atomic_spin_nop ();
     }
 }
 
@@ -64,7 +64,7 @@ sxlock_shmark (struct sxlock *sxp)
                atomic_cas_bool_acq (&sxp->lock, val, val | SXLOCK_WAITERS))
         return (1);
 
-      cpu_pause ();
+      atomic_spin_nop ();
     }
 }
 
@@ -92,7 +92,7 @@ sxlock_unlock (struct sxlock *sxp)
       if (atomic_cas_bool_rel (&sxp->lock, prev, nval))
         break;
 
-      cpu_pause ();
+      atomic_spin_nop ();
     }
 
   if (!nval && (prev & SXLOCK_WAITERS))

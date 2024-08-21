@@ -35,6 +35,7 @@
 struct task;
 struct thread;
 
+// Capability types.
 enum
 {
   CAP_TYPE_CHANNEL,
@@ -95,6 +96,7 @@ struct cap_base
   struct sref_counter sref;
 };
 
+// Kernel capabilities.
 enum
 {
   CAP_KERNEL_MEMORY,   // Allows mapping physical memory.
@@ -110,8 +112,13 @@ struct cap_thread_info
 
 #define CAPABILITY   struct cap_base base
 
+// Flags used in 'cap_flow_create'.
 #define CAP_FLOW_HANDLE_INTR   0x01   // Flow can handle interrupts.
 #define CAP_FLOW_EXT_PAGER     0x02   // Flow is an external pager.
+
+struct vm_object;
+struct vm_page;
+struct cap_channel_map;
 
 struct cap_flow
 {
@@ -134,6 +141,7 @@ struct cap_channel
   CAPABILITY;
   struct cap_flow *flow;
   uintptr_t tag;
+  struct vm_object *vmobj;
 };
 
 struct cap_task
@@ -177,6 +185,30 @@ struct bulletin;
             struct cap_flow *   : CAP_BASE (x),   \
             default: (x))
 
+// Page specifier.
+enum
+{
+  CAP_PAGES_CHAN,   // Pages from a channel.
+  CAP_PAGES_TAG,    // Pages from a channel's tag.
+  CAP_PAGES_CURR,   // Pages from the current message.
+};
+
+// Flags for the read/clean page interfaces.
+#define CAP_PAGES_MORE       0x01   // There are more pages for the object.
+#define CAP_PAGES_ADV_SKIP   0x02   // Advance iovec if page is not dirty.
+
+struct cap_page_info
+{
+  uint32_t size;
+  uint32_t flags;
+  uintptr_t tag;
+  uint32_t offset_cnt;
+  uint64_t *offsets;
+  struct iovec *iovs;
+  uint32_t iov_cnt;
+  struct ipc_msg_vme vme;
+};
+
 // Acquire or release a reference on a capability.
 static inline void
 cap_base_acq (struct cap_base *cap)
@@ -218,22 +250,17 @@ int cap_task_create (struct cap_task **outp, struct task *task);
 // Create a capability representing a thread.
 int cap_thread_create (struct cap_thread **outp, struct thread *thread);
 
-// Get and set a capability's tag (Used for channels and flows).
+// Get a capability's tag (Used for channels and flows).
 int cap_get_tag (const struct cap_base *cap, uintptr_t *tagp);
-int cap_set_tag (struct cap_base *cap, uintptr_t tag);
-
 #define cap_get_tag(cap, tagp)   (cap_get_tag) (CAP (cap), (tagp))
-#define cap_set_tag(cap, tag)    (cap_set_tag) (CAP (cap), (tag))
-
-// Link a channel to a flow.
-int cap_channel_link (struct cap_channel *channel, struct cap_flow *flow);
 
 // Hook a channel to a remote flow in a task.
 int cap_flow_hook (struct cap_channel **outp, struct task *task, int cap_idx);
 
 // Send and receive iterator triplets to a capability.
 ssize_t cap_send_iters (struct cap_base *cap, struct cap_iters *in_it,
-                        struct cap_iters *out_it, struct ipc_msg_data *data);
+                        struct cap_iters *out_it, struct ipc_msg_data *data,
+                        uint32_t xflags);
 
 // Reply to the current message with an iterator triplet or error value.
 ssize_t cap_reply_iters (struct cap_iters *it, int rv);
@@ -283,6 +310,18 @@ int cap_task_unregister (struct cap_flow *flow, struct task *task);
 // Traverse a list of dead notifications.
 void cap_notify_dead (struct bulletin *bulletin);
 
+// Request pages from a channel.
+ssize_t cap_request_pages (struct cap_channel *chp, uint64_t off,
+                           uint32_t nr_pages, struct vm_page **pages);
+
+// Reply with pages to a channel.
+ssize_t cap_reply_pagereq (const uintptr_t *src, uint32_t cnt);
+
+// Manipulate a channel's VM object.
+struct vm_object* cap_channel_get_vmobj (struct cap_channel *ch, uint32_t flg);
+void cap_channel_put_vmobj (struct cap_channel *chp);
+
+
 #define cap_iters_init_impl(it, buf, size, iov_init)   \
   do   \
     {   \
@@ -317,7 +356,7 @@ cap_send_bytes (struct cap_base *cap, const void *src, size_t src_size,
   cap_iters_init_buf (&in, src, src_size);
   cap_iters_init_buf (&out, dst, dst_size);
 
-  return (cap_send_iters (cap, &in, &out, NULL));
+  return (cap_send_iters (cap, &in, &out, NULL, 0));
 }
 
 #define cap_send_bytes(cap, src, src_size, dst, dst_size)   \
@@ -333,7 +372,7 @@ cap_send_iov (struct cap_base *cap, const struct iovec *src, uint32_t nr_src,
   cap_iters_init_iov (&in, src, nr_src);
   cap_iters_init_iov (&out, dst, nr_dst);
 
-  return (cap_send_iters (cap, &in, &out, NULL));
+  return (cap_send_iters (cap, &in, &out, NULL, 0));
 }
 
 #define cap_send_iov(cap, src, nr_src, dst, nr_dst)   \
@@ -349,7 +388,7 @@ cap_send_msg (struct cap_base *cap, const struct ipc_msg *src,
   cap_iters_init_msg (&in, src);
   cap_iters_init_msg (&out, dst);
 
-  return (cap_send_iters (cap, &in, &out, data));
+  return (cap_send_iters (cap, &in, &out, data, 0));
 }
 
 #define cap_send_msg(cap, src, dst, data)   \
@@ -411,8 +450,7 @@ cap_pull_msg (struct ipc_msg *msg, struct ipc_msg_data *mdata)
 
 // Push raw bytes into the current message.
 static inline ssize_t
-cap_push_bytes (const void *src, size_t bytes,
-                struct ipc_msg_data *mdata)
+cap_push_bytes (const void *src, size_t bytes, struct ipc_msg_data *mdata)
 {
   struct cap_iters it;
   cap_iters_init_buf (&it, src, bytes);

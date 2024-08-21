@@ -35,6 +35,7 @@
 #include <kern/list.h>
 #include <kern/log2.h>
 #include <kern/macros.h>
+#include <kern/slist_types.h>
 #include <kern/spinlock_types.h>
 #include <kern/stream.h>
 
@@ -81,17 +82,42 @@
 // Flags passed to the (de)allocation functions.
 #define VM_PAGE_SLEEP   0x80
 
+// Page 'cleanliness'.
+#define VM_PAGE_CLEAN     0
+#define VM_PAGE_DIRTY     1
+#define VM_PAGE_LAUNDRY   2
+
 struct vm_object;
 
 // Physical page descriptor.
 struct vm_page
 {
-  struct list node;
+  union
+    {
+      struct list node;
+      struct slist rset;
+    };
+
   phys_addr_t phys_addr;
-  uint8_t type;
-  uint8_t zone_index;
-  uint8_t order;
-  uint8_t dirty;
+  union
+    {
+      uint32_t whole;
+      struct
+        {
+#if __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
+          uint8_t type;
+          uint8_t zone_index;
+          uint8_t order;
+          uint8_t dirty;
+#else
+          uint8_t dirty;
+          uint8_t order;
+          uint8_t zone_index;
+          uint8_t type;
+#endif
+        };
+    };
+
   uint32_t nr_refs;
   void *priv;
 
@@ -154,14 +180,6 @@ static inline void*
 vm_page_get_priv (const struct vm_page *page)
 {
   return (page->priv);
-}
-
-static inline void
-vm_page_link (struct vm_page *page, struct vm_object *object, uint64_t offset)
-{
-  assert (object);
-  page->object = object;
-  page->offset = offset;
 }
 
 static inline void
@@ -232,6 +250,16 @@ const char* vm_page_zone_name (uint32_t zone_index);
 // Log information about physical pages.
 void vm_page_info (struct stream *stream);
 
+// Return the max possible offset for a physical page.
+uint64_t vm_page_max_offset (void);
+
+// Mark a page as being clean.
+void vm_page_clean (struct vm_page *page, uint32_t expected);
+
+// Interfaces to manage page cleaning.
+void vm_page_wash_begin (struct vm_page *page);
+void vm_page_wash_end (struct vm_page *page);
+
 static inline bool
 vm_page_referenced (const struct vm_page *page)
 {
@@ -264,7 +292,8 @@ vm_page_detach (struct vm_page *page)
 static inline void
 vm_page_unref (struct vm_page *page)
 {
-  if (vm_page_unref_nofree (page))
+  bool vm_page_can_free (struct vm_page *);
+  if (vm_page_unref_nofree (page) && vm_page_can_free (page))
     {
       int flags = page->type == VM_PAGE_OBJECT ? VM_PAGE_SLEEP : 0;
       if (flags == VM_PAGE_SLEEP && page->object)
@@ -276,19 +305,16 @@ vm_page_unref (struct vm_page *page)
 static inline int
 vm_page_tryref (struct vm_page *page)
 {
-  uint32_t nr_refs, prev;
-
-  do
+  while (1)
     {
-      nr_refs = atomic_load_rlx (&page->nr_refs);
-      if (! nr_refs)
+      uint32_t prev = atomic_load_rlx (&page->nr_refs);
+      if (! prev)
         return (EAGAIN);
+      else if (atomic_cas_bool_acq (&page->nr_refs, prev, prev + 1))
+        return (0);
 
-      prev = atomic_cas_acq (&page->nr_refs, nr_refs, nr_refs + 1);
+      atomic_spin_nop ();
     }
-  while (prev != nr_refs);
-
-  return (0);
 }
 
 static inline void
@@ -311,10 +337,32 @@ vm_page_is_cow (struct vm_page *page)
   return (((uintptr_t)vm_page_get_priv (page)) & 1);
 }
 
+static inline void
+vm_page_init_refcount (struct vm_page *page)
+{
+  page->nr_refs = 1;
+}
+
 static inline uintptr_t
 vm_page_anon_va (const struct vm_page *page)
 {
   return ((uintptr_t)page->offset);
+}
+
+static inline bool
+vm_page_mark_dirty (struct vm_page *page)
+{
+  while (1)
+    {
+      uint32_t tmp = atomic_load_rlx (&page->whole);
+      if ((tmp & 0xff) == VM_PAGE_DIRTY)
+        return (false);
+      else if (atomic_cas_bool_acq (&page->whole, tmp,
+                                    (tmp & ~0xff) | VM_PAGE_DIRTY))
+        return (true);
+
+      atomic_spin_nop ();
+    }
 }
 
 /*

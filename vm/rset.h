@@ -28,35 +28,32 @@
 #include <stdint.h>
 
 #include <kern/init.h>
-#include <kern/list.h>
+#include <kern/slist_types.h>
 #include <kern/work.h>
 
 struct vm_rset_entry
 {
-  struct list link;
+  struct slist_node link;
   struct work work;
   void *pte;
+  uintptr_t va;
+  uint32_t cpu;
 };
 
 struct vm_page;
 
-// Allocate a new RSET entry.
-struct vm_rset_entry* vm_rset_entry_create (void *pte);
-
 // Link a page to a PTE.
-int vm_rset_page_link (struct vm_page *page, void *pte);
+int vm_rset_page_link (struct vm_page *page, void *pte,
+                       uintptr_t va, uint32_t cpu);
 
 /*
- * Remove an RSET corresponding to a PTE.
+ * Remove an RSET entry corresponding to a PTE.
  * The caller is responsible for any locking.
  */
 void vm_rset_del (struct vm_page *page, void *pte);
 
-/*
- * Traverse the RSET entries in a list, clearing the specified bits.
- * Returns the previous bits of interest that were cleared (if any).
- */
-uintptr_t vm_rset_clr (struct list *list, uintptr_t bits);
+// Mark an RSET - and therefore the page - as read-only.
+void vm_rset_mark_ro (struct vm_page *page);
 
 /*
  * This init operation provides :

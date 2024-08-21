@@ -68,7 +68,7 @@ struct ipc_vme_iter
 
 struct ipc_msg
 {
-  size_t size;
+  uint32_t size;
   struct iovec *iovs;
   uint32_t iov_cnt;
   struct ipc_msg_vme *vmes;
@@ -78,12 +78,13 @@ struct ipc_msg
 };
 
 // Bits for the 'flags' member of a IPC message metadata.
-#define IPC_MSG_TRUNC   0x01   // Reply was truncated.
-#define IPC_MSG_ERROR   0x02   // There was an error during IPC.
+#define IPC_MSG_TRUNC    0x01   // Reply was truncated.
+#define IPC_MSG_ERROR    0x02   // There was an error during IPC.
+#define IPC_MSG_KERNEL   0x04   // Message was sent on behalf of the kernel.
 
 struct ipc_msg_data
 {
-  size_t size;
+  uint32_t size;
   int task_id;
   int thread_id;
   uint32_t flags;
@@ -161,6 +162,10 @@ ipc_iov_iter_init (struct ipc_iov_iter *it, struct iovec *vecs, uint32_t cnt)
   it->cur = 0, it->end = cnt;
   it->cache_idx = IPC_IOV_ITER_CACHE_SIZE;
 }
+
+// Advance an iovec iterator with pointers from userspace.
+struct iovec* ipc_iov_iter_usrnext (struct ipc_iov_iter *it,
+                                    bool check, ssize_t *errp);
 
 // Copy bytes between a local and a remote task.
 ssize_t ipc_bcopy (struct task *r_task, void *r_ptr, size_t r_size,

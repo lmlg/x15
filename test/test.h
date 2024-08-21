@@ -18,6 +18,8 @@
 #ifndef TEST_TEST_H
 #define TEST_TEST_H
 
+#include <stdint.h>
+
 #include <kern/init.h>
 #include <kern/macros.h>
 

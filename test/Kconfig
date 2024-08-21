@@ -115,6 +115,11 @@ config TEST_UNWIND
 	default n
 	select SYMTAB
 
+config TEST_VM_MAP_PHYS
+	bool "vm map physical mappings"
+	default n
+	select SYMTAB
+
 config TEST_VM_PAGE_FILL
 	bool "vm page filling"
 	default n

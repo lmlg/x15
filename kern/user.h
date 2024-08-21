@@ -29,6 +29,14 @@
 
 struct ipc_iov_iter;
 
+// Type used for fast, unaligned access.
+union user_ua
+{
+  unsigned u2 __attribute__ ((mode (HI)));
+  unsigned u4 __attribute__ ((mode (SI)));
+  unsigned u8 __attribute__ ((mode (DI)));
+} __packed;
+
 // Test that an address is accessible for the current task.
 static inline bool
 user_check_range (const void *addr, size_t size)
@@ -52,5 +60,10 @@ int user_copy_from (void *dst, const void *usrc, size_t size);
 ssize_t user_copyv_to (struct ipc_iov_iter *udst, struct ipc_iov_iter *src);
 
 ssize_t user_copyv_from (struct ipc_iov_iter *dst, struct ipc_iov_iter *usrc);
+
+// Copy to/from userspace a struct that knows its size.
+int user_read_struct (void *dst, const void *usrc, size_t size);
+
+int user_write_struct (void *udst, const void *src, size_t size);
 
 #endif

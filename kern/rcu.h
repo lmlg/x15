@@ -93,14 +93,14 @@ rcu_reader_dec (struct rcu_reader *reader)
  *
  * This macro enforces release ordering on the given pointer.
  */
-#define rcu_store(ptr, value)   atomic_store ((ptr), (value), ATOMIC_RELEASE)
+#define rcu_store(ptr, value)   atomic_store_rel ((ptr), (value))
 
 /*
  * Safely load a pointer.
  *
  * This macro enforces consume ordering on the given pointer.
  */
-#define rcu_load(ptr)    atomic_load ((ptr), ATOMIC_CONSUME)
+#define rcu_load(ptr)    atomic_load_rlx (ptr)
 
 /*
  * Read-side critical section functions.

@@ -897,10 +897,9 @@ ASM_ENTRY (cpu_lpad_swap)
   movq 0(%rdi), %rcx
   movq %rsp, 0(%rdi)
   movq %rcx, %rsp
-  # Save old landing pad and load entry point arguments.
+  # Load entry point arguments into registers.
   movq 16(%rdi), %rsi
   movq 8(%rdi), %rcx
-  movq %rdx, 8(%rdi)
   movq %rcx, %rdi
   # Jump to entry point.
   jmp *%rdx
@@ -916,7 +915,7 @@ ASM_ENTRY (cpu_lpad_swap)
   movl 0(%eax), %edx
   movl %esp, 0(%eax)
   movl %edx, %esp
-  # Save old landing pad and load entry point arguments.
+  # Load entry point arguments into registers.
   movl 8(%eax), %edx
   movl 4(%eax), %eax
   movl 12(%ecx), %ecx

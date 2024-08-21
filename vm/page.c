@@ -52,11 +52,13 @@
 #include <machine/boot.h>
 #include <machine/cpu.h>
 #include <machine/page.h>
+#include <machine/pmap.h>
 #include <machine/pmem.h>
 #include <machine/types.h>
 
 #include <vm/map.h>
 #include <vm/page.h>
+#include <vm/rset.h>
 
 // Number of free block lists per zone.
 #define VM_PAGE_NR_FREE_LISTS   11
@@ -200,8 +202,8 @@ vm_page_clear (struct vm_page *page, uint32_t order)
   for (uint32_t i = 0; i < (1u << order); ++i)
     {
       page[i].type = VM_PAGE_FREE;
-      page[i].priv = NULL;
       page[i].dirty = 0;
+      page[i].priv = NULL;
     }
 }
 
@@ -850,6 +852,44 @@ vm_page_zone_name (uint32_t zone_index)
     return ("DMA");
   else
     panic ("vm_page: invalid zone index");
+}
+
+uint64_t
+vm_page_max_offset (void)
+{
+  return (vm_page_zones[vm_page_zones_size - 1].end - PAGE_SIZE);
+}
+
+void
+vm_page_wash_begin (struct vm_page *page)
+{
+  while (1)
+    {
+      uint32_t tmp = atomic_load_rlx (&page->whole);
+      if ((tmp & 0xff) == VM_PAGE_LAUNDRY ||
+          atomic_cas_bool_acq_rel (&page->whole, tmp,
+                                   (tmp & ~0xff) | VM_PAGE_LAUNDRY))
+        return;
+
+      atomic_spin_nop ();
+    }
+}
+
+void
+vm_page_wash_end (struct vm_page *page)
+{
+  uint32_t tmp = atomic_load_rlx (&page->whole);
+  if ((tmp & 0xff) == VM_PAGE_LAUNDRY &&
+      atomic_cas_bool_rlx (&page->whole, tmp, tmp & ~0xff) &&
+      !vm_page_referenced (page))
+    vm_page_detach (page);
+}
+
+bool
+vm_page_can_free (struct vm_page *page)
+{
+  return (!page->dirty || !page->object ||
+          !(page->object->flags & VM_OBJECT_FLUSHES));
 }
 
 void

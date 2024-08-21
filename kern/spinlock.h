@@ -240,20 +240,21 @@ struct spinlock_guard
   bool saved_flags;
 };
 
+static inline void
+spinlock_guard_lock (struct spinlock_guard *guard)
+{
+  if (guard->saved_flags)
+    spinlock_lock_intr_save (guard->spinlock, &guard->flags);
+  else
+    spinlock_lock (guard->spinlock);
+}
+
 static inline struct spinlock_guard
 spinlock_guard_make (struct spinlock *spinlock, bool save_flags)
 {
-  struct spinlock_guard ret =
-    {
-      .spinlock = spinlock,
-      .saved_flags = save_flags
-    };
-
-  if (save_flags)
-    spinlock_lock_intr_save (spinlock, &ret.flags);
-  else
-    spinlock_lock (spinlock);
-
+  struct spinlock_guard ret = { .spinlock = spinlock };
+  ret.saved_flags = save_flags;
+  spinlock_guard_lock (&ret);
   return (ret);
 }
 
@@ -268,13 +269,13 @@ spinlock_guard_fini (void *ptr)
     spinlock_unlock (guard->spinlock);
 }
 
-#define SPINLOCK_GUARD_IMPL(spinlock, save_flags)   \
+#define SPINLOCK_GUARD_MAKE(spinlock, save_flags)   \
   CLEANUP (spinlock_guard_fini) _Auto __unused UNIQ (sg) =   \
     spinlock_guard_make ((spinlock), (save_flags))
 
-#define SPINLOCK_INTR_GUARD(spinlock)   SPINLOCK_GUARD_IMPL ((spinlock), true)
+#define SPINLOCK_INTR_GUARD(spinlock)   SPINLOCK_GUARD_MAKE ((spinlock), true)
 
-#define SPINLOCK_GUARD(spinlock)   SPINLOCK_GUARD_IMPL ((spinlock), false)
+#define SPINLOCK_GUARD(spinlock)   SPINLOCK_GUARD_MAKE ((spinlock), false)
 
 /*
  * This init operation provides :

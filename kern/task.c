@@ -169,8 +169,9 @@ task_destroy (struct task *task)
   list_remove (&task->node);
   spinlock_unlock (&task_list_lock);
   cspace_destroy (&task->caps);
-  vm_map_destroy (task->map);
   kuid_remove (&task->kuid, KUID_TASK);
+  if (task->map)
+    vm_map_destroy (task->map);
   kmem_cache_free (&task_cache, task);
 }
 
@@ -209,8 +210,10 @@ task_remove_thread (struct task *task, struct thread *thread)
   spinlock_unlock (&task->lock);
 
   if (last)
-    { // Destroy the cspace early to avoid circular references.
+    { // The VM map and cspace must be destroyed early to avoid circularities.
       cspace_destroy (&task->caps);
+      vm_map_destroy (task->map);
+      task->map = NULL;
       cap_notify_dead (&task->dead_subs);
       task_unref (task);
     }

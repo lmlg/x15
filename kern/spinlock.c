@@ -176,7 +176,7 @@ spinlock_qnode_wait_next (const struct spinlock_qnode *qnode)
       if (next)
         return (next);
 
-      cpu_pause ();
+      atomic_spin_nop ();
     }
 }
 
@@ -198,7 +198,7 @@ static void
 spinlock_qnode_wait_locked (const struct spinlock_qnode *qnode)
 {
   while (atomic_load_acq (&qnode->locked))
-    cpu_pause ();
+    atomic_spin_nop ();
 }
 
 static void
@@ -231,7 +231,7 @@ spinlock_enqueue (struct spinlock *lock, uint32_t qid)
       if (prev == old_value)
         return (prev);
 
-      cpu_pause ();
+      atomic_spin_nop ();
     }
 }
 
@@ -257,7 +257,7 @@ static void
 spinlock_wait_locked (const struct spinlock *lock)
 {
   while (atomic_load_acq (&lock->value) & SPINLOCK_LOCKED)
-    cpu_pause ();
+    atomic_spin_nop ();
 }
 
 static int

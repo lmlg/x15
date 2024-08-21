@@ -152,7 +152,7 @@ xcall_call (xcall_fn_t fn, void *arg, uint32_t cpu)
 
   // Enforce acquire ordering on the receive call.
   while (xcall_cpu_data_get_recv_call (cpu_data))
-    cpu_pause ();
+    atomic_spin_nop ();
 
   spinlock_unlock (&cpu_data->lock);
   syscnt_inc (&cpu_data->sc_sent);

@@ -20,14 +20,14 @@
 #include <kern/atomic.h>
 #include <kern/cbuf.h>
 #include <kern/kuid.h>
+#include <kern/mutex.h>
 #include <kern/panic.h>
 #include <kern/rcu.h>
 #include <kern/rdxtree.h>
-#include <kern/spinlock.h>
 
 struct kuid_map
 {
-  struct spinlock lock;
+  struct mutex lock;
   struct rdxtree tree;
   uint32_t free_kuids[64];
   struct cbuf cbuf;
@@ -96,7 +96,7 @@ kuid_alloc (struct kuid_head *head, int cls)
 
   {
     _Auto map = &kuid_maps[cls];
-    SPINLOCK_GUARD (&map->lock);
+    MUTEX_GUARD (&map->lock);
 
     if (kuid_map_alloc_radix (map, head, &key) != 0)
       return (EAGAIN);
@@ -132,7 +132,7 @@ kuid_find (uint32_t kuid, int cls)
       else if (atomic_cas_bool_acq (&head->nr_refs, nr_refs, nr_refs + 1))
         return (head);
 
-      cpu_pause ();
+      atomic_spin_nop ();
     }
 }
 
@@ -144,15 +144,14 @@ kuid_remove (struct kuid_head *head, int cls)
   if (!head->id)
     return (EINVAL);
 
-  cpu_flags_t flags;
   _Auto map = &kuid_maps[cls];
-  spinlock_lock_intr_save (&map->lock, &flags);
+  mutex_lock (&map->lock);
 
   struct kuid_head *prev = rdxtree_remove (&map->tree, head->id);
   if (prev)
     cbuf_push (&map->cbuf, &head->id, sizeof (head->id), false);
 
-  spinlock_unlock_intr_restore (&map->lock, flags);
+  mutex_unlock (&map->lock);
   if (! prev)
     return (ESRCH);
 
@@ -163,7 +162,7 @@ kuid_remove (struct kuid_head *head, int cls)
 static void
 kuid_map_init (struct kuid_map *map, uint32_t max_id)
 {
-  spinlock_init (&map->lock);
+  mutex_init (&map->lock);
   rdxtree_init (&map->tree, RDXTREE_KEY_ALLOC);
   cbuf_init (&map->cbuf, map->free_kuids, sizeof (map->free_kuids));
   map->max_id = max_id;
@@ -182,5 +181,5 @@ kuid_setup (void)
 }
 
 INIT_OP_DEFINE (kuid_setup,
-                INIT_OP_DEP (spinlock_setup, true),
+                INIT_OP_DEP (mutex_setup, true),
                 INIT_OP_DEP (rdxtree_setup, true));

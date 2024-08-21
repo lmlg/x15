@@ -191,6 +191,7 @@ test_cap_receiver (void *arg)
       .cap_cnt = 1,
     };
 
+  vars->mdata.size = sizeof (vars->mdata);
   error = cap_flow_add_lpad (flow, (char *)vm_page_direct_ptr (page) +
                              PAGE_SIZE, PAGE_SIZE, &vars->msg,
                              &vars->mdata, &vars->info);

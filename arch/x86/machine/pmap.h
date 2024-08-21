@@ -172,13 +172,24 @@
 #include <machine/types.h>
 
 // Mapping creation flags.
-#define PMAP_PEF_GLOBAL      0x1   // Operate on all processors.
-#define PMAP_IGNORE_ERRORS   0x2   // Ignore errors when updating.
+#define PMAP_PEF_GLOBAL      0x1    // Operate on all processors.
+#define PMAP_IGNORE_ERRORS   0x2    // Ignore errors when updating.
+#define PMAP_SKIP_RSET       0x4    // Don't add PTE to the RSET.
+#define PMAP_IS_KERNEL       0x8    // PMAP belongs to the kernel.
+#define PMAP_CLEAN_PAGES     0x10   // Clean pages after unmap.
 
 typedef phys_addr_t pmap_pte_t;
 
 // Physical address map.
 struct pmap;
+
+struct pmap_clean_data
+{
+  phys_addr_t pa;
+  uintptr_t va;
+  pmap_pte_t *pte;
+  uint32_t cpu;
+};
 
 static inline struct pmap*
 pmap_get_kernel_pmap (void)
@@ -384,11 +395,8 @@ pmap_ipc_pte_load (struct thread_pmap_data *pd, phys_addr_t pa)
     pmap_ipc_pte_set (pd, pd->va, pa);
 }
 
-static inline bool
-pmap_pte_isdirty (pmap_pte_t *pte)
-{
-  return ((*pte & PMAP_PTE_D) != 0);
-}
+// Cross-call entry point for cleaning a page.
+void pmap_xcall_clean (void *arg);
 
 /*
  * This init operation provides :

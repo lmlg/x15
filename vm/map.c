@@ -23,20 +23,18 @@
 #include <stdint.h>
 #include <stdio.h>
 
+#include <kern/capability.h>
 #include <kern/init.h>
 #include <kern/ipc.h>
 #include <kern/kmem.h>
+#include <kern/kmessage.h>
 #include <kern/list.h>
 #include <kern/log.h>
-#include <kern/macros.h>
-#include <kern/mutex.h>
 #include <kern/panic.h>
-#include <kern/percpu.h>
 #include <kern/rbtree.h>
 #include <kern/shell.h>
 #include <kern/spinlock.h>
 #include <kern/task.h>
-#include <kern/unwind.h>
 
 #include <machine/page.h>
 #include <machine/pmap.h>
@@ -58,6 +56,13 @@ struct vm_map_page_target
 };
 
 #define VM_MAP_PMAP_FLAGS   (PMAP_PEF_GLOBAL | PMAP_IGNORE_ERRORS)
+
+enum
+{
+  VM_MAP_FREE_NONE,
+  VM_MAP_FREE_OBJ,
+  VM_MAP_FREE_ALL,
+};
 
 /*
  * Mapping request.
@@ -82,6 +87,8 @@ static int vm_map_prepare (struct vm_map *map, uintptr_t start, size_t size,
 
 static int vm_map_insert (struct vm_map *map, struct vm_map_entry *entry,
                           const struct vm_map_request *request);
+
+static void vm_map_entry_unmap (struct vm_map *map, struct vm_map_entry *ep);
 
 static struct kmem_cache vm_map_entry_cache;
 static struct kmem_cache vm_map_cache;
@@ -124,33 +131,60 @@ vm_map_entry_pop (struct list *list)
 }
 
 static void
-vm_map_entry_free_obj (struct vm_map_entry *entry, bool clear)
+vm_map_unref_object (struct vm_object *obj)
 {
-  struct vm_object *obj = entry->object;
-  if (! obj)
-    return;
-  else if (clear)
-    {
-      uint64_t off = entry->offset;
-      vm_object_remove (obj, off, off + entry->end - entry->start);
-    }
-
-  vm_object_unref (obj);
+  if (obj->flags & VM_OBJECT_EXTERNAL)
+    cap_channel_put_vmobj (obj->channel);
+  else
+    vm_object_unref (obj);
 }
 
 static void
-vm_map_entry_destroy (struct vm_map_entry *entry, bool clear)
+vm_map_entry_free_obj (struct vm_map *map, struct vm_map_entry *ep, int free)
 {
-  vm_map_entry_free_obj (entry, clear);
+  struct vm_object *obj = ep->object;
+
+  if (! obj)
+    {
+      if ((ep->flags & (VM_MAP_PHYS | VM_MAP_ANON)) !=
+          (VM_MAP_PHYS | VM_MAP_ANON))
+        return;
+
+      size_t nr_pages = (ep->end - ep->start) / PAGE_SIZE;
+      for (size_t i = 0; i < nr_pages; ++i)
+        vm_page_unref (ep->pages + i);
+
+      return;
+    }
+
+  uint64_t off = ep->offset;
+  switch (free)
+    {
+      case VM_MAP_FREE_ALL:
+        vm_map_entry_unmap (map, ep);
+        // FALLTHROUGH.
+      case VM_MAP_FREE_OBJ:
+        vm_object_remove (obj, off, off + ep->end - ep->start);
+      case VM_MAP_FREE_NONE:
+        break;
+    }
+
+  vm_map_unref_object (obj);
+}
+
+static void
+vm_map_entry_destroy (struct vm_map *map, struct vm_map_entry *entry, int free)
+{
+  vm_map_entry_free_obj (map, entry, free);
   kmem_cache_free (&vm_map_entry_cache, entry);
 }
 
 static void
-vm_map_entry_list_destroy (struct list *list, bool clear)
+vm_map_entry_list_destroy (struct vm_map *map, struct list *list, int free)
 {
   list_for_each_safe (list, ex, tmp)
-    vm_map_entry_destroy (list_entry (ex, struct vm_map_entry,
-                                      list_node), clear);
+    vm_map_entry_destroy (map, list_entry (ex, struct vm_map_entry,
+                                           list_node), free);
 }
 
 static inline int
@@ -171,7 +205,8 @@ vm_map_entry_cmp_insert (const struct rbtree_node *a,
 static bool
 vm_map_request_valid (const struct vm_map_request *request)
 {
-  return ((request->object || !request->offset) &&
+  return ((request->object || !request->offset ||
+            (request->flags & VM_MAP_PHYS)) &&
           vm_page_aligned (request->offset) &&
           vm_page_aligned (request->start) &&
           request->size > 0 && vm_page_aligned (request->size) &&
@@ -334,6 +369,7 @@ vm_map_try_merge_compatible (const struct vm_map_request *request,
                              const struct vm_map_entry *entry)
 {
   return (request->object == entry->object &&
+          request->object != NULL &&
           ((request->flags & VM_MAP_ENTRY_MASK) ==
              (entry->flags & VM_MAP_ENTRY_MASK)));
 }
@@ -399,7 +435,7 @@ vm_map_try_merge_near (struct vm_map *map, const struct vm_map_request *request,
       vm_map_unlink (map, first);
       vm_map_unlink (map, second);
       first->end = second->end;
-      vm_map_entry_destroy (second, false);
+      vm_map_entry_destroy (map, second, VM_MAP_FREE_NONE);
       vm_map_link (map, first, next);
       return (first);
     }
@@ -440,11 +476,11 @@ vm_map_try_merge (struct vm_map *map, const struct vm_map_request *request)
  */
 static int
 vm_map_insert (struct vm_map *map, struct vm_map_entry *entry,
-               const struct vm_map_request *request)
+               const struct vm_map_request *req)
 {
   if (! entry)
     {
-      entry = vm_map_try_merge (map, request);
+      entry = vm_map_try_merge (map, req);
       if (entry)
         goto out;
 
@@ -453,19 +489,24 @@ vm_map_insert (struct vm_map *map, struct vm_map_entry *entry,
         return (ENOMEM);
     }
 
-  entry->start = request->start;
-  entry->end = request->start + request->size;
-  entry->object = request->object;
-  entry->offset = (request->flags & VM_MAP_ANON) ?
-    (uint64_t)request->start : request->offset;
-  entry->flags = request->flags & VM_MAP_ENTRY_MASK;
-  vm_map_link (map, entry, request->next);
+  entry->start = req->start;
+  entry->end = req->start + req->size;
+  entry->object = req->object;
+
+  if (req->flags & VM_MAP_PHYS)
+    entry->pages = vm_page_lookup (req->offset);
+  else
+    entry->offset = (req->flags & VM_MAP_ANON) ?
+      (uint64_t)entry->start : req->offset;
+
+  entry->flags = req->flags & VM_MAP_ENTRY_MASK;
+  vm_map_link (map, entry, req->next);
 
   if (entry->object)
     vm_object_ref (entry->object);
 
 out:
-  map->size += request->size;
+  map->size += req->size;
   return (0);
 }
 
@@ -485,12 +526,66 @@ vm_map_enter_locked (struct vm_map *map, uintptr_t *startp, size_t size,
   return (0);
 }
 
+static int
+vm_map_umap_req (struct vm_object *obj, uint64_t offset, int flags)
+{
+  struct kmessage msg;
+  msg.type = KMSG_TYPE_MMAP_REQ;
+  msg.mmap_req.offset = offset;
+  msg.mmap_req.prot = VM_MAP_PROT (flags);
+  msg.mmap_req.tag = obj->channel->tag;
+
+  struct cap_iters it;
+  cap_iters_init_buf (&it, &msg, sizeof (msg));
+  ssize_t rv = cap_send_iters (CAP (obj->channel), &it, &it,
+                               0, IPC_MSG_KERNEL);
+  return (rv < 0 ? (int)-rv : (int)rv);
+}
+
 int
 vm_map_enter (struct vm_map *map, uintptr_t *startp, size_t size,
               int flags, struct vm_object *object, uint64_t offset)
 {
-  SXLOCK_EXGUARD (&map->lock);
-  return (vm_map_enter_locked (map, startp, size, flags, object, offset));
+  if (flags & VM_MAP_PHYS)
+    {
+      if (object)
+        return (EINVAL);
+      else if (flags & VM_MAP_ANON)
+        {
+          uint32_t order = vm_page_order (size);
+          _Auto pages = vm_page_alloc (order, VM_PAGE_SEL_HIGHMEM,
+                                       VM_PAGE_OBJECT, VM_PAGE_SLEEP);
+          if (! pages)
+            return (ENOMEM);
+
+          for (uint32_t i = 0; i < (1u << order); ++i)
+            vm_page_init_refcount (pages + i);
+
+          offset = vm_page_to_pa (pages);
+        }
+      else if (offset + size > vm_page_max_offset ())
+        return (EFAULT);
+    }
+  else if (object && object->flags & VM_OBJECT_EXTERNAL)
+    { // Need to check if the mapping is permitted.
+      int error = vm_map_umap_req (object, offset, flags);
+      if (error)
+        return (error);
+    }
+
+  sxlock_exlock (&map->lock);
+  int error = vm_map_enter_locked (map, startp, size, flags, object, offset);
+  sxlock_unlock (&map->lock);
+
+  if (error && ((flags & (VM_MAP_PHYS | VM_MAP_ANON)) ==
+                (VM_MAP_PHYS | VM_MAP_ANON)))
+    {
+      _Auto pages = vm_page_lookup (offset);
+      for (uint32_t i = 0; i < (1u << vm_page_order (size)); ++i)
+        vm_page_unref (pages + i);
+    }
+
+  return (error);
 }
 
 static void
@@ -558,6 +653,15 @@ vm_map_clip_end (struct vm_map *map, struct vm_map_entry *entry,
   vm_map_link (map, new_entry, next);
 }
 
+static void
+vm_map_entry_unmap (struct vm_map *map, struct vm_map_entry *entry)
+{
+  pmap_remove_range (map->pmap, entry->start, entry->end,
+                     VM_MAP_PMAP_FLAGS |
+                     ((entry->flags & VM_MAP_CLEAN) ?
+                      PMAP_CLEAN_PAGES : 0));
+}
+
 static int
 vm_map_remove_impl (struct vm_map *map, uintptr_t start,
                     uintptr_t end, struct list *list, bool clear)
@@ -602,6 +706,9 @@ vm_map_remove_impl (struct vm_map *map, uintptr_t start,
       vm_map_unlink (map, entry);
 
       list_insert_tail (list, &entry->list_node);
+      if (clear)
+        vm_map_entry_unmap (map, entry);
+
       entry = list_entry (node, struct vm_map_entry, list_node);
     }
 
@@ -610,7 +717,6 @@ vm_map_remove_impl (struct vm_map *map, uintptr_t start,
   if (clear)
     { // Don't prevent lookups and page faults from here on.
       sxlock_share (&map->lock);
-      pmap_remove_range (map->pmap, start, end, VM_MAP_PMAP_FLAGS);
       pmap_update (map->pmap);
     }
 
@@ -625,7 +731,7 @@ vm_map_remove (struct vm_map *map, uintptr_t start, uintptr_t end)
 
   int error = vm_map_remove_impl (map, start, end, &entries, true);
   if (! error)
-    vm_map_entry_list_destroy (&entries, true);
+    vm_map_entry_list_destroy (map, &entries, VM_MAP_FREE_OBJ);
 
   return (error);
 }
@@ -736,7 +842,7 @@ vm_map_protect (struct vm_map *map, uintptr_t start, uintptr_t end, int prot)
   struct list dead;
   list_init (&dead);
   int error = vm_map_protect_impl (map, start, end, prot, &dead);
-  vm_map_entry_list_destroy (&dead, false);
+  vm_map_entry_list_destroy (map, &dead, VM_MAP_FREE_NONE);
   return (error);
 }
 
@@ -837,7 +943,7 @@ vm_map_setup (void)
                    0, NULL, KMEM_CACHE_PAGE_ONLY);
 
   // Allocate pages for IPC mapping purposes.
-  if (vm_map_enter (&vm_map_kernel_map, &vm_map_ipc_va, PAGE_SIZE * 2,
+  if (vm_map_enter (&vm_map_kernel_map, &vm_map_ipc_va, PAGE_SIZE * 3,
                     VM_MAP_FLAGS (VM_PROT_RDWR, VM_PROT_RDWR,
                                   VM_INHERIT_NONE, VM_ADV_DEFAULT, 0),
                     NULL, 0) != 0)
@@ -857,60 +963,83 @@ INIT_OP_DEFINE (vm_map_setup,
                 INIT_OP_DEP (printf_setup, true),
                 INIT_OP_DEP (vm_map_bootstrap, true));
 
-static int
-vm_map_fault_alloc_pages (struct vm_map_entry *entry, struct vm_page **outp,
-                          uint64_t offset, uintptr_t addr, uint64_t *startp)
+struct vm_map_fault_pages
 {
-  size_t adv = VM_MAP_ADVICE (entry->flags);
+  struct vm_page *store[VM_MAP_MAX_FRAMES];
+  int nr_pages;
+};
+
+static void
+vm_map_fault_get_params (struct vm_map_entry *entry, uintptr_t addr,
+                         uint64_t *offsetp, int *npagesp)
+{
+  uint32_t adv = VM_MAP_ADVICE (entry->flags);
   assert (adv < ARRAY_SIZE (vm_map_page_targets));
-  _Auto target = &vm_map_page_targets[adv];
+  const _Auto target = &vm_map_page_targets[adv];
 
   // Mind overflows when computing the offsets.
   uintptr_t start_off = MIN (addr - entry->start, target->front),
             last_off = MIN (entry->end - addr, target->back);
-  uint32_t order = (uint32_t)(log2 ((last_off + start_off) >> PAGE_SHIFT));
+  *npagesp = (int)((last_off + start_off) >> PAGE_SHIFT);
+  *offsetp -= start_off;
+}
 
-  *startp = offset - start_off;
-  *outp = vm_page_alloc (order, VM_PAGE_SEL_HIGHMEM,
-                         VM_PAGE_OBJECT, VM_PAGE_SLEEP);
-  return (*outp ? (int)order : -1);
+static int
+vm_map_fault_alloc_pages (struct vm_map_fault_pages *pages)
+{
+  for (int i = 0; i < pages->nr_pages; ++i)
+    {
+      _Auto page = vm_page_alloc (0, VM_PAGE_SEL_HIGHMEM,
+                                  VM_PAGE_OBJECT, VM_PAGE_SLEEP);
+      if (! page)
+        {
+          while (--i >= 0)
+            vm_page_unref (pages->store[i]);
+          return (-ENOMEM);
+        }
+
+      vm_page_init_refcount (page);
+      pages->store[i] = page;
+    }
+
+  return (0);
 }
 
 static inline void
 vm_map_cleanup_object (void *ptr)
 {
-  vm_object_unref (*(struct vm_object **)ptr);
+  vm_map_unref_object (*(struct vm_object **)ptr);
 }
 
 static int
 vm_map_fault_get_data (struct vm_object *obj, uint64_t off,
-                       struct vm_page *pages, int prot, int nr_pages)
+                       struct vm_map_fault_pages *pages, int prot)
 {
-  int ret = -EINTR;
+  if (obj->flags & VM_OBJECT_EXTERNAL)
+    return (cap_request_pages (obj->channel, off, pages->nr_pages,
+                               pages->store));
 
-  if (!(obj->flags & VM_OBJECT_EXTERNAL))
-    { // Simple callback-based object.
-      uintptr_t va = vm_map_ipc_addr ();
-      THREAD_PIN_GUARD ();
-      _Auto pte = pmap_ipc_pte_get ();
+  // Simple callback-based object.
+  int ret = vm_map_fault_alloc_pages (pages);
+  if (ret < 0)
+    return (ret);
 
-      for (ret = 0; ret < nr_pages; ++ret, off += PAGE_SIZE)
+  uintptr_t va = vm_map_ipc_addr ();
+  THREAD_PIN_GUARD ();
+  _Auto pte = pmap_ipc_pte_get ();
+
+  for (ret = 0; ret < pages->nr_pages; ++ret, off += PAGE_SIZE)
+    {
+      pmap_ipc_pte_set (pte, va, vm_page_to_pa (pages->store[ret]));
+      int tmp = obj->page_get (obj, off, PAGE_SIZE, prot, (void *)va);
+      if (tmp < 0)
         {
-          pmap_ipc_pte_set (pte, va, vm_page_to_pa (pages + ret));
-          int tmp = vm_object_pager_get (obj, off, PAGE_SIZE,
-                                         prot, (void *)va);
-          if (tmp < 0)
-            {
-              ret = tmp;
-              break;
-            }
+          ret = tmp;
+          break;
         }
-
-      pmap_ipc_pte_put (pte);
-      return (ret);
     }
 
-  // XXX: Implement for external pagers.
+  pmap_ipc_pte_put (pte);
   return (ret);
 }
 
@@ -949,6 +1078,7 @@ vm_map_fault_handle_cow (uintptr_t addr, struct vm_page **pgp,
   cpu_intr_disable ();
   thread_unpin ();
 
+  vm_page_init_refcount (p2);
   int ret = vm_object_swap (map->priv_cache, p2, page->offset, page);
   if (likely (ret == 0))
     {
@@ -967,31 +1097,53 @@ vm_map_fault_handle_cow (uintptr_t addr, struct vm_page **pgp,
 
 static bool
 vm_map_fault_soft (struct vm_map *map, struct vm_object *obj, uint64_t off,
-                   uintptr_t addr, int prot)
+                   uintptr_t addr, struct vm_map_entry *entry)
 {
-  _Auto page = vm_object_lookup (obj, off);
-  if (! page)
-    return (false);
-  else if (((prot & VM_PROT_WRITE) == 0 || !vm_page_is_cow (page) ||
-           vm_map_fault_handle_cow (addr, &page, map) == 0) &&
-           pmap_enter (map->pmap, addr, vm_page_to_pa (page),
-                       prot, PMAP_IGNORE_ERRORS) == 0)
+  int pflags = PMAP_IGNORE_ERRORS;
+  struct vm_page *page;
+
+  if (entry->flags & VM_MAP_PHYS)
+    {
+      page = entry->pages + ((addr - entry->start) / PAGE_SIZE);
+      pflags |= PMAP_SKIP_RSET;
+    }
+  else
+    {
+      page = vm_object_lookup (obj, off);
+      if (! page)
+        return (false);
+      else if (!(obj->flags & VM_OBJECT_FLUSHES))
+        pflags |= PMAP_SKIP_RSET;
+    }
+
+  int prot = VM_MAP_PROT (entry->flags);
+  if (((prot & VM_PROT_WRITE) == 0 || !vm_page_is_cow (page) ||
+       vm_map_fault_handle_cow (addr, &page, map) == 0) &&
+       pmap_enter (map->pmap, addr, vm_page_to_pa (page), prot, pflags) == 0)
     pmap_update (map->pmap);
 
-  vm_page_unref (page);
+  if (page->object)
+    vm_page_unref (page);
+
   atomic_add_rlx (&map->soft_faults, 1);
   return (true);
 }
 
+static int
+vm_map_unref_pages (struct vm_page **pages, uint32_t cnt, int rv)
+{
+  for (uint32_t i = 0; i < cnt; ++i)
+    if (pages[i])
+      vm_page_unref (pages[i]);
+
+  return (-rv);
+}
+
 static void
-vm_map_fault_free_pages (struct vm_page *frames, uint32_t n)
+vm_map_fault_free_pages (struct vm_map_fault_pages *p)
 {
   cpu_intr_enable ();
-  if (ISP2 (n))
-    vm_page_free (frames, log2 (n), VM_PAGE_SLEEP);
-  else
-    for (uint32_t i = 0; i < n; ++i)
-      vm_page_free (frames + i, 0, VM_PAGE_SLEEP);
+  (void)vm_map_unref_pages (p->store, (uint32_t)p->nr_pages, 0);
   cpu_intr_disable ();
 }
 
@@ -1014,15 +1166,15 @@ retry:
 
     prot = VM_MAP_PROT (entry->flags);
     object = entry->object;
-    assert (object);   // Null vm-objects are kernel-only and always wired.
+    assert (object || (entry->flags & VM_MAP_PHYS));
 
     offset = entry->offset + addr - entry->start;
-    if (entry->flags & VM_MAP_ANON)
+    if ((entry->flags & (VM_MAP_ANON | VM_MAP_PHYS)) == VM_MAP_ANON)
       final_off = addr, final_obj = map->priv_cache;
     else
       final_off = offset, final_obj = object;
 
-    if (vm_map_fault_soft (map, final_obj, final_off, addr, prot))
+    if (vm_map_fault_soft (map, final_obj, final_off, addr, entry))
       return (0);
 
     // Prevent the VM object from going away as we drop the lock.
@@ -1032,17 +1184,12 @@ retry:
 
   cpu_intr_enable ();
   CLEANUP (vm_map_cleanup_object) __unused _Auto objg = object;
-  struct vm_page *frames;
-  uint64_t start_off;
-  int n_pages = vm_map_fault_alloc_pages (entry, &frames, offset,
-                                          addr, &start_off);
+  struct vm_map_fault_pages frames;
+  uint64_t start_off = offset;
 
-  if (n_pages < 0)
-    // Allocation was interrupted. Let userspace handle things.
-    return (0);
+  vm_map_fault_get_params (entry, addr, &start_off, &frames.nr_pages);
+  int n_pages = vm_map_fault_get_data (object, start_off, &frames, prot);
 
-  n_pages = vm_map_fault_get_data (object, start_off, frames,
-                                   prot, 1 << n_pages);
   if (n_pages < 0)
     return (-n_pages);
   else if (unlikely (start_off + n_pages * PAGE_SIZE < offset))
@@ -1063,7 +1210,7 @@ retry:
         addr - (uintptr_t)(offset - start_off) +
           n_pages * PAGE_SIZE <= e2->end))
     {
-      vm_map_fault_free_pages (frames, n_pages);
+      vm_map_fault_free_pages (&frames);
       goto retry;
     }
 
@@ -1074,21 +1221,16 @@ retry:
   for (uint32_t i = 0; i < (uint32_t)n_pages;
       ++i, final_off += PAGE_SIZE, addr += PAGE_SIZE)
     {
-      struct vm_page *page = frames + i;
-      int error = vm_object_insert (final_obj, page, final_off);
-
-      if (error != 0 ||
+      struct vm_page *page = frames.store[i];
+      if (vm_object_insert (final_obj, page, final_off) == 0 &&
           pmap_enter (map->pmap, addr, vm_page_to_pa (page),
-                      prot, PMAP_IGNORE_ERRORS) != 0)
-        {
-          i += error == 0;
-          vm_map_fault_free_pages (frames + i, n_pages - i);
-          break;
-        }
+                      prot, PMAP_IGNORE_ERRORS) == 0)
+        frames.store[i] = NULL;
     }
 
   pmap_update (map->pmap);
   atomic_add_rlx (&map->hard_faults, 1);
+  vm_map_fault_free_pages (&frames);
   return (0);
 }
 
@@ -1141,8 +1283,7 @@ error_pmap:
 }
 
 int
-vm_map_lookup (struct vm_map *map, uintptr_t addr,
-               struct vm_map_entry *entry)
+vm_map_lookup (struct vm_map *map, uintptr_t addr, struct vm_map_entry *entry)
 {
   SXLOCK_SHGUARD (&map->lock);
   _Auto ep = vm_map_lookup_nearest (map, addr);
@@ -1174,8 +1315,9 @@ vm_map_anon_alloc (void **outp, struct vm_map *map, size_t size)
 void
 vm_map_destroy (struct vm_map *map)
 {
+  vm_map_entry_list_destroy (map, &map->entry_list, VM_MAP_FREE_ALL);
+  pmap_update (map->pmap);
   pmap_destroy (map->pmap);
-  vm_map_entry_list_destroy (&map->entry_list, true);
   vm_object_unref (map->priv_cache);
   kmem_cache_free (&vm_map_cache, map);
 }
@@ -1278,7 +1420,7 @@ vm_map_iter_cleanup (struct vm_map *map, struct ipc_vme_iter *it,
 
       list_init (&entries);
       vm_map_remove_impl (map, start, end, &entries, false);
-      vm_map_entry_list_destroy (&entries, true);
+      vm_map_entry_list_destroy (map, &entries, VM_MAP_FREE_OBJ);
 
       pmap_remove_range (map->pmap, start, end, VM_MAP_PMAP_FLAGS);
     }
@@ -1364,9 +1506,41 @@ vm_map_iter_copy (struct vm_map *r_map, struct ipc_vme_iter *r_it,
   return (i);
 }
 
+int
+vm_map_reply_pagereq (const uintptr_t *src, uint32_t cnt, struct vm_page **out)
+{
+  struct vm_map_entry *entry = NULL;
+  _Auto map = vm_map_self ();
+
+  SXLOCK_SHGUARD (&map->lock);
+  for (uint32_t i = 0; i < cnt; ++i)
+    {
+      uintptr_t va = src[i];
+
+      if ((!entry || va < entry->start || va > entry->end) &&
+          !(entry = vm_map_lookup_nearest (map, va)))
+        return (vm_map_unref_pages (out, i, EFAULT));
+      else if (!(entry->flags & VM_MAP_PHYS))
+        return (vm_map_unref_pages (out, i, EINVAL));
+
+      uint32_t off = (uint32_t)(va - entry->start) / PAGE_SIZE;
+      _Auto page = (struct vm_page *)entry->pages + off;
+      vm_page_ref (page);
+      out[i] = page;
+    }
+
+  return ((int)cnt);
+}
+
 void
 vm_map_info (struct vm_map *map, struct stream *stream)
 {
+  if (! map)
+    {
+      fmt_xprintf (stream, "vm map is empty\n");
+      return;
+    }
+
   const char *name = map == vm_map_get_kernel_map () ? "kernel map" : "map";
   SXLOCK_SHGUARD (&map->lock);
 

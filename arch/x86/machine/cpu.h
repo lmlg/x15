@@ -581,17 +581,6 @@ cpu_intr_guard_fini (void *ptr)
      })
 
 /*
- * Spin-wait loop hint.
- *
- * Implies a compiler barrier.
- */
-static __always_inline void
-cpu_pause (void)
-{
-  asm volatile ("pause" : : : "memory");
-}
-
-/*
  * Make the CPU idle until the next interrupt.
  *
  * Interrupts are enabled. Besides, they're enabled in a way that doesn't

@@ -468,7 +468,7 @@ timer_cancel (struct timer *timer)
           if (timer_is_intr (timer))
             {
               timer_unlock_cpu_data (cpu_data, cpu_flags);
-              cpu_pause ();
+              atomic_spin_nop ();
               cpu_data = timer_lock_cpu_data (timer, &cpu_flags);
             }
           else

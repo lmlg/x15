@@ -63,8 +63,7 @@ cspace_add_free_locked (struct cspace *sp, struct cap_base *cap,
 }
 
 static inline int
-cspace_add_free (struct cspace *sp, struct cap_base *cap,
-                 int flags __unused)
+cspace_add_free (struct cspace *sp, struct cap_base *cap, int flags)
 {
   ADAPTIVE_LOCK_GUARD (&sp->lock);
   return (cspace_add_free_locked (sp, cap, flags));

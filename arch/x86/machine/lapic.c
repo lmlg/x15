@@ -269,7 +269,7 @@ static void
 lapic_ipi_wait (void)
 {
   while (lapic_read (&lapic_map->icr_low) & LAPIC_ICR_STATUS_PENDING)
-    cpu_pause ();
+    atomic_spin_nop ();
 }
 
 void

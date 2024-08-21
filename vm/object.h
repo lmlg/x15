@@ -28,34 +28,41 @@
 
 #include <kern/atomic.h>
 #include <kern/init.h>
+#include <kern/list_types.h>
 #include <kern/rdxtree.h>
+#include <kern/spinlock_types.h>
+#include <kern/work.h>
 
 #include <vm/page.h>
 
 struct vm_object;
 struct vm_page;
-
-struct vm_object_pager
-{
-  int (*get) (struct vm_object *, uint64_t, size_t, int, void *);
-  int (*put) (struct vm_object *, struct vm_page **, uint32_t);
-};
+struct cap_channel;
+struct cap_page_info;
 
 #define VM_OBJECT_PAGEOUT    0x01   // VM object supports pageouts.
 #define VM_OBJECT_EXTERNAL   0x02   // Paging requires IPC to remote task.
+#define VM_OBJECT_FLUSHES    0x04   // Pager flushes dirty pages.
 
 struct vm_object
 {
-  struct mutex lock;
-  struct rdxtree pages;
-  size_t nr_pages;
-  size_t refcount;
+  uint32_t refcount;
   union
     {
-      const struct vm_object_pager *pager;
-      void *capability;
+      struct work work;
+      struct
+        {
+          struct mutex lock;
+          struct rdxtree pages;
+          uint32_t nr_pages;
+          uint32_t flags;
+        };
     };
-  uint32_t flags;
+  union
+    {
+      int (*page_get) (struct vm_object *, uint64_t, size_t, int, void *);
+      struct cap_channel *channel;
+    };
 };
 
 static inline struct vm_object*
@@ -66,16 +73,19 @@ vm_object_get_kernel_object (void)
 }
 
 // Initialize a VM object.
-void vm_object_init (struct vm_object *object, uint32_t flg, const void *ctx);
+void vm_object_init (struct vm_object *object, uint32_t flg, void *ctx);
 
 // Create a VM object.
-int vm_object_create (struct vm_object **objp, uint32_t flg, const void *ctx);
+int vm_object_create (struct vm_object **objp, uint32_t flg, void *ctx);
 
 /*
  * Swap a page in a VM object.
  *
  * If the page doesn't exist at the specified offset, or it matches the
  * passed expected value, the page is inserted and gains a reference.
+ *
+ * The caller is responsible for referencing the page before this
+ * function is invoked.
  */
 
 int vm_object_swap (struct vm_object *object, struct vm_page *page,
@@ -123,14 +133,6 @@ void vm_object_detach (struct vm_object *object, struct vm_page *page);
  */
 struct vm_page* vm_object_lookup (struct vm_object *object, uint64_t offset);
 
-// Fetch pages' contents from an external pager in a VM object.
-static inline int
-vm_object_pager_get (struct vm_object *object, uint64_t offset,
-                     size_t bytes, int prot, void *dst)
-{
-  return (object->pager->get (object, offset, bytes, prot, dst));
-}
-
 // Destroy a VM object.
 void vm_object_destroy (struct vm_object *object);
 
@@ -138,16 +140,22 @@ void vm_object_destroy (struct vm_object *object);
 static inline void
 vm_object_ref (struct vm_object *object)
 {
-  size_t prev = atomic_add_rlx (&object->refcount, 1);
-  assert (prev != ~(size_t)0);
+  uint32_t prev = atomic_add_rlx (&object->refcount, 1);
+  assert (prev != ~(uint32_t)0);
+}
+
+static inline bool
+vm_object_unref_nofree (struct vm_object *object, uint32_t n)
+{
+  uint32_t prev = atomic_sub_acq_rel (&object->refcount, n);
+  assert (prev >= n);
+  return (prev == n);
 }
 
 static inline void
-vm_object_unref_many (struct vm_object *object, size_t n)
+vm_object_unref_many (struct vm_object *object, uint32_t n)
 {
-  size_t prev = atomic_sub_acq_rel (&object->refcount, n);
-  assert (prev >= n);
-  if (prev == n)
+  if (vm_object_unref_nofree (object, n))
     vm_object_destroy (object);
 }
 
@@ -157,8 +165,32 @@ vm_object_unref (struct vm_object *object)
   vm_object_unref_many (object, 1);
 }
 
+static inline struct vm_object*
+vm_object_tryref (struct vm_object *object)
+{
+  while (1)
+    {
+      uint32_t tmp = atomic_load_rlx (&object->refcount);
+      if (! tmp)
+        return (NULL);
+      else if (atomic_cas_bool_acq (&object->refcount, tmp, tmp + 1))
+        return (object);
+
+      atomic_spin_nop ();
+    }
+}
+
 // Create a VM object for anonymous mappings.
-int vm_object_anon_create (struct vm_object **objp);
+int vm_object_anon_create (struct vm_object **outp);
+
+// Store the dirty pages' offsets into a userspace struct.
+ssize_t vm_object_list_dirty (struct vm_object *obj, struct cap_page_info *pg);
+
+// Copy an object's pages' contents into a userspace buffer.
+ssize_t vm_object_copy_pages (struct vm_object *obj, struct cap_page_info *pg);
+
+// Map dirty pages into userspace.
+int vm_object_map_dirty (struct vm_object *obj, struct cap_page_info *pg);
 
 /*
  * This init operation provides :

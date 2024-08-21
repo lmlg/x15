@@ -23,15 +23,60 @@
 #include <kern/user.h>
 
 static int
-user_copy_impl (void *dst, const void *src, size_t size)
+user_copy_impl (char *dst, const char *src, size_t size)
 {
   struct unw_fixup fixup;
   int error = unw_fixup_save (&fixup);
 
-  if (likely (! error))
-    memcpy (dst, src, size);
+  if (unlikely (error))
+    return (error);
 
-  return (error);
+#define user_ua_cpy(sz)   \
+  ((union user_ua *)dst)->u##sz = ((const union user_ua *)src)->u##sz
+
+  switch (size)
+    {
+      case 0:
+        return (0);
+
+      case 3:
+        dst[2] = src[2];
+        __fallthrough;
+      case 2:
+        user_ua_cpy (2);
+        break;
+
+      case 1:
+        dst[0] = src[0];
+        break;
+
+      case 7:
+        dst[6] = src[6];
+        __fallthrough;
+      case 6:
+        user_ua_cpy (4);
+        dst += 4, src += 4;
+        user_ua_cpy (2);
+        break;
+
+      case 5:
+        dst[4] = src[4];
+        __fallthrough;
+      case 4:
+        user_ua_cpy (4);
+        break;
+
+      case 8:
+        user_ua_cpy (8);
+        break;
+
+#undef user_ua_cpy
+
+      default:
+        memcpy (dst, src, size);
+    }
+
+  return (0);
 }
 
 int
@@ -48,28 +93,6 @@ user_copy_from (void *dst, const void *usrc, size_t size)
           user_copy_impl (dst, usrc, size) : EFAULT);
 }
 
-static struct iovec*
-user_iov_next (struct ipc_iov_iter *it, int check, int *errp)
-{
-  while (1)
-    {
-      if (it->head.iov_len)
-        return (&it->head);
-      else if (it->cur >= it->end)
-        return (NULL);
-
-      _Auto iov = it->begin + it->cur;
-      if (check && !user_check_range (iov->iov_base, iov->iov_len))
-        {
-          *errp = -EFAULT;
-          return (NULL);
-        }
-
-      it->head = *iov;
-      ++it->cur;
-    }
-}
-
 static bool
 user_check_iov_iter (struct ipc_iov_iter *iov)
 {
@@ -79,24 +102,24 @@ user_check_iov_iter (struct ipc_iov_iter *iov)
 
 ssize_t
 user_copyv_impl (struct ipc_iov_iter *dst,
-                 struct ipc_iov_iter *src, int to_user)
+                 struct ipc_iov_iter *src, bool to_user)
 {
   struct unw_fixup fixup;
-  int error = unw_fixup_save (&fixup);
-  if (unlikely (error))
-    return (-error);
+  ssize_t ret = unw_fixup_save (&fixup);
+  if (unlikely (ret))
+    return (-ret);
   else if (!user_check_iov_iter (to_user ? dst : src))
     return (-EFAULT);
 
-  for (ssize_t ret = 0 ; ; )
+  while (1)
     {
-      struct iovec *dv = user_iov_next (dst, to_user, &error);
+      struct iovec *dv = ipc_iov_iter_usrnext (dst, to_user, &ret);
       if (! dv)
-        return (error ?: ret);
+        return (ret);
 
-      struct iovec *sv = user_iov_next (src, !to_user, &error);
+      struct iovec *sv = ipc_iov_iter_usrnext (src, !to_user, &ret);
       if (! sv)
-        return (error ?: ret);
+        return (ret);
 
       size_t nbytes = MIN (dv->iov_len, sv->iov_len);
       if (unlikely ((ret += nbytes) < 0))
@@ -111,11 +134,57 @@ user_copyv_impl (struct ipc_iov_iter *dst,
 ssize_t
 user_copyv_to (struct ipc_iov_iter *udst, struct ipc_iov_iter *src)
 {
-  return (user_copyv_impl (udst, src, 1));
+  return (user_copyv_impl (udst, src, true));
 }
 
 ssize_t
 user_copyv_from (struct ipc_iov_iter *dst, struct ipc_iov_iter *usrc)
 {
-  return (user_copyv_impl (dst, usrc, 0));
+  return (user_copyv_impl (dst, usrc, false));
+}
+
+int
+user_read_struct (void *dst, const void *usrc, size_t size)
+{
+  if (!user_check_range (usrc, sizeof (uint32_t)))
+    return (EFAULT);
+
+  struct unw_fixup fixup;
+  int error = unw_fixup_save (&fixup);
+
+  if (unlikely (error))
+    return (error);
+
+  size_t rsize = ((const union user_ua *)usrc)->u4;
+  if (size < rsize)
+    rsize = size;
+
+  if (!user_check_range (usrc, rsize))
+    return (EFAULT);
+
+  memcpy (dst, usrc, rsize);
+  return (0);
+}
+
+int
+user_write_struct (void *udst, const void *src, size_t size)
+{
+  if (!user_check_range (udst, sizeof (uint32_t)))
+    return (EFAULT);
+
+  struct unw_fixup fixup;
+  int error = unw_fixup_save (&fixup);
+
+  if (unlikely (error))
+    return (error);
+
+  size_t rsize = ((const union user_ua *)udst)->u4;
+  if (size < rsize)
+    rsize = size;
+
+  if (!user_check_range (udst, rsize))
+    return (EFAULT);
+
+  memcpy (udst, src, rsize);
+  return (0);
 }

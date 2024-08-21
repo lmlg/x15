@@ -144,7 +144,7 @@ static void
 test_run (void *arg __unused)
 {
   while (!atomic_load_rlx (&test_run_stop))
-    cpu_pause ();
+    atomic_spin_nop ();
 }
 
 static void

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2017 Richard Braun.
+ * Copyright (c) 2024 Agustina Arzille.
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -14,21 +14,40 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
- *
- * Isolated type definition used to avoid inclusion circular dependencies.
+ * Definitions for kernel messages.
  */
 
-#ifndef KERN_MUTEX_TYPES_H
-#define KERN_MUTEX_TYPES_H
+#ifndef KERN_KMSG_H
+#define KERN_KMSG_H   1
 
-#if defined(CONFIG_MUTEX_ADAPTIVE)
-#include <kern/mutex/mutex_adaptive_types.h>
-#elif defined(CONFIG_MUTEX_PI)
-#include <kern/mutex/mutex_pi_types.h>
-#elif defined(CONFIG_MUTEX_PLAIN)
-#include <kern/mutex/mutex_plain_types.h>
-#else
-#error "unknown mutex implementation"
+#include <stdint.h>
+
+enum
+{
+  KMSG_TYPE_PAGE_REQ = 1,
+  KMSG_TYPE_MMAP_REQ,
+};
+
+struct kmessage
+{
+  int type;
+  int msg_flags;
+  union
+    {
+      struct
+        {
+          uint64_t start;
+          uint64_t end;
+        } page_req;
+
+      struct
+        {
+          uintptr_t tag;
+          uint64_t offset;
+          int prot;
+          int flags;
+        } mmap_req;
+    };
+};
+
 #endif
-
-#endif /* KERN_MUTEX_TYPES_H */

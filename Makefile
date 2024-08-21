@@ -292,6 +292,8 @@ XBUILD_CFLAGS += -Wno-unneeded-internal-declaration
 ifeq ($(CC),gcc)
 XBUILD_CFLAGS += -fcf-protection=none
 XBUILD_CFLAGS += -Wno-clobbered
+else
+XBUILD_CPPFLAGS += -gdwarf-4
 endif
 
 XBUILD_CFLAGS += $(call xbuild_check_cc_option,-fno-PIE)

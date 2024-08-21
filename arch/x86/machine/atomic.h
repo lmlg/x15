@@ -31,6 +31,12 @@
 
 #include <kern/macros.h>
 
+// Spin-wait loop hint.
+#define atomic_spin_nop()   \
+  ({   \
+     asm volatile ("pause" : : : "memory");   \
+   })
+
 #ifdef __LP64__
 
 // Report that 64-bits operations are supported.

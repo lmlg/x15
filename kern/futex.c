@@ -97,6 +97,8 @@ futex_key_init (union sync_key *key, struct vm_map *map,
 
       if (error)
         return (error);
+      else if ((uintptr_t)addr < entry.start)
+        return (EFAULT);
 
       sync_key_shared_init (key, entry.object, entry.offset);
     }
@@ -337,7 +339,7 @@ futex_robust_clear (int *addr, int value)
          */
         return ((tmp & FUTEX_WAITERS) ? -1 : 0);
 
-      cpu_pause ();
+      atomic_spin_nop ();
     }
 }
 

@@ -141,7 +141,8 @@ pqueue_node_next (const struct pqueue *pqueue, struct pqueue_node *node)
        aux = entry ? pqueue_next_entry (pq, &entry->member,   \
                                         typeof (*entry), member) : NULL;   \
        entry != NULL; entry = aux,   \
-       aux = pqueue_next_entry ((pq), &aux->member, typeof (*aux), member))
+       aux = !entry ? NULL :   \
+             pqueue_next_entry ((pq), &aux->member, typeof (*aux), member))
 
 
 #endif

@@ -633,8 +633,8 @@ thread_pmap_context_switch (struct thread_pmap_data *prev,
 {
   for (size_t i = 0; i < THREAD_NR_PMAP_DATA; ++i)
     {
-      pmap_ipc_pte_save (prev, &prev->prev);
-      pmap_ipc_pte_load (next, next->prev);
+      pmap_ipc_pte_save (prev + i, &prev[i].prev);
+      pmap_ipc_pte_load (next + i, next[i].prev);
     }
 }
 
@@ -2428,7 +2428,7 @@ thread_boot_barrier_wait (void)
   atomic_add_rlx (&thread_nr_boot_cpus, 1);
 
   while (atomic_load_seq (&thread_nr_boot_cpus) != cpu_count ())
-    cpu_pause ();
+    atomic_spin_nop ();
 }
 
 void __init
