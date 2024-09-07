@@ -559,7 +559,10 @@ vm_map_enter (struct vm_map *map, uintptr_t *startp, size_t size,
             return (ENOMEM);
 
           for (uint32_t i = 0; i < (1u << order); ++i)
-            vm_page_init_refcount (pages + i);
+            {
+              vm_page_init_refcount (pages + i);
+              vm_page_zero (pages + i);
+            }
 
           offset = vm_page_to_pa (pages);
         }
@@ -664,7 +667,7 @@ vm_map_entry_unmap (struct vm_map *map, struct vm_map_entry *entry)
 
 static int
 vm_map_remove_impl (struct vm_map *map, uintptr_t start,
-                    uintptr_t end, struct list *list, bool clear)
+                    uintptr_t end, struct list *list)
 {
   assert (start >= map->start);
   assert (end <= map->end);
@@ -706,8 +709,7 @@ vm_map_remove_impl (struct vm_map *map, uintptr_t start,
       vm_map_unlink (map, entry);
 
       list_insert_tail (list, &entry->list_node);
-      if (clear)
-        vm_map_entry_unmap (map, entry);
+      vm_map_entry_unmap (map, entry);
 
       entry = list_entry (node, struct vm_map_entry, list_node);
     }
@@ -729,7 +731,7 @@ vm_map_remove (struct vm_map *map, uintptr_t start, uintptr_t end)
   struct list entries;
   list_init (&entries);
 
-  int error = vm_map_remove_impl (map, start, end, &entries, true);
+  int error = vm_map_remove_impl (map, start, end, &entries);
   if (! error)
     vm_map_entry_list_destroy (map, &entries, VM_MAP_FREE_OBJ);
 
@@ -1381,7 +1383,7 @@ vm_map_fork_update_obj (struct vm_map *dst, struct vm_map *src)
                       prot & ~VM_PROT_WRITE,
                       PMAP_PEF_GLOBAL | PMAP_IGNORE_ERRORS);
 
-      vm_page_ref (page);
+      vm_page_unref (page);
       vm_page_set_cow (page);
     }
 
@@ -1419,10 +1421,8 @@ vm_map_iter_cleanup (struct vm_map *map, struct ipc_vme_iter *it,
       uintptr_t start = page->addr, end = start + page->size;
 
       list_init (&entries);
-      vm_map_remove_impl (map, start, end, &entries, false);
+      vm_map_remove_impl (map, start, end, &entries);
       vm_map_entry_list_destroy (map, &entries, VM_MAP_FREE_OBJ);
-
-      pmap_remove_range (map->pmap, start, end, VM_MAP_PMAP_FLAGS);
     }
 
   pmap_update (map->pmap);

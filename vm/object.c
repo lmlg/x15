@@ -398,7 +398,7 @@ vm_object_copy_pages (struct vm_object *obj, struct cap_page_info *upg)
         {
           uptr->u8 = offset | 1;
           if ((pg.flags & CAP_PAGES_ADV_SKIP) && dv)
-            iovec_adv (dv, PAGE_SIZE);
+            iovec_adv (dv, MIN (PAGE_SIZE, dv->iov_len));
 
           continue;
         }

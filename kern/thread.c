@@ -1810,6 +1810,7 @@ thread_destroy (struct thread *thread)
   // See task_info().
   task_remove_thread (thread->task, thread);
 
+  kuid_remove (&thread->kuid, KUID_THREAD);
   turnstile_destroy (thread->priv_turnstile);
   sleepq_destroy (thread->priv_sleepq);
   thread_free_stack (thread->stack);
@@ -1850,7 +1851,6 @@ thread_terminate (struct thread *thread)
   SPINLOCK_GUARD (&thread->join_lock);
   thread->terminating = true;
   cap_notify_dead (&thread->dead_subs);
-  kuid_remove (&thread->kuid, KUID_THREAD);
   thread_wakeup (thread->join_waiter);
 }
 
@@ -1863,8 +1863,7 @@ thread_balance_idle_tick (struct thread_runq *runq)
    * Interrupts can occur early, at a time the balancer thread hasn't been
    * created yet.
    */
-  if (runq->balancer &&
-      --runq->idle_balance_ticks == 0)
+  if (runq->balancer && --runq->idle_balance_ticks == 0)
     thread_runq_wakeup_balancer (runq);
 }
 

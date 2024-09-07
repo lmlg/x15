@@ -640,8 +640,8 @@ sref_cache_needs_management (struct sref_cache *cache)
   assert (!cpu_intr_enabled ());
   assert (!thread_preempt_enabled ());
 
-  const _Auto queue = sref_cache_get_queue_by_epoch_id (cache,
-                                                        cache->epoch_id - 2);
+  const _Auto queue =
+    sref_cache_get_queue_by_epoch_id (cache, cache->epoch_id - 2);
   return (sref_cache_is_dirty (cache) || !sref_queue_empty (queue));
 }
 
@@ -649,7 +649,6 @@ static void
 sref_cache_end_epoch (struct sref_cache *cache)
 {
   assert (!sref_cache_needs_management (cache));
-
   sref_data_ack_cpu (cache->data);
   ++cache->epoch_id;
 }
@@ -675,8 +674,8 @@ sref_cache_flush (struct sref_cache *cache, struct sref_queue *queue)
   sref_cache_clear_dirty (cache);
   sref_cache_set_flushed (cache);
 
-  _Auto prev_queue = sref_cache_get_queue_by_epoch_id (cache,
-                                                       cache->epoch_id - 2);
+  _Auto prev_queue =
+    sref_cache_get_queue_by_epoch_id (cache, cache->epoch_id - 2);
   sref_queue_move (queue, prev_queue);
   sref_queue_init (prev_queue);
   sref_cache_end_epoch (cache);
@@ -722,15 +721,12 @@ sref_queue_review (struct sref_queue *queue, struct sref_cache *cache)
           ++nr_dirty_zeroes;
           sref_counter_clear_dirty (counter);
         }
+      else if (sref_counter_kill_weakref (counter) == 0)
+        requeue = false;
       else
         {
-          if (sref_counter_kill_weakref (counter) == 0)
-            requeue = false;
-          else
-            {
-              requeue = true;
-              ++nr_revives;
-            }
+          requeue = true;
+          ++nr_revives;
         }
 
       if (requeue)

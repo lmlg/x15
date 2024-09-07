@@ -519,8 +519,10 @@ futex_td_exit (struct futex_td *td)
   if (!td || user_copy_from (&rtd, td, sizeof (rtd)) != 0)
     return;
 
-  if (rtd.pending)
-    futex_robust_list_handle (rtd.pending, (int *)rtd.pending, tid);
+  if (rtd.pending &&
+      (!user_check_range (rtd.pending, sizeof (rtd.pending)) ||
+       futex_robust_list_handle (rtd.pending, (int *)rtd.pending, tid) != 0))
+    return;
 
   uint32_t nmax = 1024;   // Handle this many robust futexes.
   while (rtd.list)

@@ -204,6 +204,13 @@ unw_read_safe (uintptr_t addr, uintptr_t *out)
   return (0);
 }
 
+static void
+unw_fast_cpy (void *dst, const void *src, size_t size)
+{
+  for (size_t i = 0; i < size; ++i)
+    ((char *)dst)[i] = ((const char *)src)[i];
+}
+
 static int
 unw_read_encptr (uint8_t enc, const unsigned char **ptr,
                  uintptr_t pc, uintptr_t *out)
@@ -260,8 +267,7 @@ unw_read_encptr (uint8_t enc, const unsigned char **ptr,
   case DW_EH_PE_##enc_val:   \
     {   \
       type tmp;   \
-      for (size_t i = 0; i < sizeof (tmp); ++i)   \
-        ((unsigned char *)&tmp)[i] = p[i];   \
+      unw_fast_cpy (&tmp, p, sizeof (tmp));   \
       p += sizeof (tmp);   \
       ret = base + tmp;   \
     }   \
@@ -366,7 +372,7 @@ unw_run_dw (struct unw_cursor *cursor, const struct unw_cie *cie,
           case DW_CFA_advance_loc2:
             {
               uint16_t off;
-              memcpy (&off, ops, sizeof (off));
+              unw_fast_cpy (&off, ops, sizeof (off));
               ops += sizeof (off);
               pc += off * cie->code_align;
               break;
@@ -375,7 +381,7 @@ unw_run_dw (struct unw_cursor *cursor, const struct unw_cie *cie,
           case DW_CFA_advance_loc4:
             {
               uint32_t off;
-              memcpy (&off, ops, sizeof (off));
+              unw_fast_cpy (&off, ops, sizeof (off));
               ops += sizeof (off);
               pc += off * cie->code_align;
               break;

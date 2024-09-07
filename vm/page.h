@@ -253,6 +253,9 @@ void vm_page_info (struct stream *stream);
 // Return the max possible offset for a physical page.
 uint64_t vm_page_max_offset (void);
 
+// Clear the contents of a page.
+void vm_page_zero (struct vm_page *page);
+
 // Mark a page as being clean.
 void vm_page_clean (struct vm_page *page, uint32_t expected);
 
