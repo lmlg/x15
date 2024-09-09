@@ -33,10 +33,9 @@
 struct ipc_data
 {
   cpu_flags_t cpu_flags;
-  uintptr_t va;
   int direction;
   int prot;
-  void *ipc_pte;
+  struct pmap_window *window;
   struct vm_page *page;
 };
 
@@ -45,8 +44,7 @@ ipc_data_init (struct ipc_data *data, int direction)
 {
   data->direction = direction;
   data->prot = direction == IPC_COPY_FROM ? VM_PROT_READ : VM_PROT_RDWR;
-  data->va = vm_map_ipc_addr ();
-  data->ipc_pte = NULL;
+  data->window = NULL;
   data->page = NULL;
 }
 
@@ -84,29 +82,28 @@ static void
 ipc_data_pte_get (struct ipc_data *data)
 {
   thread_pin ();
-  data->ipc_pte = pmap_ipc_pte_get ();
+  data->window = pmap_window_get (0);
 }
 
 static void
 ipc_data_pte_map (struct ipc_data *data, phys_addr_t pa)
 {
-  assert (thread_pinned () || !cpu_intr_enabled ());
-  pmap_ipc_pte_set (data->ipc_pte, data->va, pa);
+  pmap_window_set (data->window, pa);
 }
 
 static void
 ipc_data_pte_put (struct ipc_data *data)
 {
-  pmap_ipc_pte_put (data->ipc_pte);
+  pmap_window_put (data->window);
   thread_unpin ();
-  data->ipc_pte = NULL;
+  data->window = NULL;
 }
 
 static void
 ipc_data_fini (void *arg)
 {
   struct ipc_data *data = arg;
-  if (data->ipc_pte)
+  if (data->window)
     ipc_data_pte_put (data);
   if (data->page)
     vm_page_unref (data->page);
@@ -194,10 +191,12 @@ ipc_bcopyv_impl (struct vm_map *r_map, const struct iovec *r_v,
   ipc_data_pte_map (data, pa);
   ipc_data_intr_restore (data);
 
+  void *va = (char *)pmap_window_va (data->window) + page_off;
+
   if (data->direction == IPC_COPY_TO)
-    memcpy ((void *)(data->va + page_off), l_v->iov_base, ret);
+    memcpy (va, l_v->iov_base, ret);
   else
-    memcpy ((void *)l_v->iov_base, (void *)(data->va + page_off), ret);
+    memcpy ((void *)l_v->iov_base, va, ret);
 
   ipc_data_pte_put (data);
   ipc_data_page_unref (data);

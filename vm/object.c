@@ -46,8 +46,7 @@ static struct kmem_cache vm_object_cache;
 
 struct vm_object_copy_data
 {
-  uintptr_t va;
-  struct thread_pmap_data *pte;
+  struct pmap_window *window;
   struct vm_page *page;
   int washed;
 };
@@ -302,11 +301,11 @@ vm_object_list_dirty (struct vm_object *obj, struct cap_page_info *upg)
 static void
 vm_object_copy_data_fini (struct vm_object_copy_data *dp, int err)
 {
-  if (dp->pte)
+  if (dp->window)
     {
-      pmap_ipc_pte_put (dp->pte);
+      pmap_window_put (dp->window);
       thread_unpin ();
-      dp->pte = NULL;
+      dp->window = NULL;
     }
 
   if (dp->washed && !err)
@@ -327,12 +326,12 @@ vm_object_copy_single_page (struct vm_object_copy_data *dp,
       dp->washed = 1;
     }
 
-  // Get the special PTE to perform the copy.
+  // Get the window to perform the copy.
   thread_pin ();
-  dp->pte = pmap_ipc_pte_get_idx (2);
-  pmap_ipc_pte_set (dp->pte, dp->va, vm_page_to_pa (dp->page));
+  dp->window = pmap_window_get (0);
+  pmap_window_set (dp->window, vm_page_to_pa (dp->page));
 
-  const char *src = (const void *)dp->va;
+  const char *src = pmap_window_va (dp->window);
   ssize_t ret = 0;
 
   // Copy the page into the user buffer.
@@ -362,7 +361,7 @@ vm_object_copy_pages (struct vm_object *obj, struct cap_page_info *upg)
   if (!user_check_range (upg, sizeof (*upg)))
     return (-EFAULT);
 
-  struct vm_object_copy_data data = { .pte = NULL, .page = NULL };
+  struct vm_object_copy_data data = { .window = NULL, .page = NULL };
   struct unw_fixup fixup;
   int error = unw_fixup_save (&fixup);
 
@@ -380,7 +379,6 @@ vm_object_copy_pages (struct vm_object *obj, struct cap_page_info *upg)
     return (-EFAULT);
 
   ssize_t ret = 0;
-  data.va = vm_map_ipc_addr ();
 
   struct ipc_iov_iter it;
   ipc_iov_iter_init (&it, pg.iovs, pg.iov_cnt);

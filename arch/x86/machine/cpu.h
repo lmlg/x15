@@ -925,13 +925,7 @@ cpu_clear_intr (void)
 
 #endif
 
-/*
- * CPU fixups, used to safely perform operations on memory that may fault.
- *
- * They work similarly to setjmp/longjmp, with the exception that they
- * are better coupled with exception and traps, since they can use
- * a CPU frame to start the unwinding process.
-*/
+// Needed stuff for the unwinder.
 
 #ifdef __LP64__
   #define CPU_UNWIND_FRAME_REG   6
@@ -957,6 +951,9 @@ long cpu_lpad_swap (uintptr_t *args, void *lpad, void *pc);
 
 // Return from the execution context in a landing pad.
 noreturn void cpu_lpad_return (uintptr_t sp, intptr_t ret);
+
+// Number of physical map windows.
+#define CPU_NR_PMAP_WINDOWS   2
 
 /*
  * This init operation provides :

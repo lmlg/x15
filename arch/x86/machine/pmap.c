@@ -115,15 +115,16 @@ union pmap_global
     } full;
 };
 
-struct pmap_ipc_pte_t
+struct pmap_window_data_t
 {
-  pmap_pte_t *ptes[3];
+  pmap_pte_t *ptes[CPU_NR_PMAP_WINDOWS];
 };
 
 static union pmap_global pmap_global_pmap;
 struct pmap *pmap_kernel_pmap;
 struct pmap *pmap_current_ptr __percpu;
-static struct pmap_ipc_pte_t pmap_ipc_ptes __percpu;
+static uintptr_t pmap_ipc_va __read_mostly;
+static struct pmap_window_data_t pmap_window_data __percpu;
 
 #ifdef CONFIG_X86_PAE
 
@@ -971,7 +972,7 @@ pmap_copy_cpu_table (uint32_t cpu)
   pmap_copy_cpu_table_recursive (sptp, level, dptp);
 }
 
-static int pmap_setup_ipc_ptes (uintptr_t);
+static int pmap_setup_ipc_ptes (void);
 
 void __init
 pmap_mp_setup (void)
@@ -1014,7 +1015,7 @@ pmap_mp_setup (void)
 
   pmap_do_remote_updates = 1;
 
-  if (pmap_setup_ipc_ptes (vm_map_ipc_addr ()) != 0)
+  if (pmap_setup_ipc_ptes () != 0)
     panic ("pmap: unable to create IPC PTEs");
 }
 
@@ -1269,12 +1270,20 @@ set:
 }
 
 static int
-pmap_setup_ipc_ptes (uintptr_t va)
+pmap_setup_ipc_ptes (void)
 {
+  uintptr_t va = 0;
+  if (vm_map_enter (vm_map_get_kernel_map (), &va,
+                    PAGE_SIZE * CPU_NR_PMAP_WINDOWS,
+                    VM_MAP_FLAGS (VM_PROT_RDWR, VM_PROT_RDWR,
+                                  VM_INHERIT_NONE, VM_ADV_DEFAULT, 0),
+                    NULL, 0) != 0)
+    return (ENOMEM);
+
   struct pmap *pmap = pmap_get_kernel_pmap ();
   for (uint32_t i = 0; i < cpu_count (); ++i)
     {
-      _Auto base = percpu_ptr (pmap_ipc_ptes, i);
+      _Auto base = percpu_ptr (pmap_window_data, i);
       for (uint32_t j = 0; j < ARRAY_SIZE (base->ptes); ++j)
         {
           _Auto ptr = &base->ptes[j];
@@ -1287,6 +1296,7 @@ pmap_setup_ipc_ptes (uintptr_t va)
         }
     }
 
+  pmap_ipc_va = va;
   return (0);
 }
 
@@ -1720,22 +1730,49 @@ pmap_sync (void *arg)
     }
 }
 
-struct thread_pmap_data*
-pmap_ipc_pte_get_idx (uint32_t idx)
+void
+pmap_window_set (struct pmap_window *window, phys_addr_t pa)
 {
-  _Auto ret = &thread_self()->pmap_data[idx];
-  ret->pte = cpu_local_ptr(pmap_ipc_ptes)->ptes[idx];
-  ret->va = 0;
-  return (ret);
+  cpu_tlb_flush_va (window->va);
+  pmap_pte_set (window->pte, pa, PMAP_PTE_G | PMAP_PTE_RW, &pmap_pt_levels[0]);
+}
+
+struct pmap_window*
+(pmap_window_get) (uint32_t idx, struct pmap_window *window)
+{
+  assert (idx < CPU_NR_PMAP_WINDOWS);
+  window->idx = idx;
+  window->pte = cpu_local_ptr(pmap_window_data)->ptes[idx];
+  window->va = pmap_ipc_va + idx * PAGE_SIZE;
+
+  _Auto pptr = &thread_self()->pmap_windows[idx];
+  if ((window->prev = *pptr) != NULL)
+    window->prev->saved = *window->pte & PMAP_PA_MASK;
+
+  return (*pptr = window);
 }
 
 void
-pmap_ipc_pte_set (struct thread_pmap_data *pd, uintptr_t va, phys_addr_t pa)
+pmap_window_put (struct pmap_window *window)
 {
-  cpu_tlb_flush_va (va);
-  pd->va = va;
-  pmap_pte_set ((pmap_pte_t *)pd->pte, pa,
-                PMAP_PTE_G | PMAP_PTE_RW, &pmap_pt_levels[0]);
+  _Auto prev = window->prev;
+  if ((thread_self()->pmap_windows[window->idx] = prev) != NULL)
+    pmap_window_set (prev, prev->saved);
+}
+
+void
+pmap_context_switch (struct thread *prev, struct thread *new)
+{
+  for (int i = 0; i < (int)ARRAY_SIZE (prev->pmap_windows); ++i)
+    {
+      _Auto window = prev->pmap_windows[i];
+      if (window)
+        window->saved = *window->pte & PMAP_PA_MASK;
+
+      window = new->pmap_windows[i];
+      if (window)
+        pmap_window_set (window, window->saved);
+    }
 }
 
 void

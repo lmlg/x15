@@ -895,13 +895,11 @@ vm_page_can_free (struct vm_page *page)
 void
 vm_page_zero (struct vm_page *page)
 {
-  uintptr_t va = vm_map_ipc_addr ();
   THREAD_PIN_GUARD ();
-  _Auto pte = pmap_ipc_pte_get ();
-
-  pmap_ipc_pte_set (pte, va, vm_page_to_pa (page));
-  memset ((void *)va, 0, PAGE_SIZE);
-  pmap_ipc_pte_put (pte);
+  _Auto window = pmap_window_get (0);
+  pmap_window_set (window, vm_page_to_pa (page));
+  memset (pmap_window_va (window), 0, PAGE_SIZE);
+  pmap_window_put (window);
 }
 
 void

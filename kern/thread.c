@@ -627,17 +627,6 @@ thread_runq_guard_fini (struct thread_runq_guard_t *guard)
 #define thread_runq_guard   \
   thread_runq_guard_t CLEANUP (thread_runq_guard_fini) __unused
 
-static void
-thread_pmap_context_switch (struct thread_pmap_data *prev,
-                            struct thread_pmap_data *next)
-{
-  for (size_t i = 0; i < THREAD_NR_PMAP_DATA; ++i)
-    {
-      pmap_ipc_pte_save (prev + i, &prev[i].prev);
-      pmap_ipc_pte_load (next + i, next[i].prev);
-    }
-}
-
 static struct thread_runq*
 thread_runq_schedule (struct thread_runq *runq)
 {
@@ -674,7 +663,7 @@ thread_runq_schedule (struct thread_runq *runq)
     {
       thread_runq_schedule_unload (prev);
       rcu_report_context_switch (thread_rcu_reader (prev));
-      thread_pmap_context_switch (prev->pmap_data, next->pmap_data);
+      pmap_context_switch (prev, next);
       spinlock_transfer_owner (&runq->lock, next);
 
       /*
@@ -1699,8 +1688,8 @@ thread_init (struct thread *thread, void *stack,
   thread->cur_lpad = NULL;
   thread->futex_td = NULL;
   bulletin_init (&thread->dead_subs);
-  for (size_t i = 0; i < THREAD_NR_PMAP_DATA; ++i)
-    pmap_ipc_pte_init (&thread->pmap_data[i]);
+  for (int i = 0; i < (int)ARRAY_SIZE (thread->pmap_windows); ++i)
+    thread->pmap_windows[i] = NULL;
 
 #ifdef CONFIG_PERFMON
   perfmon_td_init (thread_get_perfmon_td (thread));

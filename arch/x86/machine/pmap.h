@@ -183,6 +183,21 @@ typedef phys_addr_t pmap_pte_t;
 // Physical address map.
 struct pmap;
 
+/*
+ * Physical map windows.
+ *
+ * These are temporary mappings that link reserved kernel virtual
+ * addresses to arbitrary physical pages. They are used for IPC.
+ */
+struct pmap_window
+{
+  uint32_t idx;
+  uintptr_t va;
+  phys_addr_t saved;
+  struct pmap_window *prev;
+  pmap_pte_t *pte;
+};
+
 struct pmap_clean_data
 {
   phys_addr_t pa;
@@ -354,46 +369,25 @@ pmap_current (void)
   return (cpu_local_read (pmap_current_ptr));
 }
 
-static inline void
-pmap_ipc_pte_init (struct thread_pmap_data *pd)
-{
-  pd->pte = NULL;
-  pd->va = 0;
-  pd->prev = 1;
-}
+// Get the pmap window at a specific index.
+struct pmap_window* (pmap_window_get) (uint32_t idx, struct pmap_window *wp);
 
-// Get the thread-specific data used for IPC.
-struct thread_pmap_data* pmap_ipc_pte_get_idx (uint32_t idx);
+#define pmap_window_get(idx)   \
+  ({   \
+     void *wp_ = alloca (sizeof (struct pmap_window));   \
+     (pmap_window_get) ((idx), wp_);   \
+   })
 
-static inline struct thread_pmap_data*
-pmap_ipc_pte_get (void)
-{
-  return (pmap_ipc_pte_get_idx (0));
-}
+// Map a window to a physical address.
+void pmap_window_set (struct pmap_window *window, phys_addr_t pa);
 
-// Make the special PTE map a physical address.
-void pmap_ipc_pte_set (struct thread_pmap_data *pd,
-                       uintptr_t va, phys_addr_t pa);
+// Return a pmap window.
+void pmap_window_put (struct pmap_window *window);
 
-// Put back the special PTE.
-static inline void
-pmap_ipc_pte_put (struct thread_pmap_data *pd)
-{
-  pd->pte = NULL;
-}
+// Do the necessary bookkeeping for pmaps in a context switch.
+void pmap_context_switch (struct thread *prev, struct thread *next);
 
-static inline void
-pmap_ipc_pte_save (struct thread_pmap_data *pd, uint64_t *prev)
-{
-  *prev = pd->pte && pd->va ? (*(pmap_pte_t *)pd->pte & PMAP_PA_MASK) : 1;
-}
-
-static inline void
-pmap_ipc_pte_load (struct thread_pmap_data *pd, phys_addr_t pa)
-{
-  if (pa != 1)
-    pmap_ipc_pte_set (pd, pd->va, pa);
-}
+#define pmap_window_va(window)   ((void *)(window)->va)
 
 // Cross-call entry point for cleaning a page.
 void pmap_xcall_clean (void *arg);

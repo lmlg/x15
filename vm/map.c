@@ -716,12 +716,9 @@ vm_map_remove_impl (struct vm_map *map, uintptr_t start,
 
   assert (list_empty (&alloc_entries));
 
-  if (clear)
-    { // Don't prevent lookups and page faults from here on.
-      sxlock_share (&map->lock);
-      pmap_update (map->pmap);
-    }
-
+   // Don't prevent lookups and page faults from here on.
+  sxlock_share (&map->lock);
+  pmap_update (map->pmap);
   return (0);
 }
 
@@ -936,28 +933,12 @@ static const struct vm_map_page_target vm_map_page_targets[] =
   [VM_ADV_SEQUENTIAL] = { .front = 0, .back = 8 * PAGE_SIZE }
 };
 
-static uintptr_t vm_map_ipc_va;
-
 static int __init
 vm_map_setup (void)
 {
   kmem_cache_init (&vm_map_cache, "vm_map", sizeof (struct vm_map),
                    0, NULL, KMEM_CACHE_PAGE_ONLY);
-
-  // Allocate pages for IPC mapping purposes.
-  if (vm_map_enter (&vm_map_kernel_map, &vm_map_ipc_va, PAGE_SIZE * 3,
-                    VM_MAP_FLAGS (VM_PROT_RDWR, VM_PROT_RDWR,
-                                  VM_INHERIT_NONE, VM_ADV_DEFAULT, 0),
-                    NULL, 0) != 0)
-    panic ("vm-map: could not create internal IPC mapping");
-
   return (0);
-}
-
-uintptr_t
-vm_map_ipc_addr (void)
-{
-  return (vm_map_ipc_va);
 }
 
 INIT_OP_DEFINE (vm_map_setup,
@@ -1026,14 +1007,14 @@ vm_map_fault_get_data (struct vm_object *obj, uint64_t off,
   if (ret < 0)
     return (ret);
 
-  uintptr_t va = vm_map_ipc_addr ();
   THREAD_PIN_GUARD ();
-  _Auto pte = pmap_ipc_pte_get ();
+  _Auto window = pmap_window_get (0);
+  void *va = pmap_window_va (window);
 
   for (ret = 0; ret < pages->nr_pages; ++ret, off += PAGE_SIZE)
     {
-      pmap_ipc_pte_set (pte, va, vm_page_to_pa (pages->store[ret]));
-      int tmp = obj->page_get (obj, off, PAGE_SIZE, prot, (void *)va);
+      pmap_window_set (window, vm_page_to_pa (pages->store[ret]));
+      int tmp = obj->page_get (obj, off, PAGE_SIZE, prot, va);
       if (tmp < 0)
         {
           ret = tmp;
@@ -1041,7 +1022,7 @@ vm_map_fault_get_data (struct vm_object *obj, uint64_t off,
         }
     }
 
-  pmap_ipc_pte_put (pte);
+  pmap_window_put (window);
   return (ret);
 }
 
@@ -1061,22 +1042,22 @@ vm_map_fault_handle_cow (uintptr_t addr, struct vm_page **pgp,
     }
 
   _Auto page = *pgp;
-  uintptr_t va = vm_map_ipc_addr ();
 
   /*
-   * We need both IPC PTEs to copy the page's contents because the virtual
+   * We need both windows to copy the page's contents because the virtual
    * address may not be mapped.
    */
 
-  _Auto ipc_dst = pmap_ipc_pte_get_idx (0);
-  _Auto ipc_src = pmap_ipc_pte_get_idx (1);
+  _Auto dst_w = pmap_window_get (0);
+  _Auto src_w = pmap_window_get (1);
 
-  pmap_ipc_pte_set (ipc_dst, va, vm_page_to_pa (p2));
-  pmap_ipc_pte_set (ipc_src, va + PAGE_SIZE, vm_page_to_pa (page));
-  memcpy ((void *)va, (void *)(va + PAGE_SIZE), PAGE_SIZE);
+  pmap_window_set (dst_w, vm_page_to_pa (p2));
+  pmap_window_set (src_w, vm_page_to_pa (page));
+  memcpy (pmap_window_va (dst_w), pmap_window_va (src_w), PAGE_SIZE);
 
-  pmap_ipc_pte_put (ipc_dst);
-  pmap_ipc_pte_put (ipc_src);
+  pmap_window_put (dst_w);
+  pmap_window_put (src_w);
+
   cpu_intr_disable ();
   thread_unpin ();
 
@@ -1243,15 +1224,8 @@ vm_map_fault (struct vm_map *map, uintptr_t addr, int prot)
   assert (!cpu_intr_enabled ());
 
   // Save the special PTEs, since they are used by the implementation.
-  uint64_t prev[THREAD_NR_PMAP_DATA];
-  for (size_t i = 0; i < ARRAY_SIZE (prev); ++i)
-    pmap_ipc_pte_save (&thread_self()->pmap_data[i], &prev[i]);
-
   int ret = vm_map_fault_impl (map, vm_page_trunc (addr), prot);
   cpu_intr_disable ();
-
-  for (size_t i = 0; i < ARRAY_SIZE (prev); ++i)
-    pmap_ipc_pte_load (&thread_self()->pmap_data[i], prev[i]);
 
   return (ret);
 }
