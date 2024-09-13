@@ -102,7 +102,7 @@ user_check_iov_iter (struct ipc_iov_iter *iov)
 
 ssize_t
 user_copyv_impl (struct ipc_iov_iter *dst,
-                 struct ipc_iov_iter *src, bool to_user)
+                 struct ipc_iov_iter *src, int to_user)
 {
   struct unw_fixup fixup;
   ssize_t ret = unw_fixup_save (&fixup);
@@ -111,13 +111,16 @@ user_copyv_impl (struct ipc_iov_iter *dst,
   else if (!user_check_iov_iter (to_user ? dst : src))
     return (-EFAULT);
 
+  ssize_t *err1 = to_user ? &ret : NULL;
+  ssize_t *err2 = to_user ? NULL : &ret;
+
   while (1)
     {
-      struct iovec *dv = ipc_iov_iter_usrnext (dst, to_user, &ret);
+      struct iovec *dv = ipc_iov_iter_usrnext (dst, err1);
       if (! dv)
         return (ret);
 
-      struct iovec *sv = ipc_iov_iter_usrnext (src, !to_user, &ret);
+      struct iovec *sv = ipc_iov_iter_usrnext (src, err2);
       if (! sv)
         return (ret);
 
@@ -134,13 +137,13 @@ user_copyv_impl (struct ipc_iov_iter *dst,
 ssize_t
 user_copyv_to (struct ipc_iov_iter *udst, struct ipc_iov_iter *src)
 {
-  return (user_copyv_impl (udst, src, true));
+  return (user_copyv_impl (udst, src, 1));
 }
 
 ssize_t
 user_copyv_from (struct ipc_iov_iter *dst, struct ipc_iov_iter *usrc)
 {
-  return (user_copyv_impl (dst, usrc, false));
+  return (user_copyv_impl (dst, usrc, 0));
 }
 
 int
@@ -162,7 +165,7 @@ user_read_struct (void *dst, const void *usrc, size_t size)
   if (!user_check_range (usrc, rsize))
     return (EFAULT);
 
-  memcpy (dst, usrc, rsize);
+  user_copy_impl (dst, usrc, rsize);
   return (0);
 }
 
@@ -185,6 +188,6 @@ user_write_struct (void *udst, const void *src, size_t size)
   if (!user_check_range (udst, rsize))
     return (EFAULT);
 
-  memcpy (udst, src, rsize);
+  user_copy_impl (udst, src, rsize);
   return (0);
 }

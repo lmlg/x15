@@ -164,8 +164,7 @@ ipc_iov_iter_init (struct ipc_iov_iter *it, struct iovec *vecs, uint32_t cnt)
 }
 
 // Advance an iovec iterator with pointers from userspace.
-struct iovec* ipc_iov_iter_usrnext (struct ipc_iov_iter *it,
-                                    bool check, ssize_t *errp);
+struct iovec* ipc_iov_iter_usrnext (struct ipc_iov_iter *it, ssize_t *errp);
 
 // Copy bytes between a local and a remote task.
 ssize_t ipc_bcopy (struct task *r_task, void *r_ptr, size_t r_size,

@@ -73,6 +73,12 @@ pqueue_empty (const struct pqueue *pqueue)
   return (pqueue->head == NULL);
 }
 
+static inline uint32_t
+pqueue_node_prio (const struct pqueue_node *pnode)
+{
+  return (pnode->prio);
+}
+
 // Insert a node in the priority queue.
 void pqueue_insert (struct pqueue *pqueue, struct pqueue_node *node);
 

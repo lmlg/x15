@@ -212,9 +212,12 @@ xcall_async_call (struct xcall_async *async)
 void
 xcall_async_wait (struct xcall_async *async)
 {
-  SPINLOCK_INTR_GUARD (&async->lock);
-  if (!async->done)
+  while (1)
     {
+      SPINLOCK_INTR_GUARD (&async->lock);
+      if (async->done)
+        break;
+
       async->waiter = thread_self ();
       thread_sleep (&async->lock, &async->work, "asyncx");
     }
@@ -224,14 +227,18 @@ int
 xcall_async_timedwait (struct xcall_async *async, uint64_t ticks, bool abs)
 {
   int ret = 0;
+  if (! abs)
+    ticks += clock_get_time () + 1;
 
-  SPINLOCK_INTR_GUARD (&async->lock);
-  if (!async->done)
+  while (1)
     {
-      async->waiter = thread_self ();
-      ret = thread_timedsleep (&async->lock, &async->work, "asyncx",
-                               ticks + (abs ? 0 : clock_get_time () + 1));
-    }
+      SPINLOCK_INTR_GUARD (&async->lock);
+      if (async->done)
+        return (0);
 
-  return (ret);
+      async->waiter = thread_self ();
+      ret = thread_timedsleep (&async->lock, &async->work, "asyncx", ticks);
+      if (ret == 0 || ret == ETIMEDOUT)
+        return (ret);
+    }
 }

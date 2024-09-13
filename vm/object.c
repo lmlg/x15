@@ -179,29 +179,46 @@ vm_object_remove (struct vm_object *object, uint64_t start, uint64_t end)
   uint32_t cnt = 0;
 
   {
+    struct rdxtree_iter it;
+    struct vm_page *page = NULL;
+    rdxtree_iter_init (&it);
+
     MUTEX_GUARD (&object->lock);
     for (uint64_t offset = start; offset < end; offset += PAGE_SIZE)
       {
-        void *node;
-        int idx;
-        void **slot = rdxtree_lookup_common (&object->pages,
-                                             vm_page_btop (offset), true,
-                                             &node, &idx);
-        if (! slot)
-          continue;
-
-        struct vm_page *page = atomic_load_rlx (slot);
-        if (!vm_page_unref_nofree (page) ||
-            (page->dirty && (object->flags & VM_OBJECT_FLUSHES)))
-          continue;
-
-        rdxtree_remove_node_idx (&object->pages, slot, node, idx);
-        vm_page_unlink (page);
-        list_insert_tail (&pages, &page->node);
-        assert (object->nr_pages != 0);
-        ++cnt;
+        it.key = vm_page_btop (offset);
+        void **slot = rdxtree_lookup_common (&object->pages, it.key, true,
+                                             &it.node, &it.index);
+        if (slot)
+          {
+            page = atomic_load_rlx (slot);
+            break;
+          }
       }
 
+    if (! page)
+      return;
+
+    do
+      {
+        int idx = it.index;
+        void *node = it.node;
+        struct vm_page *next = rdxtree_walk (&object->pages, &it);
+
+        if (vm_page_unref_nofree (page) &&
+            (!page->dirty || !(object->flags & VM_OBJECT_FLUSHES)))
+          {
+            rdxtree_remove_node_idx (&object->pages, node, idx);
+            vm_page_unlink (page);
+            list_insert_tail (&pages, &page->node);
+            ++cnt;
+          }
+
+        page = next;
+      }
+    while (page && page->offset < end);
+
+    assert (object->nr_pages >= cnt);
     object->nr_pages -= cnt;
   }
 
@@ -222,7 +239,7 @@ vm_object_detach (struct vm_object *object, struct vm_page *page)
   if (!slot || atomic_load_rlx (slot) != page)
     return;
 
-  rdxtree_remove_node_idx (&object->pages, slot, node, idx);
+  rdxtree_remove_node_idx (&object->pages, node, idx);
   --object->nr_pages;
   vm_object_unref (object);
 }
@@ -345,7 +362,7 @@ vm_object_copy_single_page (struct vm_object_copy_data *dp,
       if (ret == PAGE_SIZE)
         break;
 
-      iov = ipc_iov_iter_usrnext (it, true, &ret);
+      iov = ipc_iov_iter_usrnext (it, &ret);
       if (! iov)
         break;
     }
@@ -390,7 +407,7 @@ vm_object_copy_pages (struct vm_object *obj, struct cap_page_info *upg)
       data.page = vm_object_lookup (obj, offset);
       offs = (char *)offs + sizeof (uint64_t);
 
-      _Auto dv = ipc_iov_iter_usrnext (&it, true, &ret);
+      _Auto dv = ipc_iov_iter_usrnext (&it, &ret);
 
       if (! data.page)
         {

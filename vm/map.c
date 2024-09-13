@@ -45,10 +45,6 @@
 #include <vm/object.h>
 #include <vm/page.h>
 
-// Maximum number of frames to allocate when faulting in pages.
-#define VM_MAP_MAX_FRAMES_ORDER   3
-#define VM_MAP_MAX_FRAMES         (1 << VM_MAP_MAX_FRAMES_ORDER)
-
 struct vm_map_page_target
 {
   uintptr_t front;
@@ -497,7 +493,7 @@ vm_map_insert (struct vm_map *map, struct vm_map_entry *entry,
     entry->pages = vm_page_lookup (req->offset);
   else
     entry->offset = (req->flags & VM_MAP_ANON) ?
-      (uint64_t)entry->start : req->offset;
+      vm_page_anon_offset (entry->start) : req->offset;
 
   entry->flags = req->flags & VM_MAP_ENTRY_MASK;
   vm_map_link (map, entry, req->next);
@@ -964,6 +960,7 @@ vm_map_fault_get_params (struct vm_map_entry *entry, uintptr_t addr,
   uintptr_t start_off = MIN (addr - entry->start, target->front),
             last_off = MIN (entry->end - addr, target->back);
   *npagesp = (int)((last_off + start_off) >> PAGE_SHIFT);
+  assert (*npagesp <= VM_MAP_MAX_FRAMES);
   *offsetp -= start_off;
 }
 
@@ -1153,7 +1150,7 @@ retry:
 
     offset = entry->offset + addr - entry->start;
     if ((entry->flags & (VM_MAP_ANON | VM_MAP_PHYS)) == VM_MAP_ANON)
-      final_off = addr, final_obj = map->priv_cache;
+      final_off = vm_page_anon_offset (addr), final_obj = map->priv_cache;
     else
       final_off = offset, final_obj = object;
 
@@ -1223,7 +1220,6 @@ vm_map_fault (struct vm_map *map, uintptr_t addr, int prot)
   assert (map != vm_map_get_kernel_map ());
   assert (!cpu_intr_enabled ());
 
-  // Save the special PTEs, since they are used by the implementation.
   int ret = vm_map_fault_impl (map, vm_page_trunc (addr), prot);
   cpu_intr_disable ();
 
@@ -1410,6 +1406,49 @@ vm_map_iter_fini (struct sxlock **lockp)
     sxlock_unlock (*lockp);
 }
 
+static int
+vm_map_iter_copy_one (struct vm_map *in_map, struct ipc_vme_iter *in_it,
+                      struct vm_map *out_map, struct ipc_vme_iter *out_it)
+{
+  _Auto page = in_it->begin[in_it->cur];
+  uintptr_t end = page.addr + vm_page_round (page.size);
+
+  do
+    {
+      _Auto entry = vm_map_lookup_nearest (in_map, page.addr);
+      _Auto outp = &out_it->begin[out_it->cur];
+
+      if (! entry)
+        return (ESRCH);
+      else if ((VM_MAP_MAXPROT (entry->flags) & page.max_prot) !=
+               page.max_prot || (page.max_prot & page.prot) != page.prot)
+        return (EACCES);
+
+      size_t size = MIN (end - page.addr, page.size);
+      if (! size)
+        return (EINVAL);
+
+      uint64_t offset = entry->offset + (page.addr - entry->start);
+      int flags = VM_MAP_FLAGS (page.max_prot, page.prot,
+                                VM_MAP_INHERIT (entry->flags),
+                                VM_MAP_ADVICE (entry->flags), 0),
+          error = vm_map_enter_locked (out_map, &outp->addr, size,
+                                       flags, entry->object, offset);
+      if (error)
+        return (error);
+
+      outp->prot = page.prot;
+      outp->max_prot = page.max_prot;
+      outp->size = size;
+      page.addr += size;
+      ++out_it->cur;
+    }
+  while (page.addr < end && ipc_vme_iter_size (out_it));
+
+  ++in_it->cur;
+  return (0);
+}
+
 int
 vm_map_iter_copy (struct vm_map *r_map, struct ipc_vme_iter *r_it,
                   struct ipc_vme_iter *l_it, int direction)
@@ -1439,42 +1478,11 @@ vm_map_iter_copy (struct vm_map *r_map, struct ipc_vme_iter *r_it,
   else
     lock = NULL;
 
-  for (; i < nmax; ++i, ++in_it->cur)
+  for (; i < nmax; ++i)
     {
-      _Auto page = in_it->begin[in_it->cur];
-      uintptr_t end = page.addr + vm_page_round (page.size);
-
-      do
-        {
-          _Auto entry = vm_map_lookup_nearest (in_map, page.addr);
-          _Auto outp = &out_it->begin[out_it->cur];
-
-          if (! entry)
-            return (vm_map_iter_cleanup (out_map, out_it, prev, ESRCH));
-          else if ((VM_MAP_MAXPROT (entry->flags) & page.max_prot) !=
-                   page.max_prot || (page.max_prot & page.prot) != page.prot)
-            return (vm_map_iter_cleanup (out_map, out_it, prev, EACCES));
-
-          size_t size = MIN (end - page.addr, page.size);
-          if (! size)
-            return (vm_map_iter_cleanup (out_map, out_it, prev, EINVAL));
-
-          uint64_t offset = entry->offset + (page.addr - entry->start);
-          int flags = VM_MAP_FLAGS (page.max_prot, page.prot,
-                                    VM_MAP_INHERIT (entry->flags),
-                                    VM_MAP_ADVICE (entry->flags), 0),
-              error = vm_map_enter_locked (out_map, &outp->addr, size,
-                                           flags, entry->object, offset);
-          if (error)
-            return (vm_map_iter_cleanup (out_map, out_it, prev, error));
-
-          outp->prot = page.prot;
-          outp->max_prot = page.max_prot;
-          outp->size = size;
-          page.addr += size;
-          ++out_it->cur;
-        }
-      while (page.addr < end && ipc_vme_iter_size (out_it));
+      int tmp = vm_map_iter_copy_one (in_map, in_it, out_map, out_it);
+      if (unlikely (tmp != 0))
+        return (vm_map_iter_cleanup (out_map, out_it, prev, tmp));
     }
 
   return (i);

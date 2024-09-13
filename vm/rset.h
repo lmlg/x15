@@ -15,9 +15,9 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  *
- * Reverse mappings.
+ * Reverse sets.
  *
- * These maps contain all the virtual -> physical translations that
+ * These sets contain all the virtual -> physical translations that
  * exist for a specific page. They allow users to know whether a page
  * is dirty or has been recently accesed, for instance.
  */

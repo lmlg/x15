@@ -84,6 +84,10 @@
 // Flags for vm_map_fault.
 #define VM_MAP_FAULT_INTR   0x01   // Enable interrupts.
 
+// Maximum number of frames to allocate when faulting in pages.
+#define VM_MAP_MAX_FRAMES_ORDER   3
+#define VM_MAP_MAX_FRAMES         (1 << VM_MAP_MAX_FRAMES_ORDER)
+
 // Memory range descriptor.
 struct vm_map_entry
 {

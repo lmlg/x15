@@ -106,8 +106,11 @@ enum
 
 struct cap_thread_info
 {
+  uint32_t size;
   struct futex_td *futex_td;
   void *thread_ptr;
+  int signal;
+  int pinned;
 };
 
 #define CAPABILITY   struct cap_base base

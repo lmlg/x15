@@ -79,20 +79,20 @@ ipc_data_page_unref (struct ipc_data *data)
 }
 
 static void
-ipc_data_pte_get (struct ipc_data *data)
+ipc_data_win_get (struct ipc_data *data)
 {
   thread_pin ();
   data->window = pmap_window_get (0);
 }
 
 static void
-ipc_data_pte_map (struct ipc_data *data, phys_addr_t pa)
+ipc_data_win_map (struct ipc_data *data, phys_addr_t pa)
 {
   pmap_window_set (data->window, pa);
 }
 
 static void
-ipc_data_pte_put (struct ipc_data *data)
+ipc_data_win_put (struct ipc_data *data)
 {
   pmap_window_put (data->window);
   thread_unpin ();
@@ -104,7 +104,7 @@ ipc_data_fini (void *arg)
 {
   struct ipc_data *data = arg;
   if (data->window)
-    ipc_data_pte_put (data);
+    ipc_data_win_put (data);
   if (data->page)
     vm_page_unref (data->page);
 }
@@ -152,9 +152,7 @@ ipc_map_addr (struct vm_map *map, const void *addr,
   ipc_data_intr_save (data);
   int error = pmap_extract_check (map->pmap, (uintptr_t)addr,
                                   data->prot & VM_PROT_WRITE, pap);
-  if (error == EACCES)
-    return (-EPERM);
-  else if (error)
+  if (error)
     { // Need to fault in the destination address.
       error = vm_map_fault (map, (uintptr_t)addr, data->prot);
       if (error)
@@ -186,9 +184,9 @@ ipc_bcopyv_impl (struct vm_map *r_map, const struct iovec *r_v,
   if (error)
     return (error);
 
-  ipc_data_pte_get (data);
+  ipc_data_win_get (data);
   ipc_data_page_ref (data, pa);
-  ipc_data_pte_map (data, pa);
+  ipc_data_win_map (data, pa);
   ipc_data_intr_restore (data);
 
   void *va = (char *)pmap_window_va (data->window) + page_off;
@@ -198,14 +196,14 @@ ipc_bcopyv_impl (struct vm_map *r_map, const struct iovec *r_v,
   else
     memcpy ((void *)l_v->iov_base, va, ret);
 
-  ipc_data_pte_put (data);
+  ipc_data_win_put (data);
   ipc_data_page_unref (data);
 
   return ((ssize_t)ret);
 }
 
 struct iovec*
-ipc_iov_iter_usrnext (struct ipc_iov_iter *it, bool check, ssize_t *errp)
+ipc_iov_iter_usrnext (struct ipc_iov_iter *it, ssize_t *errp)
 {
   while (1)
     {
@@ -215,7 +213,7 @@ ipc_iov_iter_usrnext (struct ipc_iov_iter *it, bool check, ssize_t *errp)
         return (NULL);
 
       _Auto iov = it->begin + it->cur;
-      if (check && !user_check_range (iov->iov_base, iov->iov_len))
+      if (errp && !user_check_range (iov->iov_base, iov->iov_len))
         {
           *errp = -EFAULT;
           return (NULL);
@@ -229,7 +227,7 @@ ipc_iov_iter_usrnext (struct ipc_iov_iter *it, bool check, ssize_t *errp)
 static struct iovec*
 ipc_iov_iter_next (struct ipc_iov_iter *it)
 { // Get the next iovec from a local iterator, or NULL if exhausted.
-  return (ipc_iov_iter_usrnext (it, false, 0));
+  return (ipc_iov_iter_usrnext (it, NULL));
 }
 
 static struct iovec*
@@ -347,6 +345,29 @@ ipc_cap_iter_cleanup (struct cspace *sp, struct ipc_cap_iter *it,
 }
 
 static int
+ipc_cap_copy_one (struct cspace *in_cs, struct cspace *out_cs,
+                  struct ipc_cap_iter *in_it, struct ipc_cap_iter *out_it)
+{
+  int capx = in_it->begin[in_it->cur].cap;
+  _Auto cap = cspace_get (in_cs, capx);
+
+  if (unlikely (! cap))
+    return (-EBADF);
+
+  _Auto outp = out_it->begin + out_it->cur;
+  capx = cspace_add_free_locked (out_cs, cap, outp->flags);
+  cap_base_rel (cap);
+
+  if (unlikely (capx < 0))
+    return (capx);
+
+  outp->cap = capx;
+  ++in_it->cur;
+  ++out_it->cur;
+  return (0);
+}
+
+static int
 ipc_cap_copy_impl (struct task *r_task, struct ipc_cap_iter *r_it,
                    struct ipc_cap_iter *l_it, int direction)
 {
@@ -374,52 +395,50 @@ ipc_cap_copy_impl (struct task *r_task, struct ipc_cap_iter *r_it,
   else
     lock = NULL;
 
-  for (; ipc_cap_iter_size (in_it) && ipc_cap_iter_size (out_it);
-      ++in_it->cur, ++out_it->cur, ++rv)
+  for (; ipc_cap_iter_size (in_it) && ipc_cap_iter_size (out_it); ++rv)
     {
-      int capx = in_it->begin[in_it->cur].cap;
-      _Auto cap = cspace_get (in_cs, capx);
-
-      if (unlikely (! cap))
-        return (ipc_cap_iter_cleanup (out_cs, out_it, prev, -EBADF));
-
-      _Auto outp = out_it->begin + out_it->cur;
-      capx = cspace_add_free_locked (out_cs, cap, outp->flags);
-      cap_base_rel (cap);
-
-      if (unlikely (capx < 0))
-        return (ipc_cap_iter_cleanup (out_cs, out_it, prev, capx));
-
-      outp->cap = capx;
+      int tmp = ipc_cap_copy_one (in_cs, out_cs, in_it, out_it);
+      if (unlikely (tmp != 0))
+        return (ipc_cap_iter_cleanup (out_cs, out_it, prev, tmp));
     }
 
   return (rv);
 }
 
+static void*
+ipc_buffer_alloc (void *array, int iter_len, int room, int size)
+{
+  if (iter_len <= room)
+    return (array);
+
+  _Auto page = vm_page_alloc (vm_page_order (size),
+                              VM_PAGE_SEL_DIRECTMAP,
+                              VM_PAGE_KERNEL, VM_PAGE_SLEEP);
+  return (page ? vm_page_direct_ptr (page) : NULL);
+}
+
+static void
+ipc_buffer_free (void *array, void *ptr, int size)
+{
+  if (array != ptr)
+    vm_page_free (vm_page_lookup (vm_page_direct_pa ((uintptr_t)ptr)),
+                  vm_page_order (size), VM_PAGE_SLEEP);
+}
+
 #define IPC_ITER_LOOP(type, fn)   \
-  struct ipc_msg_##type tmp[16], *ptr = tmp;   \
+  struct ipc_msg_##type tmp[16], *ptr;   \
   int len = ipc_##type##_iter_size (r_it), size = len * sizeof (*ptr);   \
   \
-  if (unlikely (len > (int)ARRAY_SIZE (tmp)))   \
-    {   \
-      _Auto page = vm_page_alloc (vm_page_order (size),   \
-                                  VM_PAGE_SEL_DIRECTMAP,   \
-                                  VM_PAGE_KERNEL, VM_PAGE_SLEEP);   \
-      if (! page)   \
-        return (-ENOMEM);   \
-      \
-      ptr = vm_page_direct_ptr (page);   \
-    }   \
+  ptr = ipc_buffer_alloc (tmp, len, (int)ARRAY_SIZE (tmp), size);   \
+  if (! ptr)   \
+    return (-ENOMEM);   \
   \
   int rv = ipc_bcopy (r_task, r_it->begin + r_it->cur, size,   \
                       ptr, size, IPC_COPY_FROM);   \
   \
   if (unlikely (rv < 0))   \
     {   \
-      if (ptr != tmp)   \
-        vm_page_free (vm_page_lookup (vm_page_direct_pa ((uintptr_t)ptr)),   \
-                      vm_page_order (size), VM_PAGE_SLEEP);   \
-      \
+      ipc_buffer_free (tmp, ptr, size);   \
       return (rv);   \
     }   \
   \
@@ -430,7 +449,9 @@ ipc_cap_copy_impl (struct task *r_task, struct ipc_cap_iter *r_it,
       .end = r_it->end - r_it->cur   \
     };   \
   \
-  rv = fn (r_task, &aux, l_it, direction);   \
+  struct unw_fixup fx;   \
+  rv = unw_fixup_save (&fx);   \
+  rv = rv == 0 ? fn (r_task, &aux, l_it, direction) : -rv;   \
   if (rv >= 0)   \
     {   \
       len = rv * sizeof (*ptr);   \
@@ -439,10 +460,7 @@ ipc_cap_copy_impl (struct task *r_task, struct ipc_cap_iter *r_it,
         r_it->cur += aux.cur;   \
     }   \
   \
-  if (ptr != tmp)   \
-    vm_page_free (vm_page_lookup (vm_page_direct_pa ((uintptr_t)ptr)),   \
-                  vm_page_order (size), VM_PAGE_SLEEP);   \
-  \
+  ipc_buffer_free (tmp, ptr, size);   \
   return (rv)
 
 int

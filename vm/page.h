@@ -352,6 +352,12 @@ vm_page_anon_va (const struct vm_page *page)
   return ((uintptr_t)page->offset);
 }
 
+static inline uint64_t
+vm_page_anon_offset (uintptr_t addr)
+{
+  return (addr);
+}
+
 static inline bool
 vm_page_mark_dirty (struct vm_page *page)
 {

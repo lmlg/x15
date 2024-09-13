@@ -51,7 +51,7 @@ struct cap_alert
   struct pqueue_node pnode;
   union
     {
-      char payload[CAP_ALERT_SIZE + 1];
+      char payload[CAP_ALERT_SIZE];
       struct cap_kern_alert k_alert;
     };
 };
@@ -73,8 +73,6 @@ struct cap_alert_async
   struct list xlink;
   struct cap_flow *flow;
 };
-
-#define cap_alert_type(alert)   ((alert)->payload[CAP_ALERT_SIZE])
 
 struct cap_lpad
 {
@@ -191,6 +189,19 @@ cap_flow_guard_make (struct cap_flow *flow)
   return (spinlock_guard_make (&flow->lock, save_intr));
 }
 
+static int
+cap_alert_type (const struct cap_alert *alert)
+{
+  return ((int)(pqueue_node_prio (&alert->pnode) & 0xff));
+}
+
+static void
+cap_alert_init_nodes (struct cap_alert *alert, uint32_t type, uint32_t prio)
+{
+  pqueue_node_init (&alert->pnode, type | (prio << 8));
+  hlist_node_init (&alert->hnode);
+}
+
 #define CAP_FLOW_GUARD(flow)   \
   CLEANUP (spinlock_guard_fini) _Auto __unused UNIQ (cfg) =   \
     cap_flow_guard_make (flow)
@@ -205,10 +216,9 @@ cap_channel_fini (struct sref_counter *sref)
   // Mutate the type.
   struct cap_alert *alert __attribute__ ((may_alias)) = (void *)chp;
 
-  alert->k_alert.type = cap_alert_type(alert) = CAP_ALERT_CHAN_CLOSED;
+  alert->k_alert.type = CAP_ALERT_CHAN_CLOSED;
   alert->k_alert.tag = tag;
-  pqueue_node_init (&alert->pnode, CAP_ALERT_CHANNEL_PRIO);
-  hlist_node_init (&alert->hnode);
+  cap_alert_init_nodes (alert, CAP_ALERT_CHAN_CLOSED, CAP_ALERT_CHANNEL_PRIO);
 
   _Auto guard = cap_flow_guard_make (flow);
   hlist_insert_head (&flow->alloc_alerts, &alert->hnode);
@@ -502,7 +512,7 @@ cap_recv_alert (struct cap_flow *flow, void *buf,
       tag = entry->tag;
     }
 
-  pqueue_inc (&flow->pending_alerts, 1);
+  pqueue_inc (&flow->pending_alerts, 1 << 8);
   spinlock_guard_fini (&guard);
 
   if (unlikely (user_copy_to (buf, payload, CAP_ALERT_SIZE) != 0))
@@ -580,9 +590,8 @@ int
           return (ENOMEM);
 
         memcpy (alert->payload, abuf, CAP_ALERT_SIZE);
-        pqueue_node_init (&alert->pnode, prio);
+        cap_alert_init_nodes (alert, CAP_ALERT_USER, prio);
         pqueue_insert (&flow->pending_alerts, &alert->pnode);
-        cap_alert_type(alert) = CAP_ALERT_USER;
         cap_fill_ids (&alert->thread_id, &alert->task_id, thread_self ());
         alert->tag = tag;
 
@@ -1008,9 +1017,7 @@ cap_intr_register (struct cap_flow *flow, uint32_t irq)
   if (! ap)
     return (ENOMEM);
 
-  pqueue_node_init (&ap->base.pnode, CAP_ALERT_INTR_PRIO);
-  cap_alert_type(&ap->base) = CAP_ALERT_INTR;
-  hlist_node_init (&ap->base.hnode);
+  cap_alert_init_nodes (&ap->base, CAP_ALERT_INTR, CAP_ALERT_INTR_PRIO);
   list_node_init (&ap->xlink);
   ap->flow = flow;
   ap->base.k_alert.type = CAP_ALERT_INTR;
@@ -1087,9 +1094,7 @@ cap_register_task_thread (struct cap_flow *flow, struct kuid_head *kuid,
   if (! ap)
     return (ENOMEM);
 
-  pqueue_node_init (&ap->base.pnode, prio);
-  cap_alert_type(&ap->base) = type;
-  hlist_node_init (&ap->base.hnode);
+  cap_alert_init_nodes (&ap->base, type, prio);
   list_node_init (&ap->xlink);
   ap->flow = flow;
   ap->base.k_alert.type = type;
@@ -1232,7 +1237,8 @@ cap_reply_pagereq (const uintptr_t *usrc, uint32_t cnt)
   if (npg < cnt)
     cnt = npg;
 
-  uintptr_t *src = alloca (cnt * sizeof (*usrc));
+  assert (cnt <= VM_MAP_MAX_FRAMES);
+  uintptr_t src[VM_MAP_MAX_FRAMES];
   if (user_copy_from (src, usrc, cnt * sizeof (*usrc)) != 0)
     return (-EFAULT);
 

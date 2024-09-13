@@ -64,6 +64,7 @@ struct rdxtree_iter
 {
   void *node;
   rdxtree_key_t key;
+  int index;
 };
 
 // Initialize an iterator.
@@ -204,8 +205,7 @@ rdxtree_load_slot (void **slot)
 void* rdxtree_replace_slot (void **slot, void *ptr);
 
 // Remove a node and index from a tree.
-void rdxtree_remove_node_idx (struct rdxtree *tree, void **slot,
-                              void *node, int idx);
+void rdxtree_remove_node_idx (struct rdxtree *tree, void *node, int idx);
 
 /*
  * Forge a loop to process all pointers of a tree.

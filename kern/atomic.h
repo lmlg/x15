@@ -105,77 +105,45 @@
 #define atomic_load_acq(place)   atomic_load ((place), ATOMIC_ACQUIRE)
 #define atomic_load_seq(place)   atomic_load ((place), ATOMIC_SEQ_CST)
 
-#define atomic_store_rlx(place, val)   \
-  atomic_store ((place), (val), ATOMIC_RELAXED)
+#define atomic_store_rlx(...)   atomic_store (__VA_ARGS__, ATOMIC_RELAXED)
+#define atomic_store_rel(...)   atomic_store (__VA_ARGS__, ATOMIC_RELEASE)
+#define atomic_store_seq(...)   atomic_store (__VA_ARGS__, ATOMIC_SEQ_CST)
 
-#define atomic_store_rel(place, val)   \
-  atomic_store ((place), (val), ATOMIC_RELEASE)
+#define atomic_add_rlx(...)   atomic_add (__VA_ARGS__, ATOMIC_RELAXED)
+#define atomic_add_rel(...)   atomic_add (__VA_ARGS__, ATOMIC_RELEASE)
 
-#define atomic_store_seq(place, val)   \
-  atomic_store ((place), (val), ATOMIC_SEQ_CST)
+#define atomic_sub_rlx(...)       atomic_sub (__VA_ARGS__, ATOMIC_RELAXED)
+#define atomic_sub_rel(...)       atomic_sub (__VA_ARGS__, ATOMIC_RELEASE)
+#define atomic_sub_acq_rel(...)   atomic_sub (__VA_ARGS__, ATOMIC_ACQ_REL)
 
-#define atomic_add_rlx(place, val)   \
-  atomic_add ((place), (val), ATOMIC_RELAXED)
+#define atomic_and_rlx(...)   atomic_and (__VA_ARGS__, ATOMIC_RELAXED)
+#define atomic_and_rel(...)   atomic_and (__VA_ARGS__, ATOMIC_RELEASE)
 
-#define atomic_add_rel(place, val)   \
-  atomic_add ((place), (val), ATOMIC_RELEASE)
+#define atomic_or_rlx(...)   atomic_or (__VA_ARGS__, ATOMIC_RELAXED)
+#define atomic_or_rel(...)   atomic_or (__VA_ARGS__, ATOMIC_RELEASE)
 
-#define atomic_sub_rlx(place, val)   \
-  atomic_sub ((place), (val), ATOMIC_RELAXED)
+#define atomic_xor_rlx(...)   atomic_xor (__VA_ARGS__, ATOMIC_RELAXED)
+#define atomic_xor_rel(...)   atomic_xor (__VA_ARGS__, ATOMIC_RELEASE)
 
-#define atomic_sub_rel(place, val)   \
-  atomic_sub ((place), (val), ATOMIC_RELEASE)
+#define atomic_cas_rlx(...)       atomic_cas (__VA_ARGS__, ATOMIC_RELAXED)
+#define atomic_cas_acq(...)       atomic_cas (__VA_ARGS__, ATOMIC_ACQUIRE)
+#define atomic_cas_rel(...)       atomic_cas (__VA_ARGS__, ATOMIC_RELEASE)
+#define atomic_cas_acq_rel(...)   atomic_cas (__VA_ARGS__, ATOMIC_ACQ_REL)
 
-#define atomic_sub_acq_rel(place, val)   \
-  atomic_sub ((place), (val), ATOMIC_ACQ_REL)
+#define atomic_cas_bool_rlx(...)   \
+  atomic_cas_bool (__VA_ARGS__, ATOMIC_RELAXED)
 
-#define atomic_and_rlx(place, val)   \
-  atomic_and ((place), (val), ATOMIC_RELAXED)
+#define atomic_cas_bool_acq(...)   \
+  atomic_cas_bool (__VA_ARGS__, ATOMIC_ACQUIRE)
 
-#define atomic_and_rel(place, val)   \
-  atomic_and ((place), (val), ATOMIC_RELEASE)
+#define atomic_cas_bool_rel(...)   \
+  atomic_cas_bool (__VA_ARGS__, ATOMIC_RELEASE)
 
-#define atomic_or_rlx(place, val)   \
-  atomic_or ((place), (val), ATOMIC_RELAXED)
+#define atomic_cas_bool_acq_rel(...)   \
+  atomic_cas_bool (__VA_ARGS__, ATOMIC_ACQ_REL)
 
-#define atomic_or_rel(place, val)   \
-  atomic_or ((place), (val), ATOMIC_RELEASE)
-
-#define atomic_xor_rlx(place, val)   \
-  atomic_xor ((place), (val), ATOMIC_RELAXED)
-
-#define atomic_xor_rel(place, val)   \
-  atomic_xor ((place), (val), ATOMIC_RELEASE)
-
-#define atomic_cas_rlx(place, exp, val)   \
-  atomic_cas ((place), (exp), (val), ATOMIC_RELAXED)
-
-#define atomic_cas_acq(place, exp, val)   \
-  atomic_cas ((place), (exp), (val), ATOMIC_ACQUIRE)
-
-#define atomic_cas_rel(place, exp, val)   \
-  atomic_cas ((place), (exp), (val), ATOMIC_RELEASE)
-
-#define atomic_cas_acq_rel(place, exp, val)   \
-  atomic_cas ((place), (exp), (val), ATOMIC_ACQ_REL)
-
-#define atomic_cas_bool_rlx(place, exp, val)   \
-  atomic_cas_bool ((place), (exp), (val), ATOMIC_RELAXED)
-
-#define atomic_cas_bool_acq(place, exp, val)   \
-  atomic_cas_bool ((place), (exp), (val), ATOMIC_ACQUIRE)
-
-#define atomic_cas_bool_rel(place, exp, val)   \
-  atomic_cas_bool ((place), (exp), (val), ATOMIC_RELEASE)
-
-#define atomic_cas_bool_acq_rel(place, exp, val)   \
-  atomic_cas_bool ((place), (exp), (val), ATOMIC_ACQ_REL)
-
-#define atomic_swap_rlx(place, val)   \
-  atomic_swap ((place), (val), ATOMIC_RELAXED)
-
-#define atomic_swap_rel(place, val)   \
-  atomic_swap ((place), (val), ATOMIC_RELEASE)
+#define atomic_swap_rlx(...)   atomic_swap (__VA_ARGS__, ATOMIC_RELAXED)
+#define atomic_swap_rel(...)   atomic_swap (__VA_ARGS__, ATOMIC_RELEASE)
 
 #define atomic_fence_acq()       atomic_fence (ATOMIC_ACQUIRE)
 #define atomic_fence_rel()       atomic_fence (ATOMIC_RELEASE)

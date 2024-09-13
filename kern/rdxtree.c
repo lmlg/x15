@@ -686,12 +686,11 @@ rdxtree_replace_slot (void **slot, void *ptr)
 }
 
 void
-rdxtree_remove_node_idx (struct rdxtree *tree, void **slot,
-                         void *node, int idx)
+rdxtree_remove_node_idx (struct rdxtree *tree, void *node, int idx)
 {
-  if (slot == &tree->root && idx < 0)
+  if (idx < 0)
     {
-      rcu_store (slot, NULL);
+      rcu_store (&tree->root, NULL);
       return;
     }
 
@@ -716,6 +715,7 @@ rdxtree_walk_next (struct rdxtree *tree, struct rdxtree_iter *iter)
       else
         {
           iter->key = 0;
+          iter->index = -1;
           return (rdxtree_entry_addr (entry));
         }
     }
@@ -765,6 +765,7 @@ restart:
 
   iter->node = prev;
   iter->key = key;
+  iter->index = index;
   return (node);
 }
 
@@ -783,6 +784,7 @@ rdxtree_walk (struct rdxtree *tree, struct rdxtree_iter *iter)
       if (ptr)
         {
           iter->key += (index - orig_index) + 1;
+          iter->index = index;
           return (ptr);
         }
     }
