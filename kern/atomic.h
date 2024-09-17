@@ -50,15 +50,14 @@
                            __atomic_load_n ((place), (mo)))
 
   #define atomic_store(place, val, mo)   \
-    do   \
-      {   \
-        typeof (val) val_ = (val);   \
-        if (sizeof (*(place)) == sizeof (uint64_t))   \
-          atomic_store_64 ((place), &val_, (mo));   \
-        else   \
-          __atomic_store_n ((place), val_, (mo));   \
-      }   \
-    while (0)
+    ({   \
+       typeof (val) val_ = (val);   \
+       if (sizeof (*(place)) == sizeof (uint64_t))   \
+         atomic_store_64 ((place), &val_, (mo));   \
+       else   \
+         __atomic_store_n ((place), val_, (mo));   \
+       (void)0;   \
+     })
 
 #endif
 

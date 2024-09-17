@@ -25,11 +25,9 @@
 #include <stdint.h>
 
 #include <kern/capability.h>
-#include <kern/hash.h>
 #include <kern/init.h>
 #include <kern/kmem.h>
 #include <kern/list.h>
-#include <kern/log2.h>
 #include <kern/mutex.h>
 #include <kern/rcu.h>
 #include <kern/unwind.h>
@@ -316,7 +314,7 @@ vm_object_list_dirty (struct vm_object *obj, struct cap_page_info *upg)
 }
 
 static void
-vm_object_copy_data_fini (struct vm_object_copy_data *dp, int err)
+vm_object_copy_data_fini (struct vm_object_copy_data *dp, bool err)
 {
   if (dp->window)
     {
@@ -384,7 +382,7 @@ vm_object_copy_pages (struct vm_object *obj, struct cap_page_info *upg)
 
   if (unlikely (error))
     {
-      vm_object_copy_data_fini (&data, 1);
+      vm_object_copy_data_fini (&data, true);
       return (-error);
     }
 

@@ -49,6 +49,7 @@ struct cap_alert
     };
 
   struct pqueue_node pnode;
+  int alert_type;
   union
     {
       char payload[CAP_ALERT_SIZE];
@@ -189,21 +190,25 @@ cap_flow_guard_make (struct cap_flow *flow)
   return (spinlock_guard_make (&flow->lock, save_intr));
 }
 
+#define cap_flow_guard_lock   spinlock_guard_lock
+#define cap_flow_guard_fini   spinlock_guard_fini
+
 static int
 cap_alert_type (const struct cap_alert *alert)
 {
-  return ((int)(pqueue_node_prio (&alert->pnode) & 0xff));
+  return (alert->alert_type);
 }
 
 static void
 cap_alert_init_nodes (struct cap_alert *alert, uint32_t type, uint32_t prio)
 {
-  pqueue_node_init (&alert->pnode, type | (prio << 8));
+  pqueue_node_init (&alert->pnode, prio);
+  alert->alert_type = (int)type;
   hlist_node_init (&alert->hnode);
 }
 
 #define CAP_FLOW_GUARD(flow)   \
-  CLEANUP (spinlock_guard_fini) _Auto __unused UNIQ (cfg) =   \
+  CLEANUP (cap_flow_guard_fini) _Auto __unused UNIQ (cfg) =   \
     cap_flow_guard_make (flow)
 
 static void
@@ -224,7 +229,7 @@ cap_channel_fini (struct sref_counter *sref)
   hlist_insert_head (&flow->alloc_alerts, &alert->hnode);
   pqueue_insert (&flow->pending_alerts, &alert->pnode);
   cap_recv_wakeup_fast (flow);
-  spinlock_guard_fini (&guard);
+  cap_flow_guard_fini (&guard);
 
   cap_base_rel (flow);
 }
@@ -318,7 +323,8 @@ cap_flow_fini (struct sref_counter *sref)
   kmem_cache_free (&cap_flow_cache, flow);
 }
 
-#define CAP_FLOW_VALID_FLAGS   (CAP_FLOW_HANDLE_INTR | CAP_FLOW_EXT_PAGER)
+#define CAP_FLOW_VALID_FLAGS   \
+  (CAP_FLOW_HANDLE_INTR | CAP_FLOW_EXT_PAGER | CAP_FLOW_PAGER_FLUSHES)
 
 int
 cap_flow_create (struct cap_flow **outp, uint32_t flags,
@@ -417,10 +423,10 @@ cap_transfer_iters (struct task *task, struct cap_iters *r_it,
 static struct cap_alert*
 cap_flow_alloc_alert (struct spinlock_guard *guard, uint32_t flg)
 {
-  spinlock_guard_fini (guard);
+  cap_flow_guard_fini (guard);
   uint32_t alflags = (flg & CAP_ALERT_NONBLOCK) ? 0 : KMEM_ALLOC_SLEEP;
   void *ptr = kmem_cache_alloc2 (&cap_misc_cache, alflags);
-  spinlock_guard_lock (guard);
+  cap_flow_guard_lock (guard);
   return (ptr);
 }
 
@@ -454,7 +460,7 @@ cap_recv_pop_alert (struct cap_flow *flow, void *buf, uint32_t flags,
     return (pqueue_pop_entry (&flow->pending_alerts, struct cap_alert, pnode));
   else if (flags & CAP_ALERT_NONBLOCK)
     {
-      spinlock_guard_fini (guard);
+      cap_flow_guard_fini (guard);
       *outp = EAGAIN;
       return (NULL);
     }
@@ -469,7 +475,7 @@ cap_recv_pop_alert (struct cap_flow *flow, void *buf, uint32_t flags,
   if (recv.spurious)
     return (pqueue_pop_entry (&flow->pending_alerts, struct cap_alert, pnode));
 
-  spinlock_guard_fini (guard);
+  cap_flow_guard_fini (guard);
   if (recv.mdata.bytes_recv >= 0 && mdata)
     {
       recv.mdata.bytes_recv = CAP_ALERT_SIZE;
@@ -513,11 +519,11 @@ cap_recv_alert (struct cap_flow *flow, void *buf,
     }
 
   pqueue_inc (&flow->pending_alerts, 1 << 8);
-  spinlock_guard_fini (&guard);
+  cap_flow_guard_fini (&guard);
 
   if (unlikely (user_copy_to (buf, payload, CAP_ALERT_SIZE) != 0))
     {
-      spinlock_guard_lock (&guard);
+      cap_flow_guard_lock (&guard);
       pqueue_insert (&flow->pending_alerts, &entry->pnode);
 
       if (type == CAP_ALERT_INTR)
@@ -527,7 +533,7 @@ cap_recv_alert (struct cap_flow *flow, void *buf,
         hlist_insert_head (&flow->alloc_alerts, &entry->hnode);
 
       cap_recv_wakeup_fast (flow);
-      spinlock_guard_fini (&guard);
+      cap_flow_guard_fini (&guard);
       return (EFAULT);
     }
   else if (mdata)
@@ -582,7 +588,7 @@ int
   struct cap_receiver *recv;
 
   {
-    CLEANUP (spinlock_guard_fini) _Auto guard = cap_flow_guard_make (flow);
+    CLEANUP (cap_flow_guard_fini) _Auto guard = cap_flow_guard_make (flow);
     if (list_empty (&flow->receivers))
       {
         _Auto alert = cap_flow_alloc_alert (&guard, flags);
@@ -923,12 +929,12 @@ cap_flow_rem_lpad (struct cap_flow *flow, uintptr_t stack, bool unmap)
 
   if (! entry)
     {
-      spinlock_guard_fini (&guard);
+      cap_flow_guard_fini (&guard);
       return (ESRCH);
     }
 
   slist_remove (&flow->lpads, prev);
-  spinlock_guard_fini (&guard);
+  cap_flow_guard_fini (&guard);
 
   int error = stack != ~(uintptr_t)0 || !unmap ? 0 :
               vm_map_remove (vm_map_self (), stack, entry->size);
@@ -1034,7 +1040,7 @@ cap_intr_register (struct cap_flow *flow, uint32_t irq)
   _Auto guard = cap_flow_guard_make (flow);
   if (unlikely (cap_alert_async_find (flow, CAP_ALERT_INTR, irq)))
     {
-      spinlock_guard_fini (&guard);
+      cap_flow_guard_fini (&guard);
       cap_intr_rem (irq, &ap->xlink);
       rcu_wait ();
       kmem_cache_free (&cap_misc_cache, ap);
@@ -1042,7 +1048,7 @@ cap_intr_register (struct cap_flow *flow, uint32_t irq)
     }
 
   hlist_insert_head (&flow->alloc_alerts, &ap->base.hnode);
-  spinlock_guard_fini (&guard);
+  cap_flow_guard_fini (&guard);
   return (0);
 }
 
@@ -1103,18 +1109,16 @@ cap_register_task_thread (struct cap_flow *flow, struct kuid_head *kuid,
   _Auto guard = cap_flow_guard_make (flow);
   if (unlikely (cap_alert_async_find (flow, type, kuid->id)))
     {
-      spinlock_guard_fini (&guard);
+      cap_flow_guard_fini (&guard);
       kmem_cache_free (&cap_misc_cache, ap);
       return (EALREADY);
     }
 
   hlist_insert_head (&flow->alloc_alerts, &ap->base.hnode);
-
   spinlock_lock (&outp->lock);
   list_insert_tail (&outp->subs, &ap->xlink);
-
   spinlock_unlock (&outp->lock);
-  spinlock_guard_fini (&guard);
+  cap_flow_guard_fini (&guard);
   return (0);
 }
 
@@ -1260,9 +1264,12 @@ cap_channel_load_vmobj (struct cap_channel *chp)
 }
 
 struct vm_object*
-cap_channel_get_vmobj (struct cap_channel *chp, uint32_t flags)
+cap_channel_get_vmobj (struct cap_channel *chp)
 {
-  for (flags |= VM_OBJECT_EXTERNAL ; ; )
+  uint32_t flags = VM_OBJECT_EXTERNAL |
+                   ((chp->flow->base.flags & CAP_FLOW_PAGER_FLUSHES) ?
+                    VM_OBJECT_FLUSHES : 0);
+  while (1)
     {
       _Auto prev = cap_channel_load_vmobj (chp);
       if (prev)
@@ -1270,6 +1277,7 @@ cap_channel_get_vmobj (struct cap_channel *chp, uint32_t flags)
 
       struct vm_object *obj;
       if (vm_object_create (&obj, flags, chp) != 0)
+        // We couldn't create the object but maybe someone else could.
         return (cap_channel_load_vmobj (chp));
       else if (atomic_cas_bool_acq (&chp->vmobj, NULL, obj))
         {

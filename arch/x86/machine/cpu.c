@@ -1370,9 +1370,8 @@ cpu_mp_setup (void)
       lapic_ipi_startup (cpu->apic_id, BOOT_MP_TRAMPOLINE_ADDR >> 12);
       cpu_delay (200);
 
-      while (1)
-        if (atomic_load_acq (&cpu->started))
-          break;
+      while (!atomic_load_acq (&cpu->started))
+        ;
     }
 }
 

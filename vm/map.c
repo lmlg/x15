@@ -1388,10 +1388,9 @@ vm_map_iter_cleanup (struct vm_map *map, struct ipc_vme_iter *it,
     {
       _Auto page = it->begin + it->cur - 1;
       struct list entries;
-      uintptr_t start = page->addr, end = start + page->size;
 
       list_init (&entries);
-      vm_map_remove_impl (map, start, end, &entries);
+      vm_map_remove_impl (map, page->addr, page->addr + page->size, &entries);
       vm_map_entry_list_destroy (map, &entries, VM_MAP_FREE_OBJ);
     }
 

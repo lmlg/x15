@@ -366,12 +366,12 @@ def output_dwarf (state):
   print ("static const uint8_t unw_opcodes[] __unwind =\n{", end = "")
   for op in state.ops:
     for byte in op.header:
-      if (i & 7) == 0:
+      if (i % 12) == 0:
         print ("\n  ", end = "")
       print ("0x%02x, " % byte, end = "")
       i += 1
     for byte in op.opcodes:
-      if (i & 7) == 0:
+      if (i % 12) == 0:
         print ("\n  ", end = "")
       print ("0x%02x, " % byte, end = "")
       i += 1

@@ -91,8 +91,20 @@ static_assert (OFFSETOF (struct cap_kern_alert, intr.irq) ==
 
 struct cap_base
 {
-  unsigned char type;
-  unsigned int flags:24;
+  union
+    {
+      uint32_t type_flags;
+      struct
+        {
+#if __BYTE_ORDER__ == __BIG_ENDIAN__
+          uint32_t type;
+          uint32_t flags:24;
+#else
+          uint32_t flags:24;
+          uint32_t type;
+#endif
+        };
+    };
   struct sref_counter sref;
 };
 
@@ -116,12 +128,12 @@ struct cap_thread_info
 #define CAPABILITY   struct cap_base base
 
 // Flags used in 'cap_flow_create'.
-#define CAP_FLOW_HANDLE_INTR   0x01   // Flow can handle interrupts.
-#define CAP_FLOW_EXT_PAGER     0x02   // Flow is an external pager.
+#define CAP_FLOW_HANDLE_INTR     0x01   // Flow can handle interrupts.
+#define CAP_FLOW_EXT_PAGER       0x02   // Flow is an external pager.
+#define CAP_FLOW_PAGER_FLUSHES   0x04   // Pager needs to flush dirty pages.
 
 struct vm_object;
 struct vm_page;
-struct cap_channel_map;
 
 struct cap_flow
 {
@@ -320,8 +332,16 @@ ssize_t cap_request_pages (struct cap_channel *chp, uint64_t off,
 // Reply with pages to a channel.
 ssize_t cap_reply_pagereq (const uintptr_t *src, uint32_t cnt);
 
-// Manipulate a channel's VM object.
-struct vm_object* cap_channel_get_vmobj (struct cap_channel *ch, uint32_t flg);
+/*
+ * Get the VM object associated to a channel.
+ *
+ * The VM object is typically constructed when a mapping request is made,
+ * such as for the 'mmap' system call. Note that once constructed and until
+ * it's destroyed, the object will be the same.
+ */
+struct vm_object* cap_channel_get_vmobj (struct cap_channel *ch);
+
+// Unreference a VM object obtained from a channel.
 void cap_channel_put_vmobj (struct cap_channel *chp);
 
 
@@ -334,12 +354,15 @@ void cap_channel_put_vmobj (struct cap_channel *chp);
     }   \
   while (0)
 
+// Initialize a capability's iterators with a plain buffer and size.
 #define cap_iters_init_buf(it, buf, size)   \
   cap_iters_init_impl (it, buf, size, ipc_iov_iter_init_buf)
 
+// Initialize a capability's iterators with a number of iovecs.
 #define cap_iters_init_iov(it, iovs, nr_iovs)   \
   cap_iters_init_impl (it, iovs, nr_iovs, ipc_iov_iter_init)
 
+// Initialize a capability's iterators with a message structure.
 #define cap_iters_init_msg(it, msg)   \
   do   \
     {   \

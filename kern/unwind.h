@@ -44,7 +44,7 @@ struct unw_fde
 {
   uint32_t base_off;   // Difference relative to the base address.
   uint32_t addr_range;   // Range in bytes for this FDE.
-  uint32_t idxs;   // CIE index (low 16 bits) and opcode index (high 16 bits).
+  uint32_t idxs;   // CIE index (low 8 bits) and opcode index (high 24 bits).
 };
 
 // DWARF global data - Exported by the unwind table generator.

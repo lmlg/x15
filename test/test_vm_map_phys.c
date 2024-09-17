@@ -149,8 +149,8 @@ static void
 test_vm_map_phys_cap (void *arg __unused)
 {
   struct cap_flow *flow;
-  int error = cap_flow_create (&flow, CAP_FLOW_EXT_PAGER, 1,
-                               (uintptr_t)test_vm_map_phys_entry);
+  int error = cap_flow_create (&flow, CAP_FLOW_EXT_PAGER | CAP_FLOW_PAGER_FLUSHES,
+                               1, (uintptr_t)test_vm_map_phys_entry);
   assert (! error);
 
   struct cap_channel *ch;
@@ -192,7 +192,7 @@ test_vm_map_phys_cap (void *arg __unused)
   uintptr_t va = 0;
   int flags = VM_MAP_FLAGS (VM_PROT_RDWR, VM_PROT_RDWR, VM_INHERIT_SHARE,
                             VM_ADV_DEFAULT, 0);
-  _Auto obj = cap_channel_get_vmobj (ch, VM_OBJECT_FLUSHES);
+  _Auto obj = cap_channel_get_vmobj (ch);
   assert (obj);
   assert (obj->flags & VM_OBJECT_EXTERNAL);
 

@@ -28,8 +28,6 @@
 #include <vm/map.h>
 #include <vm/page.h>
 
-#include <stdio.h>
-
 struct ipc_data
 {
   cpu_flags_t cpu_flags;
@@ -153,7 +151,7 @@ ipc_map_addr (struct vm_map *map, const void *addr,
   int error = pmap_extract_check (map->pmap, (uintptr_t)addr,
                                   data->prot & VM_PROT_WRITE, pap);
   if (error)
-    { // Need to fault in the destination address.
+    { // Need to page in the destination address.
       error = vm_map_fault (map, (uintptr_t)addr, data->prot);
       if (error)
         {
@@ -163,7 +161,7 @@ ipc_map_addr (struct vm_map *map, const void *addr,
 
       /*
        * Since we're running with interrupts disabled, and the address
-       * has been faulted in, this call cannot fail.
+       * has been paged in, this call cannot fail.
        */
       error = pmap_extract (map->pmap, (uintptr_t)addr, pap);
       assert (! error);
@@ -225,12 +223,6 @@ ipc_iov_iter_usrnext (struct ipc_iov_iter *it, ssize_t *errp)
 }
 
 static struct iovec*
-ipc_iov_iter_next (struct ipc_iov_iter *it)
-{ // Get the next iovec from a local iterator, or NULL if exhausted.
-  return (ipc_iov_iter_usrnext (it, NULL));
-}
-
-static struct iovec*
 ipc_iov_iter_next_remote (struct ipc_iov_iter *it,
                           struct task *task, ssize_t *outp)
 { // Same as above, only for a remote iterator.
@@ -271,7 +263,7 @@ ipc_iov_iter_copy (struct task *r_task, struct ipc_iov_iter *r_it,
 
   for (ssize_t ret = 0 ; ; )
     {
-      struct iovec *lv = ipc_iov_iter_next (l_it);
+      struct iovec *lv = ipc_iov_iter_usrnext (l_it, NULL);
       if (! lv)
         return (ret);
 
@@ -411,8 +403,7 @@ ipc_buffer_alloc (void *array, int iter_len, int room, int size)
   if (iter_len <= room)
     return (array);
 
-  _Auto page = vm_page_alloc (vm_page_order (size),
-                              VM_PAGE_SEL_DIRECTMAP,
+  _Auto page = vm_page_alloc (vm_page_order (size), VM_PAGE_SEL_DIRECTMAP,
                               VM_PAGE_KERNEL, VM_PAGE_SLEEP);
   return (page ? vm_page_direct_ptr (page) : NULL);
 }

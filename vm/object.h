@@ -84,8 +84,8 @@ int vm_object_create (struct vm_object **objp, uint32_t flg, void *ctx);
  * If the page doesn't exist at the specified offset, or it matches the
  * passed expected value, the page is inserted and gains a reference.
  *
- * The caller is responsible for referencing the page before this
- * function is invoked.
+ * The caller is responsible for making sure the page has at least one
+ * reference before this function is called.
  */
 
 int vm_object_swap (struct vm_object *object, struct vm_page *page,
