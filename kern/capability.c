@@ -131,11 +131,10 @@ static void cap_recv_wakeup_fast (struct cap_flow *);
 static void cap_intr_rem (uint32_t irq, struct list *link);
 
 static void
-cap_base_init (struct cap_base *base, unsigned int type, sref_noref_fn_t noref)
+cap_base_init (struct cap_base *base, uint32_t type, sref_noref_fn_t noref)
 {
   assert (type < CAP_TYPE_MAX);
-  base->type = type;
-  base->flags = 0;
+  base->tflags = ((uintptr_t)type << (sizeof (uintptr_t) * 8 - 8));
   sref_counter_init (&base->sref, 1, NULL, noref);
 }
 
@@ -186,7 +185,7 @@ cap_thread_create (struct cap_thread **outp, struct thread *thread)
 static struct spinlock_guard
 cap_flow_guard_make (struct cap_flow *flow)
 {
-  bool save_intr = (flow->base.flags & CAP_FLOW_HANDLE_INTR) != 0;
+  bool save_intr = (flow->base.tflags & CAP_FLOW_HANDLE_INTR) != 0;
   return (spinlock_guard_make (&flow->lock, save_intr));
 }
 
@@ -344,7 +343,7 @@ cap_flow_create (struct cap_flow **outp, uint32_t flags,
   slist_init (&ret->lpads);
   hlist_init (&ret->alloc_alerts);
   pqueue_init (&ret->pending_alerts);
-  ret->base.flags = flags;
+  ret->base.tflags |= flags;
   ret->tag = tag;
   ret->entry = entry;
 
@@ -355,14 +354,19 @@ cap_flow_create (struct cap_flow **outp, uint32_t flags,
 int
 (cap_get_tag) (const struct cap_base *cap, uintptr_t *tagp)
 {
-  if (cap->type == CAP_TYPE_CHANNEL)
-    *tagp = ((const struct cap_channel *)cap)->tag;
-  else if (cap->type == CAP_TYPE_FLOW)
-    *tagp = ((const struct cap_flow *)cap)->tag;
-  else
-    return (EINVAL);
+  switch (cap_type (cap))
+    {
+      case CAP_TYPE_CHANNEL:
+        *tagp = ((const struct cap_channel *)cap)->tag;
+        return (0);
 
-  return (0);
+      case CAP_TYPE_FLOW:
+        *tagp = ((const struct cap_flow *)cap)->tag;
+        return (0);
+
+      default:
+        return (EINVAL);
+    }
 }
 
 int
@@ -371,7 +375,7 @@ cap_flow_hook (struct cap_channel **outp, struct task *task, int capx)
   struct cap_base *base = cspace_get (&task->caps, capx);
   if (! base)
     return (EBADF);
-  else if (base->type != CAP_TYPE_FLOW)
+  else if (cap_type (base) != CAP_TYPE_FLOW)
     {
       cap_base_rel (base);
       return (EINVAL);
@@ -564,18 +568,21 @@ int
   struct cap_flow *flow;
   uintptr_t tag;
 
-  if (cap->type == CAP_TYPE_CHANNEL)
+  switch (cap_type (cap))
     {
-      flow = ((struct cap_channel *)cap)->flow;
-      tag = ((struct cap_channel *)cap)->tag;
+      case CAP_TYPE_CHANNEL:
+        flow = ((struct cap_channel *)cap)->flow;
+        tag = ((struct cap_channel *)cap)->tag;
+        break;
+
+      case CAP_TYPE_FLOW:
+        flow = (struct cap_flow *)cap;
+        tag = flow->tag;
+        break;
+
+      default:
+        return (EBADF);
     }
-  else if (cap->type == CAP_TYPE_FLOW)
-    {
-      flow = (struct cap_flow *)cap;
-      tag = flow->tag;
-    }
-  else
-    return (EBADF);
 
   /*
    * Copy into a temporary buffer, since the code below may otherwise
@@ -740,7 +747,7 @@ cap_send_iters (struct cap_base *cap, struct cap_iters *in,
   if (! cap)
     return (-EBADF);
 
-  switch (cap->type)
+  switch (cap_type (cap))
     {
       case CAP_TYPE_FLOW:
         flow = (struct cap_flow *)cap;
@@ -1267,7 +1274,7 @@ struct vm_object*
 cap_channel_get_vmobj (struct cap_channel *chp)
 {
   uint32_t flags = VM_OBJECT_EXTERNAL |
-                   ((chp->flow->base.flags & CAP_FLOW_PAGER_FLUSHES) ?
+                   ((chp->flow->base.tflags & CAP_FLOW_PAGER_FLUSHES) ?
                     VM_OBJECT_FLUSHES : 0);
   while (1)
     {
@@ -1378,7 +1385,7 @@ cap_shell_info (struct shell *shell, int argc, char **argv)
   rdxtree_for_each (&task->caps.tree, &it, cap)
     {
       fmt_xprintf (stream, "%llu\t", it.key);
-      switch (cap->type)
+      switch (cap_type (cap))
         {
           case CAP_TYPE_CHANNEL:
             fmt_xprintf (stream, "channel\t{tag: %lu}\n",
@@ -1401,7 +1408,7 @@ cap_shell_info (struct shell *shell, int argc, char **argv)
                          ((struct cap_kernel *)cap)->kind);
             break;
           default:
-            panic ("unknown capability type: %d\n", (int)cap->type);
+            panic ("unknown capability type: %u\n", cap_type (cap));
         }
     }
 

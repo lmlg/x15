@@ -100,7 +100,7 @@ test_cap_entry (struct ipc_msg *msg, struct ipc_msg_data *mdata)
 
   _Auto cap = cspace_get (cspace_self (), vars->mcap[0].cap);
   assert (cap != NULL);
-  assert (cap->type == CAP_TYPE_TASK);
+  assert (cap_type (cap) == CAP_TYPE_TASK);
   assert (((struct cap_task *)cap)->task == thread_self()->task);
   cap_base_rel (cap);
 
@@ -293,7 +293,7 @@ test_cap_sender (void *arg)
 
   _Auto cap = cspace_get (cspace_self (), vars->out_cap[0].cap);
   assert (cap != NULL);
-  assert (cap->type == CAP_TYPE_TASK);
+  assert (cap_type (cap) == CAP_TYPE_TASK);
   assert (((struct cap_task *)cap)->task == data->receiver);
   cap_base_rel (cap);
 

@@ -91,20 +91,7 @@ static_assert (OFFSETOF (struct cap_kern_alert, intr.irq) ==
 
 struct cap_base
 {
-  union
-    {
-      uint32_t type_flags;
-      struct
-        {
-#if __BYTE_ORDER__ == __BIG_ENDIAN__
-          uint32_t type;
-          uint32_t flags:24;
-#else
-          uint32_t flags:24;
-          uint32_t type;
-#endif
-        };
-    };
+  uintptr_t tflags;
   struct sref_counter sref;
 };
 
@@ -224,6 +211,15 @@ struct cap_page_info
   struct ipc_msg_vme vme;
 };
 
+// Get a capability's type.
+static inline uint32_t
+cap_type (const struct cap_base *cap)
+{
+  return ((uint32_t)(cap->tflags >> (sizeof (uintptr_t) * 8 - 8)));
+}
+
+#define cap_type(cap)   (cap_type)(CAP (cap))
+
 // Acquire or release a reference on a capability.
 static inline void
 cap_base_acq (struct cap_base *cap)
@@ -247,9 +243,6 @@ cap_base_rel (struct cap_base *cap)
 int cap_intern (struct cap_base *cap, int flags);
 
 #define cap_intern(cap, flags)   (cap_intern) (CAP (cap), (flags))
-
-// Get the capability's type.
-#define cap_type(cap)   (((const struct cap_base *)(x))->type)
 
 // Create a flow.
 int cap_flow_create (struct cap_flow **outp, uint32_t flags,
