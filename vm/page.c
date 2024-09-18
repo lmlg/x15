@@ -885,13 +885,6 @@ vm_page_wash_end (struct vm_page *page)
     vm_page_detach (page);
 }
 
-bool
-vm_page_can_free (struct vm_page *page)
-{
-  return (!page->dirty || !page->object ||
-          !(page->object->flags & VM_OBJECT_FLUSHES));
-}
-
 void
 vm_page_zero (struct vm_page *page)
 {

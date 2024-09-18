@@ -31,6 +31,7 @@
 #include <machine/pmap.h>
 
 #include <vm/map.h>
+#include <vm/page.h>
 
 #include <stdio.h>
 

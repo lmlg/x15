@@ -30,6 +30,7 @@
 #include <test/test.h>
 
 #include <vm/map.h>
+#include <vm/page.h>
 
 #define TEST_CAP_CHANNEL_TAG   ((uintptr_t)1234)
 

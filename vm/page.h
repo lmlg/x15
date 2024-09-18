@@ -44,6 +44,8 @@
 #include <machine/pmem.h>
 #include <machine/types.h>
 
+#include <vm/object.h>
+
 /*
  * Byte/page conversion and rounding macros (not inline functions to
  * be easily usable on both virtual and physical addresses, which may not
@@ -292,10 +294,16 @@ vm_page_detach (struct vm_page *page)
   vm_page_unlink (page);
 }
 
+static inline bool
+vm_page_can_free (struct vm_page *page)
+{
+  return (!page->dirty || !page->object ||
+          !(page->object->flags & VM_OBJECT_FLUSHES));
+}
+
 static inline void
 vm_page_unref (struct vm_page *page)
 {
-  bool vm_page_can_free (struct vm_page *);
   if (vm_page_unref_nofree (page) && vm_page_can_free (page))
     {
       int flags = page->type == VM_PAGE_OBJECT ? VM_PAGE_SLEEP : 0;

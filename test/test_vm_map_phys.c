@@ -26,6 +26,7 @@
 #include <test/test.h>
 
 #include <vm/map.h>
+#include <vm/page.h>
 
 #define TEST_VM_MAP_PHYS_OFFSET   (PAGE_SIZE * 14)
 

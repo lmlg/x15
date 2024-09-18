@@ -33,8 +33,6 @@
 #include <kern/spinlock_types.h>
 #include <kern/work.h>
 
-#include <vm/page.h>
-
 struct vm_object;
 struct vm_page;
 struct cap_channel;
