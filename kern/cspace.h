@@ -26,6 +26,10 @@
 #include <kern/cspace_types.h>
 #include <kern/rcu.h>
 
+#define CSPACE_WEAK   0x02   // Use a weak reference for a capability.
+
+#define CSPACE_MASK   (CSPACE_WEAK)
+
 static inline void
 cspace_init (struct cspace *sp)
 {
@@ -33,28 +37,47 @@ cspace_init (struct cspace *sp)
   adaptive_lock_init (&sp->lock);
 }
 
-static inline struct cap_base*
-cspace_get (struct cspace *sp, int cap_idx)
+static inline void
+cspace_maybe_rel (void *ptr)
 {
-  if (cap_idx < 0)
+  if (!((uintptr_t)ptr & RDXTREE_XBIT))
+    cap_base_rel (ptr);
+}
+
+static inline struct cap_base*
+cspace_get_all (struct cspace *sp, int capx, int *marked)
+{
+  if (capx < 0)
     return (NULL);
 
   CPU_INTR_GUARD ();
   RCU_GUARD ();
 
-  struct cap_base *cap = rdxtree_lookup (&sp->tree, cap_idx);
-  if (cap)
-    cap_base_acq (cap);
+  void *ptr = rdxtree_lookup (&sp->tree, capx);
+  if (! ptr)
+    return (ptr);
 
+  *marked = ((uintptr_t)ptr & RDXTREE_XBIT) != 0;
+  struct cap_base *cap = (void *)((uintptr_t)ptr & ~RDXTREE_XBIT);
+  cap_base_acq (cap);
   return (cap);
+}
+
+static inline struct cap_base*
+cspace_get (struct cspace *sp, int capx)
+{
+  int marked;
+  return (cspace_get_all (sp, capx, &marked));
 }
 
 static inline int
 cspace_add_free_locked (struct cspace *sp, struct cap_base *cap,
-                        int flags __unused)
+                        uint32_t flags)
 {
   rdxtree_key_t cap_idx;
-  int rv = rdxtree_insert_alloc (&sp->tree, cap, &cap_idx);
+  void *ptr = (void *)((uintptr_t)cap |
+              ((flags & CSPACE_WEAK) ? RDXTREE_XBIT : 0));
+  int rv = rdxtree_insert_alloc (&sp->tree, ptr, &cap_idx);
   if (rv < 0)
     return (-ENOMEM);
 
@@ -63,7 +86,7 @@ cspace_add_free_locked (struct cspace *sp, struct cap_base *cap,
 }
 
 static inline int
-cspace_add_free (struct cspace *sp, struct cap_base *cap, int flags)
+cspace_add_free (struct cspace *sp, struct cap_base *cap, uint32_t flags)
 {
   ADAPTIVE_LOCK_GUARD (&sp->lock);
   return (cspace_add_free_locked (sp, cap, flags));
@@ -75,12 +98,15 @@ cspace_rem_locked (struct cspace *sp, int cap_idx)
   if (cap_idx < 0)
     return (EBADF);
 
-  struct cap_base *cap = rdxtree_remove (&sp->tree, cap_idx);
-  if (! cap)
+  void *ptr = rdxtree_remove (&sp->tree, cap_idx);
+  if (! ptr)
     return (EINVAL);
+  else if (!((uintptr_t)ptr & RDXTREE_XBIT))
+    {
+      CPU_INTR_GUARD ();
+      cap_base_rel (ptr);
+    }
 
-  CPU_INTR_GUARD ();
-  cap_base_rel (cap);
   return (0);
 }
 
@@ -99,15 +125,13 @@ cspace_dup (struct cspace *sp, int cap_idx)
     return (-EBADF);
 
   int new_idx = cspace_add_free (sp, cap, 0);
-  if (new_idx < 0)
-    cap_base_rel (cap);
-
+  cap_base_rel (cap);
   return (new_idx);
 }
 
 static inline int
 cspace_dup3 (struct cspace *sp, int cap_idx, int new_idx,
-             int flags __unused)
+             uint32_t flags __unused)
 {
   if (cap_idx < 0)
     return (EBADF);
@@ -122,8 +146,8 @@ cspace_dup3 (struct cspace *sp, int cap_idx, int new_idx,
   int rv = rdxtree_insert_slot (&sp->tree, new_idx, cap, &slot);
 
   if (rv == EBUSY)
-    // Release the older capability.
-    cap_base_rel (rdxtree_replace_slot (slot, cap));
+    // Replace the older capability.
+    cspace_maybe_rel (rdxtree_replace_slot (slot, cap));
   else if (rv)
     return (ENOMEM);
 
@@ -135,10 +159,10 @@ static inline void
 cspace_destroy (struct cspace *sp)
 {
   struct rdxtree_iter iter;
-  struct cap_base *cap;
+  void *cap;
 
   rdxtree_for_each (&sp->tree, &iter, cap)
-    cap_base_rel (cap);
+    cspace_maybe_rel (cap);
 
   rdxtree_remove_all (&sp->tree);
 }

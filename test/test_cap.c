@@ -398,6 +398,22 @@ test_cap_dead_notif (void *arg __unused)
   int error = cap_flow_create (&flow, 0, 0, 0);
   assert (! error);
 
+  struct cap_channel *chan;
+  error = cap_channel_create (&chan, flow, 1234);
+  assert (! error);
+
+  int capx = cspace_add_free (cspace_self (), &chan->base, CSPACE_WEAK);
+  assert (capx >= 0);
+  cap_base_rel (chan);
+
+  int mark;
+  chan = (struct cap_channel *)cspace_get_all (cspace_self (), capx, &mark);
+  assert (chan);
+  cap_base_rel (chan);
+
+  if (mark)
+    cap_base_rel (chan);
+
   struct
     {
       struct cap_kern_alert alert;
@@ -407,6 +423,13 @@ test_cap_dead_notif (void *arg __unused)
 
   error = vm_map_anon_alloc ((void **)&buf, vm_map_self (), 1);
   assert (! error);
+
+  error = cap_recv_alert (flow, &buf->alert, 0, &buf->mdata);
+  assert (! error);
+  assert (buf->mdata.thread_id == 0);
+  assert (buf->mdata.task_id == 0);
+  assert (buf->alert.type == CAP_ALERT_CHAN_CLOSED);
+  assert (buf->alert.tag == 1234);
 
   struct thread *thr;
   error = test_util_create_thr (&thr, test_cap_dead_helper, flow, "cap_dead");

@@ -34,7 +34,7 @@
 #include <kern/work.h>
 
 // Mask applied on an entry to obtain its address.
-#define RDXTREE_ENTRY_ADDR_MASK   (~0x3UL)
+#define RDXTREE_ENTRY_ADDR_MASK   (~0x1UL)
 
 // Global properties used to shape radix trees.
 #define RDXTREE_RADIX        6

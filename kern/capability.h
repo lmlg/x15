@@ -240,7 +240,7 @@ cap_base_rel (struct cap_base *cap)
  * Intern a capability within the local space. Returns the new capability
  * index, or a negated errno value on error.
  */
-int cap_intern (struct cap_base *cap, int flags);
+int cap_intern (struct cap_base *cap, uint32_t flags);
 
 #define cap_intern(cap, flags)   (cap_intern) (CAP (cap), (flags))
 
@@ -337,6 +337,8 @@ struct vm_object* cap_channel_get_vmobj (struct cap_channel *ch);
 // Unreference a VM object obtained from a channel.
 void cap_channel_put_vmobj (struct cap_channel *chp);
 
+// Mark a channel as being shared.
+bool cap_channel_mark_shared (struct cap_base *cap);
 
 #define cap_iters_init_impl(it, buf, size, iov_init)   \
   do   \

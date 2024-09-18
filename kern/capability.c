@@ -124,6 +124,8 @@ static struct adaptive_lock cap_intr_lock;
 #define CAP_ALERT_INTR_PRIO      (CAP_ALERT_THREAD_PRIO << 1)
 #define CAP_ALERT_CHANNEL_PRIO   (1u)
 
+#define CAP_CHANNEL_SHARED   0x01
+
 #define CAP_FROM_SREF(ptr, type)   structof (ptr, type, base.sref)
 
 // Forward declarations.
@@ -1211,7 +1213,7 @@ cap_notify_dead (struct bulletin *bulletin)
 }
 
 int
-(cap_intern) (struct cap_base *cap, int flags)
+(cap_intern) (struct cap_base *cap, uint32_t flags)
 {
   return (cap ? cspace_add_free (cspace_self (), cap, flags) : -EINVAL);
 }
@@ -1309,6 +1311,22 @@ cap_channel_put_vmobj (struct cap_channel *chp)
     }
   else
     rcu_read_leave ();
+}
+
+bool
+cap_channel_mark_shared (struct cap_base *cap)
+{
+  while (1)
+    {
+      uintptr_t tmp = atomic_load_rlx (&cap->tflags);
+      if (tmp & CAP_CHANNEL_SHARED)
+        return (false);
+      else if (atomic_cas_bool_acq_rel (&cap->tflags, tmp,
+                                        tmp | CAP_CHANNEL_SHARED))
+        return (true);
+
+      atomic_spin_nop ();
+    }
 }
 
 static size_t

@@ -42,6 +42,9 @@ typedef uint64_t rdxtree_key_t;
 #define RDXTREE_KEY_ALLOC     0x1   // Enable key allocation.
 #define RDXTREE_ALLOC_SLEEP   0x2   // Allocations may sleep.
 
+// User-defined bit.
+#define RDXTREE_XBIT   0x02
+
 // Static tree initializer.
 #define RDXTREE_INITIALIZER   { 0, 0, NULL }
 

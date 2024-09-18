@@ -265,7 +265,7 @@ vm_map_next (struct vm_map *map, struct vm_map_entry *entry)
           NULL : list_entry (node, struct vm_map_entry, list_node));
 }
 
-// Always try to map address above this threshold.
+// Always try to map addresses above this threshold.
 #define VM_MAP_FIRST_ADDR   ((1 << 20) * 4)
 
 static int
@@ -423,9 +423,8 @@ vm_map_try_merge_near (struct vm_map *map, const struct vm_map_request *request,
       request->start + request->size == second->start &&
       vm_map_try_merge_compatible (request, first) &&
       vm_map_try_merge_compatible (request, second) &&
-      (!first->object ||
-       (first->offset + first->end - first->start == request->offset &&
-        request->offset + request->size == second->offset)))
+      first->offset + first->end - first->start == request->offset &&
+      request->offset + request->size == second->offset)
     {
       _Auto next = vm_map_next (map, second);
       vm_map_unlink (map, first);
