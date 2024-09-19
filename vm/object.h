@@ -166,16 +166,7 @@ vm_object_unref (struct vm_object *object)
 static inline struct vm_object*
 vm_object_tryref (struct vm_object *object)
 {
-  while (1)
-    {
-      uint32_t tmp = atomic_load_rlx (&object->refcount);
-      if (! tmp)
-        return (NULL);
-      else if (atomic_cas_bool_acq (&object->refcount, tmp, tmp + 1))
-        return (object);
-
-      atomic_spin_nop ();
-    }
+  return (atomic_try_inc (&object->refcount, ATOMIC_ACQUIRE) ? object : NULL);
 }
 
 // Create a VM object for anonymous mappings.

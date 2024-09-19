@@ -149,4 +149,28 @@
 #define atomic_fence_acq_rel()   atomic_fence (ATOMIC_ACQ_REL)
 #define atomic_fence_seq()       atomic_fence (ATOMIC_SEQ_CST)
 
+/*
+ * Try to increment a counter from a non-zero value.
+ * Evaluates to true on success.
+ */
+#define atomic_try_inc(place, mo)   \
+  ({   \
+     bool done_ = true;   \
+     _Auto place_ = (place);   \
+     while (1)   \
+       {   \
+         _Auto tmp_ = atomic_load_rlx (place_);   \
+         if (!tmp_)   \
+           {   \
+             done_ = false;   \
+             break;   \
+           }   \
+         else if (atomic_cas_bool (place_, tmp_, tmp_ + 1, (mo)))   \
+           break;   \
+         \
+         atomic_spin_nop ();   \
+       }   \
+     done_;   \
+   })
+
 #endif

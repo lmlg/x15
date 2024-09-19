@@ -316,16 +316,7 @@ vm_page_unref (struct vm_page *page)
 static inline int
 vm_page_tryref (struct vm_page *page)
 {
-  while (1)
-    {
-      uint32_t prev = atomic_load_rlx (&page->nr_refs);
-      if (! prev)
-        return (EAGAIN);
-      else if (atomic_cas_bool_acq (&page->nr_refs, prev, prev + 1))
-        return (0);
-
-      atomic_spin_nop ();
-    }
+  return (atomic_try_inc (&page->nr_refs, ATOMIC_ACQUIRE) ? 0 : EAGAIN);
 }
 
 static inline void

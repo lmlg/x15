@@ -45,8 +45,8 @@ static struct kuid_map kuid_maps[KUID_MAX_CLS];
 #define KUID_MAX_STAMP   16
 
 static int
-kuid_map_pop_key (struct kuid_map *map, rdxtree_key_t *keyp,
-                  struct kuid_head *head)
+kuid_map_pop_key (struct kuid_map *map, struct kuid_head *head,
+                  rdxtree_key_t *keyp)
 {
   uint32_t id;
   size_t size = sizeof (id);
@@ -76,16 +76,19 @@ kuid_map_alloc_key (struct kuid_map *map, struct kuid_head *head,
   return (error);
 }
 
+typedef int (*kuid_key_fn_t) (struct kuid_map *, struct kuid_head *,
+                              rdxtree_key_t *);
+
+static const kuid_key_fn_t KUID_METHODS[] =
+  { kuid_map_alloc_key, kuid_map_pop_key };
+
 static int
 kuid_map_alloc_radix (struct kuid_map *map, struct kuid_head *head,
                       rdxtree_key_t *keyp)
 {
-  if (map->stamp >= KUID_MAX_STAMP)
-    return (kuid_map_pop_key (map, keyp, head) ?
-            kuid_map_alloc_key (map, head, keyp) : 0);
-
-  return (kuid_map_alloc_key (map, head, keyp) ?
-          kuid_map_pop_key (map, keyp, head) : 0);
+  int ix = map->stamp >= KUID_MAX_STAMP;
+  return (KUID_METHODS[ix] (map, head, keyp) != 0 ?
+          KUID_METHODS[ix ^ 1] (map, head, keyp) : 0);
 }
 
 int
@@ -124,16 +127,7 @@ kuid_find (uint32_t kuid, int cls)
   if (! head)
     return (head);
 
-  while (1)
-    {
-      size_t nr_refs = atomic_load_rlx (&head->nr_refs);
-      if (! nr_refs)
-        return (NULL);
-      else if (atomic_cas_bool_acq (&head->nr_refs, nr_refs, nr_refs + 1))
-        return (head);
-
-      atomic_spin_nop ();
-    }
+  return (atomic_try_inc (&head->nr_refs, ATOMIC_ACQUIRE) ? head : NULL);
 }
 
 int
