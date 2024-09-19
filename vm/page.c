@@ -427,6 +427,17 @@ vm_page_wait (struct vm_page_zone *zone, struct mutex *mtx,
   // Grab the queue lock before dropping the page pool one.
   SPINLOCK_GUARD (&bucket->lock);
   mutex_unlock (mtx);
+
+  // Test if there are enough free pages before going to sleep.
+  if (zone->nr_free_pages >= (1u << waiter->order))
+    return (true);
+  else if (waiter->order == 0)
+    { // Allocating from a CPU pool.
+      void *p = (char *)mtx - OFFSETOF (struct vm_page_cpu_pool, lock);
+      if (((struct vm_page_cpu_pool *)p)->nr_pages)
+        return (true);
+    }
+
   pqueue_insert (&bucket->waiters, &waiter->node);
   thread_sleep (&bucket->lock, bucket, "vm-page");
 
