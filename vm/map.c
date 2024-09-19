@@ -1498,10 +1498,9 @@ vm_map_reply_pagereq (const uintptr_t *src, uint32_t cnt, struct vm_page **out)
       uintptr_t va = src[i];
 
       if ((!entry || va < entry->start || va > entry->end) &&
-          !(entry = vm_map_lookup_nearest (map, va)))
+          (!(entry = vm_map_lookup_nearest (map, va)) ||
+           !(entry->flags & VM_MAP_PHYS)))
         return (vm_map_unref_pages (out, i, EFAULT));
-      else if (!(entry->flags & VM_MAP_PHYS))
-        return (vm_map_unref_pages (out, i, EINVAL));
 
       uint32_t off = (uint32_t)(va - entry->start) / PAGE_SIZE;
       _Auto page = (struct vm_page *)entry->pages + off;

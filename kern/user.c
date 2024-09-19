@@ -165,7 +165,10 @@ user_read_struct (void *dst, const void *usrc, size_t size)
   if (!user_check_range (usrc, rsize))
     return (EFAULT);
 
-  user_copy_impl (dst, usrc, rsize);
+  *(uint32_t *)dst = rsize;
+  user_copy_impl ((char *)dst + sizeof (uint32_t),
+                  (const char *)usrc + sizeof (uint32_t),
+                  rsize - sizeof (uint32_t));
   return (0);
 }
 
@@ -188,6 +191,9 @@ user_write_struct (void *udst, const void *src, size_t size)
   if (!user_check_range (udst, rsize))
     return (EFAULT);
 
-  user_copy_impl (udst, src, rsize);
+  *(uint32_t *)udst = rsize;
+  user_copy_impl ((char *)udst + sizeof (uint32_t),
+                  (const char *)src + sizeof (uint32_t),
+                  rsize - sizeof (uint32_t));
   return (0);
 }

@@ -95,7 +95,7 @@ int
 kuid_alloc (struct kuid_head *head, int cls)
 {
   rdxtree_key_t key;
-  assert ((size_t)cls < ARRAY_SIZE (kuid_maps));
+  assert (cls < (int)ARRAY_SIZE (kuid_maps));
 
   {
     _Auto map = &kuid_maps[cls];
@@ -118,7 +118,7 @@ kuid_alloc (struct kuid_head *head, int cls)
 struct kuid_head*
 kuid_find (uint32_t kuid, int cls)
 {
-  assert ((size_t)cls < ARRAY_SIZE (kuid_maps));
+  assert (cls < (int)ARRAY_SIZE (kuid_maps));
   _Auto map = &kuid_maps[cls];
 
   RCU_GUARD ();

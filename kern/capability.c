@@ -18,7 +18,6 @@
 
 #include <kern/capability.h>
 #include <kern/cspace.h>
-#include <kern/hash.h>
 #include <kern/intr.h>
 #include <kern/kmem.h>
 #include <kern/kmessage.h>
