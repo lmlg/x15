@@ -1449,12 +1449,12 @@ vm_map_iter_copy_one (struct vm_map *in_map, struct ipc_vme_iter *in_it,
 
 int
 vm_map_iter_copy (struct vm_map *r_map, struct ipc_vme_iter *r_it,
-                  struct ipc_vme_iter *l_it, int direction)
+                  struct ipc_vme_iter *l_it, uint32_t flags)
 {
   struct vm_map *in_map, *out_map;
   struct ipc_vme_iter *in_it, *out_it;
 
-  if (direction == IPC_COPY_FROM)
+  if (flags & IPC_COPY_FROM)
     {
       in_map = r_map, out_map = vm_map_self ();
       in_it = r_it, out_it = l_it;

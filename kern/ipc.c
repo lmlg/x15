@@ -31,17 +31,17 @@
 struct ipc_data
 {
   cpu_flags_t cpu_flags;
-  int direction;
+  uint32_t flags;
   int prot;
   struct pmap_window *window;
   struct vm_page *page;
 };
 
 static void
-ipc_data_init (struct ipc_data *data, int direction)
+ipc_data_init (struct ipc_data *data, uint32_t flags)
 {
-  data->direction = direction;
-  data->prot = direction == IPC_COPY_FROM ? VM_PROT_READ : VM_PROT_RDWR;
+  data->flags = flags;
+  data->prot = (flags & IPC_COPY_FROM) ? VM_PROT_READ : VM_PROT_RDWR;
   data->window = NULL;
   data->page = NULL;
 }
@@ -114,7 +114,8 @@ ipc_iov_iter_refill (struct task *task, struct ipc_iov_iter *it)
            off = IPC_IOV_ITER_CACHE_SIZE - cnt,
            bsize = cnt * sizeof (struct iovec);
   ssize_t ret = ipc_bcopy (task, it->begin + it->cur, bsize,
-                           &it->cache[off], bsize, IPC_COPY_FROM);
+                           &it->cache[off], bsize,
+                           IPC_COPY_FROM | IPC_CHECK_REMOTE);
   if (ret < 0 || (ret % sizeof (struct iovec)) != 0)
     return (-EFAULT);
 
@@ -167,7 +168,7 @@ ipc_map_addr (struct vm_map *map, const void *addr,
       assert (! error);
     }
 
-  return (error);
+  return (0);
 }
 
 static ssize_t
@@ -189,7 +190,7 @@ ipc_bcopyv_impl (struct vm_map *r_map, const struct iovec *r_v,
 
   void *va = (char *)pmap_window_va (data->window) + page_off;
 
-  if (data->direction == IPC_COPY_TO)
+  if (data->flags & IPC_COPY_TO)
     memcpy (va, l_v->iov_base, ret);
   else
     memcpy ((void *)l_v->iov_base, va, ret);
@@ -248,10 +249,10 @@ ipc_iov_iter_next_remote (struct ipc_iov_iter *it,
 
 ssize_t
 ipc_iov_iter_copy (struct task *r_task, struct ipc_iov_iter *r_it,
-                   struct ipc_iov_iter *l_it, int direction)
+                   struct ipc_iov_iter *l_it, uint32_t flags)
 {
   struct ipc_data data;
-  ipc_data_init (&data, direction);
+  ipc_data_init (&data, flags);
 
   struct unw_fixup fixup;
   int error = unw_fixup_save (&fixup);
@@ -261,13 +262,16 @@ ipc_iov_iter_copy (struct task *r_task, struct ipc_iov_iter *r_it,
       return (-error);
     }
 
-  for (ssize_t ret = 0 ; ; )
+  ssize_t ret = 0, *r_err = (flags & IPC_CHECK_REMOTE) ? &ret : NULL,
+          *l_err = (flags & IPC_CHECK_LOCAL) ? &ret : NULL;
+
+  while (1)
     {
-      struct iovec *lv = ipc_iov_iter_usrnext (l_it, NULL);
+      struct iovec *lv = ipc_iov_iter_usrnext (l_it, l_err);
       if (! lv)
         return (ret);
 
-      struct iovec *rv = ipc_iov_iter_next_remote (r_it, r_task, &ret);
+      struct iovec *rv = ipc_iov_iter_next_remote (r_it, r_task, r_err);
       if (! rv)
         return (ret);
 
@@ -285,8 +289,14 @@ ipc_iov_iter_copy (struct task *r_task, struct ipc_iov_iter *r_it,
 
 ssize_t
 ipc_bcopy (struct task *r_task, void *r_ptr, size_t r_size,
-           void *l_ptr, size_t l_size, int direction)
+           void *l_ptr, size_t l_size, uint32_t flags)
 {
+  if (((flags & IPC_CHECK_REMOTE) &&
+        !user_check_range (r_ptr, r_size)) ||
+      ((flags & IPC_CHECK_LOCAL) &&
+       !user_check_range (l_ptr, l_size)))
+    return (-EFAULT);
+
   struct ipc_data data;
   struct unw_fixup fixup;
   int error = unw_fixup_save (&fixup);
@@ -296,7 +306,7 @@ ipc_bcopy (struct task *r_task, void *r_ptr, size_t r_size,
       return (-error);
     }
 
-  ipc_data_init (&data, direction);
+  ipc_data_init (&data, flags);
   struct iovec r_v = IOVEC (r_ptr, r_size), l_v = IOVEC (l_ptr, l_size);
 
   for (ssize_t ret = 0 ; ; )
@@ -364,12 +374,12 @@ ipc_cap_copy_one (struct cspace *in_cs, struct cspace *out_cs,
 
 static int
 ipc_cap_copy_impl (struct task *r_task, struct ipc_cap_iter *r_it,
-                   struct ipc_cap_iter *l_it, int direction)
+                   struct ipc_cap_iter *l_it, uint32_t flags)
 {
   struct ipc_cap_iter *in_it, *out_it;
   struct cspace *in_cs, *out_cs;
 
-  if (direction == IPC_COPY_FROM)
+  if (flags & IPC_COPY_FROM)
     {
       in_it = r_it, out_it = l_it;
       in_cs = &r_task->caps, out_cs = cspace_self ();
@@ -427,8 +437,8 @@ ipc_buffer_free (void *array, void *ptr, int size)
   if (! ptr)   \
     return (-ENOMEM);   \
   \
-  int rv = ipc_bcopy (r_task, r_it->begin + r_it->cur, size,   \
-                      ptr, size, IPC_COPY_FROM);   \
+  int rv = ipc_bcopy (r_task, r_it->begin + r_it->cur, size, ptr, size,   \
+                      IPC_COPY_FROM | (flags & IPC_CHECK_REMOTE));   \
   \
   if (unlikely (rv < 0))   \
     {   \
@@ -445,12 +455,12 @@ ipc_buffer_free (void *array, void *ptr, int size)
   \
   struct unw_fixup fx;   \
   rv = unw_fixup_save (&fx);   \
-  rv = rv == 0 ? fn (r_task, &aux, l_it, direction) : -rv;   \
+  rv = rv == 0 ? fn (r_task, &aux, l_it, flags) : -rv;   \
   if (rv >= 0)   \
     {   \
       len = rv * sizeof (*ptr);   \
       if (ipc_bcopy (r_task, r_it->begin + r_it->cur, len,   \
-                     ptr, len, IPC_COPY_TO) > 0)   \
+                     ptr, len, IPC_COPY_TO | IPC_CHECK_REMOTE) > 0)   \
         r_it->cur += aux.cur;   \
     }   \
   \
@@ -459,17 +469,25 @@ ipc_buffer_free (void *array, void *ptr, int size)
 
 int
 ipc_cap_iter_copy (struct task *r_task, struct ipc_cap_iter *r_it,
-                   struct ipc_cap_iter *l_it, int direction)
+                   struct ipc_cap_iter *l_it, uint32_t flags)
 {
+  if ((flags & IPC_CHECK_LOCAL) &&
+      !user_check_range (l_it->begin, l_it->end * sizeof (*l_it->begin)))
+    return (-EFAULT);
+
   IPC_ITER_LOOP (cap, ipc_cap_copy_impl);
 }
 
 int
 ipc_vme_iter_copy (struct task *r_task, struct ipc_vme_iter *r_it,
-                   struct ipc_vme_iter *l_it, int direction)
+                   struct ipc_vme_iter *l_it, uint32_t flags)
 {
-#define ipc_vme_copy_impl(task, r_it, l_it, dir)   \
-  vm_map_iter_copy ((task)->map, (r_it), (l_it), (dir))
+  if ((flags & IPC_CHECK_LOCAL) &&
+      !user_check_range (l_it->begin, l_it->end * sizeof (*l_it->begin)))
+    return (-EFAULT);
+
+#define ipc_vme_copy_impl(task, r_it, l_it, flg)   \
+  vm_map_iter_copy ((task)->map, (r_it), (l_it), (flg))
   IPC_ITER_LOOP (vme, ipc_vme_copy_impl);
 #undef ipc_vme_copy_impl
 }

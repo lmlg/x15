@@ -191,7 +191,7 @@ int vm_map_protect (struct vm_map *map, uintptr_t start,
 
 // Transfer VMEs between a remote and the local VM map.
 int vm_map_iter_copy (struct vm_map *r_map, struct ipc_vme_iter *r_it,
-                      struct ipc_vme_iter *l_it, int direction);
+                      struct ipc_vme_iter *l_it, uint32_t flags);
 
 // Reply to a page request message.
 int vm_map_reply_pagereq (const uintptr_t *src, uint32_t cnt,

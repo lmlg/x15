@@ -31,6 +31,7 @@
 #include <kern/slist.h>
 #include <kern/spinlock.h>
 #include <kern/sref.h>
+#include <kern/user.h>
 
 struct task;
 struct thread;
@@ -186,14 +187,6 @@ struct bulletin;
             struct cap_channel *: CAP_BASE (x),   \
             struct cap_flow *   : CAP_BASE (x),   \
             default: (x))
-
-// Page specifier.
-enum
-{
-  CAP_PAGES_CHAN,   // Pages from a channel.
-  CAP_PAGES_TAG,    // Pages from a channel's tag.
-  CAP_PAGES_CURR,   // Pages from the current message.
-};
 
 // Flags for the read/clean page interfaces.
 #define CAP_PAGES_MORE       0x01   // There are more pages for the object.
@@ -388,6 +381,10 @@ static inline ssize_t
 cap_send_iov (struct cap_base *cap, const struct iovec *src, uint32_t nr_src,
               struct iovec *dst, uint32_t nr_dst)
 {
+  if (!user_check_range (src, nr_src * sizeof (*src)) ||
+      !user_check_range (dst, nr_dst * sizeof (*dst)))
+    return (-EFAULT);
+
   struct cap_iters in, out;
 
   cap_iters_init_iov (&in, src, nr_src);
@@ -404,6 +401,10 @@ static inline ssize_t
 cap_send_msg (struct cap_base *cap, const struct ipc_msg *src,
               struct ipc_msg *dst, struct ipc_msg_data *data)
 {
+  if (!user_check_struct (src, sizeof (*src)) ||
+      !user_check_struct (dst, sizeof (*dst)))
+    return (-EFAULT);
+
   struct cap_iters in, out;
 
   cap_iters_init_msg (&in, src);
@@ -428,6 +429,9 @@ cap_reply_bytes (const void *src, size_t bytes, int err)
 static inline int
 cap_reply_iov (const struct iovec *iov, uint32_t nr_iov, int err)
 {
+  if (!user_check_range (iov, nr_iov * sizeof (*iov)))
+    return (-EFAULT);
+
   struct cap_iters it;
   cap_iters_init_iov (&it, iov, nr_iov);
   return (cap_reply_iters (&it, err));
@@ -437,6 +441,9 @@ cap_reply_iov (const struct iovec *iov, uint32_t nr_iov, int err)
 static inline int
 cap_reply_msg (const struct ipc_msg *msg, int err)
 {
+  if (!user_check_struct (msg, sizeof (*msg)))
+    return (-EFAULT);
+
   struct cap_iters it;
   cap_iters_init_msg (&it, msg);
   return (cap_reply_iters (&it, err));
@@ -455,6 +462,9 @@ cap_pull_bytes (void *dst, size_t bytes, struct ipc_msg_data *mdata)
 static inline ssize_t
 cap_pull_iov (struct iovec *iovs, uint32_t nr_iovs, struct ipc_msg_data *mdata)
 {
+  if (!user_check_range (iovs, nr_iovs * sizeof (*iovs)))
+    return (-EFAULT);
+
   struct cap_iters it;
   cap_iters_init_iov (&it, iovs, nr_iovs);
   return (cap_pull_iters (&it, mdata));
@@ -464,6 +474,9 @@ cap_pull_iov (struct iovec *iovs, uint32_t nr_iovs, struct ipc_msg_data *mdata)
 static inline ssize_t
 cap_pull_msg (struct ipc_msg *msg, struct ipc_msg_data *mdata)
 {
+  if (!user_check_struct (msg, sizeof (*msg)))
+    return (-EFAULT);
+
   struct cap_iters it;
   cap_iters_init_msg (&it, msg);
   return (cap_pull_iters (&it, mdata));
@@ -483,6 +496,9 @@ static inline ssize_t
 cap_push_iov (const struct iovec *iovs, uint32_t nr_iovs,
               struct ipc_msg_data *mdata)
 {
+  if (!user_check_range (iovs, nr_iovs * sizeof (*iovs)))
+    return (-EFAULT);
+
   struct cap_iters it;
   cap_iters_init_iov (&it, iovs, nr_iovs);
   return (cap_push_iters (&it, mdata));
@@ -492,6 +508,9 @@ cap_push_iov (const struct iovec *iovs, uint32_t nr_iovs,
 static inline ssize_t
 cap_push_msg (const struct ipc_msg *msg, struct ipc_msg_data *mdata)
 {
+  if (!user_check_struct (msg, sizeof (*msg)))
+    return (-EFAULT);
+
   struct cap_iters it;
   cap_iters_init_msg (&it, msg);
   return (cap_push_iters (&it, mdata));

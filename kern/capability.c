@@ -25,7 +25,6 @@
 #include <kern/shell.h>
 #include <kern/stream.h>
 #include <kern/thread.h>
-#include <kern/user.h>
 
 #include <machine/pmap.h>
 
@@ -398,16 +397,16 @@ cap_flow_hook (struct cap_channel **outp, struct task *task, int capx)
 
 static ssize_t
 cap_transfer_iters (struct task *task, struct cap_iters *r_it,
-                    struct cap_iters *l_it, int dir, ssize_t *bytesp)
+                    struct cap_iters *l_it, uint32_t flags, ssize_t *bytesp)
 {
-  ssize_t ret = ipc_iov_iter_copy (task, &r_it->iov, &l_it->iov, dir);
+  ssize_t ret = ipc_iov_iter_copy (task, &r_it->iov, &l_it->iov, flags);
   if (ret < 0)
     return (ret);
 
   *bytesp += ret;
   if (ipc_cap_iter_size (&r_it->cap) && ipc_cap_iter_size (&l_it->cap))
     {
-      int nr_caps = ipc_cap_iter_copy (task, &r_it->cap, &l_it->cap, dir);
+      int nr_caps = ipc_cap_iter_copy (task, &r_it->cap, &l_it->cap, flags);
       if (nr_caps < 0)
         return (nr_caps);
 
@@ -416,7 +415,7 @@ cap_transfer_iters (struct task *task, struct cap_iters *r_it,
 
   if (ipc_vme_iter_size (&r_it->vme) && ipc_vme_iter_size (&l_it->vme))
     {
-      int nr_vmes = ipc_vme_iter_copy (task, &r_it->vme, &l_it->vme, dir);
+      int nr_vmes = ipc_vme_iter_copy (task, &r_it->vme, &l_it->vme, flags);
       if (nr_vmes < 0)
         return (nr_vmes);
 
@@ -625,7 +624,7 @@ int
   cap_fill_ids (&recv->mdata.thread_id, &recv->mdata.task_id, thread_self ());
   recv->mdata.tag = tag;
   ssize_t rv = ipc_bcopy (recv->thread->task, recv->buf, sizeof (abuf),
-                          abuf, sizeof (abuf), IPC_COPY_TO);
+                          abuf, sizeof (abuf), IPC_COPY_TO | IPC_CHECK_REMOTE);
 
   thread_wakeup (recv->thread);
   recv->mdata.bytes_recv = rv;
@@ -704,10 +703,12 @@ cap_sender_impl (struct cap_flow *flow, uintptr_t tag, struct cap_iters *in,
 {
   struct thread *self = thread_self ();
   _Auto lpad = cap_pop_lpad (flow, self);
+  uint32_t dirf = IPC_COPY_TO | IPC_CHECK_REMOTE |
+                  ((xflags & IPC_MSG_KERNEL) ? 0 : IPC_CHECK_LOCAL);
 
   cap_ipc_msg_data_init (&lpad->mdata, tag);
   ssize_t nb = cap_transfer_iters (lpad->task, &lpad->in_it, in,
-                                   IPC_COPY_TO, &lpad->mdata.bytes_recv);
+                                   dirf, &lpad->mdata.bytes_recv);
 
   lpad->mdata.flags |= (xflags & CAP_MSG_MASK) | (nb < 0 ? IPC_MSG_ERROR : 0);
   lpad->cur_in = in;
@@ -788,7 +789,8 @@ cap_pull_iters (struct cap_iters *it, struct ipc_msg_data *mdata)
   cap_ipc_msg_data_init (&tmp, lpad->mdata.tag);
 
   ssize_t ret = cap_transfer_iters (lpad->task, lpad->cur_in, it,
-                                    IPC_COPY_FROM, &tmp.bytes_recv);
+                                    IPC_COPY_FROM | IPC_CHECK_BOTH,
+                                    &tmp.bytes_recv);
 
   lpad->mdata.bytes_recv += tmp.bytes_recv;
   lpad->mdata.vmes_recv += tmp.vmes_recv;
@@ -811,7 +813,8 @@ cap_push_iters (struct cap_iters *it, struct ipc_msg_data *mdata)
   cap_ipc_msg_data_init (&tmp, lpad->mdata.tag);
 
   ssize_t ret = cap_transfer_iters (lpad->task, lpad->cur_out, it,
-                                    IPC_COPY_TO, &tmp.bytes_sent);
+                                    IPC_COPY_TO | IPC_CHECK_BOTH,
+                                    &tmp.bytes_sent);
 
   lpad->mdata.bytes_sent += tmp.bytes_sent;
   lpad->mdata.vmes_sent += tmp.vmes_sent;
@@ -867,7 +870,8 @@ cap_reply_iters (struct cap_iters *it, int rv)
   else if (rv >= 0)
     {
       ret = cap_transfer_iters (lpad->task, lpad->cur_out, it,
-                                IPC_COPY_TO, &lpad->mdata.bytes_sent);
+                                IPC_COPY_TO | IPC_CHECK_BOTH,
+                                &lpad->mdata.bytes_sent);
       if (ret > 0)
         ret = lpad->mdata.bytes_sent;
 
@@ -903,6 +907,10 @@ cap_flow_add_lpad (struct cap_flow *flow, void *stack, size_t size,
                    struct ipc_msg *msg, struct ipc_msg_data *mdata,
                    struct cap_thread_info *info __unused)
 {
+  /*
+   * TODO: The user check for the stack can't be made here (yet),
+   * as the tests run with blocks that reside in kernel space.
+   */
   struct cap_lpad *entry = kmem_cache_alloc (&cap_lpad_cache);
   if (! entry)
     return (ENOMEM);

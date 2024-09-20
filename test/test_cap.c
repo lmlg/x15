@@ -154,6 +154,8 @@ test_cap_receiver (void *arg)
   error = vm_map_anon_alloc ((void **)&vars, vm_map_self (), 1);
   assert (! error);
 
+  vars->mdata.size = sizeof (vars->mdata);
+
   {
     // Test that alerts are delivered in priority order.
     strcpy (vars->buf, "abcd");
@@ -237,6 +239,8 @@ test_cap_sender (void *arg)
       struct ipc_msg_vme out_vme[2];
       struct ipc_msg_cap out_cap[2];
     } *vars = (void *)((char *)mem + PAGE_SIZE);
+
+  vars->mdata.size = sizeof (vars->mdata);
 
   vars->mvme = (struct ipc_msg_vme)
     {
@@ -425,6 +429,7 @@ test_cap_dead_notif (void *arg __unused)
   error = vm_map_anon_alloc ((void **)&buf, vm_map_self (), 1);
   assert (! error);
 
+  buf->mdata.size = sizeof (buf->mdata);
   error = cap_recv_alert (flow, &buf->alert, 0, &buf->mdata);
   assert (! error);
   assert (buf->mdata.thread_id == 0);

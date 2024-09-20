@@ -146,6 +146,22 @@ user_copyv_from (struct ipc_iov_iter *dst, struct ipc_iov_iter *usrc)
   return (user_copyv_impl (dst, usrc, 0));
 }
 
+bool
+user_check_struct (const void *uptr, size_t min_size)
+{
+  if (!user_check_range (uptr, sizeof (uint32_t)))
+    return (false);
+
+  struct unw_fixup fixup;
+  int error = unw_fixup_save (&fixup);
+
+  if (unlikely (error))
+    return (false);
+
+  uint32_t rsize = ((const union user_ua *)uptr)->u4;
+  return (rsize >= min_size && user_check_range (uptr, rsize));
+}
+
 int
 user_read_struct (void *dst, const void *usrc, size_t size)
 {

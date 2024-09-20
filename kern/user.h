@@ -61,6 +61,9 @@ ssize_t user_copyv_to (struct ipc_iov_iter *udst, struct ipc_iov_iter *src);
 
 ssize_t user_copyv_from (struct ipc_iov_iter *dst, struct ipc_iov_iter *usrc);
 
+// Test that a sized structure is accessible for the current task.
+bool user_check_struct (const void *uptr, size_t min_size);
+
 // Copy to/from userspace a struct that knows its size.
 int user_read_struct (void *dst, const void *usrc, size_t size);
 

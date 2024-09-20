@@ -37,7 +37,7 @@ struct ipc_msg_vme
 struct ipc_msg_cap
 {
   int cap;
-  int flags;
+  uint32_t flags;
 };
 
 #define IPC_IOV_ITER_CACHE_SIZE   8
@@ -99,9 +99,12 @@ struct ipc_msg_data
 
 struct task;
 
-// Direction of the binary copy, relative to the remote task.
-#define IPC_COPY_FROM   0
-#define IPC_COPY_TO     1
+// Flags for the ipc copy interfaces.
+#define IPC_COPY_FROM      (1 << 0)   // Copy from the remote task.
+#define IPC_COPY_TO        (1 << 1)   // Copy to the remote task.
+#define IPC_CHECK_LOCAL    (1 << 2)
+#define IPC_CHECK_REMOTE   (1 << 3)
+#define IPC_CHECK_BOTH     (IPC_CHECK_LOCAL | IPC_CHECK_REMOTE)
 
 /*
  * IPC iterator functions.
@@ -168,53 +171,53 @@ struct iovec* ipc_iov_iter_usrnext (struct ipc_iov_iter *it, ssize_t *errp);
 
 // Copy bytes between a local and a remote task.
 ssize_t ipc_bcopy (struct task *r_task, void *r_ptr, size_t r_size,
-                   void *l_ptr, size_t l_size, int direction);
+                   void *l_ptr, size_t l_size, uint32_t flags);
 
 // Copy bytes in iterators between a local and a remote task.
 ssize_t ipc_iov_iter_copy (struct task *r_task, struct ipc_iov_iter *r_it,
-                           struct ipc_iov_iter *l_it, int direction);
+                           struct ipc_iov_iter *l_it, uint32_t direction);
 
 // Transfer capabilities in iterators between a local and a remote task.
 int ipc_cap_iter_copy (struct task *r_task, struct ipc_cap_iter *r_it,
-                       struct ipc_cap_iter *l_it, int direction);
+                       struct ipc_cap_iter *l_it, uint32_t flags);
 
 // Transfer VMEs in iterators between a local and a remote task.
 int ipc_vme_iter_copy (struct task *r_task, struct ipc_vme_iter *r_it,
-                       struct ipc_vme_iter *l_it, int direction);
+                       struct ipc_vme_iter *l_it, uint32_t flags);
 
 // Copy bytes in iovecs between a local and a remote task.
 static inline ssize_t
 ipc_bcopyv (struct task *r_task, struct iovec *r_iov, uint32_t r_niov,
-            struct iovec *l_iov, uint32_t l_niov, int direction)
+            struct iovec *l_iov, uint32_t l_niov, uint32_t flags)
 {
   struct ipc_iov_iter r_it, l_it;
   ipc_iov_iter_init (&l_it, l_iov, l_niov);
   ipc_iov_iter_init (&r_it, r_iov, r_niov);
-  return (ipc_iov_iter_copy (r_task, &r_it, &l_it, direction));
+  return (ipc_iov_iter_copy (r_task, &r_it, &l_it, flags));
 }
 
 // Transfer VMEs between a remote and a local task.
 static inline int
 ipc_copy_vmes (struct task *r_task, struct ipc_msg_vme *r_vmes,
                uint32_t r_nvmes, struct ipc_msg_vme *l_vmes,
-               uint32_t l_nvmes, int direction)
+               uint32_t l_nvmes, uint32_t flags)
 {
   struct ipc_vme_iter r_it, l_it;
   ipc_vme_iter_init (&r_it, r_vmes, r_nvmes);
   ipc_vme_iter_init (&l_it, l_vmes, l_nvmes);
-  return (ipc_vme_iter_copy (r_task, &r_it, &l_it, direction));
+  return (ipc_vme_iter_copy (r_task, &r_it, &l_it, flags));
 }
 
 // Transfer capabilities between a remote and a local task.
 static inline int
 ipc_copy_caps (struct task *r_task, struct ipc_msg_cap *r_caps,
                uint32_t r_ncaps, struct ipc_msg_cap *l_caps,
-               uint32_t l_ncaps, int direction)
+               uint32_t l_ncaps, uint32_t flags)
 {
   struct ipc_cap_iter r_it, l_it;
   ipc_cap_iter_init (&r_it, r_caps, r_ncaps);
   ipc_cap_iter_init (&l_it, l_caps, l_ncaps);
-  return (ipc_cap_iter_copy (r_task, &r_it, &l_it, direction));
+  return (ipc_cap_iter_copy (r_task, &r_it, &l_it, flags));
 }
 
 #endif
