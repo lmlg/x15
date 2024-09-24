@@ -39,7 +39,6 @@
 
 #include <machine/page.h>
 
-struct vm_object vm_object_kernel_object;
 static struct kmem_cache vm_object_cache;
 
 struct vm_object_copy_data

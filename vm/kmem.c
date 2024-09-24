@@ -32,17 +32,9 @@
 #include <vm/object.h>
 #include <vm/page.h>
 
-static uint64_t
-vm_kmem_offset (uintptr_t va)
-{
-  assert (va >= PMAP_START_KMEM_ADDRESS);
-  return (va - PMAP_START_KMEM_ADDRESS);
-}
-
 static int __init
 vm_kmem_setup (void)
 {
-  vm_object_init (vm_object_get_kernel_object (), 0, NULL);
   return (0);
 }
 
@@ -52,22 +44,22 @@ INIT_OP_DEFINE (vm_kmem_setup,
                 INIT_OP_DEP (vm_object_bootstrap, true),
                 INIT_OP_DEP (vm_page_setup, true));
 
-static int
+static bool
 vm_kmem_alloc_check (size_t size)
 {
-  return (!vm_page_aligned (size) || !size ? -1 : 0);
+  return (vm_page_aligned (size) && size != 0);
 }
 
-static int
+static bool
 vm_kmem_free_check (uintptr_t va, size_t size)
 {
-  return (!vm_page_aligned (va) ? -1 : vm_kmem_alloc_check (size));
+  return (vm_page_aligned (va) && vm_kmem_alloc_check (size));
 }
 
 void*
 vm_kmem_alloc_va (size_t size)
 {
-  assert (vm_kmem_alloc_check (size) == 0);
+  assert (vm_kmem_alloc_check (size));
 
   uintptr_t va = 0;
   int flags = VM_MAP_FLAGS (VM_PROT_RDWR, VM_PROT_RDWR, VM_INHERIT_NONE,
@@ -82,7 +74,7 @@ void
 vm_kmem_free_va (void *addr, size_t size)
 {
   uintptr_t va = (uintptr_t) addr;
-  assert (vm_kmem_free_check (va, size) == 0);
+  assert (vm_kmem_free_check (va, size));
   vm_map_remove (vm_map_get_kernel_map (), va, va + vm_page_round (size));
 }
 
@@ -90,40 +82,44 @@ void*
 vm_kmem_alloc (size_t size)
 {
   size = vm_page_round (size);
-  uintptr_t va = (uintptr_t) vm_kmem_alloc_va (size);
-
-  if (! va)
+  uint32_t order = vm_page_order (size);
+  _Auto pages = vm_page_alloc (order, VM_PAGE_SEL_HIGHMEM,
+                               VM_PAGE_KERNEL, 0);
+  if (! pages)
     return (NULL);
 
-  _Auto kernel_object = vm_object_get_kernel_object ();
-  _Auto kernel_pmap = pmap_get_kernel_pmap ();
+  uintptr_t va = 0;
+  int flags = VM_MAP_FLAGS (VM_PROT_RDWR, VM_PROT_RDWR, VM_INHERIT_NONE,
+                            VM_ADV_DEFAULT, VM_MAP_PHYS),
+      error = vm_map_enter (vm_map_get_kernel_map (), &va, size,
+                            flags, NULL, vm_page_to_pa (pages));
+  if (error)
+    {
+      vm_page_free (pages, order, 0);
+      return (NULL);
+    }
 
+  for (uint32_t i = 0; i < (1u << order); ++i)
+    vm_page_init_refcount (pages + i);
+
+  _Auto kernel_pmap = pmap_get_kernel_pmap ();
   for (uintptr_t start = va, end = va + size; start < end; start += PAGE_SIZE)
     {
-      _Auto page = vm_page_alloc (0, VM_PAGE_SEL_HIGHMEM, VM_PAGE_KERNEL, 0);
-      if (! page)
-        goto error;
-
-      /*
-       * The page becomes managed by the object and is freed in case
-       * of failure.
-       */
-      vm_page_init_refcount (page);
-      if (vm_object_insert (kernel_object, page, vm_kmem_offset (start)) != 0)
-        goto error;
-
-      int error = pmap_enter (kernel_pmap, start, vm_page_to_pa (page),
-                              VM_PROT_RDWR, PMAP_PEF_GLOBAL | PMAP_SKIP_RSET);
-
-      if (error || start - va == vm_page_ptob (1000))
-        goto error;
+      uint32_t idx = (uint32_t)((start - va) / PAGE_SIZE);
+      error = pmap_enter (kernel_pmap, start, vm_page_to_pa (pages + idx),
+                          VM_PROT_RDWR, PMAP_PEF_GLOBAL | PMAP_SKIP_RSET);
+      if (error)
+        goto cleanup;
     }
 
   if (pmap_update (kernel_pmap) == 0)
     return ((void *)va);
 
-error:
-  vm_kmem_free ((void *) va, size);
+cleanup:
+  for (uint32_t i = 0; i < (1u << order); ++i)
+    vm_page_unref (pages + i);
+
+  vm_map_remove (vm_map_get_kernel_map (), va, va + size);
   return (NULL);
 }
 
@@ -131,16 +127,16 @@ void
 vm_kmem_free (void *addr, size_t size)
 {
   uintptr_t va = (uintptr_t)addr;
-  size = vm_page_round (size);
-  uintptr_t end = va + size;
-  _Auto kernel_pmap = pmap_get_kernel_pmap ();
+  _Auto kernel_map = vm_map_get_kernel_map ();
+  _Auto entry = vm_map_find (kernel_map, va);
 
-  pmap_remove_range (kernel_pmap, va, end, PMAP_PEF_GLOBAL);
-  pmap_update (kernel_pmap);
-  vm_object_remove (vm_object_get_kernel_object (),
-                    vm_kmem_offset ((uintptr_t) addr),
-                    vm_kmem_offset (end));
-  vm_kmem_free_va (addr, size);
+  if (! entry)
+    return;
+
+  _Auto pages = entry->pages;
+  vm_map_remove (kernel_map, va, va + size);
+  for (uint32_t i = 0; i < (1u << vm_page_order (size)); ++i)
+    vm_page_unref (pages + i);
 }
 
 void*

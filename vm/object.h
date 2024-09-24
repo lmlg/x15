@@ -63,13 +63,6 @@ struct vm_object
     };
 };
 
-static inline struct vm_object*
-vm_object_get_kernel_object (void)
-{
-  extern struct vm_object vm_object_kernel_object;
-  return (&vm_object_kernel_object);
-}
-
 // Initialize a VM object.
 void vm_object_init (struct vm_object *object, uint32_t flg, void *ctx);
 

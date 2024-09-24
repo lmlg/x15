@@ -281,6 +281,7 @@ struct pmap_update_request_array
 {
   struct pmap_update_request requests[CONFIG_MAX_CPUS];
   struct mutex lock;
+  struct pmap_update_shared_data shared;
 };
 
 static struct pmap_update_request_array pmap_update_request_array __percpu;
@@ -1717,13 +1718,10 @@ pmap_update (struct pmap *pmap)
     }
 
   _Auto array = pmap_update_request_array_acquire ();
-  struct pmap_update_shared_data shared =
-    {
-      .nr_reqs = cpumap_count_set (&oplist->cpumap),
-      .error = 0
-    };
+  array->shared.nr_reqs = cpumap_count_set (&oplist->cpumap);
+  array->shared.error = 0;
 
-  spinlock_init (&shared.lock);
+  spinlock_init (&array->shared.lock);
   cpumap_for_each (&oplist->cpumap, cpu)
     {
       struct pmap_syncer *syncer = percpu_ptr (pmap_syncer, cpu);
@@ -1733,19 +1731,19 @@ pmap_update (struct pmap *pmap)
       request->sender = thread_self ();
       request->oplist = oplist;
       request->nr_mappings = pmap_update_oplist_count_mappings (oplist, cpu);
-      request->shared = &shared;
+      request->shared = &array->shared;
 
       SPINLOCK_GUARD (&queue->lock);
       list_insert_tail (&queue->requests, &request->node);
       thread_wakeup (syncer->thread);
     }
 
-  spinlock_lock (&shared.lock);
-  while (shared.nr_reqs > 0)
-    thread_sleep (&shared.lock, &shared, "pmaprq");
-  spinlock_unlock (&shared.lock);
+  spinlock_lock (&array->shared.lock);
+  while (array->shared.nr_reqs > 0)
+    thread_sleep (&array->shared.lock, &array->shared, "pmaprq");
+  spinlock_unlock (&array->shared.lock);
 
-  error = shared.error;
+  error = array->shared.error;
   pmap_update_request_array_release (array);
 
 out:
@@ -1799,6 +1797,8 @@ struct pmap_window*
 (pmap_window_get) (uint32_t idx, struct pmap_window *window)
 {
   assert (idx < CPU_NR_PMAP_WINDOWS);
+  assert (thread_pinned () || !cpu_intr_enabled ());
+
   window->idx = idx;
   window->pte = cpu_local_ptr(pmap_window_data)->ptes[idx];
   window->va = pmap_ipc_va + idx * PAGE_SIZE;
@@ -1807,7 +1807,8 @@ struct pmap_window*
   if ((window->prev = *pptr) != NULL)
     window->prev->saved = *window->pte & PMAP_PA_MASK;
 
-  return (*pptr = window);
+  atomic_store_rel (pptr, window);
+  return (window);
 }
 
 void
