@@ -482,10 +482,10 @@ unw_apply_regs (struct unw_cursor *cursor, const struct unw_cie *cie)
   _Auto cols = &cursor->cols;
 
   // Compute the CFA first, as further expressions may depend on it.
-  if (cols->cfa.reg >= ARRAY_SIZE (cursor->mctx->regs))
-    return (-EFAULT);
-  else if (cols->cfa.rule != DW_RULE_REG)
+  if (cols->cfa.rule != DW_RULE_REG)
     return (-EINVAL);
+  else if (cols->cfa.reg >= ARRAY_SIZE (cursor->mctx->regs))
+    return (-EFAULT);
 
   uintptr_t *regs = cursor->mctx->regs,
             cfa = regs[cols->cfa.reg] + cols->cfa.off;

@@ -121,6 +121,8 @@ void test_thread_wait_state (struct thread *thr, uint32_t state);
 #define test_assert_ge(x, y)   test_assert_op (x, y, >=)
 #define test_assert_ne(x, y)   test_assert_op (x, y, !=)
 
+#define test_assert_zero(x)   test_assert_eq ((x), (typeof (x))0)
+
 #define test_assert_nonnull(x)   \
   ({   \
       _Auto tmp_ = (x);   \
@@ -136,5 +138,15 @@ void test_thread_wait_state (struct thread *thr, uint32_t state);
         panic ("assertion failed: %s is not equal to %s at %s:%d",   \
                x_, y_, __FILE__, __LINE__);   \
   })   \
+
+#define test_assert_or(cond1, ...)   \
+  ({   \
+     const bool conds_[] = { (cond1), ##__VA_ARGS__ };   \
+     bool works_ = false;   \
+     for (size_t i_ = 0; i_ < ARRAY_SIZE (conds_) && !works_; ++i_)   \
+       works_ = conds_[i_];   \
+     if (!works_)   \
+       panic ("assertion failed at %s:%d", __FILE__, __LINE__);   \
+   })
 
 #endif

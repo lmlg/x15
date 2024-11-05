@@ -69,7 +69,7 @@ static void
 test_futex_helper (void *arg)
 {
   int error = futex_wait (arg, 0, 0, 0);
-  assert (!error || error == EAGAIN);
+  test_assert_or (error == 0, error == EAGAIN);
 }
 
 static void
@@ -77,14 +77,14 @@ test_futex_local (void *arg __unused)
 {
   void *addr;
   int error = vm_map_anon_alloc (&addr, vm_map_self (), 1);
-  assert (! error);
+  test_assert_zero (error);
 
   // Don't touch the address' contents so we may test page faults here.
   error = futex_wait (addr, 1, 0, 0);
-  assert (error == EAGAIN);
+  test_assert_eq (error, EAGAIN);
 
   error = futex_wait (addr, 0, FUTEX_TIMED, 10);
-  assert (error == ETIMEDOUT);
+  test_assert_eq (error, ETIMEDOUT);
 
   struct thread *thread;
   struct thread_attr attr;
@@ -95,7 +95,7 @@ test_futex_local (void *arg __unused)
   test_thread_wait_state (thread, THREAD_SLEEPING);
 
   futex_wake (addr, FUTEX_MUTATE, 1);
-  assert (*(int *)addr == 1);
+  test_assert_eq (*(int *)addr, 1);
   thread_join (thread);
   *(int *)addr = 0;
 
@@ -108,16 +108,16 @@ test_futex_local (void *arg __unused)
       thread_attr_init (&attr, name);
       error = thread_create (&thrs[i], &attr, test_futex_helper,
                              (int *)addr + (i & 1));
-      assert (! error);
+      test_assert_eq (error, 0);
 
       test_thread_wait_state (thrs[i], THREAD_SLEEPING);
     }
 
   error = futex_requeue (addr, (int *)addr + 1, 0, FUTEX_BROADCAST);
-  assert (! error);
+  test_assert_zero (error);
   *(int *)addr = 1;
   error = futex_wake (addr, FUTEX_BROADCAST, 1);
-  assert (! error);
+  test_assert_zero (error);
 
   for (size_t i = 0; i < ARRAY_SIZE (thrs); ++i)
     thread_join (thrs[i]);
@@ -137,13 +137,13 @@ test_futex_local (void *arg __unused)
 
   *(int *)addr = 1;
   error = futex_requeue (addr, (int *)addr + 1, 1, 0);
-  assert (! error);
+  test_assert_zero (error);
   error = futex_wake (addr, FUTEX_BROADCAST, 0);
-  assert (! error);
+  test_assert_zero (error);
 
   // Wake the remaining thread.
   error = futex_wake ((int *)addr + 1, 0, 0);
-  assert (! error);
+  test_assert_zero (error);
 
   for (size_t i = 0; i < ARRAY_SIZE (thrs); ++i)
     thread_join (thrs[i]);
@@ -158,12 +158,12 @@ test_futex_shared_helper (void *arg)
                             VM_ADV_DEFAULT, 0);
   int error = vm_map_enter (vm_map_self (), &start, PAGE_SIZE,
                             flags, entry->object, entry->offset);
-  assert (! error);
+  test_assert_zero (error);
 
   void *addr = (void *)start;
   error = futex_wait (addr, 0, FUTEX_SHARED, 0);
-  assert (!error || error == EAGAIN);
-  assert (*(int *)addr == 1);
+  test_assert_or (error == 0, error == EAGAIN);
+  test_assert_eq (*(int *)addr, 1);
 }
 
 static void
@@ -171,10 +171,10 @@ test_futex_shared (void *arg __unused)
 {
   void *addr;
   int error = vm_map_anon_alloc (&addr, vm_map_self (), 1);
-  assert (! error);
+  test_assert_zero (error);
 
   _Auto entry = vm_map_find (vm_map_self (), (uintptr_t)addr);
-  assert (entry);
+  test_assert_nonnull (entry);
 
   struct thread *thr;
   error = test_util_create_thr (&thr, test_futex_shared_helper,
@@ -182,6 +182,7 @@ test_futex_shared (void *arg __unused)
 
   test_thread_wait_state (thr, THREAD_SLEEPING);
   error = futex_wake (addr, FUTEX_MUTATE | FUTEX_SHARED, 1);
+  test_assert_zero (error);
   thread_join (thr);
   vm_map_entry_put (entry);
 }
@@ -192,9 +193,10 @@ test_futex_pi_helper (void *arg)
   int *futex = arg;
   int error = futex_wait (futex, (*futex & FUTEX_TID_MASK), FUTEX_PI, 0);
   if (! error)
-    assert ((*futex & FUTEX_TID_MASK) == (uint32_t)thread_id (thread_self ()));
+    test_assert_eq ((*futex & FUTEX_TID_MASK),
+                    (uint32_t)thread_id (thread_self ()));
   else
-    assert (error == EAGAIN);
+    test_assert_eq (error, EAGAIN);
 }
 
 static void
@@ -202,7 +204,7 @@ test_futex_pi (void *arg __unused)
 {
   void *addr;
   int error = vm_map_anon_alloc (&addr, vm_map_self (), 1);
-  assert (! error);
+  test_assert_zero (error);
 
   int *futex = addr;
   *futex = thread_id (thread_self ());
@@ -214,22 +216,22 @@ test_futex_pi (void *arg __unused)
   thread_attr_set_policy (&attr, THREAD_SCHED_POLICY_FIFO);
   thread_attr_set_priority (&attr, THREAD_SCHED_RT_PRIO_MAX / 2);
   error = thread_create (&thrs[0], &attr, test_futex_pi_helper, futex);
-  assert (! error);
+  test_assert_eq (error, 0);
 
   thread_attr_init (&attr, "futex-pi/2");
   thread_attr_set_policy (&attr, THREAD_SCHED_POLICY_FIFO);
   thread_attr_set_priority (&attr, THREAD_SCHED_RT_PRIO_MAX / 2);
   error = thread_create (&thrs[1], &attr, test_futex_pi_helper, futex);
-  assert (! error);
+  test_assert_zero (error);
 
   test_thread_wait_state (thrs[0], THREAD_SLEEPING);
   test_thread_wait_state (thrs[1], THREAD_SLEEPING);
 
-  assert (thread_real_sched_policy (thread_self ()) ==
-          THREAD_SCHED_POLICY_FIFO);
+  test_assert_eq (thread_real_sched_policy (thread_self ()),
+                  THREAD_SCHED_POLICY_FIFO);
 
   error = futex_wake (futex, FUTEX_PI | FUTEX_BROADCAST | FUTEX_MUTATE, 0);
-  assert (! error);
+  test_assert_zero (error);
 
   thread_join (thrs[0]);
   thread_join (thrs[1]);
@@ -260,7 +262,7 @@ test_futex_robust (void *arg __unused)
 {
   void *addr;
   int error = vm_map_anon_alloc (&addr, vm_map_self (), 1);
-  assert (! error);
+  test_assert_zero (error);
 
   struct test_futex_data *data = addr;
   data->thr = thread_self ();
@@ -270,15 +272,15 @@ test_futex_robust (void *arg __unused)
 
   thread_attr_init (&attr, "futex-robust/1");
   error = thread_create (&thr, &attr, test_futex_robust_helper, addr);
-  assert (! error);
+  test_assert_zero (error);
 
   error = futex_wait (&data->objs[2].head.futex, FUTEX_WAITERS |
                       thread_id (thr), 0, 0);
-  assert (!error || error == EAGAIN);
+  test_assert_or (error == 0, error == EAGAIN);
 
   thread_join (thr);
   for (size_t i = 0; i < ARRAY_SIZE (data->objs); ++i)
-    assert ((data->objs[i].head.futex & FUTEX_OWNER_DIED) != 0);
+    test_assert_ne ((data->objs[i].head.futex & FUTEX_OWNER_DIED), 0);
 }
 
 TEST_DEFERRED (futex)
@@ -287,20 +289,20 @@ TEST_DEFERRED (futex)
   int error;
 
   error = test_util_create_thr (&thread, test_futex_local, NULL, "futex");
-  assert (! error);
+  test_assert_zero (error);
   thread_join (thread);
 
   error = test_util_create_thr (&thread, test_futex_shared, NULL, "futex-sh");
-  assert (! error);
+  test_assert_zero (error);
   thread_join (thread);
 
   error = test_util_create_thr (&thread, test_futex_pi, NULL, "futex-pi");
-  assert (! error);
+  test_assert_zero (error);
   thread_join (thread);
 
   error = test_util_create_thr (&thread, test_futex_robust,
                                 NULL, "futex-robust");
-  assert (! error);
+  test_assert_zero (error);
   thread_join (thread);
 
   return (TEST_OK);
