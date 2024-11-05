@@ -209,8 +209,8 @@ struct pmap_clean_data
 static inline struct pmap*
 pmap_get_kernel_pmap (void)
 {
-  extern struct pmap *pmap_kernel_pmap;
-  return (pmap_kernel_pmap);
+  extern struct pmap pmap_kernel_pmap;
+  return (&pmap_kernel_pmap);
 }
 
 /*
@@ -370,12 +370,12 @@ pmap_current (void)
 }
 
 // Get the pmap window at a specific index.
-struct pmap_window* (pmap_window_get) (uint32_t idx, struct pmap_window *wp);
+struct pmap_window* pmap_window_load (uint32_t idx, struct pmap_window *wp);
 
 #define pmap_window_get(idx)   \
   ({   \
      void *wp_ = alloca (sizeof (struct pmap_window));   \
-     (pmap_window_get) ((idx), wp_);   \
+     pmap_window_load ((idx), wp_);   \
    })
 
 // Map a window to a physical address.

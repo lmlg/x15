@@ -55,7 +55,8 @@ test_exit_status (int ret)
       case TEST_FAILED:
         return ("failed");
       default:
-        assert (0);
+        panic ("unsupported test type");
+        return (NULL);
     }
 }
 
@@ -79,9 +80,9 @@ test_setup (void)
       symbol_iter_next (&iter))
     {
       const struct symbol *sym = iter.symbol;
-      phys_addr_t pa;
 
-      if (pmap_kextract ((uintptr_t)sym->name, &pa) != 0)
+      if ((uintptr_t)sym->name < PMAP_START_KERNEL_ADDRESS ||
+          (uintptr_t)sym->name > PMAP_END_KERNEL_ADDRESS)
         /*
          * This can happen for symbols that live in the BOOT section;
          * at this stage, that memory is no longer accessible, so we

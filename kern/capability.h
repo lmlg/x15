@@ -50,8 +50,6 @@ enum
 // Size of an alert message, in bytes.
 #define CAP_ALERT_SIZE   16
 
-#define CAP_ALERT_NONBLOCK   0x01   // Don't block when sending an alert.
-
 // Alert types.
 enum
 {
@@ -126,17 +124,21 @@ struct vm_page;
 struct cap_flow
 {
   CAPABILITY;
-  struct list waiters;
-  struct list receivers;
-  struct slist lpads;
-  struct hlist alloc_alerts;
-  struct pqueue pending_alerts;
   uintptr_t tag;
   uintptr_t entry;
-#if CONFIG_MAX_CPUS > 1
-  char pad[CPU_L1_SIZE];
-#endif
-  struct spinlock lock;
+  struct
+    {
+      struct spinlock lock;
+      struct list receivers;
+      struct hlist alloc;
+      struct pqueue pending;
+    } alerts;
+  struct
+    {
+      struct cap_lpad *free_list;
+      struct list waiters;
+      struct spinlock lock;
+    } lpads;
 };
 
 struct cap_channel
@@ -228,6 +230,9 @@ cap_base_rel (struct cap_base *cap)
 
 #define cap_base_acq(cap)   (cap_base_acq) (CAP (cap))
 #define cap_base_rel(cap)   (cap_base_rel) (CAP (cap))
+
+// Flags for the 'cap_recv_alert' function.
+#define CAP_ALERT_NONBLOCK   0x01   // Don't block when sending an alert.
 
 /*
  * Intern a capability within the local space. Returns the new capability

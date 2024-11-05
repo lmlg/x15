@@ -46,6 +46,7 @@
 #include <kern/pqueue.h>
 #include <kern/printf.h>
 #include <kern/shell.h>
+#include <kern/slist.h>
 #include <kern/spinlock.h>
 #include <kern/thread.h>
 
@@ -192,7 +193,10 @@ vm_page_set_type (struct vm_page *page, uint32_t order, uint16_t type)
     {
       page[i].type = type;
       spinlock_init (&page[i].rset_lock);
-      list_init (&page[i].node);
+      if (type != VM_PAGE_OBJECT)
+        list_init (&page[i].node);
+      else
+        slist_init (&page[i].rset);
     }
 }
 
@@ -655,10 +659,8 @@ vm_page_bootalloc (size_t size)
        i < vm_page_zones_size; --i)
     {
       _Auto zone = &vm_page_boot_zones[i];
-
-      if (!zone->heap_present)
-        continue;
-      else if (size <= vm_page_boot_zone_avail_size (zone))
+      if (zone->heap_present &&
+          size <= vm_page_boot_zone_avail_size (zone))
         {
           phys_addr_t pa = zone->avail_start;
           zone->avail_start += vm_page_round (size);
@@ -863,12 +865,6 @@ vm_page_zone_name (uint32_t zone_index)
     return ("DMA");
   else
     panic ("vm_page: invalid zone index");
-}
-
-uint64_t
-vm_page_max_offset (void)
-{
-  return (vm_page_zones[vm_page_zones_size - 1].end - PAGE_SIZE);
 }
 
 void

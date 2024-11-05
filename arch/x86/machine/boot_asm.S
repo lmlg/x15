@@ -341,7 +341,7 @@ ASM_END (boot_ap_start32)
  * on startup. It is copied at a fixed location in the first segment and
  * must enable protected mode to jump back into the kernel.
  */
-ASM_ENTRY(boot_mp_trampoline)
+ASM_ENTRY (boot_mp_trampoline)
  .code16
  cli
  xorw %ax, %ax
@@ -369,12 +369,12 @@ ASM_ENTRY(boot_mp_trampoline)
  ljmp $BOOT_GDT_SEL_CODE, $boot_ap_start32
 ASM_END (boot_mp_trampoline)
 
-ASM_DATA(boot_ap_gdtr)
+ASM_DATA (boot_ap_gdtr)
  .word boot_gdt_end - boot_gdt - 1
  .long BOOT_MP_ADDR_PTOT(boot_gdt)
-ASM_END(boot_ap_gdtr)
+ASM_END (boot_ap_gdtr)
 
-ASM_DATA(boot_gdt)
+ASM_DATA (boot_gdt)
  .quad 0x0000000000000000   // Null descriptor.
  .quad 0x00cf9a000000ffff   // Code segment descriptor.
  .quad 0x00cf92000000ffff   // Data segment descriptor.
@@ -389,3 +389,5 @@ boot_gdt_end:
 ASM_DATA (boot_mp_trampoline_size)
  .long . - boot_mp_trampoline
 ASM_END (boot_mp_trampoline_size)
+
+.section	.note.GNU-stack,"",@progbits

@@ -43,6 +43,7 @@ static struct kmem_cache vm_object_cache;
 
 struct vm_object_copy_data
 {
+  struct pmap_window wstore;
   struct pmap_window *window;
   struct vm_page *page;
   int washed;
@@ -70,7 +71,7 @@ vm_object_setup (void)
 INIT_OP_DEFINE (vm_object_setup,
                 INIT_OP_DEP (kmem_setup, true));
 
-void __init
+static void
 vm_object_init (struct vm_object *object, uint32_t flags, void *ctx)
 {
   mutex_init (&object->lock);
@@ -342,7 +343,7 @@ vm_object_copy_single_page (struct vm_object_copy_data *dp,
 
   // Get the window to perform the copy.
   thread_pin ();
-  dp->window = pmap_window_get (0);
+  dp->window = pmap_window_load (0, &dp->wstore);
   pmap_window_set (dp->window, vm_page_to_pa (dp->page));
 
   const char *src = pmap_window_va (dp->window);
@@ -451,7 +452,7 @@ vm_object_map_dirty (struct vm_object *obj, struct cap_page_info *upg)
   int ret = 0;
   void *out = pg.offsets;
   uint32_t cnt = pg.offset_cnt;
-  uint64_t first = 1, last;
+  uint64_t first, last;
 
   rcu_read_enter ();
   rdxtree_for_each (&obj->pages, &it, page)
@@ -467,7 +468,7 @@ vm_object_map_dirty (struct vm_object *obj, struct cap_page_info *upg)
       ((union user_ua *)out)->u8 = page->offset;
       out = (char *)out + sizeof (uint64_t);
 
-      if (first == 1)
+      if (! ret)
         first = page->offset;
 
       last = page->offset;

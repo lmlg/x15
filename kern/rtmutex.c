@@ -100,8 +100,12 @@ rtmutex_lock_slow_common (struct rtmutex *rtmutex, bool timed, uint64_t ticks)
 
   if (turnstile_empty (turnstile))
     {
+#ifdef NDEBUG
+      atomic_store_rel (&rtmutex->owner, self);
+#else
       uintptr_t owner = atomic_swap_rlx (&rtmutex->owner, self);
       assert (owner == (self | bits));
+#endif
     }
 
 out:
@@ -145,9 +149,13 @@ rtmutex_unlock_slow (struct rtmutex *rtmutex)
         goto out;
     }
 
+#ifdef NDEBUG
+  atomic_store_rel (&rtmutex->owner, RTMUTEX_FORCE_WAIT | RTMUTEX_CONTENDED);
+#else
   uintptr_t owner = atomic_swap_rel (&rtmutex->owner,
                                      RTMUTEX_FORCE_WAIT | RTMUTEX_CONTENDED);
   assert (rtmutex_get_thread (owner) == thread_self ());
+#endif
 
   turnstile_disown (turnstile);
   turnstile_signal (turnstile);

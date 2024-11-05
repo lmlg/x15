@@ -286,17 +286,8 @@ sref_weakref_kill (struct sref_weakref *weakref)
 static struct sref_counter*
 sref_weakref_tryget (struct sref_weakref *weakref)
 {
-  uintptr_t addr, oldval, newval;
-
-  do
-    {
-      addr = atomic_load_rlx (&weakref->addr);
-      newval = addr & SREF_WEAKREF_MASK;
-      oldval = atomic_cas_rlx (&weakref->addr, addr, newval);
-    }
-  while (oldval != addr);
-
-  return ((struct sref_counter *)newval);
+  uintptr_t prev = atomic_and_rlx (&weakref->addr, SREF_WEAKREF_MASK);
+  return ((struct sref_counter *)(prev & SREF_WEAKREF_MASK));
 }
 
 static uintptr_t
@@ -402,9 +393,8 @@ sref_queue_push (struct sref_queue *queue, struct sref_counter *counter)
 static struct sref_counter*
 sref_queue_pop (struct sref_queue *queue)
 {
-  struct sref_counter *counter = slist_first_entry (&queue->counters,
-                                                    typeof (*counter), node);
-  slist_remove (&queue->counters, NULL);
+  _Auto counter = slist_pop_entry (&queue->counters,
+                                   struct sref_counter, node);
   --queue->size;
   return (counter);
 }
@@ -803,7 +793,7 @@ sref_cache_check (struct sref_cache *cache)
 }
 
 static void __init
-sref_cache_init (struct sref_cache *cache, unsigned int cpu,
+sref_cache_init (struct sref_cache *cache, uint32_t cpu,
                  struct sref_data *data)
 {
   cache->data = data;

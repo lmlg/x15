@@ -87,8 +87,6 @@
  * may still be new works queued on the previous window.
  *
  * TODO Improve atomic acknowledgment scalability.
- * TODO Handle large amounts of deferred works.
- * TODO Priority boosting of slow readers.
  * TODO CPU registration for dyntick-friendly behavior.
  */
 
@@ -123,6 +121,9 @@
  * active any more.
  */
 #define RCU_WINDOW_CHECK_INTERVAL   CONFIG_RCU_WINDOW_CHECK_INTERVAL
+
+// Maximum number of pending works beyond which to use high-priority threads.
+#define RCU_NR_WORKS_CUTOFF   1000
 
 /*
  * Grace period states.
@@ -366,8 +367,8 @@ static void
 rcu_data_end_prev_window (struct rcu_data *data, uint64_t now)
 {
   _Auto window = rcu_data_get_window (data, data->wid - 1);
-  uint64_t duration = clock_ticks_to_ms (now -
-                                         rcu_window_get_start_ts (window));
+  _Auto start_ts = rcu_window_get_start_ts (window);
+  uint64_t duration = clock_ticks_to_ms (now - start_ts);
 
   syscnt_set (&data->sc_last_window_ms, duration);
   if (duration > syscnt_read (&data->sc_longest_window_ms))
@@ -470,7 +471,9 @@ rcu_cpu_window_queue (struct rcu_cpu_window *cpu_window, struct work *work)
 static void
 rcu_cpu_window_flush (struct rcu_cpu_window *cpu_window)
 {
-  work_queue_schedule (&cpu_window->works, 0);
+  int flg = cpu_window->works.nr_works > RCU_NR_WORKS_CUTOFF ?
+            WORK_HIGHPRIO : 0;
+  work_queue_schedule (&cpu_window->works, flg);
   work_queue_init (&cpu_window->works);
 }
 
@@ -520,15 +523,15 @@ static void
 rcu_cpu_data_flush (struct rcu_cpu_data *cpu_data)
 {
   assert (cpu_data->work_wid == cpu_data->reader_wid);
-  rcu_cpu_window_flush (rcu_cpu_data_get_window (cpu_data,
-                                                 cpu_data->work_wid - 1));
+  _Auto wid = cpu_data->work_wid - 1;
+  rcu_cpu_window_flush (rcu_cpu_data_get_window (cpu_data, wid));
 }
 
 void
 rcu_reader_init (struct rcu_reader *reader)
 {
   reader->level = 0;
-  reader->linked = false;
+  reader->linked = reader->saved_sched = false;
 }
 
 static void
@@ -547,6 +550,14 @@ rcu_reader_unlink (struct rcu_reader *reader)
 {
   assert (reader->level == 0);
   reader->linked = false;
+
+  if (unlikely (reader->saved_sched))
+    {
+      _Auto thread = structof (reader, struct thread, rcu_reader);
+      thread_setscheduler (thread, thread_user_sched_policy (thread),
+                           reader->saved_prio);
+      reader->saved_sched = false;
+    }
 }
 
 static void
@@ -573,11 +584,14 @@ rcu_reader_leave (struct rcu_reader *reader)
   rcu_reader_unlink (reader);
 }
 
-static void
+static bool
 rcu_reader_account (struct rcu_reader *reader, struct rcu_cpu_data *cpu_data)
 {
-  if (rcu_reader_in_cs (reader))
-    rcu_reader_enter (reader, cpu_data);
+  if (!rcu_reader_in_cs (reader))
+    return (false);
+
+  rcu_reader_enter (reader, cpu_data);
+  return (true);
 }
 
 static void
@@ -643,7 +657,7 @@ rcu_cpu_data_check_gp_state (struct rcu_cpu_data *cpu_data)
     }
 }
 
-void
+bool
 rcu_report_context_switch (struct rcu_reader *reader)
 {
   assert (!cpu_intr_enabled ());
@@ -656,7 +670,7 @@ rcu_report_context_switch (struct rcu_reader *reader)
    * is preempted. Accounting also occurs when a grace period starts, and
    * more exactly, when the reader window ID of a processor is flipped.
    */
-  rcu_reader_account (reader, rcu_get_cpu_data ());
+  return (rcu_reader_account (reader, rcu_get_cpu_data ()));
 }
 
 void

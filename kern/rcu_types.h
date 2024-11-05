@@ -36,6 +36,8 @@ struct rcu_reader
   unsigned int level;
   unsigned int wid;
   bool linked;
+  bool saved_sched;
+  uint16_t saved_prio;
 };
 
 #endif

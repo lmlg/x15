@@ -947,3 +947,5 @@ ASM_ENTRY (cpu_lpad_return)
   ret
 .cfi_endproc
 ASM_END (cpu_lpad_return)
+
+.section	.note.GNU-stack,"",@progbits

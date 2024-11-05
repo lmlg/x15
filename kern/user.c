@@ -207,7 +207,7 @@ user_write_struct (void *udst, const void *src, size_t size)
   if (!user_check_range (udst, rsize))
     return (EFAULT);
 
-  *(uint32_t *)udst = rsize;
+  ((union user_ua *)udst)->u4 = rsize;
   user_copy_impl ((char *)udst + sizeof (uint32_t),
                   (const char *)src + sizeof (uint32_t),
                   rsize - sizeof (uint32_t));

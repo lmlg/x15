@@ -63,9 +63,6 @@ struct vm_object
     };
 };
 
-// Initialize a VM object.
-void vm_object_init (struct vm_object *object, uint32_t flg, void *ctx);
-
 // Create a VM object.
 int vm_object_create (struct vm_object **objp, uint32_t flg, void *ctx);
 

@@ -20,8 +20,10 @@
 
 #include <stdint.h>
 
+#include <kern/fmt.h>
 #include <kern/init.h>
 #include <kern/macros.h>
+#include <kern/panic.h>
 
 // Test exit status.
 #define TEST_OK        0
@@ -60,5 +62,79 @@ int test_util_create_thr (struct thread **out, void (*fn) (void *),
                           void *arg, const char *name);
 
 void test_thread_wait_state (struct thread *thr, uint32_t state);
+
+// Test assertions.
+
+#define TEST_ANY_UNION   \
+  char c;   \
+  unsigned char C;   \
+  short h;   \
+  unsigned short H;   \
+  int i;   \
+  unsigned int I;   \
+  long l;   \
+  unsigned long L;   \
+  long long q;   \
+  unsigned long long Q;   \
+  char *s;   \
+  void *p
+
+#define TEST_SFMT(val, fmt, out)   (fmt_sprintf (out, fmt, val), out)
+
+#define test_fmt_any(x, out)   \
+  ({   \
+     union   \
+       {   \
+         TEST_ANY_UNION;   \
+         typeof (x) value_;   \
+       } val_ = (typeof (val_))(x);   \
+     _Generic ((x),   \
+               int: TEST_SFMT (val_.i, "%d", out),   \
+               unsigned int: TEST_SFMT (val_.I, "%u", out),   \
+               long: TEST_SFMT (val_.l, "%ld", out),   \
+               unsigned long: TEST_SFMT (val_.L, "%lu", out),   \
+               long long: TEST_SFMT (val_.q, "%lld", out),   \
+               unsigned long long: TEST_SFMT (val_.Q, "%llu", out),   \
+               char *: val_.s,   \
+               default: TEST_SFMT (val_.p, "%p", out));   \
+   })
+
+#define test_assert_op(x, y, op)   \
+  ({   \
+     _Auto left_ = (x);   \
+     typeof (left_) right_ = (typeof (left_))(y);   \
+     if (!(left_ op right_))   \
+       {   \
+         char buf1_[22] = "", buf2_[22] = "";   \
+         panic ("assertion failed: %s %s %s at %s:%d",   \
+                test_fmt_any (left_, buf1_),   \
+                QUOTE (op),   \
+                test_fmt_any (right_, buf2_),   \
+                __FILE__, __LINE__);   \
+       }   \
+    })
+
+#define test_assert_eq(x, y)   test_assert_op (x, y, ==)
+#define test_assert_lt(x, y)   test_assert_op (x, y, <)
+#define test_assert_le(x, y)   test_assert_op (x, y, <=)
+#define test_assert_gt(x, y)   test_assert_op (x, y, >)
+#define test_assert_ge(x, y)   test_assert_op (x, y, >=)
+#define test_assert_ne(x, y)   test_assert_op (x, y, !=)
+
+#define test_assert_nonnull(x)   \
+  ({   \
+      _Auto tmp_ = (x);   \
+      if (! tmp_)   \
+        panic ("assertion failed at %s:%d: " QUOTE (x) " is null",   \
+               __FILE__, __LINE__);   \
+  })   \
+
+#define test_assert_streq(x, y)   \
+  ({   \
+      const char *x_ = (const char *)(x), *y_ = (const char *)(y);   \
+      if (strcmp (x_, y_) != 0)   \
+        panic ("assertion failed: %s is not equal to %s at %s:%d",   \
+               x_, y_, __FILE__, __LINE__);   \
+  })   \
 
 #endif

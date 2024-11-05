@@ -13,27 +13,58 @@
  *
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ *
  */
 
-#include <kern/sleepq.h>
 #include <kern/sxlock.h>
+#include <kern/thread.h>
 
-#include <machine/cpu.h>
+/*
+ * Waiters are queued in FIFO order, but readers have their own separate
+ * lists so that a call to 'sxlock_share' can be made atomic.
+ */
 
-static inline int
+struct sxlock_waiter
+{
+  struct list node;
+  struct list rdnode;
+  struct thread *thread;
+  bool woken;
+};
+
+static void
+sxlock_waiter_init (struct sxlock_waiter *wp)
+{
+  wp->thread = thread_self ();
+  wp->woken = false;
+}
+
+static void
+sxlock_waiter_wake (struct sxlock_waiter *wp)
+{
+  wp->woken = true;
+  thread_wakeup (wp->thread);
+}
+
+static inline bool
 sxlock_exmark (struct sxlock *sxp)
 {
+  /*
+   * Try to mark the lock as having waiters, or acquire it if it's been
+   * released in the meantime.
+   */
   while (1)
     {
-      uint32_t val = atomic_load_rlx (&sxp->lock);
-      if (! val)
+      uint32_t tmp = atomic_load_rlx (&sxp->word);
+      if (! tmp)
         {
-          if (atomic_cas_bool_acq (&sxp->lock, 0, SXLOCK_MASK))
-            return (0);
+          if (atomic_cas_bool_acq (&sxp->word, tmp,
+                                   SXLOCK_MASK | SXLOCK_WAITERS))
+            return (false);
         }
-      else if ((val & SXLOCK_WAITERS) ||
-               atomic_cas_bool_acq (&sxp->lock, val, val | SXLOCK_WAITERS))
-        return (1);
+      else if ((tmp & SXLOCK_WAITERS) ||
+               atomic_cas_bool_acq (&sxp->word, tmp, tmp | SXLOCK_WAITERS))
+        return (true);
 
       atomic_spin_nop ();
     }
@@ -42,11 +73,21 @@ sxlock_exmark (struct sxlock *sxp)
 void
 sxlock_exlock_slow (struct sxlock *sxp)
 {
-  _Auto sleepq = sleepq_lend (sxp);
-  while (sxlock_exmark (sxp))
-    sleepq_wait (sleepq, "sxlock/X");
+  struct sxlock_waiter w;
+  sxlock_waiter_init (&w);
 
-  sleepq_return (sleepq);
+  SPINLOCK_GUARD (&sxp->lock);
+  list_insert_tail (&sxp->waiters, &w.node);
+
+  if (sxlock_exmark (sxp))
+    {
+      while (!w.woken)
+        thread_sleep (&sxp->lock, sxp, "sxlock/X");
+
+      atomic_store_rel (&sxp->word, SXLOCK_MASK | SXLOCK_WAITERS);
+    }
+
+  list_remove (&w.node);
 }
 
 static inline int
@@ -54,15 +95,16 @@ sxlock_shmark (struct sxlock *sxp)
 {
   while (1)
     {
-      uint32_t val = atomic_load_rlx (&sxp->lock);
-      if ((val & SXLOCK_MASK) == 0)
+      uint32_t tmp = atomic_load_rlx (&sxp->word);
+      if (!sxlock_exclusive (tmp) && !sxlock_phasing (tmp))
         {
-          if (atomic_cas_bool_acq (&sxp->lock, val, val + 1))
-            return (0);
+          if (atomic_cas_bool_acq (&sxp->word, tmp,
+                                   (tmp + 1) | SXLOCK_WAITERS))
+            return (false);
         }
-      else if ((val & SXLOCK_WAITERS) ||
-               atomic_cas_bool_acq (&sxp->lock, val, val | SXLOCK_WAITERS))
-        return (1);
+      else if ((tmp & SXLOCK_WAITERS) ||
+               atomic_cas_bool_acq (&sxp->word, tmp, tmp | SXLOCK_WAITERS))
+        return (true);
 
       atomic_spin_nop ();
     }
@@ -71,41 +113,48 @@ sxlock_shmark (struct sxlock *sxp)
 void
 sxlock_shlock_slow (struct sxlock *sxp)
 {
-  _Auto sleepq = sleepq_lend (sxp);
-  while (sxlock_shmark (sxp))
-    sleepq_wait (sleepq, "sxlock/S");
+  struct sxlock_waiter w;
+  sxlock_waiter_init (&w);
 
-  sleepq_return (sleepq);
+  SPINLOCK_GUARD (&sxp->lock);
+  list_insert_tail (&sxp->waiters, &w.node);
+  list_insert_tail (&sxp->readers, &w.rdnode);
+
+  if (sxlock_shmark (sxp))
+    {
+      while (!w.woken)
+        thread_sleep (&sxp->lock, sxp, "sxlock/S");
+
+      atomic_add_rel (&sxp->word, 1);
+    }
+
+  list_remove (&w.node);
+  list_remove (&w.rdnode);
+  // Readers also wake up their peers.
+  sxlock_wake_readers (sxp);
 }
 
 void
-sxlock_unlock (struct sxlock *sxp)
+sxlock_unlock_slow (struct sxlock *sxp)
 {
-  uint32_t prev, nval;
-
-  while (1)
-    {
-      prev = atomic_load_rlx (&sxp->lock);
-      nval = (prev & SXLOCK_MASK) == SXLOCK_MASK ||
-             prev == (SXLOCK_WAITERS | 1) ? 0 : prev - 1;
-
-      if (atomic_cas_bool_rel (&sxp->lock, prev, nval))
-        break;
-
-      atomic_spin_nop ();
+  SPINLOCK_GUARD (&sxp->lock);
+  if (list_empty (&sxp->waiters))
+    { // No more waiters - Clear the contended bit.
+      atomic_store_rel (&sxp->word, 0);
+      return;
     }
 
-  if (!nval && (prev & SXLOCK_WAITERS))
-    sxlock_wake (sxp);
+  _Auto first = list_first_entry (&sxp->waiters, struct sxlock_waiter, node);
+  assert (first);
+  sxlock_waiter_wake (first);
 }
 
 void
-sxlock_wake (struct sxlock *sxp)
+sxlock_wake_readers (struct sxlock *sxp)
 {
-  struct sleepq *sleepq = sleepq_acquire (sxp);
-  if (sleepq)
-    {
-      sleepq_broadcast (sleepq);
-      sleepq_release (sleepq);
-    }
+  if (list_empty (&sxp->readers))
+    return;
+
+  _Auto next = list_first_entry (&sxp->readers, struct sxlock_waiter, rdnode);
+  sxlock_waiter_wake (next);
 }

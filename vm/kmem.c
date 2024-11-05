@@ -63,8 +63,8 @@ vm_kmem_alloc_va (size_t size)
 
   uintptr_t va = 0;
   int flags = VM_MAP_FLAGS (VM_PROT_RDWR, VM_PROT_RDWR, VM_INHERIT_NONE,
-                            VM_ADV_DEFAULT, 0);
-  int error = vm_map_enter (vm_map_get_kernel_map (), &va, size,
+                            VM_ADV_DEFAULT, 0),
+      error = vm_map_enter (vm_map_get_kernel_map (), &va, size,
                             flags, NULL, 0);
 
   return (error ? NULL : (void *)va);
@@ -175,12 +175,5 @@ error:
 void
 vm_kmem_unmap_pa (uintptr_t map_va, size_t map_size)
 {
-  _Auto kernel_pmap = pmap_get_kernel_pmap ();
-  uintptr_t end = map_va + map_size;
-
-  for (uintptr_t va = map_va; va < end; va += PAGE_SIZE)
-    pmap_remove (kernel_pmap, va, PMAP_PEF_GLOBAL);
-
-  pmap_update (kernel_pmap);
-  vm_kmem_free_va ((void *) map_va, map_size);
+  vm_kmem_free_va ((void *)map_va, map_size);
 }

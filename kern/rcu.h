@@ -138,7 +138,7 @@ void rcu_reader_init (struct rcu_reader *reader);
  *
  * Interrupts and preemption must be disabled when calling this function.
  */
-void rcu_report_context_switch (struct rcu_reader *reader);
+bool rcu_report_context_switch (struct rcu_reader *reader);
 
 /*
  * Report a periodic event on the current processor.

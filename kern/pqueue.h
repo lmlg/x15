@@ -111,6 +111,12 @@ pqueue_node_next (const struct pqueue *pqueue, struct pqueue_node *node)
   return (!node || node->next == pqueue->head ? NULL : node->next);
 }
 
+static inline uint32_t
+pqueue_prio (const struct pqueue *pqueue)
+{
+  return (pqueue->head ? pqueue->head->prio : 0);
+}
+
 #define pqueue_entry   structof
 
 #define pqueue_first_entry(pq, type, member)   \

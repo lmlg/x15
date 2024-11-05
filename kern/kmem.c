@@ -99,10 +99,6 @@
 // Number of caches backing general purpose allocations.
 #define KMEM_NR_MEM_CACHES 13
 
-// Options for kmem_cache_alloc_verify().
-#define KMEM_AV_NOCONSTRUCT   0
-#define KMEM_AV_CONSTRUCT     1
-
 // Error codes for kmem_cache_error().
 #define KMEM_ERR_INVALID      0   // Invalid address being freed
 #define KMEM_ERR_DOUBLEFREE   1   // Freeing already free address
@@ -472,9 +468,6 @@ kmem_cpu_pool_push (struct kmem_cpu_pool *cpu_pool, void *obj)
 static int
 kmem_cpu_pool_fill (struct kmem_cpu_pool *cpu_pool, struct kmem_cache *cache)
 {
-  kmem_ctor_fn_t ctor = (cpu_pool->flags & KMEM_CF_VERIFY) ?
-                        NULL : cache->ctor;
-
   ADAPTIVE_LOCK_GUARD (&cache->lock);
 
   int i;
@@ -483,8 +476,6 @@ kmem_cpu_pool_fill (struct kmem_cpu_pool *cpu_pool, struct kmem_cache *cache)
       void *buf = kmem_cache_alloc_from_slab (cache);
       if (! buf)
         break;
-      else if (ctor)
-        ctor (buf);
 
       kmem_cpu_pool_push (cpu_pool, buf);
     }
@@ -898,7 +889,7 @@ kmem_cache_free_to_slab (struct kmem_cache *cache, void *buf)
 }
 
 static void
-kmem_cache_alloc_verify (struct kmem_cache *cache, void *buf, int construct)
+kmem_cache_alloc_verify (struct kmem_cache *cache, void *buf)
 {
   struct kmem_buftag *buftag = kmem_buf_to_buftag (buf, cache);
 
@@ -917,13 +908,10 @@ kmem_cache_alloc_verify (struct kmem_cache *cache, void *buf, int construct)
   union kmem_bufctl *bufctl = kmem_buf_to_bufctl (buf, cache);
   bufctl->redzone = KMEM_REDZONE_WORD;
   buftag->state = KMEM_BUFTAG_ALLOC;
-
-  if (construct && cache->ctor)
-    cache->ctor (buf);
 }
 
-void*
-kmem_cache_alloc2 (struct kmem_cache *cache, uint32_t pflags)
+static void*
+kmem_cache_alloc_impl (struct kmem_cache *cache, uint32_t pflags)
 {
 #ifdef KMEM_USE_CPU_LAYER
   thread_pin ();
@@ -939,7 +927,7 @@ fast_alloc:
       thread_unpin ();
 
       if (verify)
-        kmem_cache_alloc_verify (cache, buf, KMEM_AV_CONSTRUCT);
+        kmem_cache_alloc_verify (cache, buf);
 
       return (buf);
     }
@@ -980,12 +968,19 @@ slab_alloc:
     }
 
   if (cache->flags & KMEM_CF_VERIFY)
-    kmem_cache_alloc_verify (cache, buf, KMEM_AV_NOCONSTRUCT);
-
-  if (cache->ctor)
-    cache->ctor (buf);
+    kmem_cache_alloc_verify (cache, buf);
 
   return (buf);
+}
+
+void*
+kmem_cache_alloc2 (struct kmem_cache *cache, uint32_t pflags)
+{
+  void *ret = kmem_cache_alloc_impl (cache, pflags);
+  if (ret && cache->ctor)
+    cache->ctor (ret);
+
+  return (ret);
 }
 
 static void
@@ -1276,7 +1271,7 @@ kmem_alloc2 (size_t size, uint32_t flags)
   if (index < ARRAY_SIZE (kmem_caches))
     {
       struct kmem_cache *cache = &kmem_caches[index];
-      void *buf = kmem_cache_alloc2 (cache, flags);
+      void *buf = kmem_cache_alloc_impl (cache, flags);
 
       if (buf && (cache->flags & KMEM_CF_VERIFY))
         kmem_alloc_verify (cache, buf, size);

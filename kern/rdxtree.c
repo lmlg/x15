@@ -133,22 +133,22 @@ rdxtree_node_ctor (void *buf)
   struct rdxtree_node *node = buf;
   node->nr_entries = 0;
   node->alloc_bm = RDXTREE_BM_FULL;
-  memset (node->entries, 0, sizeof (node->entries));
+  node->parent = NULL;
+  for (size_t i = 0; i < ARRAY_SIZE (node->entries); ++i)
+    node->entries[i] = NULL;
 }
 
 static int
 rdxtree_node_create (struct rdxtree_node **nodep,
                      uint16_t height, uint16_t flags)
 {
-  struct rdxtree_node *node =
-    kmem_cache_alloc2 (&rdxtree_node_cache,
-                       (flags & RDXTREE_ALLOC_SLEEP) ?
-                       KMEM_ALLOC_SLEEP : 0);
+  uint32_t alflg = (flags & RDXTREE_ALLOC_SLEEP) ? KMEM_ALLOC_SLEEP : 0;
+  struct rdxtree_node *node = kmem_cache_alloc2 (&rdxtree_node_cache, alflg);
+
   if (! node)
     return (ENOMEM);
 
   assert (rdxtree_alignment_valid (node));
-  node->parent = NULL;
   node->height = height;
   *nodep = node;
   return (0);
@@ -175,6 +175,7 @@ rdxtree_node_link (struct rdxtree_node *node, struct rdxtree_node *parent,
                    uint16_t index)
 {
   node->parent = parent;
+  assert (index < ARRAY_SIZE (node->entries));
   node->index = index;
 }
 

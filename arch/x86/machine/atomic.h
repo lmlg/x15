@@ -77,7 +77,7 @@ atomic_store_64 (void *ptr, void *valp, int memorder)
   uint64_t prev = *(uint64_t *)ptr, val = *(uint64_t *)valp;
   while (!__atomic_compare_exchange_n ((uint64_t *)ptr, &prev, val, false,
                                        memorder, __ATOMIC_RELAXED))
-    asm volatile ("pause" : : : "memory");
+    atomic_spin_nop ();
 }
 
 #endif   // __clang__

@@ -627,6 +627,30 @@ thread_runq_guard_fini (struct thread_runq_guard_t *guard)
 #define thread_runq_guard   \
   thread_runq_guard_t CLEANUP (thread_runq_guard_fini) __unused
 
+static void thread_setsched_impl (struct thread *, uint8_t,
+                                  uint16_t, struct thread_runq *);
+
+static void
+thread_rcu_handle_switch (struct thread *thread, struct thread_runq *runq)
+{
+  _Auto reader = thread_rcu_reader (thread);
+  if (!rcu_report_context_switch (reader) || reader->saved_sched)
+    return;
+
+  reader->saved_prio = thread_user_priority (thread);
+
+  // Boost to the max priority, but don't change scheduling class.
+  uint16_t nprio = thread_user_sched_class (thread) == THREAD_SCHED_CLASS_RT ?
+                   THREAD_SCHED_RT_PRIO_MAX : THREAD_SCHED_FS_PRIO_MAX;
+
+  _Auto td = thread_turnstile_td (thread);
+  turnstile_td_lock (td);
+  thread_setsched_impl (thread, thread_user_sched_policy (thread),
+                        nprio, runq);
+  turnstile_td_unlock (td);
+  reader->saved_sched = true;
+}
+
 static struct thread_runq*
 thread_runq_schedule (struct thread_runq *runq)
 {
@@ -662,8 +686,8 @@ thread_runq_schedule (struct thread_runq *runq)
   if (likely (prev != next))
     {
       thread_runq_schedule_unload (prev);
-      rcu_report_context_switch (thread_rcu_reader (prev));
       pmap_context_switch (prev, next);
+      thread_rcu_handle_switch (prev, runq);
       spinlock_transfer_owner (&runq->lock, next);
 
       /*
@@ -1796,6 +1820,7 @@ thread_destroy (struct thread *thread)
   assert (thread != thread_self ());
   assert (thread->state == THREAD_DEAD);
 
+  cap_notify_dead (&thread->dead_subs);
   // See task_info().
   task_remove_thread (thread->task, thread);
 
@@ -1839,7 +1864,6 @@ thread_terminate (struct thread *thread)
 {
   SPINLOCK_GUARD (&thread->join_lock);
   thread->terminating = true;
-  cap_notify_dead (&thread->dead_subs);
   thread_wakeup (thread->join_waiter);
 }
 
@@ -2528,10 +2552,8 @@ thread_sched_class_to_str (uint8_t sched_class)
 
 static void
 thread_setsched_impl (struct thread *thread, uint8_t policy,
-                      uint16_t priority)
+                      uint16_t priority, struct thread_runq *runq)
 {
-  struct thread_runq_guard g = thread_runq_guard_make (thread, false);
-
   if (thread_user_sched_policy (thread) == policy &&
       thread_user_priority (thread) == priority)
     return;
@@ -2542,15 +2564,15 @@ thread_setsched_impl (struct thread *thread, uint8_t policy,
     current = false;
   else
     {
-      if (thread != g.runq->current)
+      if (thread != runq->current)
         current = false;
       else
         {
-          thread_runq_put_prev (g.runq, thread);
+          thread_runq_put_prev (runq, thread);
           current = true;
         }
 
-      thread_runq_remove (g.runq, thread);
+      thread_runq_remove (runq, thread);
     }
 
   bool update = true;
@@ -2581,9 +2603,9 @@ thread_setsched_impl (struct thread *thread, uint8_t policy,
 
   if (requeue)
     {
-      thread_runq_add (g.runq, thread);
+      thread_runq_add (runq, thread);
       if (current)
-        thread_runq_set_next (g.runq, thread);
+        thread_runq_set_next (runq, thread);
     }
 }
 
@@ -2592,8 +2614,13 @@ thread_setscheduler (struct thread *thread, uint8_t policy, uint16_t prio)
 {
   _Auto td = thread_turnstile_td (thread);
   turnstile_td_lock (td);
-  thread_setsched_impl (thread, policy, prio);
+
+  cpu_flags_t flags;
+  _Auto runq = thread_lock_runq (thread, &flags);
+  thread_setsched_impl (thread, policy, prio, runq);
+
   turnstile_td_unlock (td);
+  thread_unlock_runq (runq, flags);
   turnstile_td_propagate_priority (td);
 }
 

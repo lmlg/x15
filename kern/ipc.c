@@ -33,6 +33,7 @@ struct ipc_data
   cpu_flags_t cpu_flags;
   uint32_t flags;
   int prot;
+  struct pmap_window wstore;
   struct pmap_window *window;
   struct vm_page *page;
 };
@@ -80,7 +81,7 @@ static void
 ipc_data_win_get (struct ipc_data *data)
 {
   thread_pin ();
-  data->window = pmap_window_get (0);
+  data->window = pmap_window_load (0, &data->wstore);
 }
 
 static void
@@ -262,16 +263,14 @@ ipc_iov_iter_copy (struct task *r_task, struct ipc_iov_iter *r_it,
       return (-error);
     }
 
-  ssize_t ret = 0, *r_err = (flags & IPC_CHECK_REMOTE) ? &ret : NULL,
-          *l_err = (flags & IPC_CHECK_LOCAL) ? &ret : NULL;
-
+  ssize_t ret = 0, *l_err = (flags & IPC_CHECK_LOCAL) ? &ret : NULL;
   while (1)
     {
       struct iovec *lv = ipc_iov_iter_usrnext (l_it, l_err);
       if (! lv)
         return (ret);
 
-      struct iovec *rv = ipc_iov_iter_next_remote (r_it, r_task, r_err);
+      struct iovec *rv = ipc_iov_iter_next_remote (r_it, r_task, &ret);
       if (! rv)
         return (ret);
 
@@ -338,10 +337,7 @@ ipc_cap_iter_cleanup (struct cspace *sp, struct ipc_cap_iter *it,
                       uint32_t idx, int error)
 {
   for (; it->cur != idx; --it->cur)
-    {
-      _Auto mp = it->begin + it->cur - 1;
-      cspace_rem_locked (sp, mp->cap);
-    }
+    cspace_rem_locked (sp, it->begin[it->cur - 1].cap);
 
   return (error);
 }

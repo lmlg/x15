@@ -198,6 +198,14 @@ slist_remove (struct slist *list, struct slist_node *prev)
     }
 }
 
+#define slist_pop_entry(list, type, member)   \
+  ({   \
+     struct slist *slist_ = (list);   \
+     type *ret_ = slist_first_entry (slist_, type, member);   \
+     slist_remove (slist_, NULL);   \
+     ret_;   \
+   })
+
 /*
  * Macro that evaluates to the address of the structure containing the
  * given node based on the given type and member.

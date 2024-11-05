@@ -136,36 +136,37 @@ vm_map_unref_object (struct vm_object *obj)
 }
 
 static void
+vm_map_entry_free_pages (struct vm_map_entry *entry)
+{
+  if ((entry->flags & (VM_MAP_PHYS | VM_MAP_ANON)) !=
+      (VM_MAP_PHYS | VM_MAP_ANON))
+    return;
+
+  size_t nr_pages = (entry->end - entry->start) / PAGE_SIZE;
+  for (size_t i = 0; i < nr_pages; ++i)
+    vm_page_unref (entry->pages + i);
+}
+
+static void
 vm_map_entry_free_obj (struct vm_map *map, struct vm_map_entry *ep, int free)
 {
   struct vm_object *obj = ep->object;
-
-  if (! obj)
-    {
-      if ((ep->flags & (VM_MAP_PHYS | VM_MAP_ANON)) !=
-          (VM_MAP_PHYS | VM_MAP_ANON))
-        return;
-
-      size_t nr_pages = (ep->end - ep->start) / PAGE_SIZE;
-      for (size_t i = 0; i < nr_pages; ++i)
-        vm_page_unref (ep->pages + i);
-
-      return;
-    }
-
-  uint64_t off = ep->offset;
   switch (free)
     {
       case VM_MAP_FREE_ALL:
         vm_map_entry_unmap (map, ep);
         // FALLTHROUGH.
       case VM_MAP_FREE_OBJ:
-        vm_object_remove (obj, off, off + ep->end - ep->start);
+        if (! obj)
+          vm_map_entry_free_pages (ep);
+        else
+          vm_object_remove (obj, ep->offset, ep->offset + ep->end - ep->start);
       case VM_MAP_FREE_NONE:
         break;
     }
 
-  vm_map_unref_object (obj);
+  if (obj)
+    vm_map_unref_object (obj);
 }
 
 static void
@@ -561,7 +562,7 @@ vm_map_enter (struct vm_map *map, uintptr_t *startp, size_t size,
 
           offset = vm_page_to_pa (pages);
         }
-      else if (offset + size > vm_page_max_offset ())
+      else if (!vm_page_lookup (offset + size - PAGE_SIZE))
         return (EFAULT);
     }
   else if (object && object->flags & VM_OBJECT_EXTERNAL)
@@ -654,10 +655,9 @@ vm_map_clip_end (struct vm_map *map, struct vm_map_entry *entry,
 static void
 vm_map_entry_unmap (struct vm_map *map, struct vm_map_entry *entry)
 {
+  uint32_t xflg = (entry->flags & VM_MAP_CLEAN) ? PMAP_CLEAN_PAGES : 0;
   pmap_remove_range (map->pmap, entry->start, entry->end,
-                     VM_MAP_PMAP_FLAGS |
-                     ((entry->flags & VM_MAP_CLEAN) ?
-                      PMAP_CLEAN_PAGES : 0));
+                     VM_MAP_PMAP_FLAGS | xflg);
 }
 
 static int
@@ -783,6 +783,10 @@ vm_map_protect_entry (struct vm_map *map, struct vm_map_entry *entry,
     }
 
   if (prot == VM_PROT_NONE)
+    /*
+     * Note that this removes the mappings, but the pages are still
+     * available via the VM object.
+     */
     pmap_remove_range (map->pmap, start, end, VM_MAP_PMAP_FLAGS);
   else
     pmap_protect_range (map->pmap, start, end, prot, VM_MAP_PMAP_FLAGS);
@@ -1383,17 +1387,17 @@ static int
 vm_map_iter_cleanup (struct vm_map *map, struct ipc_vme_iter *it,
                      uint32_t ix, int error)
 {
+  struct list entries;
+  list_init (&entries);
+
   for (; it->cur != ix; --it->cur)
     {
       _Auto page = it->begin + it->cur - 1;
-      struct list entries;
-
-      list_init (&entries);
       vm_map_remove_impl (map, page->addr, page->addr + page->size, &entries);
-      vm_map_entry_list_destroy (map, &entries, VM_MAP_FREE_OBJ);
     }
 
   pmap_update (map->pmap);
+  vm_map_entry_list_destroy (map, &entries, VM_MAP_FREE_OBJ);
   return (-error);
 }
 
@@ -1503,7 +1507,7 @@ vm_map_reply_pagereq (const uintptr_t *src, uint32_t cnt, struct vm_page **out)
         return (vm_map_unref_pages (out, i, EFAULT));
 
       uint32_t off = (uint32_t)(va - entry->start) / PAGE_SIZE;
-      _Auto page = (struct vm_page *)entry->pages + off;
+      _Auto page = entry->pages + off;
       vm_page_ref (page);
       out[i] = page;
     }

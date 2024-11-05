@@ -150,3 +150,5 @@ tcb_context_restore:
 ASM_END (tcb_context_switch)
 
 #endif
+
+.section	.note.GNU-stack,"",@progbits
