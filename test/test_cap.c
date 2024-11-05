@@ -17,7 +17,6 @@
  * This test module tests the capability API.
  */
 
-#include <assert.h>
 #include <stdio.h>
 
 #include <kern/clock.h>

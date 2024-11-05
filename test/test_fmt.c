@@ -16,7 +16,6 @@
  *
  */
 
-#include <assert.h>
 #include <string.h>
 #include <kern/error.h>
 #include <kern/fmt.h>
@@ -56,34 +55,32 @@ test_sscanf (void)
   char c1, c2;
 
   int rv = fmt_sscanf ("123 qx -45", "%d %c%c %d", &x1, &c1, &c2, &x2);
-  assert (rv == 4);
-  assert (x1 == 123);
-  assert (c1 == 'q');
-  assert (c2 == 'x');
-  assert (x2 == -45);
+  test_assert_eq (rv, 4);
+  test_assert_eq (x1, 123);
+  test_assert_eq (c1, 'q');
+  test_assert_eq (c2, 'x');
+  test_assert_eq (x2, -45);
 }
 
 TEST_INLINE (fmt)
 {
   char buf[32];
   int rv = fmt_sprintf (buf, "hello %d %s", -4, "???");
-  assert (rv == 12);
-  rv = strcmp (buf, "hello -4 ???");
-  assert (rv == 0);
+  test_assert_eq (rv, 12);
+  test_assert_streq (buf, "hello -4 ???");
 
   rv = fmt_snprintf (buf, 4, "abc%d", 33);
-  assert (rv == 5);
+  test_assert_eq (rv, 5);
   buf[rv - 1] = '\0';
-  rv = strcmp (buf, "abc3");
-  assert (rv == 0);
+  test_assert_streq (buf, "abc3");
 
   struct test_stream stream = { .buf = buf, .len = 0 };
   stream_init (&stream.base, &test_stream_ops);
 
   rv = fmt_xprintf (&stream.base, "HELLO %d", -1);
-  assert (rv > 0);
+  test_assert_gt (rv, 0);
   buf[rv] = '\0';
-  assert (strcmp (buf, "hello -1") == 0);
+  test_assert_streq (buf, "hello -1");
 
   test_sscanf ();
   return (TEST_OK);
