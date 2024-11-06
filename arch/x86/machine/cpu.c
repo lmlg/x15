@@ -340,12 +340,9 @@ cpu_idt_setup_double_fault (struct cpu_idt *idt)
 static void
 cpu_idt_load (const struct cpu_idt *idt)
 {
-  struct cpu_pseudo_desc idtr =
-    {
-      .address = (uintptr_t)idt->descs,
-      .limit = sizeof (idt->descs) - 1
-    };
-
+  struct cpu_pseudo_desc idtr;
+  idtr.address = (uintptr_t)idt->descs;
+  idtr.limit = sizeof (idt->descs) - 1;
   asm volatile ("lidt %0" : : "m" (idtr));
 }
 
@@ -860,12 +857,9 @@ cpu_gdt_init (struct cpu_gdt *gdt, const struct cpu_tss *tss,
 static void __init
 cpu_gdt_load (const struct cpu_gdt *gdt)
 {
-  struct cpu_pseudo_desc gdtr =
-    {
-      .address = (uintptr_t)gdt->descs,
-      .limit = sizeof (gdt->descs) - 1
-    };
-
+  struct cpu_pseudo_desc gdtr;
+  gdtr.address = (uintptr_t)gdt->descs;
+  gdtr.limit = sizeof (gdt->descs) - 1;
   cpu_load_gdt (&gdtr);
 }
 
@@ -1227,7 +1221,6 @@ cpu_log_info (const struct cpu *cpu)
 
   log_info ("cpu%u: frequency: %llu.%02llu MHz", cpu->id,
             cpu_freq / 1000000, cpu_freq % 1000000);
-
 
   char features[60], *ptr = features;
   size_t size = sizeof (features);
