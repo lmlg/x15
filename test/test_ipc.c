@@ -17,7 +17,6 @@
  * This test module tests IPC between threads of different tasks.
  */
 
-#include <assert.h>
 #include <stdio.h>
 
 #include <kern/ipc.h>
@@ -60,7 +59,7 @@ test_ipc_sender (void *arg)
   struct test_ipc_vars *vars;
   int error = vm_map_anon_alloc ((void **)&vars,
                                  vm_map_self (), PAGE_SIZE * 2);
-  assert (! error);
+  test_assert_zero (error);
   memset (vars->buf, '-', sizeof (vars->buf));
   size_t half = TEST_IPC_DATA_SIZE / 2;
   vars->iovs[0] = IOVEC (vars->buf, half);
@@ -68,7 +67,7 @@ test_ipc_sender (void *arg)
 
   struct ipc_iov_iter it;
   ipc_iov_iter_init (&it, vars->iovs, 2);
-  assert (!ipc_iov_iter_empty (&it));
+  test_assert_zero (ipc_iov_iter_empty (&it));
 
   struct ipc_vme_iter pg;
   vars->mp = (struct ipc_msg_vme)
@@ -102,17 +101,17 @@ test_ipc_receiver (void *arg)
     } *vars;
 
   int error = vm_map_anon_alloc ((void **)&vars, vm_map_self (), 1);
-  assert (! error);
+  test_assert_zero (error);
   vars->mp.addr = PAGE_SIZE * 10;
 
   struct ipc_iov_iter it;
   struct ipc_vme_iter pg;
 
   ipc_iov_iter_init_buf (&it, vars->buf, sizeof (vars->buf));
-  assert (!ipc_iov_iter_empty (&it));
+  test_assert_zero (ipc_iov_iter_empty (&it));
 
   ipc_vme_iter_init (&pg, &vars->mp, 1);
-  assert (ipc_vme_iter_size (&pg) > 0);
+  test_assert_gt (ipc_vme_iter_size (&pg), 0);
 
   data->iovs = &it;
   data->pgs = &pg;
@@ -121,11 +120,11 @@ test_ipc_receiver (void *arg)
   semaphore_post (&data->send_sem);
   semaphore_wait (&data->recv_sem);
 
-  assert (data->len == sizeof (vars->buf));
-  assert (vars->buf[0] == '-');
-  assert (vars->buf[sizeof (vars->buf) - 1] == '-');
-  assert (data->nr_pages == 1);
-  assert (*(char *)vars->mp.addr == '+');
+  test_assert_eq (data->len, sizeof (vars->buf));
+  test_assert_eq (vars->buf[0], '-');
+  test_assert_eq (vars->buf[sizeof (vars->buf) - 1], '-');
+  test_assert_eq (data->nr_pages, 1);
+  test_assert_eq (*(char *)vars->mp.addr, '+');
 
   *(char *)vars->mp.addr = '*';
   semaphore_post (&data->send_sem);
@@ -140,11 +139,11 @@ TEST_DEFERRED (ipc)
   struct thread *sender, *receiver;
   int error = test_util_create_thr (&sender, test_ipc_sender,
                                     data, "ipc_sender");
-  assert (! error);
+  test_assert_zero (error);
 
   error = test_util_create_thr (&receiver, test_ipc_receiver,
                                 data, "ipc_receiver");
-  assert (! error);
+  test_assert_zero (error);
 
   thread_join (sender);
   thread_join (receiver);
