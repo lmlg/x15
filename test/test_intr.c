@@ -17,7 +17,6 @@
  * This test module tests the interrupt API.
  */
 
-#include <assert.h>
 #include <stdio.h>
 
 #include <kern/capability.h>
@@ -40,7 +39,8 @@ static void
 test_intr_dummy_enable (void *arg __unused, uint32_t irq,
                         uint32_t cpu __unused)
 {
-  assert (irq >= TEST_INTR_FIRST && irq < TEST_INTR_LAST);
+  test_assert_ge (irq, TEST_INTR_FIRST);
+  test_assert_lt (irq, TEST_INTR_LAST);
   test_intr_status = 1;
 }
 
@@ -76,35 +76,35 @@ test_intr (void *arg)
 
   int error = vm_map_anon_alloc ((void **)&data, vm_map_self (),
                                  sizeof (*data));
-  assert (! error);
+  test_assert_zero (error);
 
   // Test that the counter is preserved in presence of an error.
   error = cap_recv_alert (flow, 0, 1, 0);
-  assert (error == EFAULT);
+  test_assert_eq (error, EFAULT);
 
   error = cap_recv_alert (flow, &data->alert, sizeof (data->alert), &data->md);
-  assert (! error);
+  test_assert_zero (error);
 
-  assert (data->alert.type == CAP_ALERT_INTR);
-  assert (data->alert.intr.irq == TEST_INTR_FIRST);
-  assert (data->alert.intr.count == 2);
-  assert (data->md.task_id == 0);
-  assert (data->md.thread_id == 0);
+  test_assert_eq (data->alert.type, CAP_ALERT_INTR);
+  test_assert_eq (data->alert.intr.irq, TEST_INTR_FIRST);
+  test_assert_eq (data->alert.intr.count, 2);
+  test_assert_zero (data->md.task_id);
+  test_assert_zero (data->md.thread_id);
 
-  assert (test_intr_last == (int)data->alert.intr.irq);
-  assert (test_intr_status == 1);
+  test_assert_eq (test_intr_last, (int)data->alert.intr.irq);
+  test_assert_eq (test_intr_status, 1);
 
   semaphore_post (test_intr_sems + 0);
   semaphore_wait (test_intr_sems + 1);
 
   error = cap_recv_alert (flow, &data->alert, sizeof (data->alert), &data->md);
-  assert (! error);
+  test_assert_zero (error);
 
-  assert (data->alert.type == CAP_ALERT_INTR);
-  assert (data->alert.intr.irq == TEST_INTR_FIRST);
-  assert (data->alert.intr.count == 1);
-  assert (data->md.task_id == 0);
-  assert (data->md.thread_id == 0);
+  test_assert_eq (data->alert.type, CAP_ALERT_INTR);
+  test_assert_eq (data->alert.intr.irq, TEST_INTR_FIRST);
+  test_assert_eq (data->alert.intr.count, 1);
+  test_assert_zero (data->md.task_id);
+  test_assert_zero (data->md.thread_id);
 }
 
 static void
@@ -126,16 +126,16 @@ TEST_DEFERRED (intr)
 
   struct cap_flow *flow;
   int error = cap_flow_create (&flow, 0, 0, 0);
-  assert (! error);
+  test_assert_zero (error);
 
   error = cap_intr_register (flow, TEST_INTR_FIRST);
-  assert (! error);
+  test_assert_zero (error);
 
   test_fire_intr (2, TEST_INTR_FIRST);
 
   struct thread *thr;
   error = test_util_create_thr (&thr, test_intr, flow, "intr");
-  assert (! error);
+  test_assert_zero (error);
 
   semaphore_wait (test_intr_sems + 0);
   test_fire_intr (1, TEST_INTR_FIRST);
@@ -143,6 +143,6 @@ TEST_DEFERRED (intr)
 
   thread_join (thr);
   error = cap_intr_unregister (flow, TEST_INTR_FIRST);
-  assert (! error);
+  test_assert_zero (error);
   return (TEST_OK);
 }
