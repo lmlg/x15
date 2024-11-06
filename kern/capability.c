@@ -511,13 +511,14 @@ cap_recv_alert (struct cap_flow *flow, void *buf,
     return (error);
 
   void *payload = entry->payload;
+  struct cap_kern_alert tmp_alert;
   int type = cap_alert_type (entry);
 
   if (type == CAP_ALERT_INTR)
     { // Copy into a temp buffer so we may reset the counter.
-      payload = alloca (sizeof (entry->k_alert));
-      *(struct cap_kern_alert *)payload = entry->k_alert;
+      tmp_alert = entry->k_alert;
       entry->k_alert.intr.count = 0;
+      payload = &tmp_alert;
     }
   else if (type != CAP_ALERT_USER)
     hlist_remove (&entry->hnode);
@@ -537,8 +538,7 @@ cap_recv_alert (struct cap_flow *flow, void *buf,
       pqueue_insert (&flow->alerts.pending, &entry->pnode);
 
       if (type == CAP_ALERT_INTR)
-        entry->k_alert.intr.count +=
-          ((struct cap_kern_alert *)payload)->intr.count;
+        entry->k_alert.intr.count += tmp_alert.intr.count;
       else if (type != CAP_ALERT_USER)
         hlist_insert_head (&flow->alerts.alloc, &entry->hnode);
 
@@ -1075,6 +1075,8 @@ cap_intr_register (struct cap_flow *flow, uint32_t irq)
 {
   if (irq < CPU_EXC_INTR_FIRST || irq > CPU_EXC_INTR_LAST)
     return (EINVAL);
+  else if (!(flow->base.tflags & CAP_FLOW_HANDLE_INTR))
+    return (EPERM);
 
   struct cap_alert_async *ap = kmem_cache_alloc (&cap_misc_cache);
   if (! ap)

@@ -319,10 +319,28 @@ unw_cursor_set_pc (struct unw_cursor *cursor, uintptr_t pc)
   cursor->mctx->regs[CPU_UNWIND_PC_REG] = pc;
 }
 
+static uintptr_t
+unw_cursor_sp (const struct unw_cursor *cursor)
+{
+  return (cursor->mctx->regs[UNW_SP_REGISTER]);
+}
+
 static void
 unw_cursor_set_sp (struct unw_cursor *cursor, uintptr_t sp)
 {
   cursor->mctx->regs[UNW_SP_REGISTER] = sp;
+}
+
+static uintptr_t
+unw_cursor_bp (const struct unw_cursor *cursor)
+{
+  return (cursor->mctx->regs[CPU_UNWIND_FRAME_REG]);
+}
+
+static void
+unw_cursor_set_bp (struct unw_cursor *cursor, uintptr_t bp)
+{
+  cursor->mctx->regs[CPU_UNWIND_FRAME_REG] = bp;
 }
 
 #define UNW_CURSOR_SET_COLUMN(cursor, column, rule, val)   \
@@ -616,18 +634,26 @@ int
   return (0);
 }
 
-#define unw_cursor_frame(cursor)   ((cursor)->mctx->regs[CPU_UNWIND_FRAME_REG])
-
 static int
 unw_fixup_step_until (struct unw_fixup_t *fixup, struct unw_cursor *cursor)
 {
   while (1)
     {
-      if (unw_cursor_frame (cursor) == fixup->bp)
+      if (unw_cursor_sp (cursor) == fixup->sp ||
+          (unw_cursor_bp (cursor) == fixup->bp &&
+           unw_cursor_sp (cursor) > fixup->sp))
         return (0);
       else if (unw_cursor_step (cursor) <= 0)
         return (-1);
     }
+}
+
+static void
+unw_cursor_set_fixup (struct unw_cursor *cursor, const struct unw_fixup_t *fx)
+{
+  unw_cursor_set_pc (cursor, fx->pc);
+  unw_cursor_set_sp (cursor, fx->sp);
+  unw_cursor_set_bp (cursor, fx->bp);
 }
 
 void
@@ -640,8 +666,7 @@ unw_fixup_restore (struct unw_fixup_t *fixup,
   if (unw_fixup_step_until (fixup, &cursor) < 0)
     return;
 
-  unw_cursor_set_pc (&cursor, fixup->pc);
-  unw_cursor_set_sp (&cursor, fixup->sp);
+  unw_cursor_set_fixup (&cursor, fixup);
   cpu_unw_mctx_set_frame (cursor.mctx->regs, retval);
   __builtin_unreachable ();
 }
@@ -658,8 +683,7 @@ unw_fixup_jmp (struct unw_fixup_t *fixup, int retval)
 
   if (unw_fixup_step_until (fixup, &cursor) == 0)
     {
-      unw_cursor_set_sp (&cursor, fixup->sp);
-      unw_cursor_set_pc (&cursor, fixup->pc);
+      unw_cursor_set_fixup (&cursor, fixup);
       cpu_unw_mctx_jmp (cursor.mctx->regs, retval);
     }
 

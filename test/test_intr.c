@@ -125,7 +125,7 @@ TEST_DEFERRED (intr)
   intr_register_ctl (&test_intr_ops, 0, TEST_INTR_FIRST, TEST_INTR_LAST);
 
   struct cap_flow *flow;
-  int error = cap_flow_create (&flow, 0, 0, 0);
+  int error = cap_flow_create (&flow, CAP_FLOW_HANDLE_INTR, 0, 0);
   test_assert_zero (error);
 
   error = cap_intr_register (flow, TEST_INTR_FIRST);
