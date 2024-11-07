@@ -98,7 +98,10 @@ futex_key_init (union sync_key *key, struct vm_map *map,
       if (error)
         return (error);
       else if ((uintptr_t)addr < entry.start)
-        return (EFAULT);
+        {
+          vm_object_unref (entry.object);
+          return (EFAULT);
+        }
 
       sync_key_shared_init (key, entry.object, entry.offset);
     }
@@ -284,22 +287,19 @@ futex_data_init (struct futex_data *data, int *addr,
                  uint32_t flags, uint32_t mode)
 {
   data->wait_obj = NULL;
-  data->mode = 0;
 
   int error = futex_check_addr (addr);
   if (error)
     return (error);
 
-  data->mode = mode;
   data->map = vm_map_self ();
   data->addr = addr;
 
   error = futex_key_init (&data->key, data->map, addr, flags);
   if (error)
     return (error);
-  else if (flags & FUTEX_SHARED)
-    data->mode |= FUTEX_DATA_SHARED;
 
+  data->mode = mode | ((flags & FUTEX_SHARED) ? FUTEX_DATA_SHARED : 0);
   data->ops = futex_select_ops (flags, mode);
   return (0);
 }

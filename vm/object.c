@@ -174,7 +174,7 @@ vm_object_remove (struct vm_object *object, uint64_t start, uint64_t end)
   struct list pages;
   list_init (&pages);
 
-  uint32_t cnt = 0;
+  uint32_t cnt = 0, no_flush = !(object->flags & VM_OBJECT_FLUSHES);
 
   {
     struct rdxtree_iter it;
@@ -204,7 +204,7 @@ vm_object_remove (struct vm_object *object, uint64_t start, uint64_t end)
         struct vm_page *next = rdxtree_walk (&object->pages, &it);
 
         if (vm_page_unref_nofree (page) &&
-            (!page->dirty || !(object->flags & VM_OBJECT_FLUSHES)))
+            (page->dirty == VM_PAGE_CLEAN || no_flush))
           {
             rdxtree_remove_node_idx (&object->pages, node, idx);
             vm_page_unlink (page);
