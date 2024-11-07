@@ -86,6 +86,7 @@ test_cap_entry (struct ipc_msg *msg, struct ipc_msg_data *mdata)
   test_assert_eq (mdata->thread_id, thread_id (thread_self ()));
 
   _Auto vars = structof (msg, struct test_cap_vars, msg);
+  test_assert_ne (vars->bufsize, 0);
   ssize_t nb = cap_pull_bytes (vars->buf, vars->bufsize, mdata);
 
   test_assert_gt (nb, 0);
@@ -109,7 +110,7 @@ test_cap_entry (struct ipc_msg *msg, struct ipc_msg_data *mdata)
 
   void *mem;
   int error = vm_map_anon_alloc (&mem, vm_map_self (), PAGE_SIZE * 2);
-  test_assert_eq (error, 0);
+  test_assert_zero (error);
 
   _Auto mp = (struct ipc_msg_data *)mem + 1;
   nb = cap_push_bytes (&vars->bufsize, sizeof (vars->bufsize), mp);
@@ -140,10 +141,10 @@ test_cap_receiver (void *arg)
   data->receiver = task_self ();
   data->tag = (uintptr_t)clock_get_time ();
   int error = cap_flow_create (&flow, 0, data->tag, (uintptr_t)test_cap_entry);
-  test_assert_eq (error, 0);
+  test_assert_zero (error);
 
   error = cap_channel_create (&data->ch, flow, TEST_CAP_CHANNEL_TAG);
-  test_assert_eq (error, 0);
+  test_assert_zero (error);
 
   _Auto page = vm_page_alloc (0, VM_PAGE_SEL_DIRECTMAP, VM_PAGE_KERNEL, 0);
   test_assert_nonnull (page);
@@ -152,7 +153,7 @@ test_cap_receiver (void *arg)
 
   struct test_cap_vars *vars;
   error = vm_map_anon_alloc ((void **)&vars, vm_map_self (), 1);
-  test_assert_eq (error, 0);
+  test_assert_zero (error);
 
   vars->mdata.size = sizeof (vars->mdata);
 
@@ -167,14 +168,14 @@ test_cap_receiver (void *arg)
     test_assert_ge (rv, 0);
 
     error = cap_recv_alert (flow, vars->buf, 0, &vars->mdata);
-    test_assert_eq (error, 0);
+    test_assert_zero (error);
     test_assert_streq (vars->buf, "1234");
     test_assert_eq (vars->mdata.task_id, task_id (thread_self()->task));
     test_assert_eq (vars->mdata.thread_id, thread_id (thread_self ()));
     test_assert_eq (vars->mdata.tag, data->tag);
 
     error = cap_recv_alert (flow, vars->buf, 0, &vars->mdata);
-    test_assert_eq (error, 0);
+    test_assert_zero (error);
     test_assert_streq (vars->buf, "abcd");
     test_assert_eq (vars->mdata.task_id, task_id (thread_self()->task));
     test_assert_eq (vars->mdata.thread_id, thread_id (thread_self ()));
@@ -198,7 +199,7 @@ test_cap_receiver (void *arg)
   error = cap_flow_add_lpad (flow, (char *)vm_page_direct_ptr (page) +
                              PAGE_SIZE, PAGE_SIZE, &vars->msg,
                              &vars->mdata, &vars->info);
-  test_assert_eq (error, 0);
+  test_assert_zero (error);
 
   semaphore_post (&data->send_sem);
   semaphore_wait (&data->recv_sem);
@@ -207,9 +208,9 @@ test_cap_receiver (void *arg)
 
   // Test that we receive an alert on a channel closed.
   error = cap_recv_alert (flow, &vars->alert, 0, &vars->mdata);
-  test_assert_eq (error, 0);
-  test_assert_eq (vars->mdata.task_id, 0);
-  test_assert_eq (vars->mdata.thread_id, 0);
+  test_assert_zero (error);
+  test_assert_zero (vars->mdata.task_id);
+  test_assert_zero (vars->mdata.thread_id);
   test_assert_eq (vars->alert.type, CAP_ALERT_CHAN_CLOSED);
   test_assert_eq (vars->alert.tag, TEST_CAP_CHANNEL_TAG);
 
@@ -224,7 +225,7 @@ test_cap_sender (void *arg)
 
   void *mem;
   int error = vm_map_anon_alloc (&mem, vm_map_self (), PAGE_SIZE * 2);
-  test_assert_eq (error, 0);
+  test_assert_zero (error);
 
   struct
     {
@@ -310,7 +311,7 @@ test_cap_misc (void *arg __unused)
 {
   struct cap_task *ctask;
   int error = cap_task_create (&ctask, task_self ());
-  test_assert_eq (error, 0);
+  test_assert_zero (error);
 
   struct
     {
@@ -320,20 +321,20 @@ test_cap_misc (void *arg __unused)
     } *vars;
 
   error = vm_map_anon_alloc ((void **)&vars, vm_map_self (), sizeof (*vars));
-  test_assert_eq (error, 0);
+  test_assert_zero (error);
 
   vars->task_msg.op = TASK_IPC_GET_NAME;
   ssize_t rv = cap_send_bytes (ctask, &vars->task_msg, sizeof (vars->task_msg),
                                &vars->task_msg, sizeof (vars->task_msg));
 
-  test_assert_eq (rv, 0);
+  test_assert_zero (rv);
   test_assert_streq (vars->task_msg.name, "cap_misc");
 
   vars->task_msg.op = TASK_IPC_SET_NAME;
   strcpy (vars->task_msg.name, "new_name");
 
   rv = cap_send_bytes (ctask, &vars->task_msg, sizeof (vars->task_msg), 0, 0);
-  test_assert_eq (rv, 0);
+  test_assert_zero (rv);
   test_assert_streq (task_self()->name, "new_name");
 
   cap_base_rel (ctask);
@@ -345,7 +346,7 @@ test_cap_misc (void *arg __unused)
   rv = cap_send_bytes (cthread, &vars->thr_msg, sizeof (vars->thr_msg),
                        &vars->thr_msg, sizeof (vars->thr_msg));
 
-  test_assert_eq (rv, 0);
+  test_assert_zero (rv);
   test_assert_streq (vars->thr_msg.name, "cap_misc/0");
 
   thread_pin ();
@@ -355,7 +356,7 @@ test_cap_misc (void *arg __unused)
 
   rv = cap_send_bytes (cthread, &vars->thr_msg, sizeof (vars->thr_msg),
                        &vars->thr_msg, sizeof (vars->thr_msg));
-  test_assert_eq (rv, 0);
+  test_assert_zero (rv);
   test_assert_ne (bitmap_test (vars->cpumap, cpu_id ()), 0);
   thread_unpin ();
 
@@ -380,19 +381,19 @@ test_cap_dead_helper (void *arg)
 
   int error = thread_create (&thr, &attr, test_cap_dead_child,
                              &test_cap_data.dead_sem);
-  test_assert_eq (error, 0);
+  test_assert_zero (error);
 
   error = cap_thread_register (flow, thr);
-  test_assert_eq (error, 0);
+  test_assert_zero (error);
 
   error = cap_thread_unregister (flow, thr);
-  test_assert_eq (error, 0);
+  test_assert_zero (error);
 
   error = cap_thread_register (flow, thread_self ());
-  test_assert_eq (error, 0);
+  test_assert_zero (error);
 
   error = cap_task_register (flow, thread_self()->task);
-  test_assert_eq (error, 0);
+  test_assert_zero (error);
 
   test_cap_dead_child (&test_cap_data.dead_sem);
 }
@@ -402,11 +403,11 @@ test_cap_dead_notif (void *arg __unused)
 {
   struct cap_flow *flow;
   int error = cap_flow_create (&flow, 0, 0, 0);
-  test_assert_eq (error, 0);
+  test_assert_zero (error);
 
   struct cap_channel *chan;
   error = cap_channel_create (&chan, flow, 1234);
-  test_assert_eq (error, 0);
+  test_assert_zero (error);
 
   int capx = cspace_add_free (cspace_self (), CAP (chan), CSPACE_WEAK);
   test_assert_ge (capx, 0);
@@ -428,19 +429,19 @@ test_cap_dead_notif (void *arg __unused)
     } *buf;
 
   error = vm_map_anon_alloc ((void **)&buf, vm_map_self (), 1);
-  test_assert_eq (error, 0);
+  test_assert_zero (error);
 
   buf->mdata.size = sizeof (buf->mdata);
   error = cap_recv_alert (flow, &buf->alert, 0, &buf->mdata);
-  test_assert_eq (error, 0);
-  test_assert_eq (buf->mdata.thread_id, 0);
-  test_assert_eq (buf->mdata.task_id, 0);
+  test_assert_zero (error);
+  test_assert_zero (buf->mdata.thread_id);
+  test_assert_zero (buf->mdata.task_id);
   test_assert_eq (buf->alert.type, CAP_ALERT_CHAN_CLOSED);
   test_assert_eq (buf->alert.tag, 1234);
 
   struct thread *thr;
   error = test_util_create_thr (&thr, test_cap_dead_helper, flow, "cap_dead");
-  test_assert_eq (error, 0);
+  test_assert_zero (error);
 
   int tsk_id = task_id (thr->task), thr_id = thread_id (thr);
   int got_task = 0, got_thr = 0;
@@ -450,9 +451,9 @@ test_cap_dead_notif (void *arg __unused)
   thread_join (thr);
 
   error = cap_recv_alert (flow, &buf->alert, 0, &buf->mdata);
-  test_assert_eq (error, 0);
-  test_assert_eq (buf->mdata.thread_id, 0);
-  test_assert_eq (buf->mdata.task_id, 0);
+  test_assert_zero (error);
+  test_assert_zero (buf->mdata.thread_id);
+  test_assert_zero (buf->mdata.task_id);
 
   if (buf->alert.type == CAP_ALERT_THREAD_DIED &&
       buf->alert.thread_id == thr_id)
@@ -464,9 +465,9 @@ test_cap_dead_notif (void *arg __unused)
     panic ("got unexpected alert");
 
   error = cap_recv_alert (flow, &buf->alert, 0, &buf->mdata);
-  test_assert_eq (error, 0);
-  test_assert_eq (buf->mdata.thread_id, 0);
-  test_assert_eq (buf->mdata.task_id, 0);
+  test_assert_zero (error);
+  test_assert_zero (buf->mdata.thread_id);
+  test_assert_zero (buf->mdata.task_id);
 
   if (buf->alert.type == CAP_ALERT_THREAD_DIED &&
       buf->alert.thread_id == thr_id)
@@ -492,14 +493,14 @@ TEST_DEFERRED (cap)
   struct thread *sender, *receiver, *misc, *dead_notif;
   int error = test_util_create_thr (&sender, test_cap_sender,
                                     data, "cap_sender");
-  test_assert_eq (error, 0);
+  test_assert_zero (error);
 
   error = test_util_create_thr (&receiver, test_cap_receiver,
                                 data, "cap_receiver");
-  test_assert_eq (error, 0);
+  test_assert_zero (error);
 
   error = test_util_create_thr (&misc, test_cap_misc, NULL, "cap_misc");
-  test_assert_eq (error, 0);
+  test_assert_zero (error);
 
   error = test_util_create_thr (&dead_notif, test_cap_dead_notif,
                                 NULL, "cap_dead");

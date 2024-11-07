@@ -155,7 +155,7 @@ vm_map_entry_free_obj (struct vm_map *map, struct vm_map_entry *ep, int free)
     {
       case VM_MAP_FREE_ALL:
         vm_map_entry_unmap (map, ep);
-        // FALLTHROUGH.
+        __fallthrough;
       case VM_MAP_FREE_OBJ:
         if (! obj)
           vm_map_entry_free_pages (ep);
@@ -673,30 +673,16 @@ vm_map_remove_impl (struct vm_map *map, uintptr_t start,
   if (! entry)
     return (0);
 
-  // Pre-allocate the VM map entries.
-  uint32_t n_entries = start > entry->start && start < entry->end,
-           n_loops = 0;
-  for (_Auto tmp = entry; tmp->start < end; )
-    {
-      if (end > tmp->start && end < tmp->end)
-        ++n_entries;
-
-      ++n_loops;
-      struct list *nx = list_next (&tmp->list_node);
-      if (list_end (&map->entry_list, nx))
-        break;
-
-      tmp = list_entry (nx, struct vm_map_entry, list_node);
-    }
-
+  _Auto last = vm_map_lookup_nearest (map, end) ?: entry;
   struct list alloc_entries;
-  int error = vm_map_entry_alloc (&alloc_entries, n_entries);
-
+  int error = vm_map_entry_alloc (&alloc_entries,
+                                  (start > entry->start && start < entry->end) ||
+                                  (end > last->start && end < last->end));
   if (error)
     return (error);
 
   vm_map_clip_start (map, entry, start, &alloc_entries);
-  for (uint32_t i = 0; i < n_loops; ++i)
+  do
     {
       vm_map_clip_end (map, entry, end, &alloc_entries);
       map->size -= entry->end - entry->start;
@@ -706,12 +692,16 @@ vm_map_remove_impl (struct vm_map *map, uintptr_t start,
       list_insert_tail (list, &entry->list_node);
       vm_map_entry_unmap (map, entry);
 
+      if (list_end (&map->entry_list, node))
+        break;
+
       entry = list_entry (node, struct vm_map_entry, list_node);
     }
+  while (entry->start < end);
 
   assert (list_empty (&alloc_entries));
 
-   // Don't prevent lookups and page faults from here on.
+  // Don't prevent lookups and page faults from here on.
   sxlock_share (&map->lock);
   pmap_update (map->pmap);
   return (0);
