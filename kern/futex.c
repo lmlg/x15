@@ -99,7 +99,7 @@ futex_key_init (union sync_key *key, struct vm_map *map,
         return (error);
       else if ((uintptr_t)addr < entry.start)
         {
-          vm_object_unref (entry.object);
+          vm_map_entry_put (&entry);
           return (EFAULT);
         }
 
@@ -287,6 +287,7 @@ futex_data_init (struct futex_data *data, int *addr,
                  uint32_t flags, uint32_t mode)
 {
   data->wait_obj = NULL;
+  data->mode = 0;
 
   int error = futex_check_addr (addr);
   if (error)
@@ -314,12 +315,19 @@ futex_data_release (struct futex_data *data)
   data->wait_obj = NULL;
 }
 
+static inline void
+futex_object_unref (struct vm_object *obj)
+{
+  if (obj)
+    vm_object_unref (obj);
+}
+
 static void
 futex_data_fini (void *arg)
 {
   struct futex_data *data = arg;
   if (data->mode & FUTEX_DATA_SHARED)
-    vm_object_unref (data->key.shared.object);
+    futex_object_unref (data->key.shared.object);
 
   futex_data_release (data);
 }
@@ -472,7 +480,7 @@ futex_requeue (int *dst_addr, int *src_addr, int wake_one, uint32_t flags)
   if (error)
     {
       if (flags & FUTEX_SHARED)
-        vm_object_unref (dkey.shared.object);
+        futex_object_unref (dkey.shared.object);
 
       return (error);
     }
@@ -481,8 +489,8 @@ futex_requeue (int *dst_addr, int *src_addr, int wake_one, uint32_t flags)
 
   if (flags & FUTEX_SHARED)
     {
-      vm_object_unref (dkey.shared.object);
-      vm_object_unref (skey.shared.object);
+      futex_object_unref (dkey.shared.object);
+      futex_object_unref (skey.shared.object);
     }
 
   return (0);

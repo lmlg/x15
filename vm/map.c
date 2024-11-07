@@ -161,6 +161,7 @@ vm_map_entry_free_obj (struct vm_map *map, struct vm_map_entry *ep, int free)
           vm_map_entry_free_pages (ep);
         else
           vm_object_remove (obj, ep->offset, ep->offset + ep->end - ep->start);
+        __fallthrough;
       case VM_MAP_FREE_NONE:
         break;
     }
