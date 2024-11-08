@@ -50,11 +50,11 @@ test_vm_map_phys_entry (struct ipc_msg *msg, struct ipc_msg_data *data)
 
   if (kmsg->type == KMSG_TYPE_MMAP_REQ)
     {
-      assert (kmsg->mmap_req.prot & VM_PROT_READ);
-      assert (kmsg->mmap_req.offset == TEST_VM_MAP_PHYS_OFFSET);
+      test_assert_ne (kmsg->mmap_req.prot & VM_PROT_READ, 0);
+      test_assert_eq (kmsg->mmap_req.offset, TEST_VM_MAP_PHYS_OFFSET);
 
       ssize_t rv = cap_reply_pagereq (0, 0);
-      assert (rv == -EINVAL);
+      test_assert_eq (rv, -EINVAL);
 
       cap_reply_bytes (0, 0, 0);
     }
@@ -66,7 +66,7 @@ test_vm_map_phys_entry (struct ipc_msg *msg, struct ipc_msg_data *data)
                             VM_MAP_PHYS | VM_MAP_ANON);
   uintptr_t addr = 0, psz = kmsg->page_req.end - kmsg->page_req.start;
   int error = vm_map_enter (vm_map_self (), &addr, psz, flags, 0, 0);
-  assert (! error);
+  test_assert_zero (error);
 
   uintptr_t npg = psz / PAGE_SIZE, last_va = addr + psz,
             *buf = test_vm_map_phys_room;
@@ -79,7 +79,7 @@ test_vm_map_phys_entry (struct ipc_msg *msg, struct ipc_msg_data *data)
     }
 
   ssize_t rv = cap_reply_bytes (0, 0, 0);
-  assert (rv == -EINVAL);
+  test_assert_eq (rv, -EINVAL);
 
   cap_reply_pagereq (buf, npg);
   panic ("shouldn't return");
@@ -90,7 +90,7 @@ test_vm_map_phys_handle_dirty (struct vm_object *obj, uintptr_t va)
 {
   void *ptr;
   int ret = vm_map_anon_alloc (&ptr, vm_map_self (), PAGE_SIZE * 4);
-  assert (ret == 0);
+  test_assert_zero (ret);
 
   struct
     {
@@ -107,9 +107,9 @@ test_vm_map_phys_handle_dirty (struct vm_object *obj, uintptr_t va)
   p->pginfo.iov_cnt = 0;
 
   ret = vm_object_map_dirty (obj, &p->pginfo);
-  assert (ret == 3);
+  test_assert_eq (ret, 3);
+  test_assert_eq (*(unsigned char *)p->pginfo.vme.addr, 0xff);
 
-  assert (*(unsigned char *)p->pginfo.vme.addr == 0xff);
   // This call will clean the page, before marking it read-only.
   vm_map_remove (vm_map_self (), p->pginfo.vme.addr,
                  p->pginfo.vme.addr + PAGE_SIZE);
@@ -117,31 +117,32 @@ test_vm_map_phys_handle_dirty (struct vm_object *obj, uintptr_t va)
   *(unsigned char *)va = 0xfe;
 
   ret = vm_object_list_dirty (obj, &p->pginfo);
-  assert (ret == 3);
+  test_assert_eq (ret, 3);
 
-  p->iovs[0].iov_base = (char *)ptr + PAGE_SIZE;
-  p->iovs[1].iov_base = (char *)ptr + PAGE_SIZE * 2;
-  p->iovs[2].iov_base = (char *)ptr + PAGE_SIZE * 3;
-  p->iovs[0].iov_len = p->iovs[1].iov_len = p->iovs[2].iov_len = PAGE_SIZE;
+  for (int i = 0; i < 3; ++i)
+    {
+      p->iovs[i].iov_base = (char *)ptr + PAGE_SIZE * (i + 1);
+      p->iovs[i].iov_len = PAGE_SIZE;
+    }
 
   p->pginfo.iovs = p->iovs;
-  p->pginfo.iov_cnt = ARRAY_SIZE (p->iovs);
+  p->pginfo.iov_cnt = 4;
   p->offsets[3] = PAGE_SIZE;
   p->pginfo.offset_cnt = 4;
 
   ret = vm_object_copy_pages (obj, &p->pginfo);
-  assert (ret == PAGE_SIZE * 3);
-  assert (p->offsets[3] & 1);
-  assert (*(unsigned char *)p->iovs[0].iov_base == 0xfe);
-  assert (*(unsigned char *)p->iovs[1].iov_base == 0xff);
-  assert (*(unsigned char *)p->iovs[2].iov_base == 0xff);
+  test_assert_eq (ret, PAGE_SIZE * 3);
+  test_assert_ne (p->offsets[3] & 1, 0);
+  test_assert_eq (*(unsigned char *)p->iovs[0].iov_base, 0xfe);
+  test_assert_eq (*(unsigned char *)p->iovs[1].iov_base, 0xff);
+  test_assert_eq (*(unsigned char *)p->iovs[2].iov_base, 0xff);
 
   // Make sure the pages are clean.
   for (uint32_t i = 0; i < p->pginfo.offset_cnt - 1; ++i)
     {
       _Auto page = vm_object_lookup (obj, p->offsets[i]);
-      assert (page != NULL);
-      assert (page->dirty == VM_PAGE_CLEAN);
+      test_assert_nonnull (page);
+      test_assert_eq (page->dirty, VM_PAGE_CLEAN);
       vm_page_unref (page);
     }
 }

@@ -1276,7 +1276,8 @@ pmap_setup_ipc_ptes (void)
         {
           _Auto ptr = &base->ptes[j];
           int error = pmap_enter_local_impl (&pmap->cpu_tables[i],
-                                             va, PMAP_PTE_RW, ptr);
+                                             va + j * PAGE_SIZE,
+                                             PMAP_PTE_RW, ptr);
           if (error)
             return (error);
 
@@ -1762,8 +1763,8 @@ pmap_sync (void *arg)
 void
 pmap_window_set (struct pmap_window *window, phys_addr_t pa)
 {
-  cpu_tlb_flush_va (window->va);
   pmap_pte_set (window->pte, pa, PMAP_PTE_G | PMAP_PTE_RW, &pmap_pt_levels[0]);
+  cpu_tlb_flush_va (window->va);
 }
 
 struct pmap_window*
