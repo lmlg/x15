@@ -677,8 +677,10 @@ vm_map_remove_impl (struct vm_map *map, uintptr_t start,
   _Auto last = vm_map_lookup_nearest (map, end) ?: entry;
   struct list alloc_entries;
   int error = vm_map_entry_alloc (&alloc_entries,
-                                  (start > entry->start && start < entry->end) ||
-                                  (end > last->start && end < last->end));
+                                  (start > entry->start &&
+                                   start < entry->end) ||
+                                  (end > last->start &&
+                                   end < last->end));
   if (error)
     return (error);
 
