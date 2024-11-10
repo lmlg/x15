@@ -277,12 +277,10 @@ vm_object_list_dirty (struct vm_object *obj, struct cap_page_info *upg)
 
   struct unw_fixup fixup;
   int error = unw_fixup_save (&fixup);
+  RCU_GUARD ();
 
   if (unlikely (error))
-    {
-      rcu_read_leave ();
-      return (-error);
-    }
+    return (-error);
 
   struct cap_page_info pg = *upg;
   void *out = pg.offsets;
@@ -296,7 +294,6 @@ vm_object_list_dirty (struct vm_object *obj, struct cap_page_info *upg)
   struct rdxtree_iter it;
   struct vm_page *page;
 
-  rcu_read_enter ();
   rdxtree_for_each (&obj->pages, &it, page)
     {
       if (page->dirty == VM_PAGE_CLEAN)
@@ -309,7 +306,6 @@ vm_object_list_dirty (struct vm_object *obj, struct cap_page_info *upg)
       out = (char *)out + sizeof (uint64_t);
     }
 
-  rcu_read_leave ();
   return ((ssize_t)(pg.offset_cnt - cnt));
 }
 
@@ -436,13 +432,16 @@ vm_object_map_dirty (struct vm_object *obj, struct cap_page_info *upg)
 
   struct unw_fixup fixup;
   int error = unw_fixup_save (&fixup);
+
   if (unlikely (error))
     {
       rcu_read_leave ();
       return (-error);
     }
 
+  rcu_read_enter ();
   _Auto pg = *upg;
+
   if (!pg.offset_cnt ||
       !user_check_range (pg.offsets, pg.offset_cnt * sizeof (uint64_t)))
     return (pg.offset_cnt ? -EFAULT : 0);
@@ -454,7 +453,6 @@ vm_object_map_dirty (struct vm_object *obj, struct cap_page_info *upg)
   uint32_t cnt = pg.offset_cnt;
   uint64_t first, last;
 
-  rcu_read_enter ();
   rdxtree_for_each (&obj->pages, &it, page)
     {
       if (page->dirty != VM_PAGE_DIRTY)
