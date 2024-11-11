@@ -1000,7 +1000,6 @@ vm_map_fault_get_data (struct vm_object *obj, uint64_t off,
   if (ret < 0)
     return (ret);
 
-  THREAD_PIN_GUARD ();
   _Auto window = pmap_window_get (0);
   void *va = pmap_window_va (window);
 
@@ -1023,14 +1022,14 @@ static int
 vm_map_fault_handle_cow (uintptr_t addr, struct vm_page **pgp,
                          struct vm_map *map)
 {
-  thread_pin ();
+  _Auto dst_w = pmap_window_get (0);
   cpu_intr_enable ();
 
   _Auto p2 = vm_page_alloc (0, VM_PAGE_SEL_HIGHMEM,
                             VM_PAGE_OBJECT, VM_PAGE_SLEEP);
   if (! p2)
     {
-      thread_unpin ();
+      pmap_window_put (dst_w);
       return (EINTR);
     }
 
@@ -1041,7 +1040,6 @@ vm_map_fault_handle_cow (uintptr_t addr, struct vm_page **pgp,
    * address may not be mapped.
    */
 
-  _Auto dst_w = pmap_window_get (0);
   _Auto src_w = pmap_window_get (1);
 
   pmap_window_set (dst_w, vm_page_to_pa (p2));
@@ -1049,10 +1047,8 @@ vm_map_fault_handle_cow (uintptr_t addr, struct vm_page **pgp,
   memcpy (pmap_window_va (dst_w), pmap_window_va (src_w), PAGE_SIZE);
 
   pmap_window_put (dst_w);
-  pmap_window_put (src_w);
-
   cpu_intr_disable ();
-  thread_unpin ();
+  pmap_window_put (src_w);
 
   vm_page_init_refcount (p2);
   int ret = vm_object_swap (map->priv_cache, p2, page->offset, page);

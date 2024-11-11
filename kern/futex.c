@@ -180,6 +180,9 @@ static int
 futex_pi_wait (struct futex_data *data, int value,
                uint32_t flags, uint64_t ticks)
 {
+  if (! value)
+    return (EAGAIN);
+
   struct thread *thr = thread_by_kuid ((uint32_t)value & FUTEX_TID_MASK);
   if (! thr)
     return (ESRCH);

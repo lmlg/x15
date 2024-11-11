@@ -80,7 +80,6 @@ ipc_data_page_unref (struct ipc_data *data)
 static void
 ipc_data_win_get (struct ipc_data *data)
 {
-  thread_pin ();
   data->window = pmap_window_load (0, &data->wstore);
 }
 
@@ -94,7 +93,6 @@ static void
 ipc_data_win_put (struct ipc_data *data)
 {
   pmap_window_put (data->window);
-  thread_unpin ();
   data->window = NULL;
 }
 

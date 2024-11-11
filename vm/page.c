@@ -895,7 +895,6 @@ vm_page_wash_end (struct vm_page *page)
 void
 vm_page_zero (struct vm_page *page)
 {
-  THREAD_PIN_GUARD ();
   _Auto window = pmap_window_get (0);
   pmap_window_set (window, vm_page_to_pa (page));
   memset (pmap_window_va (window), 0, PAGE_SIZE);

@@ -315,7 +315,6 @@ vm_object_copy_data_fini (struct vm_object_copy_data *dp, bool err)
   if (dp->window)
     {
       pmap_window_put (dp->window);
-      thread_unpin ();
       dp->window = NULL;
     }
 
@@ -338,7 +337,6 @@ vm_object_copy_single_page (struct vm_object_copy_data *dp,
     }
 
   // Get the window to perform the copy.
-  thread_pin ();
   dp->window = pmap_window_load (0, &dp->wstore);
   pmap_window_set (dp->window, vm_page_to_pa (dp->page));
 

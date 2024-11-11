@@ -199,6 +199,18 @@ test_futex_pi_helper (void *arg)
     test_assert_eq (error, EAGAIN);
 }
 
+static bool
+test_futex_pi_wait_sched (void)
+{
+  for (int i = 0; i < 100; ++i)
+    if (thread_real_sched_policy (thread_self ()) == THREAD_SCHED_POLICY_FIFO)
+      return (true);
+    else
+      thread_yield ();
+
+  return (false);
+}
+
 static void
 test_futex_pi (void *arg __unused)
 {
@@ -227,9 +239,7 @@ test_futex_pi (void *arg __unused)
   test_thread_wait_state (thrs[0], THREAD_SLEEPING);
   test_thread_wait_state (thrs[1], THREAD_SLEEPING);
 
-  test_assert_eq (thread_real_sched_policy (thread_self ()),
-                  THREAD_SCHED_POLICY_FIFO);
-
+  test_assert_eq (test_futex_pi_wait_sched (), true);
   error = futex_wake (futex, FUTEX_PI | FUTEX_BROADCAST | FUTEX_MUTATE, 0);
   test_assert_zero (error);
 

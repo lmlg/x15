@@ -1771,17 +1771,18 @@ struct pmap_window*
 pmap_window_load (uint32_t idx, struct pmap_window *window)
 {
   assert (idx < CPU_NR_PMAP_WINDOWS);
-  assert (thread_pinned () || !cpu_intr_enabled ());
+  _Auto self = thread_self ();
+  thread_pin_level (&self->pin_level);
 
   window->idx = idx;
   window->pte = cpu_local_ptr(pmap_window_data)->ptes[idx];
   window->va = pmap_ipc_va + idx * PAGE_SIZE;
 
-  _Auto pptr = &thread_self()->pmap_windows[idx];
+  _Auto pptr = &self->pmap_windows[idx];
   if ((window->prev = *pptr) != NULL)
     window->prev->saved = *window->pte & PMAP_PA_MASK;
 
-  atomic_store_rel (pptr, window);
+  *pptr = window;
   return (window);
 }
 
@@ -1789,8 +1790,12 @@ void
 pmap_window_put (struct pmap_window *window)
 {
   _Auto prev = window->prev;
-  if ((thread_self()->pmap_windows[window->idx] = prev) != NULL)
+  _Auto self = thread_self ();
+
+  if ((self->pmap_windows[window->idx] = prev) != NULL)
     pmap_window_set (prev, prev->saved);
+
+  thread_unpin_level (&self->pin_level);
 }
 
 void
