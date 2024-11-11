@@ -95,9 +95,13 @@ vm_rset_mark_ro (struct vm_page *page)
     {
       cdata.va = entry->va;
       cdata.pte = entry->pte;
-      THREAD_PIN_GUARD ();
+      cdata.cpu = entry->cpu;
 
-      if ((cdata.cpu = entry->cpu) == cpu_id ())
+      if (cdata.cpu == ~0u)
+        continue;
+
+      THREAD_PIN_GUARD ();
+      if (cdata.cpu == cpu_id ())
         pmap_xcall_clean (&cdata);
       else
         xcall_call (pmap_xcall_clean, &cdata, cdata.cpu);

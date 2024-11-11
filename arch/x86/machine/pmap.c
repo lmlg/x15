@@ -1819,8 +1819,7 @@ pmap_xcall_clean (void *arg)
   struct pmap_clean_data *data = arg;
   CPU_INTR_GUARD ();
 
-  if (data->cpu != ~0u &&
-      (*data->pte & (PMAP_PA_MASK | PMAP_PTE_RW)) == (data->pa | PMAP_PTE_RW))
+  if ((*data->pte & (PMAP_PA_MASK | PMAP_PTE_RW)) == (data->pa | PMAP_PTE_RW))
     {
       *data->pte &= ~PMAP_PTE_RW;
       cpu_tlb_flush_va (data->va);

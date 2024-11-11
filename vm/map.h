@@ -81,9 +81,6 @@
 #define VM_MAP_SET_INHERIT(flagp, x)   VM_MAP_SET_PROP (flagp, x, 0xf00, 8)
 #define VM_MAP_SET_ADVICE(flagp, x)    VM_MAP_SET_PROP (flagp, x, 0xf000, 12)
 
-// Flags for vm_map_fault.
-#define VM_MAP_FAULT_INTR   0x01   // Enable interrupts.
-
 // Maximum number of frames to allocate when faulting in pages.
 #define VM_MAP_MAX_FRAMES_ORDER   3
 #define VM_MAP_MAX_FRAMES         (1 << VM_MAP_MAX_FRAMES_ORDER)
@@ -129,9 +126,6 @@ vm_map_get_kernel_map (void)
   extern struct vm_map vm_map_kernel_map;
   return (&vm_map_kernel_map);
 }
-
-// Get the kernel virtual address used in IPC routines.
-uintptr_t vm_map_ipc_addr (void);
 
 // Get the current task's VM map.
 #define vm_map_self()   ((struct vm_map *)thread_self()->xtask->map)
