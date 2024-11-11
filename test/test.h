@@ -65,39 +65,24 @@ void test_thread_wait_state (struct thread *thr, uint32_t state);
 
 // Test assertions.
 
-#define TEST_ANY_UNION   \
-  char c;   \
-  unsigned char C;   \
-  short h;   \
-  unsigned short H;   \
-  int i;   \
-  unsigned int I;   \
-  long l;   \
-  unsigned long L;   \
-  long long q;   \
-  unsigned long long Q;   \
-  char *s;   \
-  void *p
-
-#define TEST_SFMT(val, fmt, out)   (fmt_sprintf (out, fmt, val), out)
+#define test_fmt_get_spec(x)   \
+  _Generic ((x),   \
+            bool: "%d",   \
+            char: "%c",   \
+            unsigned char: "%d",   \
+            short: "%d",   \
+            unsigned short: "%d",   \
+            int: "%d",   \
+            unsigned int: "%u",   \
+            long: "%ld",   \
+            unsigned long: "%lu",   \
+            long long: "%lld",   \
+            unsigned long long: "%llu",   \
+            const char*: "%s",   \
+            default: "%p")
 
 #define test_fmt_any(x, out)   \
-  ({   \
-     union   \
-       {   \
-         TEST_ANY_UNION;   \
-         typeof (x) value_;   \
-       } val_ = (typeof (val_))(x);   \
-     _Generic ((x),   \
-               int: TEST_SFMT (val_.i, "%d", out),   \
-               unsigned int: TEST_SFMT (val_.I, "%u", out),   \
-               long: TEST_SFMT (val_.l, "%ld", out),   \
-               unsigned long: TEST_SFMT (val_.L, "%lu", out),   \
-               long long: TEST_SFMT (val_.q, "%lld", out),   \
-               unsigned long long: TEST_SFMT (val_.Q, "%llu", out),   \
-               char *: val_.s,   \
-               default: TEST_SFMT (val_.p, "%p", out));   \
-   })
+  (fmt_sprintf ((out), test_fmt_get_spec (x), (x)), (out))
 
 #define test_assert_op(x, y, op)   \
   ({   \
@@ -105,7 +90,7 @@ void test_thread_wait_state (struct thread *thr, uint32_t state);
      typeof (left_) right_ = (typeof (left_))(y);   \
      if (!(left_ op right_))   \
        {   \
-         char buf1_[22] = "", buf2_[22] = "";   \
+         char buf1_[22], buf2_[22];   \
          panic ("assertion failed: %s %s %s at %s:%d",   \
                 test_fmt_any (left_, buf1_),   \
                 QUOTE (op),   \
