@@ -46,13 +46,9 @@ struct sxlock
  * N where N in [1 .. INT32_MAX) => Locked by N readers.
  *
  * The presence of the SXLOCK_WAITERS bit indicates that there is
- * contention and that upon unlocking, the next owner will be determined
- * by the waiters' priorities (A process called 'phasing'). This is
- * indicated by setting the word to just SXLOCK_WAITERS, which forces waiters
- * to take the (potentially) slow path.
+ * contention (Writers waiting on readers and viceversa). Setting
+ * and clearing this bit must be done with the internal spinlock held.
  *
- * Note that setting and clearing the SXLOCK_WAITERS bit must done by
- * acquiring the internal spinlock.
  */
 
 static inline void
