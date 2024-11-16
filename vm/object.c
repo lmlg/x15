@@ -442,7 +442,10 @@ vm_object_map_dirty (struct vm_object *obj, struct cap_page_info *upg)
 
   if (!pg.offset_cnt ||
       !user_check_range (pg.offsets, pg.offset_cnt * sizeof (uint64_t)))
-    return (pg.offset_cnt ? -EFAULT : 0);
+    {
+      rcu_read_leave ();
+      return (pg.offset_cnt ? -EFAULT : 0);
+    }
 
   struct rdxtree_iter it;
   struct vm_page *page;

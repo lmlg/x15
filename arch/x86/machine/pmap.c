@@ -1461,7 +1461,7 @@ pmap_protect_many (pmap_pte_t *ptp, uintptr_t *addrp, int flags,
       phys_addr_t pa = *pte;
       if (! pmap_pte_valid (pa))
         {
-          if (!(flags & PMAP_IGNORE_ERRORS))
+          if (flags & PMAP_IGNORE_ERRORS)
             continue;
 
           return (EFAULT);
