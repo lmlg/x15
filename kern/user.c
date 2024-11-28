@@ -31,51 +31,7 @@ user_copy_impl (char *dst, const char *src, size_t size)
   if (unlikely (error))
     return (error);
 
-#define user_ua_cpy(sz)   \
-  ((union user_ua *)dst)->u##sz = ((const union user_ua *)src)->u##sz
-
-  switch (size)
-    {
-      case 0:
-        return (0);
-
-      case 3:
-        dst[2] = src[2];
-        __fallthrough;
-      case 2:
-        user_ua_cpy (2);
-        break;
-
-      case 1:
-        dst[0] = src[0];
-        break;
-
-      case 7:
-        dst[6] = src[6];
-        __fallthrough;
-      case 6:
-        user_ua_cpy (4);
-        dst += 4, src += 4;
-        user_ua_cpy (2);
-        break;
-
-      case 5:
-        dst[4] = src[4];
-        __fallthrough;
-      case 4:
-        user_ua_cpy (4);
-        break;
-
-      case 8:
-        user_ua_cpy (8);
-        break;
-
-#undef user_ua_cpy
-
-      default:
-        memcpy (dst, src, size);
-    }
-
+  memcpy (dst, src, size);
   return (0);
 }
 
@@ -100,7 +56,7 @@ user_check_iov_iter (struct ipc_iov_iter *iov)
           user_check_range (iov->begin, iov->end * sizeof (*iov->begin)));
 }
 
-ssize_t
+static ssize_t
 user_copyv_impl (struct ipc_iov_iter *dst,
                  struct ipc_iov_iter *src, int to_user)
 {
@@ -181,10 +137,7 @@ user_read_struct (void *dst, const void *usrc, size_t size)
   if (!user_check_range (usrc, rsize))
     return (EFAULT);
 
-  *(uint32_t *)dst = rsize;
-  user_copy_impl ((char *)dst + sizeof (uint32_t),
-                  (const char *)usrc + sizeof (uint32_t),
-                  rsize - sizeof (uint32_t));
+  memcpy (dst, usrc, rsize);
   return (0);
 }
 
@@ -201,15 +154,16 @@ user_write_struct (void *udst, const void *src, size_t size)
     return (error);
 
   size_t rsize = ((const union user_ua *)udst)->u4;
-  if (size < rsize)
+  if (rsize < sizeof (uint32_t))
+    return (EFAULT);
+  else if (size < rsize)
     rsize = size;
 
   if (!user_check_range (udst, rsize))
     return (EFAULT);
 
-  ((union user_ua *)udst)->u4 = rsize;
-  user_copy_impl ((char *)udst + sizeof (uint32_t),
-                  (const char *)src + sizeof (uint32_t),
-                  rsize - sizeof (uint32_t));
+  memcpy ((char *)udst + sizeof (uint32_t),
+          (const char *)src + sizeof (uint32_t),
+          rsize - sizeof (uint32_t));
   return (0);
 }

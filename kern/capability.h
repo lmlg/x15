@@ -357,13 +357,17 @@ bool cap_channel_mark_shared (struct cap_base *cap);
 
 // Initialize a capability's iterators with a message structure.
 #define cap_iters_init_msg(it, msg)   \
-  do   \
-    {   \
-      ipc_iov_iter_init (&(it)->iov, (msg)->iovs, (msg)->iov_cnt);   \
-      ipc_cap_iter_init (&(it)->cap, (msg)->caps, (msg)->cap_cnt);   \
-      ipc_vme_iter_init (&(it)->vme, (msg)->vmes, (msg)->vme_cnt);   \
-    }   \
-  while (0)
+  ({   \
+     struct ipc_msg lmsg_ = { .iovs = 0, .caps = 0, .vmes = 0 };   \
+     int rv_ = user_read_struct (&lmsg_, (msg), sizeof (lmsg_));   \
+     if (rv_ == 0)   \
+       {   \
+         ipc_iov_iter_init (&(it)->iov, lmsg_.iovs, lmsg_.iov_cnt);   \
+         ipc_cap_iter_init (&(it)->cap, lmsg_.caps, lmsg_.cap_cnt);   \
+         ipc_vme_iter_init (&(it)->vme, lmsg_.vmes, lmsg_.vme_cnt);   \
+       }   \
+     rv_;   \
+   })
 
 // Send raw bytes to a capability and receive the reply.
 static inline ssize_t
@@ -406,14 +410,10 @@ static inline ssize_t
 cap_send_msg (struct cap_base *cap, const struct ipc_msg *src,
               struct ipc_msg *dst, struct ipc_msg_data *data)
 {
-  if (!user_check_struct (src, sizeof (*src)) ||
-      !user_check_struct (dst, sizeof (*dst)))
-    return (-EFAULT);
-
   struct cap_iters in, out;
-
-  cap_iters_init_msg (&in, src);
-  cap_iters_init_msg (&out, dst);
+  if (cap_iters_init_msg (&in, src) != 0 ||
+      cap_iters_init_msg (&out, dst) != 0)
+    return (-EFAULT);
 
   return (cap_send_iters (cap, &in, &out, data, 0));
 }
@@ -446,12 +446,9 @@ cap_reply_iov (const struct iovec *iov, uint32_t nr_iov, int err)
 static inline int
 cap_reply_msg (const struct ipc_msg *msg, int err)
 {
-  if (!user_check_struct (msg, sizeof (*msg)))
-    return (-EFAULT);
-
   struct cap_iters it;
-  cap_iters_init_msg (&it, msg);
-  return (cap_reply_iters (&it, err));
+  return (cap_iters_init_msg (&it, msg) == 0 ?
+          cap_reply_iters (&it, err) : -EFAULT);
 }
 
 // Pull raw bytes from the current message.
@@ -479,12 +476,9 @@ cap_pull_iov (struct iovec *iovs, uint32_t nr_iovs, struct ipc_msg_data *mdata)
 static inline ssize_t
 cap_pull_msg (struct ipc_msg *msg, struct ipc_msg_data *mdata)
 {
-  if (!user_check_struct (msg, sizeof (*msg)))
-    return (-EFAULT);
-
   struct cap_iters it;
-  cap_iters_init_msg (&it, msg);
-  return (cap_pull_iters (&it, mdata));
+  return (cap_iters_init_msg (&it, msg) == 0 ?
+          cap_pull_iters (&it, mdata) : -EFAULT);
 }
 
 // Push raw bytes into the current message.
@@ -513,12 +507,9 @@ cap_push_iov (const struct iovec *iovs, uint32_t nr_iovs,
 static inline ssize_t
 cap_push_msg (const struct ipc_msg *msg, struct ipc_msg_data *mdata)
 {
-  if (!user_check_struct (msg, sizeof (*msg)))
-    return (-EFAULT);
-
   struct cap_iters it;
-  cap_iters_init_msg (&it, msg);
-  return (cap_push_iters (&it, mdata));
+  return (cap_iters_init_msg (&it, msg) == 0 ?
+          cap_push_iters (&it, mdata) : -EFAULT);
 }
 
 /*

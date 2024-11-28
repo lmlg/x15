@@ -100,7 +100,7 @@ cspace_rem_locked (struct cspace *sp, int cap_idx)
 
   void *ptr = rdxtree_remove (&sp->tree, cap_idx);
   if (! ptr)
-    return (EINVAL);
+    return (EBADF);
   else if (!((uintptr_t)ptr & RDXTREE_XBIT))
     {
       CPU_INTR_GUARD ();

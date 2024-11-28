@@ -393,6 +393,16 @@ cap_flow_hook (struct cap_channel **outp, struct task *task, int capx)
   return (ret);
 }
 
+static void
+cap_ipc_msg_data_init (struct ipc_msg_data *data, uintptr_t tag)
+{
+  data->size = sizeof (*data);
+  data->tag = tag;
+  data->bytes_recv = data->bytes_sent = 0;
+  data->flags = 0;
+  data->vmes_sent = data->caps_sent = 0;
+  data->vmes_recv = data->caps_recv = 0;
+}
 
 /*
  * Transfer all 3 iterators between a local and a remote task.
@@ -446,7 +456,7 @@ cap_receiver_add (struct cap_flow *flow, struct cap_receiver *recv, void *buf)
   recv->thread = thread_self ();
   recv->buf = buf;
   recv->spurious = false;
-  memset (&recv->mdata, 0, sizeof (recv->mdata));
+  cap_ipc_msg_data_init (&recv->mdata, 0);
   list_insert_tail (&flow->alerts.receivers, &recv->lnode);
 }
 
@@ -489,7 +499,7 @@ cap_recv_pop_alert (struct cap_flow *flow, void *buf, uint32_t flags,
   if (recv.mdata.bytes_recv >= 0 && mdata)
     {
       recv.mdata.bytes_recv = CAP_ALERT_SIZE;
-      user_copy_to (mdata, &recv.mdata, sizeof (*mdata));
+      user_write_struct (mdata, &recv.mdata, sizeof (recv.mdata));
     }
 
   *outp = recv.mdata.bytes_recv >= 0 ? 0 : (int)-recv.mdata.bytes_recv;
@@ -549,12 +559,10 @@ cap_recv_alert (struct cap_flow *flow, void *buf,
   else if (mdata)
     {
       struct ipc_msg_data tmp;
-      memset (&tmp, 0, sizeof (tmp));
-
+      cap_ipc_msg_data_init (&tmp, tag);
       tmp.bytes_recv = CAP_ALERT_SIZE;
-      tmp.tag = tag;
       tmp.task_id = ids[0], tmp.thread_id = ids[1];
-      user_copy_to (mdata, &tmp, sizeof (tmp));
+      user_write_struct (mdata, &tmp, sizeof (tmp));
     }
 
   return (0);
@@ -648,17 +656,6 @@ cap_task_swap (struct task **taskp, struct thread *self)
 
   pmap_load (self->xtask->map->pmap);
   thread_preempt_enable_intr_restore (flags);
-}
-
-static void
-cap_ipc_msg_data_init (struct ipc_msg_data *data, uintptr_t tag)
-{
-  data->size = sizeof (*data);
-  data->tag = tag;
-  data->bytes_recv = data->bytes_sent = 0;
-  data->flags = 0;
-  data->vmes_sent = data->caps_sent = 0;
-  data->vmes_recv = data->caps_recv = 0;
 }
 
 static void
@@ -759,7 +756,7 @@ cap_sender_impl (struct cap_flow *flow, uintptr_t tag, struct cap_iters *in,
 
   // Switch task (also sets the pmap).
   cap_task_swap (&lpad->task, self);
-  user_copy_to ((void *)lpad->ctx[2], &lpad->mdata, sizeof (lpad->mdata));
+  user_write_struct ((void *)lpad->ctx[2], &lpad->mdata, sizeof (lpad->mdata));
 
   // Jump to new PC and SP.
   uintptr_t prev_stack = *lpad->ctx;
@@ -767,7 +764,7 @@ cap_sender_impl (struct cap_flow *flow, uintptr_t tag, struct cap_iters *in,
 
   // We're back.
   *lpad->ctx = prev_stack;
-  if (data && user_copy_to (data, &lpad->mdata, sizeof (*data)) != 0)
+  if (data && user_write_struct (data, &lpad->mdata, sizeof (*data)) != 0)
     ret = -EFAULT;
 
   cap_flow_push_lpad (flow, lpad);
@@ -834,7 +831,7 @@ cap_pull_iters (struct cap_iters *it, struct ipc_msg_data *mdata)
   lpad->mdata.caps_recv += tmp.caps_recv;
 
   if (mdata)
-    user_copy_to (mdata, &tmp, sizeof (tmp));
+    user_write_struct (mdata, &tmp, sizeof (tmp));
 
   return (ret);
 }
@@ -858,7 +855,7 @@ cap_push_iters (struct cap_iters *it, struct ipc_msg_data *mdata)
   lpad->mdata.caps_sent += tmp.caps_sent;
 
   if (mdata)
-    user_copy_to (mdata, &tmp, sizeof (tmp));
+    user_write_struct (mdata, &tmp, sizeof (tmp));
 
   return (ret);
 }

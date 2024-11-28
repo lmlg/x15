@@ -113,6 +113,7 @@ test_cap_entry (struct ipc_msg *msg, struct ipc_msg_data *mdata)
   test_assert_zero (error);
 
   _Auto mp = (struct ipc_msg_data *)mem + 1;
+  mp->size = sizeof (*mp);
   nb = cap_push_bytes (&vars->bufsize, sizeof (vars->bufsize), mp);
   test_assert_eq (nb, sizeof (vars->bufsize));
   test_assert_eq (mp->bytes_sent, nb);

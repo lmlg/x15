@@ -153,19 +153,19 @@ test_vm_map_phys_cap (void *arg __unused)
   struct cap_flow *flow;
   int error = cap_flow_create (&flow, CAP_FLOW_EXT_PAGER | CAP_FLOW_PAGER_FLUSHES,
                                1, (uintptr_t)test_vm_map_phys_entry);
-  assert (! error);
+  test_assert_zero (error);
 
   struct cap_channel *ch;
   error = cap_channel_create (&ch, flow, 2);
-  assert (! error);
+  test_assert_zero (error);
 
   void *ptr;
   error = vm_map_anon_alloc (&ptr, vm_map_self (), PAGE_SIZE * 3);
-  assert (! error);
+  test_assert_zero (error);
 
   _Auto stkpage = vm_page_alloc (0, VM_PAGE_SEL_DIRECTMAP,
                                  VM_PAGE_KERNEL, 0);
-  assert (stkpage);
+  test_assert_nonnull (stkpage);
   vm_page_init_refcount (stkpage);
 
   {
@@ -178,16 +178,18 @@ test_vm_map_phys_cap (void *arg __unused)
         uint64_t buf[16];
       } *p = ptr;
 
+    p->msg.size = sizeof (p->msg);
     p->iov.iov_base = p->buf;
     p->iov.iov_len = sizeof (p->buf);
 
     p->msg.iovs = &p->iov;
     p->msg.iov_cnt = 1;
+    p->mdata.size = sizeof (p->mdata);
 
     error = cap_flow_add_lpad (flow, (char *)vm_page_direct_ptr (stkpage) +
                                PAGE_SIZE, PAGE_SIZE, &p->msg,
                                &p->mdata, &p->info);
-    assert (! error);
+    test_assert_zero (error);
     test_vm_map_phys_room = (char *)ptr + PAGE_SIZE * 2;
   }
 
@@ -195,25 +197,25 @@ test_vm_map_phys_cap (void *arg __unused)
   int flags = VM_MAP_FLAGS (VM_PROT_RDWR, VM_PROT_RDWR, VM_INHERIT_SHARE,
                             VM_ADV_DEFAULT, 0);
   _Auto obj = cap_channel_get_vmobj (ch);
-  assert (obj);
-  assert (obj->flags & VM_OBJECT_EXTERNAL);
+  test_assert_nonnull (obj);
+  test_assert_ne (obj->flags & VM_OBJECT_EXTERNAL, 0);
 
   error = vm_map_enter (vm_map_self (), &va, PAGE_SIZE * 3, flags,
                         obj, TEST_VM_MAP_PHYS_OFFSET);
-  assert (! error);
+  test_assert_zero (error);
 
   for (int i = 0; i < 3; ++i)
     {
-      assert (*(unsigned char *)(va + PAGE_SIZE * i) == 60 - (20 * i));
+      test_assert_eq (*(unsigned char *)(va + PAGE_SIZE * i), 60 - (20 * i));
       *(unsigned char *)(va + PAGE_SIZE * i) = 0xff;
     }
 
   test_vm_map_phys_handle_dirty (obj, va);
 
   _Auto entry = vm_map_find (vm_map_self (), va + PAGE_SIZE);
-  assert (entry);
-  assert (va + PAGE_SIZE >= entry->start);
-  assert (entry->object == obj);
+  test_assert_nonnull (entry);
+  test_assert_ge (va + PAGE_SIZE, entry->start);
+  test_assert_eq (entry->object, obj);
   vm_map_entry_put (entry);
   cap_channel_put_vmobj (ch);
 
@@ -232,7 +234,7 @@ test_vm_map_phys (void *arg __unused)
                             VM_ADV_DEFAULT, VM_MAP_PHYS | VM_MAP_ANON);
   int error = vm_map_enter (map, &addr, PAGE_SIZE * 3, flags, 0, 0);
 
-  assert (! error);
+  test_assert_zero (error);
 
   // Pin the thread to prevent the 'pmap_extract' call from failing below.
   thread_pin ();
@@ -244,20 +246,20 @@ test_vm_map_phys (void *arg __unused)
     for (size_t i = 0; i < PAGE_SIZE; ++i)
       val |= ptr[i];
 
-    assert (val == 0);
+    test_assert_zero (val);
     *ptr = 42;
   }
 
   phys_addr_t pa;
   error = pmap_extract (map->pmap, addr + PAGE_SIZE, &pa);
   thread_unpin ();
-  assert (! error);
+  test_assert_zero (error);
 
   uintptr_t va2 = 0;
   error = vm_map_enter (map, &va2, PAGE_SIZE, flags & ~VM_MAP_ANON, 0, pa);
-  assert (! error);
+  test_assert_zero (error);
 
-  assert (*(unsigned char *)va2 == 42);
+  test_assert_eq (*(unsigned char *)va2, 42);
 }
 
 TEST_DEFERRED (vm_map_phys)
@@ -268,12 +270,12 @@ TEST_DEFERRED (vm_map_phys)
   error = test_util_create_thr (&thread, test_vm_map_phys,
                                 NULL, "vm_map_phys");
 
-  assert (! error);
+  test_assert_zero (error);
   thread_join (thread);
 
   error = test_util_create_thr (&thread, test_vm_map_phys_cap,
                                 NULL, "vm_map_phys_cap");
-  assert (! error);
+  test_assert_zero (error);
   thread_join (thread);
 
   return (TEST_OK);
