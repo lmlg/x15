@@ -22,7 +22,6 @@
 #include <stdio.h>
 
 #include <kern/bitmap.h>
-#include <kern/error.h>
 #include <kern/init.h>
 #include <kern/kmem.h>
 #include <kern/list.h>

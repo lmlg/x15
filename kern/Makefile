@@ -9,7 +9,6 @@ x15_SOURCES-y += \
         kern/condition.c \
         kern/console.c \
         kern/cpumap.c \
-        kern/error.c \
         kern/fmt.c \
         kern/futex.c \
         kern/init.c \

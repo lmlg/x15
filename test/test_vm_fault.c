@@ -23,7 +23,6 @@
 #include <stdio.h>
 #include <string.h>
 
-#include <kern/error.h>
 #include <kern/init.h>
 #include <kern/list.h>
 #include <kern/task.h>

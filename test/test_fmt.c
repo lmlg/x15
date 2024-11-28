@@ -17,7 +17,6 @@
  */
 
 #include <string.h>
-#include <kern/error.h>
 #include <kern/fmt.h>
 #include <kern/init.h>
 #include <kern/log.h>

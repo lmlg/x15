@@ -17,7 +17,6 @@
  */
 
 #include <kern/atomic.h>
-#include <kern/error.h>
 #include <kern/log.h>
 #include <kern/semaphore.h>
 #include <kern/thread.h>

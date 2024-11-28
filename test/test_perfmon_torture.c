@@ -35,7 +35,6 @@
 
 #include <kern/atomic.h>
 #include <kern/clock.h>
-#include <kern/error.h>
 #include <kern/kmem.h>
 #include <kern/log.h>
 #include <kern/panic.h>
@@ -97,7 +96,7 @@ static void
 test_thread_start_monitoring (struct test_thread *thread)
 {
   int error = perfmon_event_attach (&thread->event, thread->thread);
-  error_check (error, __func__);
+  test_assert_zero (error);
   thread->monitored = true;
 }
 
@@ -106,7 +105,7 @@ test_thread_stop_monitoring (struct test_thread *thread)
 {
   thread->count += perfmon_event_read (&thread->event);
   int error = perfmon_event_detach (&thread->event);
-  error_check (error, __func__);
+  test_assert_zero (error);
   thread->monitored = false;
 }
 
@@ -148,7 +147,7 @@ test_thread_start (struct test_thread *thread)
   thread_attr_init (&attr, name);
 
   int error = thread_create (&thread->thread, &attr, test_run, thread);
-  error_check (error, "thread_create");
+  test_assert_zero (error);
 }
 
 static void
@@ -316,6 +315,6 @@ TEST_DEFERRED (perfmon_torture)
   thread_attr_init (&attr, THREAD_KERNEL_PREFIX "test_perfmon_control");
   thread_attr_set_detached (&attr);
   int error = thread_create (NULL, &attr, test_control, controller);
-  error_check (error, "thread_create");
+  test_assert_zero (error);
   return (TEST_RUNNING);
 }

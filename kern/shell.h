@@ -27,7 +27,6 @@
 #include <stdarg.h>
 #include <stddef.h>
 
-#include <kern/error.h>
 #include <kern/init.h>
 #include <kern/macros.h>
 #include <kern/mutex.h>
@@ -151,7 +150,9 @@ MACRO_BEGIN   \
   for (size_t i_ = 0; i_ < ARRAY_SIZE (cmds); i_++)   \
     {   \
       int error_ = shell_cmd_set_register (cmd_set, &(cmds)[i_]);   \
-      error_check (error_, __func__);   \
+      if (error_)   \
+        panic ("failed to register shell command: %s:%d: %s",   \
+               __FILE__, __LINE__, strerror (error_));   \
     }   \
 MACRO_END
 

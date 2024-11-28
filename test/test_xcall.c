@@ -27,7 +27,6 @@
 #include <stdio.h>
 
 #include <kern/cpumap.h>
-#include <kern/error.h>
 #include <kern/init.h>
 #include <kern/log.h>
 #include <kern/panic.h>

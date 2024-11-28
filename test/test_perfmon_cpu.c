@@ -32,7 +32,6 @@
 #include <kern/atomic.h>
 #include <kern/clock.h>
 #include <kern/cpumap.h>
-#include <kern/error.h>
 #include <kern/list.h>
 #include <kern/log.h>
 #include <kern/panic.h>
@@ -77,7 +76,7 @@ static void
 test_event_init (struct test_event *event, uint32_t id, const char *name)
 {
   int error = perfmon_event_init (&event->pm_event, id, PERFMON_EF_KERN);
-  error_check (error, "perfmon_event_init");
+  test_assert_zero (error);
   strlcpy (event->name, name, sizeof (event->name));
 }
 
@@ -86,7 +85,7 @@ test_event_report (struct test_event *event)
 {
   uint64_t count = perfmon_event_read (&event->pm_event);
   int error = count ? 0 : EINVAL;
-  error_check (error, __func__);
+  test_assert_zero (error);
   log_info ("test: %s: %llu", event->name, count);
 }
 
@@ -94,14 +93,14 @@ static void
 test_event_attach_cpu (struct test_event *event, uint32_t cpu)
 {
   int error = perfmon_event_attach_cpu (&event->pm_event, cpu);
-  error_check (error, "perfmon_event_attach_cpu");
+  test_assert_zero (error);
 }
 
 static void
 test_event_detach (struct test_event *event)
 {
   int error = perfmon_event_detach (&event->pm_event);
-  error_check (error, "perfmon_event_detach");
+  test_assert_zero (error);
 }
 
 static void
@@ -181,7 +180,7 @@ TEST_INLINE (perfmon_cpu)
 
   struct cpumap *cpumap;
   int error = cpumap_create (&cpumap);
-  error_check (error, "cpumap_create");
+  test_assert_zero (error);
 
   struct thread_attr attr;
   thread_attr_init (&attr, THREAD_KERNEL_PREFIX "test_run");
@@ -191,7 +190,7 @@ TEST_INLINE (perfmon_cpu)
 
   struct thread *thread;
   error = thread_create (&thread, &attr, test_run, NULL);
-  error_check (error, "thread_create");
+  test_assert_zero (error);
 
   thread_attr_init (&attr, THREAD_KERNEL_PREFIX "test_control");
   thread_attr_set_detached (&attr);
@@ -199,7 +198,7 @@ TEST_INLINE (perfmon_cpu)
   cpumap_set (cpumap, TEST_CONTROL_CPU);
   thread_attr_set_cpumap (&attr, cpumap);
   error = thread_create (NULL, &attr, test_control, thread);
-  error_check (error, "thread_create");
+  test_assert_zero (error);
 
   cpumap_destroy (cpumap);
   return (TEST_RUNNING);

@@ -1056,7 +1056,8 @@ shell_start (uintptr_t value __unused, void *arg __unused)
   thread_attr_set_detached (&attr);
 
   int error = thread_create (NULL, &attr, shell_main_run, &shell_main);
-  error_check (error, "thread_create");
+  if (error)
+    panic ("failed to start shell thread");
 }
 
 static int __init

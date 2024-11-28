@@ -29,7 +29,6 @@
 
 #include <kern/atomic.h>
 #include <kern/clock.h>
-#include <kern/error.h>
 #include <kern/init.h>
 #include <kern/hash.h>
 #include <kern/hlist.h>

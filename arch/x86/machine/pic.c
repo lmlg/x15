@@ -20,7 +20,6 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-#include <kern/error.h>
 #include <kern/init.h>
 #include <kern/intr.h>
 #include <kern/panic.h>
@@ -217,12 +216,14 @@ pic_setup_common (bool register_ctl)
   pic_primary_spurious_intr = PIC_SPURIOUS_INTR;
   int error = intr_register (pic_primary_spurious_intr, pic_spurious_intr,
                              &pic_primary_spurious_intr);
-  error_check (error, __func__);
+  if (error)
+    panic ("failed to register primary spurious interrupt");
 
   pic_secondary_spurious_intr = PIC_NR_INTRS + PIC_SPURIOUS_INTR;
   error = intr_register (pic_secondary_spurious_intr, pic_spurious_intr,
                          &pic_secondary_spurious_intr);
-  error_check (error, __func__);
+  if (error)
+    panic ("failed to register secondary spurious interrupt");
 }
 
 void __init
