@@ -48,8 +48,8 @@ static int
 test_pager_get (struct vm_object *obj __unused, uint64_t off,
                 size_t bytes, int prot __unused, void *dst)
 {
-  assert (! test_pager_mapped);
-  assert (off == TEST_OFFSET);
+  test_assert_zero (test_pager_mapped);
+  test_assert_eq (off, TEST_OFFSET);
   memset (dst, 'x', bytes);
   test_pager_mapped = 1;
   return ((int)(bytes >> PAGE_SHIFT));
@@ -59,7 +59,7 @@ static void
 test_vm_fault_forked_entry (void *buf)
 {
   atomic_store_seq ((int *)buf, 42);
-  assert (*((char *)buf + PAGE_SIZE + 1) == 0);
+  test_assert_zero (*((char *)buf + PAGE_SIZE + 1));
 }
 
 static void
@@ -67,7 +67,7 @@ test_vm_fault_forked (struct vm_map *map, void *buf)
 {
   struct task *task;
   int error = task_create2 (&task, "vm_fault_forked", map);
-  assert (! error);
+  test_assert_zero (error);
 
   struct thread *out;
   struct thread_attr attr;
@@ -76,7 +76,7 @@ test_vm_fault_forked (struct vm_map *map, void *buf)
   thread_attr_set_task (&attr, task);
 
   error = thread_create (&out, &attr, test_vm_fault_forked_entry, buf);
-  assert (! error);
+  test_assert_zero (error);
 
   thread_join (out);
 }
@@ -86,7 +86,7 @@ test_vm_fault_thread (void *arg __unused)
 {
   struct vm_object *test_obj;
   int error = vm_object_create (&test_obj, 0, test_pager_get);
-  assert (! error);
+  test_assert_zero (error);
 
   uintptr_t va = PMAP_END_ADDRESS - PAGE_SIZE * 10;
   int flags = VM_MAP_FLAGS (VM_PROT_READ, VM_PROT_READ, VM_INHERIT_DEFAULT,
@@ -94,59 +94,59 @@ test_vm_fault_thread (void *arg __unused)
   struct vm_map *map = vm_map_self ();
   error = vm_map_enter (map, &va, PAGE_SIZE * 3, flags, test_obj, TEST_OFFSET);
 
-  assert (! error);
+  test_assert_zero (error);
   // First fault.
-  assert (memcmp ((void *)va, "xxx", 3) == 0);
+  test_assert_zero (memcmp ((void *)va, "xxx", 3));
   // This mustn't fault.
-  assert (memcmp ((void *)(va + PAGE_SIZE / 2), "xxxx", 4) == 0);
+  test_assert_zero (memcmp ((void *)(va + PAGE_SIZE / 2), "xxxx", 4));
 
   // Test that writing to read-only mappings fails with EACCES.
   error = user_copy_to ((void *)va, "???", 3);
-  assert (error == EACCES);
+  test_assert_eq (error, EACCES);
 
   // Test that changing protection creates the necessary entries.
   {
     uint32_t nr_entries = vm_map_self()->nr_entries;
     error = vm_map_protect (vm_map_self (), va + PAGE_SIZE,
                             va + PAGE_SIZE * 2, VM_PROT_NONE);
-    assert (! error);
-    assert (vm_map_self()->nr_entries == nr_entries + 2);
+    test_assert_zero (error);
+    test_assert_eq (vm_map_self()->nr_entries, nr_entries + 2);
 
     error = vm_map_protect (vm_map_self (), va + PAGE_SIZE,
                             va + PAGE_SIZE * 2, VM_PROT_READ);
-    assert (! error);
-    assert (vm_map_self()->nr_entries == nr_entries);
+    test_assert_zero (error);
+    test_assert_eq (vm_map_self()->nr_entries, nr_entries);
   }
 
   _Auto entry = vm_map_find (map, va);
-  assert (entry);
-  assert (entry->object == test_obj);
-  assert (VM_MAP_PROT (entry->flags) == VM_PROT_READ);
+  test_assert_nonnull (entry);
+  test_assert_eq (entry->object, test_obj);
+  test_assert_eq (VM_MAP_PROT (entry->flags), VM_PROT_READ);
 
   {
     void *buf;
     error = vm_map_anon_alloc (&buf, map, PAGE_SIZE * 2);
-    assert (! error);
+    test_assert_zero (error);
     // Make sure a physical page is allocated.
     atomic_store_seq ((int *)buf, 0);
 
     struct vm_map *fmap;
     error = vm_map_fork (&fmap, vm_map_self ());
-    assert (! error);
-    assert (fmap->nr_entries == vm_map_self()->nr_entries);
+    test_assert_zero (error);
+    test_assert_eq (fmap->nr_entries, vm_map_self()->nr_entries);
 
     _Auto e2 = vm_map_find (fmap, va);
-    assert (e2);
-    assert (e2 != entry);
-    assert (e2->object == entry->object &&
-            e2->flags == entry->flags &&
-            e2->offset == entry->offset);
+    test_assert_nonnull (e2);
+    test_assert_ne (e2, entry);
+    test_assert_eq (e2->object, entry->object);
+    test_assert_eq (e2->flags, entry->flags);
+    test_assert_eq (e2->offset, entry->offset);
 
     test_vm_fault_forked (fmap, buf);
     vm_map_entry_put (e2);
 
     // Ensure that COW pages work correctly.
-    assert (*(int *)buf == 0);
+    test_assert_zero (*(int *)buf);
   }
 
   vm_map_entry_put (entry);
@@ -158,12 +158,12 @@ TEST_DEFERRED (vm_fault)
   struct thread *thread;
   int error = test_util_create_thr (&thread, test_vm_fault_thread,
                                     NULL, "vm_fault");
-  assert (! error);
+  test_assert_zero (error);
 
   int val;
   error = user_copy_to ((void *)0x1, &val, sizeof (val));
-  assert (error == EFAULT);
-  assert (!thread_self()->fixup);
+  test_assert_eq (error, EFAULT);
+  test_assert_zero (thread_self()->fixup);
 
   thread_join (thread);
   return (TEST_OK);

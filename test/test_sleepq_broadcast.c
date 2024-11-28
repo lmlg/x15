@@ -24,7 +24,6 @@
 #include <stddef.h>
 #include <stdio.h>
 
-#include <kern/error.h>
 #include <kern/init.h>
 #include <kern/log.h>
 #include <kern/sleepq.h>
@@ -79,13 +78,13 @@ TEST_INLINE (sleepq_broadcast)
       snprintf (name, sizeof (name), THREAD_KERNEL_PREFIX "test_wait:%zu", i);
       thread_attr_init (&attr, name);
       error = thread_create (&test_waiters[i], &attr, test_wait, NULL);
-      error_check (error, "thread_create");
+      test_assert_zero (error);
     }
 
   thread_attr_init (&attr, THREAD_KERNEL_PREFIX "test_broadcast");
   thread_attr_set_detached (&attr);
   error = thread_create (NULL, &attr, test_broadcast, NULL);
-  error_check (error, "thread_create");
+  test_assert_zero (error);
 
   return (TEST_RUNNING);
 }

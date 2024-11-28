@@ -40,7 +40,7 @@ TEST_DEFERRED (unwind)
       test_unw_manip (&value);
     }
 
-  assert (value != 0);
-  assert (rv == -3);
+  test_assert_nonnull (value);
+  test_assert_eq (rv, -3);
   return (TEST_OK);
 }

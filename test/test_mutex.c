@@ -32,7 +32,6 @@
 
 #include <kern/atomic.h>
 #include <kern/clock.h>
-#include <kern/error.h>
 #include <kern/init.h>
 #include <kern/kmem.h>
 #include <kern/log.h>
@@ -96,7 +95,7 @@ test_run (void *arg)
 static struct test*
 test_create (uint32_t nr_threads)
 {
-  assert (nr_threads);
+  test_assert_nonnull (nr_threads);
 
   struct test *test = kmem_alloc (sizeof (*test));
   if (! test)
@@ -107,7 +106,7 @@ test_create (uint32_t nr_threads)
 
   struct cpumap *cpumap;
   int error = cpumap_create (&cpumap);
-  error_check (error, "cpumap_create");
+  test_assert_zero (error);
 
   for (size_t i = 0; i < nr_threads; i++)
     {
@@ -130,7 +129,7 @@ test_create (uint32_t nr_threads)
         }
 
       error = thread_create (NULL, &attr, test_run, test);
-      error_check (error, "thread_create");
+      test_assert_zero (error);
     }
 
   return (test);

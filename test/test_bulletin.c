@@ -27,7 +27,6 @@
 
 #include <kern/bulletin.h>
 #include <kern/clock.h>
-#include <kern/error.h>
 #include <kern/log.h>
 #include <kern/timer.h>
 

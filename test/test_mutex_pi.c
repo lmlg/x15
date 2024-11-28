@@ -79,7 +79,6 @@
 #include <string.h>
 
 #include <kern/cpumap.h>
-#include <kern/error.h>
 #include <kern/init.h>
 #include <kern/mutex.h>
 #include <kern/panic.h>
@@ -163,8 +162,6 @@ test_check_initial_priority (void)
 static void
 test_for_priority_boosted (uint16_t *highest_priority)
 {
-  unsigned short user_priority, real_priority;
-
   struct thread *thread = thread_self ();
   struct turnstile_td *td = thread_turnstile_td (thread);
 
@@ -267,7 +264,7 @@ test_manage_b (void *arg __unused)
 {
   struct cpumap *cpumap;
   int error = cpumap_create (&cpumap);
-  error_check (error, "cpumap_create");
+  test_assert_zero (error);
   cpumap_zero (cpumap);
   cpumap_set (cpumap, 1);
 
@@ -286,14 +283,14 @@ test_manage_b (void *arg __unused)
         {
           struct thread *thread_b;
           error = thread_create (&thread_b, &attr, test_b, &highest_priority);
-          error_check (error, "thread_create");
+          test_assert_zero (error);
           thread_join (thread_b);
 
           test_delay ();
         }
 
       printf ("b:%u ", i);
-      syscnt_info ("thread_boosts", log_info);
+      syscnt_info ("thread_boosts", log_stream_info ());
     }
 }
 
@@ -398,7 +395,7 @@ TEST_INLINE (mutex_pi)
 
   struct cpumap *cpumap;
   int error = cpumap_create (&cpumap);
-  error_check (error, "cpumap_create");
+  test_assert_zero (error);
 
   cpumap_zero (cpumap);
   cpumap_set (cpumap, 0);
@@ -412,7 +409,7 @@ TEST_INLINE (mutex_pi)
 
   struct thread *thread;
   error = thread_create (&thread, &attr, test_a, NULL);
-  error_check (error, "thread_create");
+  test_assert_zero (error);
 
   cpumap_zero (cpumap);
   cpumap_set (cpumap, 1);
@@ -422,7 +419,7 @@ TEST_INLINE (mutex_pi)
   thread_attr_set_priority (&attr, TEST_PRIO_B);
   thread_attr_set_cpumap (&attr, cpumap);
   error = thread_create (&thread, &attr, test_manage_b, NULL);
-  error_check (error, "thread_create");
+  test_assert_zero (error);
 
   cpumap_zero (cpumap);
   cpumap_set (cpumap, 2);
@@ -432,12 +429,12 @@ TEST_INLINE (mutex_pi)
   thread_attr_set_priority (&attr, TEST_PRIO_C);
   thread_attr_set_cpumap (&attr, cpumap);
   error = thread_create (&thread, &attr, test_c, NULL);
-  error_check (error, "thread_create");
+  test_assert_zero (error);
 
   thread_attr_init (&attr, THREAD_KERNEL_PREFIX "test_chprio_c");
   thread_attr_set_detached (&attr);
   error = thread_create (&thread, &attr, test_chprio_c, thread);
-  error_check (error, "thread_create");
+  test_assert_zero (error);
 
   cpumap_zero (cpumap);
   cpumap_set (cpumap, 3);
@@ -447,7 +444,7 @@ TEST_INLINE (mutex_pi)
   thread_attr_set_priority (&attr, TEST_PRIO_D);
   thread_attr_set_cpumap (&attr, cpumap);
   error = thread_create (&thread, &attr, test_d, NULL);
-  error_check (error, "thread_create");
+  test_assert_zero (error);
 
   cpumap_zero (cpumap);
   cpumap_set (cpumap, 4);
@@ -457,7 +454,7 @@ TEST_INLINE (mutex_pi)
   thread_attr_set_priority (&attr, TEST_PRIO_E);
   thread_attr_set_cpumap (&attr, cpumap);
   error = thread_create (&thread, &attr, test_e, NULL);
-  error_check (error, "thread_create");
+  test_assert_zero (error);
 
   cpumap_destroy (cpumap);
   return (TEST_RUNNING);

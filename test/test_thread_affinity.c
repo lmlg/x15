@@ -30,28 +30,24 @@ test_affinity_self (void *arg)
 {
   struct cpumap *prev, *cpumap = arg;
   int error = cpumap_create (&prev);
-  error_check (error, "cpumap_create");
+  test_assert_zero (error);
 
   error = thread_get_affinity (thread_self (), prev);
-  error_check (error, "thread_get_affinity");
-
-  if (cpumap_cmp (prev, cpumap) != 0)
-    panic ("test: unexpected affinity map (get)");
+  test_assert_zero (error);
+  test_assert_zero (cpumap_cmp (prev, cpumap));
 
   cpumap_zero (cpumap);
   cpumap_set (cpumap, 0);
 
   error = thread_set_affinity (thread_self (), cpumap);
-  error_check (error, "thread_set_affinity");
+  test_assert_zero (error);
 
   thread_delay (1, false);
   error = thread_get_affinity (thread_self (), prev);
-  error_check (error, "thread_get_affinity (2)");
+  test_assert_zero (error);
 
-  if (cpumap_cmp (prev, cpumap) != 0)
-    panic ("test: unexpected affinity map (set)");
-  else if (!cpumap_test (cpumap, thread_cpu (thread_self ())))
-    panic ("test: thread not running in expected CPU");
+  test_assert_zero (cpumap_cmp (prev, cpumap));
+  test_assert_nonnull (cpumap_test (cpumap, thread_cpu (thread_self ())));
 
   cpumap_destroy (prev);
 }
@@ -61,19 +57,19 @@ test_affinity_suspended (void *arg)
 {
   struct cpumap *cpumap, *prev = arg;
   int error = cpumap_create (&cpumap);
-  error_check (error, "cpumap_create");
+  test_assert_zero (error);
 
   semaphore_wait (&test_affinity_sem);
   error = thread_get_affinity (thread_self (), cpumap);
-  error_check (error, "thread_get_affinity");
+  test_assert_zero (error);
 
-  /* At this point, the parent thread has changed the passed
-   * CPU map, and thus, they should be equal. */
+  /*
+   * At this point, the parent thread has changed the passed
+   * CPU map, and thus, they should be equal.
+   */
 
-  if (cpumap_cmp (cpumap, prev) != 0)
-    panic ("test: unexpected affinity map");
-  else if (!cpumap_test (cpumap, thread_cpu (thread_self ())))
-    panic ("test: thread not running in expected CPU");
+  test_assert_zero (cpumap_cmp (cpumap, prev));
+  test_assert_nonnull (cpumap_test (cpumap, thread_cpu (thread_self ())));
 
   cpumap_destroy (cpumap);
 }
@@ -90,7 +86,7 @@ TEST_DEFERRED (thread_affinity)
 
   struct cpumap *cpumap;
   int error = cpumap_create (&cpumap);
-  error_check (error, "cpumap_create");
+  test_assert_zero (error);
 
   cpumap_zero (cpumap);
   cpumap_set (cpumap, 1);
@@ -101,7 +97,7 @@ TEST_DEFERRED (thread_affinity)
 
   struct thread *thread;
   error = thread_create (&thread, &attr, test_affinity_self, cpumap);
-  error_check (error, "thread_create");
+  test_assert_zero (error);
   thread_join (thread);
 
   cpumap_zero (cpumap);
@@ -110,7 +106,7 @@ TEST_DEFERRED (thread_affinity)
   thread_attr_init (&attr, "test_affinity/1");
   thread_attr_set_cpumap (&attr, cpumap);
   error = thread_create (&thread, &attr, test_affinity_suspended, cpumap);
-  error_check (error, "thread_create(2)");
+  test_assert_zero (error);
 
   test_thread_wait_state (thread, THREAD_RUNNING);
 

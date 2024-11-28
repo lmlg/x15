@@ -41,7 +41,6 @@
 #include <stdio.h>
 
 #include <kern/atomic.h>
-#include <kern/error.h>
 #include <kern/init.h>
 #include <kern/log.h>
 #include <kern/panic.h>
@@ -80,7 +79,7 @@ TEST_DEFERRED (thread_suspend)
 
   thread_attr_init (&attr, "test_spin");
   int error = thread_create (&thread, &attr, test_spin, &lock);
-  error_check (error, "thread_create");
+  test_assert_zero (error);
 
   test_thread_wait_state (thread, THREAD_RUNNING);
   thread_suspend (thread);
@@ -94,7 +93,7 @@ TEST_DEFERRED (thread_suspend)
   semaphore_init (&sem, 0, 0xff);
   thread_attr_init (&attr, "test_sleep");
   error = thread_create (&thread, &attr, test_sleep, &sem);
-  error_check (error, "thread_create");
+  test_assert_zero (error);
 
   test_thread_wait_state (thread, THREAD_SLEEPING);
   thread_suspend (thread);

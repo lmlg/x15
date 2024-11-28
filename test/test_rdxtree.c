@@ -49,50 +49,49 @@ TEST_DEFERRED (rdxtree)
   for (int i = 0; i < RDXTREE_SIZE; ++i)
     {
       error = rdxtree_insert (&tree, (rdxtree_key_t)i, val + i);
-      assert (! error);
+      test_assert_zero (error);
     }
 
-  assert (rdxtree_count (&tree) == RDXTREE_SIZE);
+  test_assert_eq (rdxtree_count (&tree), RDXTREE_SIZE);
   for (int i = RDXTREE_SIZE - 1; i >= 0; --i)
     {
       ptr = rdxtree_lookup (&tree, (rdxtree_key_t)i);
-      assert (ptr == val + i);
+      test_assert_eq (ptr, val + i);
     }
 
-  assert (val + 33 == rdxtree_remove (&tree, 33));
-
+  test_assert_eq (val + 33, rdxtree_remove (&tree, 33));
   val += RDXTREE_SIZE;
 
   rdxtree_key_t key;
   error = rdxtree_insert_alloc (&tree, val, &key);
-  assert (key == 33);
-  assert (! error);
+  test_assert_eq (key, 33);
+  test_assert_zero (error);
   ++val;
 
   void **slot;
   error = rdxtree_insert_alloc_slot (&tree, val, &key, &slot);
-  assert (! error);
-  assert (key >= RDXTREE_SIZE);
-  assert (rdxtree_load_slot (slot) == val);
+  test_assert_zero (error);
+  test_assert_ge (key, RDXTREE_SIZE);
+  test_assert_eq (rdxtree_load_slot (slot), val);
 
   ptr = rdxtree_replace_slot (slot, val + 1);
-  assert (ptr == val);
-  assert (rdxtree_load_slot (slot) == val + 1);
+  test_assert_eq (ptr, val);
+  test_assert_eq (rdxtree_load_slot (slot), val + 1);
 
-  assert (!rdxtree_lookup (&tree, key + 2));
-  assert (!rdxtree_lookup_slot (&tree, key + 2));
-  assert (!rdxtree_remove (&tree, key + 2));
+  test_assert_zero (rdxtree_lookup (&tree, key + 2));
+  test_assert_zero (rdxtree_lookup_slot (&tree, key + 2));
+  test_assert_zero (rdxtree_remove (&tree, key + 2));
 
   void *node;
   int idx;
   slot = rdxtree_lookup_common (&tree, 64, true, &node, &idx);
-  assert (slot);
-  rdxtree_remove_node_idx (&tree, slot, node, idx);
-  assert (!rdxtree_lookup (&tree, 64));
+  test_assert_nonnull (slot);
+  rdxtree_remove_node_idx (&tree, node, idx);
+  test_assert_zero (rdxtree_lookup (&tree, 64));
 
   rcu_wait ();
   rdxtree_remove_all (&tree);
-  assert (rdxtree_count (&tree) == 0);
+  test_assert_zero (rdxtree_count (&tree));
 
   return (TEST_OK);
 }

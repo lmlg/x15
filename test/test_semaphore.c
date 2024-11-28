@@ -26,7 +26,6 @@
 #include <stdio.h>
 
 #include <kern/cpumap.h>
-#include <kern/error.h>
 #include <kern/log.h>
 #include <kern/macros.h>
 #include <kern/semaphore.h>
@@ -61,7 +60,7 @@ test_post (void *arg __unused)
   for (size_t i = 0; i < ARRAY_SIZE (test_waiters); i++)
     {
       int error = semaphore_post (&test_semaphore);
-      error_check (error, "semaphore_post");
+      test_assert_zero (error);
     }
 
   thread_preempt_enable ();
@@ -78,7 +77,7 @@ TEST_INLINE (semaphore)
 
   struct cpumap *cpumap;
   int error = cpumap_create (&cpumap);
-  error_check (error, "cpumap_create");
+  test_assert_zero (error);
   cpumap_zero (cpumap);
   cpumap_set (cpumap, 0);
 
@@ -90,14 +89,14 @@ TEST_INLINE (semaphore)
       thread_attr_init (&attr, name);
       thread_attr_set_cpumap (&attr, cpumap);
       error = thread_create (&test_waiters[i], &attr, test_wait, NULL);
-      error_check (error, "thread_create");
+      test_assert_zero (error);
     }
 
   thread_attr_init (&attr, THREAD_KERNEL_PREFIX "test_sempost");
   thread_attr_set_detached (&attr);
   thread_attr_set_cpumap (&attr, cpumap);
   error = thread_create (NULL, &attr, test_post, NULL);
-  error_check (error, "thread_create");
+  test_assert_zero (error);
 
   return (TEST_RUNNING);
 }

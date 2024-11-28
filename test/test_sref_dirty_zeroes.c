@@ -30,7 +30,6 @@
 #include <stdio.h>
 
 #include <kern/condition.h>
-#include <kern/error.h>
 #include <kern/init.h>
 #include <kern/kmem.h>
 #include <kern/log.h>
@@ -112,12 +111,12 @@ TEST_INLINE (sref_dirty_zeroes)
   thread_attr_init (&attr, THREAD_KERNEL_PREFIX "test_inc");
   thread_attr_set_detached (&attr);
   int error = thread_create (NULL, &attr, test_inc, NULL);
-  error_check (error, "thread_create");
+  test_assert_zero (error);
 
   thread_attr_init (&attr, THREAD_KERNEL_PREFIX "test_dec");
   thread_attr_set_detached (&attr);
   error = thread_create (NULL, &attr, test_dec, NULL);
-  error_check (error, "thread_create");
+  test_assert_zero (error);
 
   return (TEST_RUNNING);
 }

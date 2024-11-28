@@ -119,7 +119,7 @@ TEST_DEFERRED (xcall)
 {
   struct cpumap *cpumap;
   int error = cpumap_create (&cpumap);
-  error_check (error, "cpumap_create");
+  test_assert_zero (error);
 
   for (uint32_t i = 0; i < cpu_count (); i++)
     {
@@ -145,7 +145,7 @@ TEST_DEFERRED (xcall)
 
       struct thread *thread;
       error = thread_create (&thread, &attr, test_run_cpu, NULL);
-      error_check (error, "thread_create");
+      test_assert_zero (error);
       thread_join (thread);
     }
 

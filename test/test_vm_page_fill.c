@@ -27,7 +27,6 @@
 #include <stdio.h>
 
 #include <kern/cpumap.h>
-#include <kern/error.h>
 #include <kern/init.h>
 #include <kern/list.h>
 #include <kern/thread.h>
@@ -64,17 +63,17 @@ test_write_pages (void)
       int flags = VM_MAP_FLAGS (VM_PROT_RDWR, VM_PROT_RDWR, VM_INHERIT_NONE,
                                 VM_ADV_DEFAULT, 0);
       int error = vm_map_enter (kernel_map, &va, PAGE_SIZE, flags, NULL, 0);
-      error_check (error, __func__);
+      test_assert_zero (error);
       error = pmap_enter (kernel_pmap, va, vm_page_to_pa (page),
                           VM_PROT_RDWR, 0);
-      error_check (error, __func__);
+      test_assert_zero (error);
       error = pmap_update (kernel_pmap);
-      error_check (error, __func__);
+      test_assert_zero (error);
       memset ((void *) va, test_pattern, PAGE_SIZE);
       error = pmap_remove (kernel_pmap, va, 0);
-      error_check (error, __func__);
+      test_assert_zero (error);
       error = pmap_update (kernel_pmap);
-      error_check (error, __func__);
+      test_assert_zero (error);
 
       vm_map_remove (kernel_map, va, va + PAGE_SIZE);
       list_insert_tail (&test_pages, &page->node);
@@ -97,17 +96,17 @@ test_reset_pages (void)
                                 VM_ADV_DEFAULT, 0);
       int  error = vm_map_enter (kernel_map, &va, PAGE_SIZE, flags, NULL, 0);
 
-      error_check (error, __func__);
+      test_assert_zero (error);
       error = pmap_enter (kernel_pmap, va, vm_page_to_pa (page),
                           VM_PROT_RDWR, 0);
-      error_check (error, __func__);
+      test_assert_zero (error);
       error = pmap_update (kernel_pmap);
-      error_check (error, __func__);
+      test_assert_zero (error);
       memset ((void *) va, 0, PAGE_SIZE);
       error = pmap_remove (kernel_pmap, va, 0);
-      error_check (error, __func__);
+      test_assert_zero (error);
       error = pmap_update (kernel_pmap);
-      error_check (error, __func__);
+      test_assert_zero (error);
       vm_map_remove (kernel_map, va, va + PAGE_SIZE);
 
       vm_page_free (page, 0, 0);
@@ -137,7 +136,7 @@ TEST_INLINE (vm_page_fill)
   thread_attr_set_detached (&attr);
   thread_attr_set_cpumap (&attr, &test_cpumap);
   int error = thread_create (NULL, &attr, test_run, NULL);
-  error_check (error, "thread_create");
+  test_assert_zero (error);
 
   return (TEST_RUNNING);
 }

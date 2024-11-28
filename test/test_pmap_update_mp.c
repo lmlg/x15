@@ -30,7 +30,6 @@
 
 #include <kern/condition.h>
 #include <kern/cpumap.h>
-#include <kern/error.h>
 #include <kern/init.h>
 #include <kern/log.h>
 #include <kern/mutex.h>
@@ -104,7 +103,7 @@ TEST_DEFERRED (pmap_update)
 
   struct cpumap *cpumap;
   int error = cpumap_create (&cpumap);
-  error_check (error, "cpumap_create");
+  test_assert_zero (error);
 
   cpumap_zero (cpumap);
   cpumap_set (cpumap, 0);
@@ -116,7 +115,7 @@ TEST_DEFERRED (pmap_update)
 
   struct thread *thread;
   error = thread_create (&thread, &attr, test_run1, NULL);
-  error_check (error, "thread_create");
+  test_assert_zero (error);
 
   cpumap_zero (cpumap);
   cpumap_set (cpumap, 1);
@@ -124,7 +123,7 @@ TEST_DEFERRED (pmap_update)
   thread_attr_set_detached (&attr);
   thread_attr_set_cpumap (&attr, cpumap);
   error = thread_create (&thread, &attr, test_run2, NULL);
-  error_check (error, "thread_create");
+  test_assert_zero (error);
 
   cpumap_destroy (cpumap);
   return (TEST_RUNNING);

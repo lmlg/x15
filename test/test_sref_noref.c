@@ -39,7 +39,6 @@
 
 #include <kern/condition.h>
 #include <kern/init.h>
-#include <kern/error.h>
 #include <kern/kmem.h>
 #include <kern/log.h>
 #include <kern/macros.h>
@@ -121,7 +120,7 @@ TEST_DEFERRED (sref_noref)
       struct thread_attr attr;
       thread_attr_init (&attr, name);
       error = thread_create (&threads[i], &attr, test_ref, NULL);
-      error_check (error, "thread_create");
+      test_assert_zero (error);
     }
 
   printf ("allocating page\n");

@@ -33,7 +33,6 @@
 #include <string.h>
 
 #include <kern/condition.h>
-#include <kern/error.h>
 #include <kern/kmem.h>
 #include <kern/macros.h>
 #include <kern/mutex.h>
@@ -171,17 +170,17 @@ TEST_DEFERRED (rcu_defer)
 
   struct thread *thread;
   int error = thread_create (&thread, &attr, test_alloc, NULL);
-  error_check (error, "thread_create");
+  test_assert_zero (error);
 
   thread_attr_init (&attr, THREAD_KERNEL_PREFIX "test_rcu_free");
   thread_attr_set_detached (&attr);
   error = thread_create (&thread, &attr, test_free, NULL);
-  error_check (error, "thread_create");
+  test_assert_zero (error);
 
   thread_attr_init (&attr, THREAD_KERNEL_PREFIX "test_rcu_read");
   thread_attr_set_detached (&attr);
   error = thread_create (&thread, &attr, test_read, NULL);
-  error_check (error, "thread_create");
+  test_assert_zero (error);
 
   return (TEST_RUNNING);
 }
