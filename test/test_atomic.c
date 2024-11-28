@@ -27,7 +27,6 @@
 #include <stdio.h>
 
 #include <kern/atomic.h>
-#include <kern/error.h>
 #include <kern/init.h>
 #include <kern/log.h>
 #include <kern/macros.h>
@@ -107,18 +106,17 @@ test_atomic_fetch_xor (test_int_t *n, test_int_t val)
 }
 
 static void
-test_check_n (test_int_t val, const char *fn)
+test_check_n (test_int_t val)
 {
   volatile test_int_t *ptr = &test_n;
-  int error = val == *ptr ? 0 : EINVAL;
-  error_check (error, fn);
+  test_assert_eq (val, *ptr);
 }
 
 static void
 test_load (void)
 {
   test_int_t n = test_atomic_load (&test_n);
-  test_check_n (n, __func__);
+  test_check_n (n);
 }
 
 static void
@@ -126,7 +124,7 @@ test_store (void)
 {
   test_int_t val = 0x123;
   test_atomic_store (&test_n, val);
-  test_check_n (val, __func__);
+  test_check_n (val);
 }
 
 static void
@@ -136,9 +134,8 @@ test_cas_match (void)
   test_n = oval;
 
   test_int_t prev = test_atomic_cas (&test_n, oval, nval);
-  int error = prev == oval ? 0 : EINVAL;
-  error_check (error, __func__);
-  test_check_n (nval, __func__);
+  test_assert_eq (prev, oval);
+  test_check_n (nval);
 }
 
 static void
@@ -148,9 +145,8 @@ test_cas_nomatch (void)
   test_n = oval;
 
   test_int_t prev = test_atomic_cas (&test_n, oval + 1, nval);
-  int error = prev == oval ? 0 : EINVAL;
-  error_check (error, __func__);
-  test_check_n (oval, __func__);
+  test_assert_eq (prev, oval);
+  test_check_n (oval);
 }
 
 static void
@@ -160,9 +156,8 @@ test_swap (void)
   test_n = oval;
 
   test_int_t prev = test_atomic_swap (&test_n, nval);
-  int error = prev == oval ? 0 : EINVAL;
-  error_check (error, __func__);
-  test_check_n (nval, __func__);
+  test_assert_eq (prev, oval);
+  test_check_n (nval);
 }
 
 static void
@@ -172,9 +167,8 @@ test_fetch_add (void)
   test_n = oval;
 
   test_int_t prev = test_atomic_fetch_add (&test_n, delta);
-  int error = prev == oval ? 0 : EINVAL;
-  error_check (error, __func__);
-  test_check_n (oval + delta, __func__);
+  test_assert_eq (prev, oval);
+  test_check_n (oval + delta);
 }
 
 static void
@@ -184,9 +178,8 @@ test_fetch_sub (void)
   test_n = oval;
 
   test_int_t prev = test_atomic_fetch_sub (&test_n, delta);
-  int error = prev == oval ? 0 : EINVAL;
-  error_check (error, __func__);
-  test_check_n (oval - delta, __func__);
+  test_assert_eq (prev, oval);
+  test_check_n (oval - delta);
 }
 
 static void
@@ -196,9 +189,8 @@ test_fetch_and (void)
   test_n = oval;
 
   test_int_t prev = test_atomic_fetch_and (&test_n, delta);
-  int error = prev == oval ? 0 : EINVAL;
-  error_check (error, __func__);
-  test_check_n (oval & delta, __func__);
+  test_assert_eq (prev, oval);
+  test_check_n (oval & delta);
 }
 
 static void
@@ -208,9 +200,8 @@ test_fetch_or (void)
   test_n = oval;
 
   test_int_t prev = test_atomic_fetch_or (&test_n, delta);
-  int error = prev == oval ? 0 : EINVAL;
-  error_check (error, __func__);
-  test_check_n (oval | delta, __func__);
+  test_assert_eq (prev, oval);
+  test_check_n (oval | delta);
 }
 
 static void
@@ -220,9 +211,8 @@ test_fetch_xor (void)
   test_n = oval;
 
   test_int_t prev = test_atomic_fetch_xor (&test_n, delta);
-  int error = prev == oval ? 0 : EINVAL;
-  error_check (error, __func__);
-  test_check_n (oval ^ delta, __func__);
+  test_assert_eq (prev, oval);
+  test_check_n (oval ^ delta);
 }
 
 TEST_INLINE (atomic_ops)
