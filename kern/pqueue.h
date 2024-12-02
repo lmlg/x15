@@ -40,7 +40,15 @@ struct pqueue_node
 {
   struct pqueue_node *prev;
   struct pqueue_node *next;
-  uint32_t prio;
+  union
+    {
+      struct
+        {
+          uint16_t prio;
+          uint16_t extra;
+        };
+      uint32_t full;
+    };
 };
 
 struct pqueue
@@ -58,7 +66,8 @@ static inline void
 pqueue_node_init (struct pqueue_node *node, uint32_t prio)
 {
   node->prev = node->next = NULL;
-  node->prio = prio;
+  node->extra = 0;
+  node->prio = MIN (prio, UINT16_MAX);
 }
 
 static inline bool
@@ -99,10 +108,10 @@ pqueue_inc (struct pqueue *pqueue, uint32_t off)
     return;
 
   _Auto head = pqueue->head;
-  if (likely (head->prio < UINT32_MAX - off))
+  if (likely (head->prio < UINT16_MAX - off))
     head->prio += off;
   else
-    head->prio = UINT32_MAX;
+    head->prio = UINT16_MAX;
 }
 
 static inline struct pqueue_node*

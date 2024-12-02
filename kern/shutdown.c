@@ -45,11 +45,9 @@ shutdown_shell_reboot (struct shell *shell __unused,
 static struct shell_cmd shutdown_shell_cmds[] =
 {
   SHELL_CMD_INITIALIZER ("shutdown_halt", shutdown_shell_halt,
-                         "shutdown_halt",
-                         "halt the system"),
+                         "shutdown_halt", "halt the system"),
   SHELL_CMD_INITIALIZER ("shutdown_reboot", shutdown_shell_reboot,
-                         "shutdown_reboot",
-                         "reboot the system"),
+                         "shutdown_reboot", "reboot the system"),
 };
 
 static int __init

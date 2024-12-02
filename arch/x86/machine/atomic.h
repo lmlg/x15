@@ -44,8 +44,11 @@
 
 #else
 
-// XXX Clang doesn't provide any __atomic_xxx_8 functions on i386.
-#ifndef __clang__
+/*
+ * XXX: The __atomic_xxx_8 functions are buggy in the latest releases
+ * for gcc, and they don't exist in clang.
+ */
+#if 0
 
 // Report that 64-bits operations are supported.
 #define ATOMIC_HAVE_64B_OPS

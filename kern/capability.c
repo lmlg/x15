@@ -48,7 +48,6 @@ struct cap_alert
     };
 
   struct pqueue_node pnode;
-  int alert_type;
   union
     {
       char payload[CAP_ALERT_SIZE];
@@ -201,14 +200,14 @@ cap_flow_guard_make (struct cap_flow *flow)
 static int
 cap_alert_type (const struct cap_alert *alert)
 {
-  return (alert->alert_type);
+  return (alert->pnode.extra);
 }
 
 static void
 cap_alert_init_nodes (struct cap_alert *alert, uint32_t type, uint32_t prio)
 {
   pqueue_node_init (&alert->pnode, prio);
-  alert->alert_type = (int)type;
+  alert->pnode.extra = type;
   hlist_node_init (&alert->hnode);
 }
 
