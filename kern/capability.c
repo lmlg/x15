@@ -76,7 +76,7 @@ struct cap_alert_async
 
 /*
  * Landing pads represent the environment on which foreign threads begin
- * their execution once the sending of a message is done.
+ * their execution once a message has been sent.
  *
  * When a thread initiates message passing, a landing pad is added to
  * an internal list. Messaging operations update the iterators and
@@ -197,11 +197,10 @@ cap_flow_guard_make (struct cap_flow *flow)
 #define cap_flow_guard_lock   spinlock_guard_lock
 #define cap_flow_guard_fini   spinlock_guard_fini
 
-static int
-cap_alert_type (const struct cap_alert *alert)
-{
-  return (alert->pnode.extra);
-}
+#define cap_alert_type(x)   \
+  _Generic ((x),   \
+    struct pqueue_node *: ((const struct pqueue_node *)(x))->extra,   \
+    struct cap_alert *:   ((const struct cap_alert *)(x))->pnode.extra)
 
 static void
 cap_alert_init_nodes (struct cap_alert *alert, uint32_t type, uint32_t prio)
@@ -221,21 +220,14 @@ cap_channel_fini (struct sref_counter *sref)
   _Auto chp = CAP_FROM_SREF (sref, struct cap_channel);
   _Auto flow = chp->flow;
 
-  uintptr_t tag = chp->tag;
-  // Mutate the type.
-  struct cap_alert *alert __attribute__ ((may_alias)) = (void *)chp;
-
-  alert->k_alert.type = CAP_ALERT_CHAN_CLOSED;
-  alert->k_alert.tag = tag;
-  cap_alert_init_nodes (alert, CAP_ALERT_CHAN_CLOSED, CAP_ALERT_CHANNEL_PRIO);
-
-  _Auto guard = cap_flow_guard_make (flow);
-  hlist_insert_head (&flow->alerts.alloc, &alert->hnode);
-  pqueue_insert (&flow->alerts.pending, &alert->pnode);
-  cap_recv_wakeup_fast (flow);
-  cap_flow_guard_fini (&guard);
+  if (!pqueue_node_unlinked (&chp->pnode))
+    {
+      SPINLOCK_GUARD (&flow->alerts.lock);
+      pqueue_remove (&flow->alerts.pending, &chp->pnode);
+    }
 
   cap_base_rel (flow);
+  kmem_cache_free (&cap_misc_cache, chp);
 }
 
 int
@@ -247,6 +239,8 @@ cap_channel_create (struct cap_channel **outp, struct cap_flow *flow,
     return (ENOMEM);
 
   cap_base_init (&ret->base, CAP_TYPE_CHANNEL, cap_channel_fini);
+  pqueue_node_init (&ret->pnode, CAP_ALERT_CHANNEL_PRIO);
+  ret->pnode.extra = CAP_ALERT_CHAN_CLOSED;
 
   if (flow)
     cap_base_acq (flow);
@@ -254,6 +248,7 @@ cap_channel_create (struct cap_channel **outp, struct cap_flow *flow,
   ret->flow = flow;
   ret->tag = tag;
   ret->vmobj = NULL;
+  ret->open_count = 0;
   *outp = ret;
   return (0);
 }
@@ -470,13 +465,13 @@ cap_recv_wakeup_fast (struct cap_flow *flow)
   thread_wakeup (recv->thread);
 }
 
-static struct cap_alert*
+static struct pqueue_node*
 cap_recv_pop_alert (struct cap_flow *flow, void *buf, uint32_t flags,
                     struct ipc_msg_data *mdata, int *outp,
                     struct spinlock_guard *guard)
 {
   if (!pqueue_empty (&flow->alerts.pending))
-    return (pqueue_pop_entry (&flow->alerts.pending, struct cap_alert, pnode));
+    return (pqueue_pop (&flow->alerts.pending));
   else if (flags & CAP_ALERT_NONBLOCK)
     {
       cap_flow_guard_fini (guard);
@@ -492,7 +487,7 @@ cap_recv_pop_alert (struct cap_flow *flow, void *buf, uint32_t flags,
   while (pqueue_empty (&flow->alerts.pending));
 
   if (recv.spurious)
-    return (pqueue_pop_entry (&flow->alerts.pending, struct cap_alert, pnode));
+    return (pqueue_pop (&flow->alerts.pending));
 
   cap_flow_guard_fini (guard);
   if (recv.mdata.bytes_recv >= 0 && mdata)
@@ -513,29 +508,44 @@ cap_recv_alert (struct cap_flow *flow, void *buf,
   uintptr_t tag = 0;
   _Auto guard = cap_flow_guard_make (flow);
 
-  int error;
-  _Auto entry = cap_recv_pop_alert (flow, buf, flags, mdata, &error, &guard);
+  int error = 0;
+  _Auto pnode = cap_recv_pop_alert (flow, buf, flags, mdata, &error, &guard);
 
-  if (! entry)
+  if (! pnode)
     return (error);
 
-  void *payload = entry->payload;
+  struct cap_alert *entry;
+  void *payload;
   struct cap_kern_alert tmp_alert;
-  int type = cap_alert_type (entry);
+  int type = cap_alert_type (pnode);
 
-  if (type == CAP_ALERT_INTR)
-    { // Copy into a temp buffer so we may reset the counter.
-      tmp_alert = entry->k_alert;
-      entry->k_alert.intr.count = 0;
+  if (type == CAP_ALERT_CHAN_CLOSED)
+    {
+      tmp_alert.type = CAP_ALERT_CHAN_CLOSED;
+      tag = tmp_alert.tag =
+        pqueue_entry(pnode, struct cap_channel, pnode)->tag;
       payload = &tmp_alert;
+      entry = NULL;
     }
-  else if (type != CAP_ALERT_USER)
-    hlist_remove (&entry->hnode);
   else
     {
-      ids[0] = entry->task_id;
-      ids[1] = entry->thread_id;
-      tag = entry->tag;
+      entry = pqueue_entry (pnode, struct cap_alert, pnode);
+      payload = entry->payload;
+
+      if (type == CAP_ALERT_INTR)
+        { // Copy into a temp buffer so we may reset the counter.
+          tmp_alert = entry->k_alert;
+          entry->k_alert.intr.count = 0;
+          payload = &tmp_alert;
+        }
+      else if (type != CAP_ALERT_USER)
+        hlist_remove (&entry->hnode);
+      else
+        {
+          ids[0] = entry->task_id;
+          ids[1] = entry->thread_id;
+          tag = entry->tag;
+        }
     }
 
   pqueue_inc (&flow->alerts.pending, 1);
@@ -544,11 +554,11 @@ cap_recv_alert (struct cap_flow *flow, void *buf,
   if (unlikely (user_copy_to (buf, payload, CAP_ALERT_SIZE) != 0))
     {
       cap_flow_guard_lock (&guard);
-      pqueue_insert (&flow->alerts.pending, &entry->pnode);
+      pqueue_insert (&flow->alerts.pending, pnode);
 
       if (type == CAP_ALERT_INTR)
         entry->k_alert.intr.count += tmp_alert.intr.count;
-      else if (type != CAP_ALERT_USER)
+      else if (type != CAP_ALERT_USER && entry)
         hlist_insert_head (&flow->alerts.alloc, &entry->hnode);
 
       cap_recv_wakeup_fast (flow);
@@ -1359,19 +1369,17 @@ cap_channel_put_vmobj (struct cap_channel *chp)
     rcu_read_leave ();
 }
 
-bool
-cap_channel_mark_shared (struct cap_base *cap)
+void
+cap_channel_close (struct cap_channel *chp)
 {
-  while (1)
-    {
-      uintptr_t tmp = atomic_load_rlx (&cap->tflags);
-      if (tmp & CAP_CHANNEL_SHARED)
-        return (false);
-      else if (atomic_cas_bool_acq_rel (&cap->tflags, tmp,
-                                        tmp | CAP_CHANNEL_SHARED))
-        return (true);
+  uint32_t prev = atomic_sub_acq_rel (&chp->open_count, 1);
+  assert (prev != 0);
 
-      atomic_spin_nop ();
+  if (prev == 1 && chp->flow)
+    {
+      CAP_FLOW_GUARD (chp->flow);
+      pqueue_insert (&chp->flow->alerts.pending, &chp->pnode);
+      cap_recv_wakeup_fast (chp->flow);
     }
 }
 

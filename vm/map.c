@@ -1094,7 +1094,7 @@ vm_map_fault_soft (struct vm_map *map, struct vm_object *obj, uint64_t off,
        pmap_enter (map->pmap, addr, vm_page_to_pa (page), prot, pflags) == 0)
     pmap_update (map->pmap);
 
-  if (page->object)
+  if (!(entry->flags & VM_MAP_PHYS))
     vm_page_unref (page);
 
   atomic_add_rlx (&map->soft_faults, 1);
@@ -1200,9 +1200,9 @@ retry:
         frames.store[i] = NULL;
     }
 
+  vm_map_fault_free_pages (&frames);
   pmap_update (map->pmap);
   atomic_add_rlx (&map->hard_faults, 1);
-  vm_map_fault_free_pages (&frames);
   return (0);
 }
 
@@ -1294,11 +1294,18 @@ vm_map_fork_copy_entries (struct vm_map *dst, struct vm_map *src)
 
   struct vm_map_entry *entry, *out;
   out = list_first_entry (&dst->entry_list, typeof (*out), list_node);
+  dst->nr_entries = src->nr_entries;
 
   list_for_each_entry (&src->entry_list, entry, list_node)
     {
       if (VM_MAP_INHERIT (entry->flags) == VM_INHERIT_NONE)
-        continue;
+        {
+          _Auto tmp = out;
+          out = list_next_entry (out, list_node);
+          kmem_cache_free (&vm_map_entry_cache, tmp);
+          --dst->nr_entries;
+          continue;
+        }
       else if (entry->object != src->priv_cache ||
                VM_MAP_INHERIT (entry->flags) == VM_INHERIT_SHARE)
         vm_map_entry_copy (out, entry);
@@ -1314,7 +1321,6 @@ vm_map_fork_copy_entries (struct vm_map *dst, struct vm_map *src)
       out = list_next_entry (out, list_node);
     }
 
-  dst->nr_entries = src->nr_entries;
   return (0);
 }
 
@@ -1489,11 +1495,13 @@ vm_map_reply_pagereq (const uintptr_t *src, uint32_t cnt, struct vm_page **out)
   for (uint32_t i = 0; i < cnt; ++i)
     {
       uintptr_t va = src[i];
-
-      if ((!entry || va < entry->start || va > entry->end) &&
-          (!(entry = vm_map_lookup_nearest (map, va)) ||
-           !(entry->flags & VM_MAP_PHYS)))
-        return (vm_map_unref_pages (out, i, EFAULT));
+      if (!entry || va < entry->start || va > entry->end)
+        {
+          entry = vm_map_lookup_nearest (map, va);
+          if (!entry || va < entry->start ||
+              !(entry->flags & VM_MAP_PHYS))
+            return (vm_map_unref_pages (out, i, EFAULT));
+        }
 
       uint32_t off = (uint32_t)(va - entry->start) / PAGE_SIZE;
       _Auto page = entry->pages + off;

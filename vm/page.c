@@ -192,6 +192,8 @@ vm_page_set_type (struct vm_page *page, uint32_t order, uint16_t type)
   for (uint32_t i = 0; i < (1u << order); i++)
     {
       page[i].type = type;
+      page[i].object = 0;
+
       spinlock_init (&page[i].rset_lock);
       if (type != VM_PAGE_OBJECT)
         list_init (&page[i].node);

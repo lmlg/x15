@@ -205,9 +205,13 @@ test_cap_receiver (void *arg)
   semaphore_post (&data->send_sem);
   semaphore_wait (&data->recv_sem);
   vm_page_unref (page);
-  cap_base_rel (data->ch);
 
   // Test that we receive an alert on a channel closed.
+
+  int capx = cspace_add_free (cspace_self (), CAP (data->ch), 0);
+  test_assert_gt (capx, 0);
+  cspace_rem (cspace_self (), capx);
+
   error = cap_recv_alert (flow, &vars->alert, 0, &vars->mdata);
   test_assert_zero (error);
   test_assert_zero (vars->mdata.task_id);
@@ -215,6 +219,7 @@ test_cap_receiver (void *arg)
   test_assert_eq (vars->alert.type, CAP_ALERT_CHAN_CLOSED);
   test_assert_eq (vars->alert.tag, TEST_CAP_CHANNEL_TAG);
 
+  cap_base_rel (data->ch);
   cap_base_rel (flow);
 }
 
@@ -410,17 +415,9 @@ test_cap_dead_notif (void *arg __unused)
   error = cap_channel_create (&chan, flow, 1234);
   test_assert_zero (error);
 
-  int capx = cspace_add_free (cspace_self (), CAP (chan), CSPACE_WEAK);
+  int capx = cspace_add_free (cspace_self (), CAP (chan), 0);
   test_assert_ge (capx, 0);
-  cap_base_rel (chan);
-
-  int mark = 0;
-  chan = (struct cap_channel *)cspace_get_all (cspace_self (), capx, &mark);
-  test_assert_nonnull (chan);
-  cap_base_rel (chan);
-
-  if (mark)
-    cap_base_rel (chan);
+  cspace_rem (cspace_self (), capx);
 
   struct
     {

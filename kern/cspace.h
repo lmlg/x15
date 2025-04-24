@@ -26,10 +26,6 @@
 #include <kern/cspace_types.h>
 #include <kern/rcu.h>
 
-#define CSPACE_WEAK   0x02   // Use a weak reference for a capability.
-
-#define CSPACE_MASK   (CSPACE_WEAK)
-
 static inline void
 cspace_init (struct cspace *sp)
 {
@@ -38,14 +34,19 @@ cspace_init (struct cspace *sp)
 }
 
 static inline void
-cspace_maybe_rel (void *ptr)
+cspace_cap_rel (void *ptr)
 {
-  if (!((uintptr_t)ptr & RDXTREE_XBIT))
-    cap_base_rel (ptr);
+  int mark = ((uintptr_t)ptr & RDXTREE_XBIT) != 0;
+  ptr = (void *)((uintptr_t)ptr & ~RDXTREE_XBIT);
+
+  if (mark)
+    cap_channel_close ((struct cap_channel *)ptr);
+
+  cap_base_rel (ptr);
 }
 
 static inline struct cap_base*
-cspace_get_all (struct cspace *sp, int capx, int *marked)
+cspace_get (struct cspace *sp, int capx)
 {
   if (capx < 0)
     return (NULL);
@@ -57,17 +58,9 @@ cspace_get_all (struct cspace *sp, int capx, int *marked)
   if (! ptr)
     return (ptr);
 
-  *marked = ((uintptr_t)ptr & RDXTREE_XBIT) != 0;
   struct cap_base *cap = (void *)((uintptr_t)ptr & ~RDXTREE_XBIT);
   cap_base_acq (cap);
   return (cap);
-}
-
-static inline struct cap_base*
-cspace_get (struct cspace *sp, int capx)
-{
-  int marked;
-  return (cspace_get_all (sp, capx, &marked));
 }
 
 static inline int
@@ -75,13 +68,17 @@ cspace_add_free_locked (struct cspace *sp, struct cap_base *cap,
                         uint32_t flags)
 {
   rdxtree_key_t cap_idx;
-  void *ptr = (void *)((uintptr_t)cap |
-              ((flags & CSPACE_WEAK) ? RDXTREE_XBIT : 0));
+  uintptr_t mark = (cap_type (cap) == CAP_TYPE_CHANNEL &&
+                    (flags & IPC_CAP_NOREF) == 0) ? RDXTREE_XBIT : 0;
+  void *ptr = (void *)((uintptr_t)cap | mark);
   int rv = rdxtree_insert_alloc (&sp->tree, ptr, &cap_idx);
   if (rv < 0)
     return (-ENOMEM);
 
   cap_base_acq (cap);
+  if (mark)
+    atomic_add_rlx (&((struct cap_channel *)cap)->open_count, 1);
+
   return ((int)cap_idx);
 }
 
@@ -101,12 +98,14 @@ cspace_rem_locked (struct cspace *sp, int cap_idx)
   void *ptr = rdxtree_remove (&sp->tree, cap_idx);
   if (! ptr)
     return (EBADF);
-  else if (!((uintptr_t)ptr & RDXTREE_XBIT))
-    {
-      CPU_INTR_GUARD ();
-      cap_base_rel (ptr);
-    }
 
+  int mark = ((uintptr_t)ptr & RDXTREE_XBIT) != 0;
+  ptr = (void *)((uintptr_t)ptr & ~RDXTREE_XBIT);
+
+  if (mark)
+    cap_channel_close ((struct cap_channel *)ptr);
+
+  cap_base_rel (ptr);
   return (0);
 }
 
@@ -147,7 +146,7 @@ cspace_dup3 (struct cspace *sp, int cap_idx, int new_idx,
 
   if (rv == EBUSY)
     // Replace the older capability.
-    cspace_maybe_rel (rdxtree_replace_slot (slot, cap));
+    cspace_cap_rel (rdxtree_replace_slot (slot, cap));
   else if (rv)
     return (ENOMEM);
 
@@ -162,7 +161,7 @@ cspace_destroy (struct cspace *sp)
   void *cap;
 
   rdxtree_for_each (&sp->tree, &iter, cap)
-    cspace_maybe_rel (cap);
+    cspace_cap_rel (cap);
 
   rdxtree_remove_all (&sp->tree);
 }

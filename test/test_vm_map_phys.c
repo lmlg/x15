@@ -57,6 +57,7 @@ test_vm_map_phys_entry (struct ipc_msg *msg, struct ipc_msg_data *data)
       test_assert_eq (rv, -EINVAL);
 
       cap_reply_bytes (0, 0, 0);
+      panic ("shouldn't return");
     }
   else if (kmsg->type != KMSG_TYPE_PAGE_REQ)
     cap_reply_bytes (0, 0, -EINVAL);
@@ -89,7 +90,7 @@ static void
 test_vm_map_phys_handle_dirty (struct vm_object *obj, uintptr_t va)
 {
   void *ptr;
-  int ret = vm_map_anon_alloc (&ptr, vm_map_self (), PAGE_SIZE * 4);
+  int ret = vm_map_anon_alloc (&ptr, vm_map_self (), PAGE_SIZE * 5);
   test_assert_zero (ret);
 
   struct

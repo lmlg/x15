@@ -34,6 +34,12 @@ struct ipc_msg_vme
   int max_prot;
 };
 
+#define IPC_CAP_NOREF        (1 << 0)
+#define IPC_CAP_CLOEXEC      (1 << 1)
+
+#define IPC_CAP_IN_MASK    (~(IPC_CAP_CLOEXEC))
+#define IPC_CAP_OUT_MASK   (~(IPC_CAP_NOREF))
+
 struct ipc_msg_cap
 {
   int cap;

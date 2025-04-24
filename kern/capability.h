@@ -147,6 +147,8 @@ struct cap_channel
   struct cap_flow *flow;
   uintptr_t tag;
   struct vm_object *vmobj;
+  struct pqueue_node pnode;
+  uint32_t open_count;
 };
 
 struct cap_task
@@ -249,6 +251,9 @@ int cap_flow_create (struct cap_flow **outp, uint32_t flags,
 // Create a channel for a flow.
 int cap_channel_create (struct cap_channel **outp, struct cap_flow *flow,
                         uintptr_t tag);
+
+// Inform the closing of a channel.
+void cap_channel_close (struct cap_channel *chp);
 
 // Create a capability representing a task.
 int cap_task_create (struct cap_task **outp, struct task *task);

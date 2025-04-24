@@ -344,21 +344,21 @@ static int
 ipc_cap_copy_one (struct cspace *in_cs, struct cspace *out_cs,
                   struct ipc_cap_iter *in_it, struct ipc_cap_iter *out_it)
 {
-  int mark, capx = in_it->begin[in_it->cur].cap;
-  _Auto cap = cspace_get_all (in_cs, capx, &mark);
+  _Auto inp = in_it->begin + in_it->cur;
+  int capx = inp->cap;
+  _Auto cap = cspace_get (in_cs, capx);
 
   if (unlikely (! cap))
     return (-EBADF);
 
   _Auto outp = out_it->begin + out_it->cur;
-  capx = cspace_add_free_locked (out_cs, cap, outp->flags & ~CSPACE_MASK);
+  capx = cspace_add_free_locked (out_cs, cap,
+                                 (inp->flags & IPC_CAP_IN_MASK) |
+                                 (outp->flags & IPC_CAP_OUT_MASK));
   cap_base_rel (cap);
 
   if (unlikely (capx < 0))
     return (capx);
-  else if (mark && cap_type (cap) == CAP_TYPE_CHANNEL &&
-           cap_channel_mark_shared (cap))
-    cap_base_rel (cap);
 
   outp->cap = capx;
   ++in_it->cur;
