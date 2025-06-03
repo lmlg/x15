@@ -539,32 +539,43 @@ vm_map_umap_req (struct vm_object *obj, uint64_t offset, int flags)
   return (rv < 0 ? (int)-rv : (int)rv);
 }
 
+static int
+vm_map_phys_alloc (struct vm_object *obj, int flags,
+                   size_t size, uint64_t *offsetp)
+{
+  if (obj)
+    return (EINVAL);
+  else if (flags & VM_MAP_ANON)
+    {
+      uint32_t order = vm_page_order (size);
+      _Auto pages = vm_page_alloc (order, VM_PAGE_SEL_HIGHMEM,
+                                   VM_PAGE_OBJECT, VM_PAGE_SLEEP);
+      if (! pages)
+        return (ENOMEM);
+
+      for (uint32_t i = 0; i < (1u << order); ++i)
+        {
+          vm_page_init_refcount (pages + i);
+          vm_page_zero (pages + i);
+        }
+
+      *offsetp = vm_page_to_pa (pages);
+    }
+  else if (!vm_page_lookup (*offsetp + size - PAGE_SIZE))
+    return (EFAULT);
+
+  return (0);
+}
+
 int
 vm_map_enter (struct vm_map *map, uintptr_t *startp, size_t size,
               int flags, struct vm_object *object, uint64_t offset)
 {
   if (flags & VM_MAP_PHYS)
     {
-      if (object)
-        return (EINVAL);
-      else if (flags & VM_MAP_ANON)
-        {
-          uint32_t order = vm_page_order (size);
-          _Auto pages = vm_page_alloc (order, VM_PAGE_SEL_HIGHMEM,
-                                       VM_PAGE_OBJECT, VM_PAGE_SLEEP);
-          if (! pages)
-            return (ENOMEM);
-
-          for (uint32_t i = 0; i < (1u << order); ++i)
-            {
-              vm_page_init_refcount (pages + i);
-              vm_page_zero (pages + i);
-            }
-
-          offset = vm_page_to_pa (pages);
-        }
-      else if (!vm_page_lookup (offset + size - PAGE_SIZE))
-        return (EFAULT);
+      int error = vm_map_phys_alloc (object, flags, size, &offset);
+      if (error != 0)
+        return (error);
     }
   else if (object && object->flags & VM_OBJECT_EXTERNAL)
     { // Need to check if the mapping is permitted.
