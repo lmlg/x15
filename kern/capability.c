@@ -31,8 +31,6 @@
 #include <vm/map.h>
 #include <vm/page.h>
 
-#include <stdio.h>
-
 struct cap_alert
 {
   union
@@ -104,7 +102,7 @@ struct cap_receiver
   struct thread *thread;
   void *buf;
   struct ipc_msg_data mdata;
-  bool spurious;
+  bool woken;
 };
 
 // A thread waiting for a landing pad to be available.
@@ -126,8 +124,6 @@ static struct adaptive_lock cap_intr_lock;
 #define CAP_ALERT_THREAD_PRIO    (CAP_ALERT_TASK_PRIO << 1)
 #define CAP_ALERT_INTR_PRIO      (CAP_ALERT_THREAD_PRIO << 1)
 #define CAP_ALERT_CHANNEL_PRIO   (1u)
-
-#define CAP_CHANNEL_SHARED   0x01
 
 #define CAP_FROM_SREF(ptr, type)   structof (ptr, type, base.sref)
 
@@ -411,8 +407,9 @@ cap_transfer_iters (struct task *task, struct cap_iters *r_it,
   ssize_t ret = ipc_iov_iter_copy (task, &r_it->iov, &l_it->iov, flags);
   if (ret < 0)
     return (ret);
+  else if ((*bytesp += ret) < 0)
+    return (-EOVERFLOW);
 
-  *bytesp += ret;
   if (ipc_cap_iter_size (&r_it->cap) && ipc_cap_iter_size (&l_it->cap))
     {
       int nr_caps = ipc_cap_iter_copy (task, &r_it->cap, &l_it->cap, flags);
@@ -449,7 +446,7 @@ cap_receiver_add (struct cap_flow *flow, struct cap_receiver *recv, void *buf)
 {
   recv->thread = thread_self ();
   recv->buf = buf;
-  recv->spurious = false;
+  recv->woken = false;
   cap_ipc_msg_data_init (&recv->mdata, 0);
   list_insert_tail (&flow->alerts.receivers, &recv->lnode);
 }
@@ -461,7 +458,7 @@ cap_recv_wakeup_fast (struct cap_flow *flow)
     return;
 
   _Auto recv = list_pop (&flow->alerts.receivers, struct cap_receiver, lnode);
-  recv->spurious = true;
+  recv->woken = true;
   thread_wakeup (recv->thread);
 }
 
@@ -486,7 +483,7 @@ cap_recv_pop_alert (struct cap_flow *flow, void *buf, uint32_t flags,
     thread_sleep (&flow->alerts.lock, flow, "flow-alert");
   while (pqueue_empty (&flow->alerts.pending));
 
-  if (recv.spurious)
+  if (recv.woken)
     return (pqueue_pop (&flow->alerts.pending));
 
   cap_flow_guard_fini (guard);
@@ -521,7 +518,7 @@ cap_recv_alert (struct cap_flow *flow, void *buf,
 
   if (type == CAP_ALERT_CHAN_CLOSED)
     {
-      tmp_alert.type = CAP_ALERT_CHAN_CLOSED;
+      tmp_alert.type = type;
       tag = tmp_alert.tag =
         pqueue_entry(pnode, struct cap_channel, pnode)->tag;
       payload = &tmp_alert;
@@ -821,21 +818,33 @@ cap_send_iters (struct cap_base *cap, struct cap_iters *in,
   return (cap_sender_impl (flow, tag, in, out, data, xflags, cap));
 }
 
+static bool
+cap_test_overflow (const void *bp, const struct cap_iters *it)
+{
+  const uint32_t *caps = (const uint32_t *)((const char *)bp + CAP_CAPS_OFF);
+  const uint32_t *vmes = (const uint32_t *)((const char *)bp + CAP_VMES_OFF);
+  return (UINT32_MAX - *caps < (uint32_t)ipc_cap_iter_size (&it->cap) ||
+          UINT32_MAX - *vmes < (uint32_t)ipc_vme_iter_size (&it->vme));
+}
+
 ssize_t
 cap_pull_iters (struct cap_iters *it, struct ipc_msg_data *mdata)
 {
   struct cap_lpad *lpad = thread_self()->cur_lpad;
   if (! lpad)
     return (-EINVAL);
+  else if (cap_test_overflow (&lpad->mdata.bytes_recv, it))
+    return (-EOVERFLOW);
 
   struct ipc_msg_data tmp;
   cap_ipc_msg_data_init (&tmp, lpad->mdata.tag);
 
-  ssize_t ret = cap_transfer_iters (lpad->task, lpad->cur_in, it,
+  ssize_t prev = tmp.bytes_recv = lpad->mdata.bytes_recv,
+          ret = cap_transfer_iters (lpad->task, lpad->cur_in, it,
                                     IPC_COPY_FROM | IPC_CHECK_BOTH,
                                     &tmp.bytes_recv);
 
-  lpad->mdata.bytes_recv += tmp.bytes_recv;
+  lpad->mdata.bytes_recv += (tmp.bytes_recv -= prev);
   lpad->mdata.vmes_recv += tmp.vmes_recv;
   lpad->mdata.caps_recv += tmp.caps_recv;
 
@@ -851,15 +860,18 @@ cap_push_iters (struct cap_iters *it, struct ipc_msg_data *mdata)
   struct cap_lpad *lpad = thread_self()->cur_lpad;
   if (! lpad)
     return (-EINVAL);
+  else if (cap_test_overflow (&lpad->mdata.bytes_sent, it))
+    return (-EOVERFLOW);
 
   struct ipc_msg_data tmp;
   cap_ipc_msg_data_init (&tmp, lpad->mdata.tag);
 
-  ssize_t ret = cap_transfer_iters (lpad->task, lpad->cur_out, it,
+  ssize_t prev = (tmp.bytes_sent = lpad->mdata.bytes_sent),
+          ret = cap_transfer_iters (lpad->task, lpad->cur_out, it,
                                     IPC_COPY_TO | IPC_CHECK_BOTH,
                                     &tmp.bytes_sent);
 
-  lpad->mdata.bytes_sent += tmp.bytes_sent;
+  lpad->mdata.bytes_sent += (tmp.bytes_sent -= prev);
   lpad->mdata.vmes_sent += tmp.vmes_sent;
   lpad->mdata.caps_sent += tmp.caps_sent;
 
@@ -912,6 +924,9 @@ cap_reply_iters (struct cap_iters *it, int rv)
     return (-EINVAL);
   else if (rv >= 0)
     {
+      if (cap_test_overflow (&lpad->mdata.bytes_sent, it))
+        return (-EOVERFLOW);
+
       ret = cap_transfer_iters (lpad->task, lpad->cur_out, it,
                                 IPC_COPY_TO | IPC_CHECK_BOTH,
                                 &lpad->mdata.bytes_sent);
@@ -1432,6 +1447,8 @@ INIT_OP_DEFINE (cap_setup,
 #ifdef CONFIG_SHELL
 
 #include <kern/panic.h>
+
+#include <stdio.h>
 
 static void
 cap_shell_info (struct shell *shell, int argc, char **argv)
