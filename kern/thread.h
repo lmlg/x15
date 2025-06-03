@@ -55,6 +55,7 @@
 #include <kern/turnstile_types.h>
 #include <kern/types.h>
 #include <kern/unwind.h>
+#include <kern/work.h>
 
 #include <machine/cpu.h>
 #include <machine/tcb.h>
@@ -214,11 +215,16 @@ struct thread
   struct perfmon_td perfmon_td;   // ( )
 #endif
 
+  union
+    {
+      struct bulletin dead_subs;   // (-)
+      struct work work;
+    };
+
   struct unw_fixup_t *fixup;      // (-)
   void *cur_lpad;                 // (-)
   struct task *xtask;             // (-)
   struct futex_td *futex_td;      // (-)
-  struct bulletin dead_subs;      // ( )
   struct pmap_window *pmap_windows[CPU_NR_PMAP_WINDOWS];   // (-)
 };
 

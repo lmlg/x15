@@ -162,6 +162,12 @@ task_create2 (struct task **taskp, const char *name, struct vm_map *map)
   return (0);
 }
 
+static void
+task_deferred_free (struct work *wp)
+{
+  kmem_cache_free (&task_cache, structof (wp, struct task, work));
+}
+
 void
 task_destroy (struct task *task)
 {
@@ -172,7 +178,9 @@ task_destroy (struct task *task)
   kuid_remove (&task->kuid, KUID_TASK);
   if (task->map)
     vm_map_destroy (task->map);
-  kmem_cache_free (&task_cache, task);
+
+  work_init (&task->work, task_deferred_free);
+  rcu_defer (&task->work);
 }
 
 struct task*

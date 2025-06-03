@@ -1815,6 +1815,12 @@ thread_free_stack (void *stack)
 #endif
 
 static void
+thread_deferred_free (struct work *wp)
+{
+  kmem_cache_free (&thread_cache, structof (wp, struct thread, work));
+}
+
+static void
 thread_destroy (struct thread *thread)
 {
   assert (thread != thread_self ());
@@ -1829,7 +1835,9 @@ thread_destroy (struct thread *thread)
   sleepq_destroy (thread->priv_sleepq);
   thread_free_stack (thread->stack);
   tcb_cleanup (&thread->tcb);
-  kmem_cache_free (&thread_cache, thread);
+
+  work_init (&thread->work, thread_deferred_free);
+  rcu_defer (&thread->work);
 }
 
 static void

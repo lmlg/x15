@@ -30,6 +30,7 @@
 #include <kern/spinlock.h>
 #include <kern/stream.h>
 #include <kern/thread.h>
+#include <kern/work.h>
 
 #include <vm/map.h>
 
@@ -45,7 +46,11 @@ struct task
   struct list threads;
   struct vm_map *map;
   struct cspace caps;
-  struct bulletin dead_subs;
+  union
+    {
+      struct bulletin dead_subs;
+      struct work work;   // For deferred deallocation.
+    };
   char name[TASK_NAME_SIZE];
 };
 
