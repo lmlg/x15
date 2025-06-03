@@ -116,13 +116,24 @@ vm_object_destroy (struct vm_object *object)
   rcu_defer (&object->work);
 }
 
+static inline int
+vm_object_ensure (struct vm_page *page, struct vm_object *object)
+{
+  _Auto prev = atomic_load_rlx (&page->object);
+  if (prev)
+    return (prev == object);
+
+  prev = atomic_cas_acq (&page->object, NULL, object);
+  return (prev == object || !prev);
+}
+
 int
 vm_object_swap (struct vm_object *object, struct vm_page *page,
                 uint64_t offset, struct vm_page *expected)
 {
   assert (vm_page_aligned (offset));
   assert (vm_page_referenced (page));
-  if (!atomic_cas_bool_acq (&page->object, NULL, object))
+  if (!vm_object_ensure (page, object))
     // Page belongs to a different object.
     return (EAGAIN);
 
