@@ -402,13 +402,16 @@ cap_ipc_msg_data_init (struct ipc_msg_data *data, uintptr_t tag)
 
 static ssize_t
 cap_transfer_iters (struct task *task, struct cap_iters *r_it,
-                    struct cap_iters *l_it, uint32_t flags, ssize_t *bytesp)
+                    struct cap_iters *l_it, uint32_t flags, size_t *bytesp)
 {
   ssize_t ret = ipc_iov_iter_copy (task, &r_it->iov, &l_it->iov, flags);
   if (ret < 0)
     return (ret);
-  else if ((*bytesp += ret) < 0)
-    return (-EOVERFLOW);
+  else if (__builtin_add_overflow (*bytesp, ret, bytesp))
+    {
+      *bytesp = ~(size_t)0;
+      return (-EOVERFLOW);
+    }
 
   if (ipc_cap_iter_size (&r_it->cap) && ipc_cap_iter_size (&l_it->cap))
     {
@@ -850,6 +853,8 @@ cap_pull_iters (struct cap_iters *it, struct ipc_msg_data *mdata)
 
   if (mdata)
     user_write_struct (mdata, &tmp, sizeof (tmp));
+  else if (ret == -EOVERFLOW)
+    lpad->mdata.flags |= IPC_MSG_TRUNC;
 
   return (ret);
 }
@@ -877,6 +882,8 @@ cap_push_iters (struct cap_iters *it, struct ipc_msg_data *mdata)
 
   if (mdata)
     user_write_struct (mdata, &tmp, sizeof (tmp));
+  else if (ret == -EOVERFLOW)
+    lpad->mdata.flags |= IPC_MSG_TRUNC;
 
   return (ret);
 }

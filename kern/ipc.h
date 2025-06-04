@@ -95,10 +95,18 @@ struct ipc_msg_data
   int thread_id;
   uint32_t flags;
   uintptr_t tag;
-  ssize_t bytes_sent;
+  union
+    {
+      size_t bytes_sent;
+      uint64_t qbs;
+    };
   uint32_t vmes_sent;
   uint32_t caps_sent;
-  ssize_t bytes_recv;
+  union
+    {
+      size_t bytes_recv;
+      uint64_t qbr;
+    };
   uint32_t vmes_recv;
   uint32_t caps_recv;
 };
