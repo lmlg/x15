@@ -388,7 +388,7 @@ cap_ipc_msg_data_init (struct ipc_msg_data *data, uintptr_t tag)
 {
   data->size = sizeof (*data);
   data->tag = tag;
-  data->bytes_recv = data->bytes_sent = 0;
+  data->qbr = data->qbs = 0;
   data->flags = 0;
   data->vmes_sent = data->caps_sent = 0;
   data->vmes_recv = data->caps_recv = 0;
@@ -407,9 +407,9 @@ cap_transfer_iters (struct task *task, struct cap_iters *r_it,
   ssize_t ret = ipc_iov_iter_copy (task, &r_it->iov, &l_it->iov, flags);
   if (ret < 0)
     return (ret);
-  else if (__builtin_add_overflow (*bytesp, ret, bytesp))
+  else if (((ssize_t)(*bytesp += ret)) < 0)
     {
-      *bytesp = ~(size_t)0;
+      *bytesp = SIZE_MAX / 2;
       return (-EOVERFLOW);
     }
 
