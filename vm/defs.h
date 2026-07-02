@@ -40,4 +40,13 @@
 #define VM_PROT_RDWR      (VM_PROT_READ | VM_PROT_WRITE)
 #define VM_PROT_ALL       (VM_PROT_RDWR | VM_PROT_EXEC)
 
+/*
+ * W^X (Write XOR Execute) policy check.
+ *
+ * Evaluates to true if the given protection flags violate the policy,
+ * i.e., both write and execute permissions are requested simultaneously.
+ */
+#define VM_PROT_HAS_WX(prot)   \
+  (((prot) & (VM_PROT_WRITE | VM_PROT_EXEC)) == (VM_PROT_WRITE | VM_PROT_EXEC))
+
 #endif

@@ -136,7 +136,9 @@
 #define CPU_MSR_GSBASE                          0xc0000101
 
 // EFER MSR flags.
+#define CPU_EFER_SCE                            0x00000001
 #define CPU_EFER_LME                            0x00000100
+#define CPU_EFER_NXE                            0x00000800
 
 // Bit used to make extended CPUID requests.
 #define CPU_CPUID_EXT_BIT                       0x80000000

@@ -86,13 +86,4 @@ void syscall_handler (struct cpu_exc_frame *frame);
 
 #endif
 
-#define SYSCALL_ARCH(sysno, ...)   \
-  ({   \
-     uintptr_t args_[] = { __VA_ARGS__, 0, 0, 0, 0, 0, 0 };   \
-     const size_t N_ = sizeof (args_) / sizeof (args_[0]);   \
-     SYSCALL_ARCH_IMPL ((sysno), args_[N_ - 6], args_[N_ - 5],   \
-                        args_[N_ - 4], args_[N_ - 3],   \
-                        args_[N_ - 2], args_[N_ - 1]);   \
-   })
-
 #endif /* X86_MACHINE_SYSCALL_H */

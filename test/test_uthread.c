@@ -26,8 +26,6 @@
 #include <kern/thread.h>
 #include <kern/uthread.h>
 
-#include <machine/syscall.h>
-
 #include <test/test.h>
 
 #include <vm/map.h>
@@ -51,7 +49,7 @@ struct test_uthread_args
 static void
 test_uthread_entry (void)
 {
-  SYSCALL_ARCH (SYS_thread_exit, 0, 0);
+  SYSCALL_UENTER (SYS_thread_exit, 0, 0);
   __builtin_unreachable ();
 }
 

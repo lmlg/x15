@@ -91,6 +91,15 @@
 #define PMAP_PTE_PS     0x00000080
 #define PMAP_PTE_G      0x00000100
 
+/*
+ * No-execute bit (bit 63).
+ *
+ * Only meaningful when the NXE bit is set in the EFER MSR, which is
+ * done during per-CPU setup. On 32-bit without PAE, this bit does
+ * not exist and is harmlessly masked out by the phys_addr_t width.
+ */
+#define PMAP_PTE_NX     (DECL_CONST (1, ULL) << 63)
+
 // Page translation hierarchy properties.
 
 /*
@@ -101,7 +110,7 @@
  */
 #define PMAP_L0_MASK   \
   (PMAP_PA_MASK | PMAP_PTE_D | PMAP_PTE_A | PMAP_PTE_PCD | PMAP_PTE_PWT |   \
-   PMAP_PTE_US | PMAP_PTE_RW | PMAP_PTE_P)
+   PMAP_PTE_US | PMAP_PTE_RW | PMAP_PTE_P | PMAP_PTE_NX)
 
 #define PMAP_L1_MASK   \
   (PMAP_PA_MASK | PMAP_PTE_A | PMAP_PTE_PCD | PMAP_PTE_PWT | PMAP_PTE_US |   \

@@ -108,9 +108,9 @@ static void __init
 syscall_percpu_setup (void)
 {
 #ifdef __LP64__
-  // Enable the System Call Extension (SCE) bit in EFER.
+  // Enable SCE (bit 0) and NXE (bit 11) in EFER.
   uint64_t efer = cpu_get_msr64 (CPU_MSR_EFER);
-  cpu_set_msr64 (CPU_MSR_EFER, efer | 1);
+  cpu_set_msr64 (CPU_MSR_EFER, efer | CPU_EFER_SCE | CPU_EFER_NXE);
 
   /*
    * Configure the STAR MSR:

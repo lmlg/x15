@@ -22,7 +22,10 @@
 #include <stdnoreturn.h>
 
 #include <kern/init.h>
+#include <kern/macros.h>
 #include <kern/types.h>
+
+#include <machine/syscall.h>
 
 struct cpu_exc_frame;
 
@@ -40,16 +43,7 @@ typedef ssize_t (*syscall_fn_t) (uintptr_t, uintptr_t, uintptr_t,
 // Initialize the system call subsystem.
 int syscall_setup (void);
 
-/*
- * Dispatch a system call.
- *
- * Arguments:
- *  nr   - System call number (from RAX/EAX).
- *  args - Array of up to 6 arguments extracted from the exception frame
- *         in the architecture-specific calling convention.
- *
- * Returns 0 or a positive value on success, or a negative errno on error.
- */
+// Dispatch a system call given the number and arguments.
 ssize_t syscall_dispatch (uintptr_t nr, const uintptr_t args[6]);
 
 // Generic callback on transition to kernel space via a system call.
@@ -58,5 +52,14 @@ void syscall_enter (struct cpu_exc_frame *frame);
 // Generic callback on transition to kernel space via an interrupt or exception.
 void syscall_interrupt_enter (struct cpu_exc_frame *frame);
 
+// Enter a syscall from userspace.
+#define SYSCALL_UENTER(sysno, ...)   \
+  ({   \
+     const uintptr_t args_[] = { __VA_ARGS__, 0, 0, 0, 0, 0, 0 };   \
+     const size_t N_ = ARRAY_SIZE (args_);   \
+     SYSCALL_ARCH_IMPL ((sysno), args_[N_ - 6], args_[N_ - 5],   \
+                        args_[N_ - 4], args_[N_ - 3],   \
+                        args_[N_ - 2], args_[N_ - 1]);   \
+   })
 
 #endif /* KERN_SYSCALL_H */

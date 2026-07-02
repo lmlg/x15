@@ -1251,8 +1251,12 @@ pmap_enter_local (struct pmap *pmap, uintptr_t va, phys_addr_t pa,
 
   assert (!pmap_pte_valid (*pte));
 set:
-  pte_bits = (is_kernel ? PMAP_PTE_G : PMAP_PTE_US) |
-             pmap_prot_table[prot & VM_PROT_ALL];
+  pte_bits = pmap_prot_table[prot & VM_PROT_ALL];
+  if (is_kernel)
+    pte_bits |= PMAP_PTE_G;
+  else
+    pte_bits |= PMAP_PTE_US | ((prot & VM_PROT_EXEC) ? 0 : PMAP_PTE_NX);
+
   pmap_pte_set (pte, pa, pte_bits, &pmap_pt_levels[0]);
   return (0);
 }
@@ -1513,7 +1517,7 @@ pmap_protect_local (struct pmap *pmap, uintptr_t start,
       bits |= PMAP_PTE_G;
     }
   else
-    bits |= PMAP_PTE_US;
+    bits |= PMAP_PTE_US | ((prot & VM_PROT_EXEC) ? 0 : PMAP_PTE_NX);
 
   if (prot != VM_PROT_NONE)
     bits |= PMAP_PTE_P;

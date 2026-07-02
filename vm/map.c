@@ -349,6 +349,18 @@ vm_map_prepare (struct vm_map *map, uintptr_t start,
   request->object = object;
   request->offset = offset;
   assert (vm_map_request_valid (request));
+
+  /*
+   * Enforce W^X (Write XOR Execute) policy on user mappings.
+   *
+   * Kernel mappings are exempt from this check because they may be
+   * needed at certain points (like early boot or trampoline code).
+   */
+  if (map != vm_map_get_kernel_map () &&
+      (VM_PROT_HAS_WX (VM_MAP_PROT (flags)) ||
+       VM_PROT_HAS_WX (VM_MAP_MAXPROT (flags))))
+    return (EACCES);
+
   return ((flags & VM_MAP_FIXED) ?
           vm_map_find_fixed (map, request) :
           vm_map_find_avail (map, request));
@@ -841,6 +853,8 @@ vm_map_protect (struct vm_map *map, uintptr_t start, uintptr_t end, int prot)
 {
   if (!vm_page_aligned (start) || !vm_page_aligned (end) || end < start)
     return (EINVAL);
+  else if (map != vm_map_get_kernel_map () && VM_PROT_HAS_WX (prot))
+    return (EACCES);
 
   struct list dead;
   list_init (&dead);
