@@ -562,6 +562,7 @@ vm_map_phys_alloc (struct vm_object *obj, int flags,
       *offsetp = vm_page_to_pa (pages);
     }
   else if (!vm_page_lookup (*offsetp + size - PAGE_SIZE))
+    // If the last page isn't valid, the entire allocation cannot be satisfied.
     return (EFAULT);
 
   return (0);
@@ -1067,7 +1068,7 @@ vm_map_fault_handle_cow (uintptr_t addr, struct vm_page **pgp,
     {
       *pgp = p2;
       // Removing the physical mapping will unreference the source page.
-      pmap_remove (map->pmap, addr, 0);
+      pmap_remove (map->pmap, addr, addr + PAGE_SIZE);
     }
   else
     {
@@ -1201,14 +1202,16 @@ retry:
   addr -= offset - start_off;
   final_off -= offset - start_off;
 
-  for (uint32_t i = 0; i < (uint32_t)n_pages;
-      ++i, final_off += PAGE_SIZE, addr += PAGE_SIZE)
+  for (uint32_t i = 0; i < (uint32_t)n_pages; ++i)
     {
       struct vm_page *page = frames.store[i];
       if (vm_object_insert (final_obj, page, final_off) == 0 &&
           pmap_enter (map->pmap, addr, vm_page_to_pa (page),
                       prot, PMAP_IGNORE_ERRORS) == 0)
         frames.store[i] = NULL;
+
+      final_off += PAGE_SIZE;
+      addr += PAGE_SIZE;
     }
 
   vm_map_fault_free_pages (&frames);
