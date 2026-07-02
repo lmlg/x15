@@ -490,13 +490,14 @@ cap_recv_pop_alert (struct cap_flow *flow, void *buf, uint32_t flags,
     return (pqueue_pop (&flow->alerts.pending));
 
   cap_flow_guard_fini (guard);
-  if (recv.mdata.bytes_recv >= 0 && mdata)
+  if ((ssize_t)recv.mdata.bytes_recv >= 0 && mdata)
     {
       recv.mdata.bytes_recv = CAP_ALERT_SIZE;
       user_write_struct (mdata, &recv.mdata, sizeof (recv.mdata));
     }
 
-  *outp = recv.mdata.bytes_recv >= 0 ? 0 : (int)-recv.mdata.bytes_recv;
+  *outp = (ssize_t)recv.mdata.bytes_recv >= 0 ?
+          0 : (int)-recv.mdata.bytes_recv;
   return (NULL);
 }
 
@@ -574,6 +575,9 @@ cap_recv_alert (struct cap_flow *flow, void *buf,
       user_write_struct (mdata, &tmp, sizeof (tmp));
     }
 
+  if (entry && cap_alert_type (entry) == CAP_ALERT_USER)
+    kmem_cache_free (&cap_misc_cache, entry);
+
   return (0);
 }
 
@@ -648,8 +652,8 @@ int
   ssize_t rv = ipc_bcopy (recv->thread->task, recv->buf, sizeof (abuf),
                           abuf, sizeof (abuf), IPC_COPY_TO | IPC_CHECK_REMOTE);
 
-  thread_wakeup (recv->thread);
   recv->mdata.bytes_recv = rv;
+  thread_wakeup (recv->thread);
   return (rv < 0 ? (int)-rv : 0);
 }
 
@@ -1010,14 +1014,14 @@ cap_flow_rem_lpad (struct cap_flow *flow, uintptr_t stack, bool unmap)
                  (stack == ~(uintptr_t)0 || stack == *entry->ctx))
           {
             if (!atomic_cas_bool_acq (pptr, entry, entry->next))
-              return (ESRCH);
+              continue;
 
             break;
           }
       }
   }
 
-  int error = stack != ~(uintptr_t)0 || !unmap ? 0 :
+  int error = (stack != ~(uintptr_t)0 || !unmap) ? 0 :
               vm_map_remove (vm_map_self (), stack, entry->size);
 
   if (! error)
@@ -1161,9 +1165,9 @@ int
 cap_intr_unregister (struct cap_flow *flow, uint32_t irq)
 {
   cpu_flags_t flags;
-  struct cap_alert_async *entry;
-
   cpu_intr_save (&flags);
+
+  struct cap_alert_async *entry;
   int error = cap_unregister_impl (flow, CAP_ALERT_INTR, irq, &entry);
 
   if (! error)

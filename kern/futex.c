@@ -455,7 +455,7 @@ futex_wake (int *addr, uint32_t flags, int value)
   if (data.wait_obj)
     error = data.ops->wake (data.wait_obj, flags);
 
-  return (0);
+  return (error);
 }
 
 int
@@ -531,7 +531,7 @@ futex_td_exit (struct futex_td *td)
     return;
 
   if (rtd.pending &&
-      (!user_check_range (rtd.pending, sizeof (rtd.pending)) ||
+      (!user_check_range (rtd.pending, sizeof (*rtd.pending)) ||
        futex_robust_list_handle (rtd.pending, (int *)rtd.pending, tid) != 0))
     return;
 

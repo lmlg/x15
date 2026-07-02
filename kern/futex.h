@@ -71,7 +71,7 @@ int futex_wait (int *addr, int value, uint32_t flags, uint64_t ticks);
 
 /*
  * Wake up threads waiting on an address. Either one thread (default) or
- * all threads (if FLAGS_BROADCAST is set) may be woken up. In addition,
+ * all threads (if FUTEX_BROADCAST is set) may be woken up. In addition,
  * if the FUTEX_MUTATE bit is set, the address' contents may be set to
  * a specified value (useful for robust futexes).
  */

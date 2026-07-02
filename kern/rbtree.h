@@ -312,7 +312,6 @@ MACRO_BEGIN   \
   \
   struct rbtree_node *prev_ = NULL, *cur_ = (tree)->root;   \
   int index_ = -1;   \
-  cur_ = (tree)->root;                                    \
   \
   while (cur_ != NULL)   \
     {   \

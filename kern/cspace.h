@@ -92,9 +92,6 @@ cspace_add_free (struct cspace *sp, struct cap_base *cap, uint32_t flags)
 static inline int
 cspace_rem_locked (struct cspace *sp, int cap_idx)
 {
-  if (cap_idx < 0)
-    return (EBADF);
-
   void *ptr = rdxtree_remove (&sp->tree, cap_idx);
   if (! ptr)
     return (EBADF);

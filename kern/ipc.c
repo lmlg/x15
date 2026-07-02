@@ -222,10 +222,12 @@ ipc_iov_iter_usrnext (struct ipc_iov_iter *it, ssize_t *errp)
     }
 }
 
+// Same as above, only for a remote iterator.
+
 static struct iovec*
 ipc_iov_iter_next_remote (struct ipc_iov_iter *it,
                           struct task *task, ssize_t *outp)
-{ // Same as above, only for a remote iterator.
+{
   while (1)
     {
       if (it->head.iov_len)
