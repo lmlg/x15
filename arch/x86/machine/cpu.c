@@ -32,6 +32,7 @@
 #include <kern/percpu.h>
 #include <kern/spinlock.h>
 #include <kern/shutdown.h>
+#include <kern/syscall.h>
 #include <kern/task.h>
 #include <kern/thread.h>
 #include <kern/unwind.h>
@@ -120,15 +121,6 @@ struct cpu_pseudo_desc
   uint16_t limit;
   uintptr_t address;
 } __packed;
-
-struct cpu_exc_frame
-{
-  uintptr_t words[CPU_EXC_FRAME_SIZE];
-}
-#ifndef __LP64__
-__packed
-#endif
-;
 
 /*
  * Type for low level exception handlers.
@@ -322,6 +314,23 @@ cpu_idt_set_intr_gate (struct cpu_idt *idt, uint32_t vector,
 {
   struct cpu_gate_desc *desc = cpu_idt_get_desc (idt, vector);
   cpu_gate_desc_init_intr (desc, fn, CPU_TSS_IST_INTR);
+}
+
+void __init
+cpu_idt_set_user_intr_gate (uint32_t vector, cpu_ll_exc_fn_t fn)
+{
+  struct cpu_gate_desc *desc = cpu_idt_get_desc (&cpu_idt, vector);
+  uintptr_t addr = (uintptr_t)fn;
+  desc->word1 = (CPU_GDT_SEL_CODE << 16) |
+                (addr & CPU_DESC_GATE_OFFSET_LOW_MASK);
+  desc->word2 = (addr & CPU_DESC_GATE_OFFSET_HIGH_MASK) |
+                CPU_DESC_PRESENT | CPU_DESC_TYPE_GATE_INTR | (CPU_PL_USER << 13);
+
+#ifdef __LP64__
+  desc->word2 |= CPU_TSS_IST_INTR & CPU_DESC_SEG_IST_MASK;
+  desc->word3 = addr >> 32;
+  desc->word4 = 0;
+#endif
 }
 
 static void __init
@@ -532,6 +541,9 @@ cpu_exc_double_fault (const struct cpu_exc_frame *frame)
 void
 cpu_exc_main (const struct cpu_exc_frame *frame)
 {
+  if ((frame->words[CPU_EXC_FRAME_CS] & 3) == CPU_PL_USER)
+    syscall_interrupt_enter ((struct cpu_exc_frame *)frame);
+
   uint32_t vector = (uint32_t)frame->words[CPU_EXC_FRAME_VECTOR];
   const _Auto handler = cpu_get_exc_handler (vector);
   cpu_exc_handler_run (handler, frame);
@@ -541,6 +553,9 @@ cpu_exc_main (const struct cpu_exc_frame *frame)
 void
 cpu_intr_main (const struct cpu_exc_frame *frame)
 {
+  if ((frame->words[CPU_EXC_FRAME_CS] & 3) == CPU_PL_USER)
+    syscall_interrupt_enter ((struct cpu_exc_frame *)frame);
+
   uint32_t vector = (uint32_t)frame->words[CPU_EXC_FRAME_VECTOR];
   const _Auto handler = cpu_get_intr_handler (vector);
 
@@ -839,6 +854,40 @@ cpu_gdt_set_tss (struct cpu_gdt *gdt, uint32_t selector,
 }
 
 static void __init
+cpu_gdt_set_user_code (struct cpu_gdt *gdt, uint32_t selector)
+{
+  struct cpu_seg_desc *desc = cpu_gdt_get_desc (gdt, selector);
+#ifdef __LP64__
+  desc->high = CPU_DESC_LONG | CPU_DESC_PRESENT | CPU_DESC_S |
+               CPU_DESC_TYPE_CODE | (CPU_PL_USER << 13);
+  desc->low = 0;
+#else
+  desc->high = CPU_DESC_GRAN_4KB | CPU_DESC_DB |
+               (0x000fffff & CPU_DESC_SEG_LIMIT_HIGH_MASK) |
+               CPU_DESC_PRESENT | CPU_DESC_S | CPU_DESC_TYPE_CODE |
+               (CPU_PL_USER << 13);
+  desc->low = 0x000fffff & CPU_DESC_SEG_LIMIT_LOW_MASK;
+#endif
+}
+
+static void __init
+cpu_gdt_set_user_data (struct cpu_gdt *gdt, uint32_t selector)
+{
+  struct cpu_seg_desc *desc = cpu_gdt_get_desc (gdt, selector);
+#ifdef __LP64__
+  desc->high = CPU_DESC_DB | CPU_DESC_PRESENT | CPU_DESC_S |
+               CPU_DESC_TYPE_DATA | (CPU_PL_USER << 13);
+  desc->low = 0;
+#else
+  desc->high = CPU_DESC_GRAN_4KB | CPU_DESC_DB |
+               (0x000fffff & CPU_DESC_SEG_LIMIT_HIGH_MASK) |
+               CPU_DESC_PRESENT | CPU_DESC_S | CPU_DESC_TYPE_DATA |
+               (CPU_PL_USER << 13);
+  desc->low = 0x000fffff & CPU_DESC_SEG_LIMIT_LOW_MASK;
+#endif
+}
+
+static void __init
 cpu_gdt_init (struct cpu_gdt *gdt, const struct cpu_tss *tss,
               const struct cpu_tss *df_tss __unused, void *pcpu_area __unused)
 {
@@ -846,6 +895,8 @@ cpu_gdt_init (struct cpu_gdt *gdt, const struct cpu_tss *tss,
   cpu_gdt_set_code (gdt, CPU_GDT_SEL_CODE);
   cpu_gdt_set_data (gdt, CPU_GDT_SEL_DATA, 0);
   cpu_gdt_set_tss (gdt, CPU_GDT_SEL_TSS, tss);
+  cpu_gdt_set_user_data (gdt, CPU_GDT_SEL_USER_DATA);
+  cpu_gdt_set_user_code (gdt, CPU_GDT_SEL_USER_CODE);
 
 #ifndef __LP64__
   cpu_gdt_set_tss (gdt, CPU_GDT_SEL_DF_TSS, df_tss);

@@ -131,6 +131,7 @@ test_vm_map_phys_handle_dirty (struct vm_object *obj, uintptr_t va)
   p->offsets[3] = PAGE_SIZE;
   p->pginfo.offset_cnt = 4;
 
+  // This will copy the pages and mark them clean.
   ret = vm_object_copy_pages (obj, &p->pginfo);
   test_assert_eq (ret, PAGE_SIZE * 3);
   test_assert_ne (p->offsets[3] & 1, 0);

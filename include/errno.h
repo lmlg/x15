@@ -39,5 +39,6 @@
 #define EALREADY            19
 #define EPERM               20
 #define ENXIO               21
+#define ENOSYS              22
 
 #endif

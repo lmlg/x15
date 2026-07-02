@@ -49,6 +49,8 @@ x15_SOURCES-y += \
         arch/x86/machine/pmap.c \
         arch/x86/machine/ssp.c \
         arch/x86/machine/string.c \
+        arch/x86/machine/syscall_asm.S \
+        arch/x86/machine/syscall.c \
         arch/x86/machine/tcb_asm.S \
         arch/x86/machine/tcb.c \
         arch/x86/machine/uart.c

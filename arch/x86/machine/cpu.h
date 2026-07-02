@@ -251,12 +251,18 @@ enum cpu_feature
 #define CPU_GDT_SEL_TSS         24
 
 #ifdef __LP64__
-  #define CPU_GDT_SIZE            40
+  #define CPU_GDT_SEL_USER_DATA   40
+  #define CPU_GDT_SEL_USER_CODE   48
+  #define CPU_GDT_SIZE            56
+  // Offset of tss.rsp0 in struct cpu, statically verified.
+  #define CPU_TSS_RSP0_OFFSET     196
 #else
   #define CPU_GDT_SEL_DF_TSS      32
   #define CPU_GDT_SEL_PERCPU      40
   #define CPU_GDT_SEL_TLS         48
-  #define CPU_GDT_SIZE            56
+  #define CPU_GDT_SEL_USER_CODE   56
+  #define CPU_GDT_SEL_USER_DATA   64
+  #define CPU_GDT_SIZE            72
 #endif
 
 #ifndef __ASSEMBLER__
@@ -265,6 +271,15 @@ enum cpu_feature
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdnoreturn.h>
+
+struct cpu_exc_frame
+{
+  uintptr_t words[CPU_EXC_FRAME_SIZE];
+}
+#ifndef __LP64__
+__packed
+#endif
+;
 
 #include <kern/bitmap.h>
 #include <kern/init.h>
@@ -885,6 +900,7 @@ cpu_send_thread_schedule (uint32_t cpu)
  * Registration is system-wide.
  */
 void cpu_register_intr (uint32_t vector, cpu_intr_handler_fn_t fn);
+void cpu_idt_set_user_intr_gate (uint32_t vector, void (*fn) (void));
 
 // Clear the interrupt state, set when an exception occurs.
 

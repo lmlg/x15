@@ -55,6 +55,7 @@
 #include <kern/turnstile_types.h>
 #include <kern/types.h>
 #include <kern/unwind.h>
+#include <kern/uthread.h>
 #include <kern/work.h>
 
 #include <machine/cpu.h>
@@ -226,6 +227,7 @@ struct thread
   struct task *xtask;             // (-)
   struct futex_td *futex_td;      // (-)
   struct pmap_window *pmap_windows[CPU_NR_PMAP_WINDOWS];   // (-)
+  struct uthread *uthread;   // (-)
 };
 
 // Thread IPC message (TODO: Move to a specific header).

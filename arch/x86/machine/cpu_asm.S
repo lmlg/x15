@@ -52,6 +52,9 @@
 // RSP offset, from the top of the exception frame.
 #define CPU_LEF_RSP   CPU_LEF_OFFSET (CPU_EXC_FRAME_SIZE, CPU_EXC_FRAME_RSP)
 
+// CS offset, from the top of the exception frame.
+#define CPU_LEF_CS   CPU_LEF_OFFSET (CPU_EXC_FRAME_SIZE, CPU_EXC_FRAME_CS)
+
 /*
  * Offsets where registers used for stack switching are saved when taking
  * an exception, from the top of the exception frame.
@@ -124,7 +127,28 @@
   pushq %rbx                               // save registers used for
   pushq %rax                               // stack switching.
   leaq CPU_LEF_EXC_REM(%rsp), %rbx         // point to exception frame top.
-  movq CPU_LEF_RSP(%rbx), %rsp             // point to thread stack.
+
+  /*
+   * Determine which stack to use for the exception frame.
+   *
+   * For kernel-mode exceptions, the saved RSP in the exception frame
+   * is the thread's kernel stack, which is safe to use.
+   *
+   * For user-mode exceptions, the saved RSP is the user stack pointer,
+   * which may be unmapped (lazy VM mapping) or too small for the
+   * handler's stack usage. Use the kernel stack from TSS.rsp0 instead.
+   */
+  movq CPU_LEF_CS(%rbx), %rax
+  testb $CPU_PL_USER, %al
+  jz 1f
+  // User mode: swap GS to kernel base, then load kernel stack from TSS.rsp0.
+  swapgs
+  movq %gs:(cpu_desc + CPU_TSS_RSP0_OFFSET), %rsp
+  jmp 2f
+1:
+  // Kernel mode: use the RSP saved by the CPU (thread's kernel stack).
+  movq CPU_LEF_RSP(%rbx), %rsp
+2:
   subq $CPU_RED_ZONE_SIZE, %rsp            // skip red zone.
   cpu_ll_exc_push %rbx, CPU_NR_CRE, %rax   // copy frame start from interrupt
                                            // stack to thread stack.
@@ -138,6 +162,12 @@
 .macro cpu_ll_exc_leave
   movq %rbx, %rsp        // restore stack.
   call thread_schedule   // schedule threads.
+  // Check if returning to user mode (need to swap GS back).
+  movq (CPU_EXC_FRAME_CS * CPU_WORD_SIZE)(%rsp), %rax
+  testb $CPU_PL_USER, %al
+  jz 1f
+  swapgs
+1:
   cpu_ll_exc_load_registers
   iretq
 .endm

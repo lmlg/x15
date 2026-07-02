@@ -656,7 +656,7 @@ thread_runq_schedule (struct thread_runq *runq)
 {
   struct thread *prev = thread_self ();
 
-  assert (prev->cur_lpad ||
+  assert (prev->cur_lpad || prev->uthread ||
       (__builtin_frame_address (0) >= prev->stack &&
        __builtin_frame_address (0) < prev->stack + TCB_STACK_SIZE));
   assert (prev->preempt_level == THREAD_SUSPEND_PREEMPT_LEVEL);
@@ -1711,6 +1711,7 @@ thread_init (struct thread *thread, void *stack,
   thread->fixup = NULL;
   thread->cur_lpad = NULL;
   thread->futex_td = NULL;
+  thread->uthread = NULL;
   bulletin_init (&thread->dead_subs);
   for (int i = 0; i < (int)ARRAY_SIZE (thread->pmap_windows); ++i)
     thread->pmap_windows[i] = NULL;
@@ -2208,6 +2209,13 @@ thread_exit (void)
 
   if (likely (thread->task != task_get_kernel_task ()))
     turnstile_td_exit (&thread->turnstile_td);
+
+  if (thread->uthread)
+    {
+      uthread_exit (thread->uthread);
+      uthread_free (thread->uthread);
+      thread->uthread = NULL;
+    }
 
   futex_td_exit (thread->futex_td);
 

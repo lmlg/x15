@@ -38,11 +38,13 @@ x15_SOURCES-y += \
         kern/string.c \
         kern/sxlock.c \
         kern/symbol.c \
+        kern/syscall.c \
         kern/syscnt.c \
         kern/task.c \
         kern/thread.c \
         kern/timer.c \
         kern/unwind.c \
+        kern/uthread.c \
         kern/user.c \
         kern/turnstile.c \
         kern/work.c \
