@@ -14,8 +14,8 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
- * This module aims to test the full futex API. It is composed of 4
- * sub-tests, each one dedicated to testing particular features:
+ * This module aims to test the full futex API. It is composed of the
+ * following sub-tests, each one dedicated to testing particular features:
  *
  *  - The first sub-test checks the basic futex API: waiting, waiting
  *    and requeuing using regular futexes (local, non-robust, non-PI).
@@ -39,30 +39,37 @@
  *    to its TID and the FUTEX_WAITERS bit and then exits without unlocking
  *    them. Another thread waits for it to exit and then waits on the futexes,
  *    checking that the FUTEX_OWNER_DIED bit has been set.
+ *
+ *  - The fifth sub-test creates a userspace thread and performs several
+ *    futex-related syscalls. It does not perform the whole test suite again;
+ *    it simply tests that entry and exit are performed correctly, as well as
+ *    making sure that arguments are checked correctly.
  */
 
 #include <stdio.h>
+#include <syscall.h>
 
 #include <kern/futex.h>
 #include <kern/task.h>
 #include <kern/user.h>
+
+#include <machine/syscall.h>
 
 #include <test/test.h>
 
 #include <vm/map.h>
 #include <vm/object.h>
 
-struct test_futex_obj
+struct test_futex_robust_data
 {
-  struct futex_robust_list head;
-  uint64_t prev;   // Unused.
+  struct futex_robust_list l1;
+  struct futex_robust_list l2;
+  struct thread *thr;
 };
 
-struct test_futex_data
+struct test_futex_uargs
 {
-  struct thread *thr;
-  struct futex_td td;
-  struct test_futex_obj objs[3];
+  int futex1;
 };
 
 static void
@@ -83,7 +90,7 @@ test_futex_local (void *arg __unused)
   error = futex_wait (addr, 1, 0, 0);
   test_assert_eq (error, EAGAIN);
 
-  error = futex_wait (addr, 0, FUTEX_TIMED, 10);
+  error = futex_wait (addr, 0, FUTEX_FLG_TIMED, 10);
   test_assert_eq (error, ETIMEDOUT);
 
   struct thread *thread;
@@ -94,7 +101,7 @@ test_futex_local (void *arg __unused)
 
   test_thread_wait_state (thread, THREAD_SLEEPING);
 
-  futex_wake (addr, FUTEX_MUTATE, 1);
+  futex_wake (addr, FUTEX_FLG_MUTATE, 1);
   test_assert_eq (*(int *)addr, 1);
   thread_join (thread);
   *(int *)addr = 0;
@@ -113,10 +120,10 @@ test_futex_local (void *arg __unused)
       test_thread_wait_state (thrs[i], THREAD_SLEEPING);
     }
 
-  error = futex_requeue (addr, (int *)addr + 1, 0, FUTEX_BROADCAST);
+  error = futex_requeue (addr, (int *)addr + 1, 0, FUTEX_FLG_BROADCAST);
   test_assert_zero (error);
   *(int *)addr = 1;
-  error = futex_wake (addr, FUTEX_BROADCAST, 1);
+  error = futex_wake (addr, FUTEX_FLG_BROADCAST, 1);
   test_assert_zero (error);
 
   for (size_t i = 0; i < ARRAY_SIZE (thrs); ++i)
@@ -138,7 +145,7 @@ test_futex_local (void *arg __unused)
   *(int *)addr = 1;
   error = futex_requeue (addr, (int *)addr + 1, 1, 0);
   test_assert_zero (error);
-  error = futex_wake (addr, FUTEX_BROADCAST, 0);
+  error = futex_wake (addr, FUTEX_FLG_BROADCAST, 0);
   test_assert_zero (error);
 
   // Wake the remaining thread.
@@ -161,7 +168,7 @@ test_futex_shared_helper (void *arg)
   test_assert_zero (error);
 
   void *addr = (void *)start;
-  error = futex_wait (addr, 0, FUTEX_SHARED, 0);
+  error = futex_wait (addr, 0, FUTEX_FLG_SHARED, 0);
   test_assert_or (error == 0, error == EAGAIN);
   test_assert_eq (*(int *)addr, 1);
 }
@@ -181,7 +188,7 @@ test_futex_shared (void *arg __unused)
                                 entry, "futex-sh-fork");
 
   test_thread_wait_state (thr, THREAD_SLEEPING);
-  error = futex_wake (addr, FUTEX_MUTATE | FUTEX_SHARED, 1);
+  error = futex_wake (addr, FUTEX_FLG_MUTATE | FUTEX_FLG_SHARED, 1);
   test_assert_zero (error);
   thread_join (thr);
   vm_map_entry_put (entry);
@@ -191,7 +198,7 @@ static void
 test_futex_pi_helper (void *arg)
 {
   int *futex = arg;
-  int error = futex_wait (futex, (*futex & FUTEX_TID_MASK), FUTEX_PI, 0);
+  int error = futex_wait (futex, (*futex & FUTEX_TID_MASK), FUTEX_FLG_PI, 0);
   if (! error)
     test_assert_eq ((*futex & FUTEX_TID_MASK),
                     (uint32_t)thread_id (thread_self ()));
@@ -202,7 +209,7 @@ test_futex_pi_helper (void *arg)
 static bool
 test_futex_pi_wait_sched (void)
 {
-  for (int i = 0; i < 100; ++i)
+  for (int i = 0; i < 1000; ++i)
     if (thread_real_sched_policy (thread_self ()) == THREAD_SCHED_POLICY_FIFO)
       return (true);
     else
@@ -240,7 +247,8 @@ test_futex_pi (void *arg __unused)
   test_thread_wait_state (thrs[1], THREAD_SLEEPING);
 
   test_assert_eq (test_futex_pi_wait_sched (), true);
-  error = futex_wake (futex, FUTEX_PI | FUTEX_BROADCAST | FUTEX_MUTATE, 0);
+  error = futex_wake (futex, FUTEX_FLG_PI | FUTEX_FLG_BROADCAST |
+                             FUTEX_FLG_MUTATE, 0);
   test_assert_zero (error);
 
   thread_join (thrs[0]);
@@ -250,21 +258,18 @@ test_futex_pi (void *arg __unused)
 static void
 test_futex_robust_helper (void *arg)
 {
-  struct test_futex_data *data = arg;
-  _Auto td = &data->td;
+  struct test_futex_robust_data *data = arg;
+  _Auto uthr = uthread_allocate ();
+  test_assert_nonnull (uthr);
+  thread_self()->uthread = uthr;
+
   int val = thread_id (thread_self ()) | FUTEX_WAITERS;
-
-  futex_td_init (td);
-  for (size_t i = 0; i < ARRAY_SIZE (data->objs); ++i)
-    data->objs[i].head.futex = val;
-
-  td->pending = &data->objs[0].head;
-  data->objs[1].head.next = (uint64_t)(uintptr_t)&data->objs[2].head;
-  data->objs[2].head.next = 0;
-  td->list = &data->objs[1].head;
+  data->l1.futex = data->l2.futex = val;
+  uthr->futex_td.pending = &data->l1;
+  data->l2.next = ~(uint64_t)0;   // Invalid address.
+  uthr->futex_td.list = &data->l2;
 
   test_thread_wait_state (data->thr, THREAD_SLEEPING);
-  thread_self()->futex_td = td;
 }
 
 static void
@@ -274,7 +279,7 @@ test_futex_robust (void *arg __unused)
   int error = vm_map_anon_alloc (&addr, vm_map_self (), 1);
   test_assert_zero (error);
 
-  struct test_futex_data *data = addr;
+  struct test_futex_robust_data *data = addr;
   data->thr = thread_self ();
 
   struct thread *thr;
@@ -284,13 +289,64 @@ test_futex_robust (void *arg __unused)
   error = thread_create (&thr, &attr, test_futex_robust_helper, addr);
   test_assert_zero (error);
 
-  error = futex_wait (&data->objs[2].head.futex, FUTEX_WAITERS |
-                      thread_id (thr), 0, 0);
+  error = futex_wait (&data->l2.futex, FUTEX_WAITERS | thread_id (thr), 0, 0);
   test_assert_or (error == 0, error == EAGAIN);
 
   thread_join (thr);
-  for (size_t i = 0; i < ARRAY_SIZE (data->objs); ++i)
-    test_assert_ne ((data->objs[i].head.futex & FUTEX_OWNER_DIED), 0);
+  test_assert_ne ((data->l1.futex & FUTEX_OWNER_DIED), 0);
+  test_assert_ne ((data->l2.futex & FUTEX_OWNER_DIED), 0);
+}
+
+static void
+test_futex_uentry (void)
+{
+  struct test_futex_uargs *args = test_uthread_arg ();
+  long error = SYSCALL_UENTER (SYS_futex, &args->futex1, FUTEX_OP_WAIT, 1);
+
+  if (error != -EAGAIN)
+    test_uthread_err (error, -EAGAIN);
+
+  uint64_t ticks = 10;
+  error = SYSCALL_UENTER (SYS_futex, &args->futex1,
+                          FUTEX_OP_WAIT | FUTEX_FLG_TIMED, 0, &ticks);
+  if (error != -ETIMEDOUT)
+    test_uthread_err (error, -ETIMEDOUT);
+
+  error = SYSCALL_UENTER (SYS_futex, ~0ul & ~(sizeof (int) - 1),
+                          FUTEX_OP_WAIT, 0);
+  if (error != -EFAULT)
+    test_uthread_err (error, -EFAULT);
+
+  error = SYSCALL_UENTER (SYS_futex, 0, ~0ul, 0);
+  if (error != -ENOSYS)
+    test_uthread_err (error, -ENOSYS);
+
+  SYSCALL_UENTER (SYS_thread_exit, 0);
+  __builtin_unreachable ();
+}
+
+TEST_UTHREAD_DECL_FNSIZE (test_futex_uentry);
+
+static void
+test_ufutex (void)
+{
+  struct test_utask utask;
+  int err = test_util_create_utask (&utask, "futex-uspace");
+  test_assert_zero (err);
+
+  void *data = test_util_utask_reserve (&utask,
+                                        sizeof (struct test_futex_uargs));
+  test_assert_nonnull (data);
+
+  struct test_uthread_attr attr;
+  attr.fnsize = TEST_UTHREAD_FNSIZE (test_futex_uentry);
+  attr.task = &utask;
+
+  struct test_uthread uthr;
+  err = test_util_create_uthr (&uthr, &attr,
+                               (uintptr_t)test_futex_uentry, data);
+  test_assert_zero (err);
+  test_util_uthr_join (&uthr);
 }
 
 TEST_DEFERRED (futex)
@@ -314,6 +370,8 @@ TEST_DEFERRED (futex)
                                 NULL, "futex-robust");
   test_assert_zero (error);
   thread_join (thread);
+
+  test_ufutex ();
 
   return (TEST_OK);
 }

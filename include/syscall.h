@@ -16,8 +16,8 @@
  *
  */
 
-#ifndef SYSCALL_H
-#define SYSCALL_H
+#ifndef X15_SYSCALL_H
+#define X15_SYSCALL_H
 
 /*
  * System call numbers.
@@ -32,9 +32,11 @@ enum
 #define SYS_puts          SYS_puts
   SYS_thread_exit,
 #define SYS_thread_exit   SYS_thread_exit
+  SYS_futex,
+#define SYS_futex         SYS_futex
   SYS_last,
 };
 
 #define NR_SYSCALLS   SYS_last
 
-#endif /* SYSCALL_H */
+#endif

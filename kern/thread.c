@@ -570,6 +570,7 @@ static void
 thread_runq_schedule_load (struct thread *thread)
 {
   pmap_load (thread->xtask->map->pmap);
+  cpu_set_kernel_stack ((uintptr_t)thread->stack + TCB_STACK_SIZE);
 
 #ifdef CONFIG_PERFMON
   perfmon_td_load (thread_get_perfmon_td (thread));
@@ -1710,7 +1711,6 @@ thread_init (struct thread *thread, void *stack,
   strlcpy (thread->name, attr->name, sizeof (thread->name));
   thread->fixup = NULL;
   thread->cur_lpad = NULL;
-  thread->futex_td = NULL;
   thread->uthread = NULL;
   bulletin_init (&thread->dead_subs);
   for (int i = 0; i < (int)ARRAY_SIZE (thread->pmap_windows); ++i)
@@ -2216,8 +2216,6 @@ thread_exit (void)
       uthread_free (thread->uthread);
       thread->uthread = NULL;
     }
-
-  futex_td_exit (thread->futex_td);
 
   if (thread_test_flag (thread, THREAD_DETACHED))
     {

@@ -1,11 +1,38 @@
+/*
+ * Copyright (c) 2026 Agustina Arzille.
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ *
+ * Helpers to define system calls.
+ */
+
 #ifndef KERN_SYSCALL_I_H
 #define KERN_SYSCALL_I_H
+
+#include <kern/macros.h>
+#include <kern/types.h>
 
 #ifdef __LP64__
 #  define SYSCALL_LL(x)    (long long)(x)
 #  define SYSCALL_ULL(x)   (unsigned long long)(x)
 #else
-  // Explicitly undefined so we get a link-time error.
+  /*
+   * On 32-bit platforms, syscalls cannot accept 64-bit arguments in a
+   * single parameter.
+   * We use these explicitly undefined functions when evaluating a 64-bit
+   * argument to catch these errors at link time.
+   */
   extern long long SYSCALL_LL (uintptr_t);
   extern unsigned long long SYSCALL_ULL (uintptr_t);
 #endif
@@ -76,5 +103,39 @@ static ssize_t CONCAT(__sys_, name) (__VA_ARGS__)
 
 #define SYSCALL_STATIC(name, ...)   SYSCALL_IMPL (static, name, __VA_ARGS__)
 #define SYSCALL(name, ...)          SYSCALL_IMPL (, name, __VA_ARGS__)
+
+// Declare a syscall with external linkage.
+#define SYSCALL_DECL(name)   \
+  ssize_t sys_##name (uintptr_t, uintptr_t, uintptr_t,   \
+                      uintptr_t, uintptr_t, uintptr_t)
+
+#define SYSCALL_UARG_0
+#define SYSCALL_UARG_1(a1)   (uintptr_t)(a1),
+#define SYSCALL_UARG_2(a1, a2)   \
+  SYSCALL_UARG_1 (a1) (uintptr_t)(a2),
+
+#define SYSCALL_UARG_3(a1, a2, a3)   \
+  SYSCALL_UARG_2 (a1, a2) (uintptr_t)(a3),
+
+#define SYSCALL_UARG_4(a1, a2, a3, a4)   \
+  SYSCALL_UARG_3 (a1, a2, a3) (uintptr_t)(a4),
+
+#define SYSCALL_UARG_5(a1, a2, a3, a4, a5)   \
+  SYSCALL_UARG_4 (a1, a2, a3, a4) (uintptr_t)(a5),
+
+#define SYSCALL_UARG_6(a1, a2, a3, a4, a5, a6)   \
+  SYSCALL_UARG_5 (a1, a2, a3, a4, a5) (uintptr_t)(a6),
+
+// Enter a syscall from userspace.
+#define SYSCALL_UENTER(sysno, ...)   \
+  ({   \
+     const uintptr_t args_[] =   \
+       {   \
+         CONCAT (SYSCALL_UARG_, SYSCALL_NARGS (__VA_ARGS__)) (__VA_ARGS__)   \
+         0, 0, 0, 0, 0, 0   \
+       };   \
+     SYSCALL_ARCH_IMPL ((sysno), args_[0], args_[1], args_[2],   \
+                        args_[3], args_[4], args_[5]);   \
+   })
 
 #endif

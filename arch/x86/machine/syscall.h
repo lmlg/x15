@@ -58,6 +58,7 @@ void syscall_handler (struct cpu_exc_frame *frame);
                       "rcx", "r11", "memory");   \
         ret_;   \
       })
+
 #else
 
 #  define SYSCALL_ARCH_IMPL(sysno, a1, a2, a3, a4, a5, a6)   \
@@ -86,4 +87,4 @@ void syscall_handler (struct cpu_exc_frame *frame);
 
 #endif
 
-#endif /* X86_MACHINE_SYSCALL_H */
+#endif   // X86_MACHINE_SYSCALL_H

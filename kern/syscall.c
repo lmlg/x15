@@ -20,6 +20,7 @@
 #include <stdio.h>
 #include <syscall.h>
 
+#include <kern/futex.h>
 #include <kern/init.h>
 #include <kern/macros.h>
 #include <kern/syscall.h>
@@ -61,6 +62,7 @@ static const syscall_fn_t syscall_table[NR_SYSCALLS] =
 #define SYSCALL_E(name)   [SYS_##name] = sys_##name
   SYSCALL_E (puts),
   SYSCALL_E (thread_exit),
+  SYSCALL_E (futex),
 #undef SYSCALL_E
 };
 

@@ -28,8 +28,12 @@
 
 #include <machine/cpu.h>
 #include <machine/pmap.h>
+#include <machine/syscall.h>
 
 #include <test/test.h>
+
+#include <vm/map.h>
+#include <vm/page.h>
 
 #define PREFIX_LEN   (sizeof (QUOTE (TEST_PREFIX)) - 1)
 
@@ -142,4 +146,185 @@ test_thread_wait_state (struct thread *thr, uint32_t state)
 {
   while (thread_state (thr) != state)
     thread_yield ();
+}
+
+int
+test_util_create_utask (struct test_utask *out, const char *name)
+{
+  int err = task_create (&out->ktask, name);
+  if (err)
+    return (err);
+
+  out->data = vm_page_alloc (0, VM_PAGE_SEL_DIRECTMAP, VM_PAGE_KERNEL, 0);
+  if (!out->data)
+    {
+      task_destroy (out->ktask);
+      return (ENOMEM);
+    }
+
+  vm_page_init_refcount (out->data);
+
+  uintptr_t udata = 0;
+  int flags = VM_MAP_FLAGS (VM_PROT_RDWR, VM_PROT_RDWR,
+                            VM_INHERIT_DEFAULT, VM_ADV_DEFAULT, VM_MAP_PHYS);
+  err = vm_map_enter (out->ktask->map, &udata, PAGE_SIZE, flags,
+                      0, vm_page_to_pa (out->data));
+  if (err)
+    {
+      vm_page_unref (out->data);
+      task_destroy (out->ktask);
+      return (err);
+    }
+
+  task_ref (out->ktask);
+  out->num_thr = 0;
+  out->data_cur = (char *)udata;
+  out->data_end = out->data_cur + PAGE_SIZE;
+  return (0);
+}
+
+void*
+test_util_utask_reserve (struct test_utask *out, size_t size)
+{
+  size = (size + sizeof (uintptr_t) - 1) & ~(sizeof (uintptr_t) - 1);
+  char *ret = out->data_cur;
+
+  if (out->data_end - ret < (long)size)
+    return (0);
+
+  out->data_cur += size;
+  return (ret);
+}
+
+struct test_uthread_karg
+{
+  volatile int status;
+  uintptr_t entry;
+  uintptr_t uctl;
+  void *uarg;
+  struct test_uthread *thr;
+};
+
+static void
+test_util_kentry (void *arg)
+{
+  struct test_uthread_karg *karg = arg;
+  struct vm_page *stack = 0, *exec = 0;
+
+  if (!(thread_self()->uthread = uthread_allocate ()))
+    goto error;
+
+  stack = vm_page_alloc (0, VM_PAGE_SEL_DIRECTMAP, VM_PAGE_KERNEL, 0);
+  if (! stack)
+    goto error;
+
+  vm_page_init_refcount (stack);
+  exec = vm_page_alloc (0, VM_PAGE_SEL_DIRECTMAP, VM_PAGE_KERNEL, 0);
+  if (! exec)
+    goto error;
+
+  vm_page_init_refcount (exec);
+
+  /*
+   * At the top of the stack lies the control block, through which userspace
+   * can communicate failures to the kerenl thread.
+   * Right below that is the argument for the userspace thread.
+   */
+  _Auto sp_end = (char *)vm_page_direct_ptr (stack) + PAGE_SIZE -
+                 sizeof (struct test_uctl) - sizeof (uintptr_t);
+  *(uintptr_t *)sp_end = (uintptr_t)karg->uarg;
+
+  uintptr_t uentry = karg->entry & ~(PAGE_SIZE - 1);
+  memcpy (vm_page_direct_ptr (exec), (void *)uentry, PAGE_SIZE);
+
+  int flags = VM_MAP_FLAGS (VM_PROT_RDWR, VM_PROT_RDWR,
+                            VM_INHERIT_DEFAULT, VM_ADV_DEFAULT, VM_MAP_PHYS);
+  uintptr_t sp = 0, pc = 0;
+  if (vm_map_enter (vm_map_self (), &sp, PAGE_SIZE, flags,
+                    0, vm_page_to_pa (stack)) != 0)
+    goto error;
+
+  flags = VM_MAP_FLAGS (VM_PROT_READ | VM_PROT_EXEC,
+                        VM_PROT_READ | VM_PROT_EXEC,
+                        VM_INHERIT_DEFAULT, VM_ADV_DEFAULT, VM_MAP_PHYS);
+  if (vm_map_enter (vm_map_self (), &pc, PAGE_SIZE, flags,
+                    0, vm_page_to_pa (exec)) != 0)
+    goto error;
+
+  pc += karg->entry - uentry;
+  karg->thr->stack = stack;
+  karg->thr->exec = exec;
+  atomic_store_rel (&karg->status, 1);
+  syscall_jump_to_user (pc, sp + PAGE_SIZE - sizeof (struct test_uctl) -
+                            2 * sizeof (uintptr_t));
+  return;
+
+error:
+  if (stack)
+    vm_page_unref (stack);
+  if (exec)
+    vm_page_unref (exec);
+
+  atomic_store_rel (&karg->status, -1);
+}
+
+int
+test_util_create_uthr (struct test_uthread *out,
+                       const struct test_uthread_attr *attr,
+                       uintptr_t entry, void *arg)
+{
+  assert ((entry & ~(PAGE_SIZE - 1)) + PAGE_SIZE >= entry + attr->fnsize);
+
+  struct test_uthread_karg karg;
+  karg.status = 0;
+  karg.entry = entry;
+  karg.thr = out;
+  karg.uarg = arg;
+
+  struct thread_attr kattr;
+  _Auto task = attr->task;
+  char buf[32];
+  snprintf (buf, sizeof (buf), "%s/%u", task->ktask->name, ++task->num_thr);
+
+  thread_attr_init (&kattr, buf);
+  thread_attr_set_task (&kattr, task->ktask);
+
+  int error = thread_create (&out->kthr, &kattr, test_util_kentry, &karg);
+  if (error)
+    return (error);
+
+  out->utask = task;
+  while (atomic_load_acq (&karg.status) == 0)
+    thread_yield ();
+
+  if (karg.status < 0)
+    {
+      thread_join (out->kthr);
+      return (ENOMEM);
+    }
+
+  return (0);
+}
+
+void
+test_util_uthr_join (struct test_uthread *uthr)
+{
+  char name[THREAD_NAME_SIZE];
+  memcpy (name, uthr->kthr->name, sizeof (name));
+
+  thread_join (uthr->kthr);
+  _Auto uctl = (struct test_uctl *)((char *)vm_page_direct_ptr (uthr->stack) +
+                                    PAGE_SIZE - sizeof (struct test_uctl));
+  if (uctl->failure)
+    panic ("user thread %s failed at line %d (%lu-%lu)",
+           name, uctl->line, uctl->arg1, uctl->arg2);
+
+  vm_page_unref (uthr->stack);
+  vm_page_unref (uthr->exec);
+
+  if (!uthr->utask->ktask->map)
+    { // This was the last thread in the task.
+      vm_page_unref (uthr->utask->data);
+      task_unref (uthr->utask->ktask);
+    }
 }

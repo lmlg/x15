@@ -52,14 +52,4 @@ void syscall_enter (struct cpu_exc_frame *frame);
 // Generic callback on transition to kernel space via an interrupt or exception.
 void syscall_interrupt_enter (struct cpu_exc_frame *frame);
 
-// Enter a syscall from userspace.
-#define SYSCALL_UENTER(sysno, ...)   \
-  ({   \
-     const uintptr_t args_[] = { __VA_ARGS__, 0, 0, 0, 0, 0, 0 };   \
-     const size_t N_ = ARRAY_SIZE (args_);   \
-     SYSCALL_ARCH_IMPL ((sysno), args_[N_ - 6], args_[N_ - 5],   \
-                        args_[N_ - 4], args_[N_ - 3],   \
-                        args_[N_ - 2], args_[N_ - 1]);   \
-   })
-
 #endif /* KERN_SYSCALL_H */

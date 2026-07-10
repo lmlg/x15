@@ -25,6 +25,8 @@
 #include <kern/macros.h>
 #include <kern/panic.h>
 
+#include <machine/page.h>
+
 // Test exit status.
 #define TEST_OK        0
 #define TEST_SKIPPED   1
@@ -56,10 +58,92 @@ void __init test_setup (void);
 
 // Utilities for the test module.
 
+struct test_uctl
+{
+  uintptr_t arg1;
+  uintptr_t arg2;
+  int failure;
+  int line;
+};
+
+#define test_uthread_stktop()   \
+  ({   \
+     uintptr_t top_ = (uintptr_t)__builtin_frame_address (0);   \
+     (top_ & ~(PAGE_SIZE - 1)) + PAGE_SIZE;   \
+   })
+
+#define test_uthread_uctl()   \
+  ({   \
+     uintptr_t sp_ = test_uthread_stktop () - sizeof (struct test_uctl);   \
+     (struct test_uctl *)sp_;   \
+   })
+
+#define test_uthread_arg()   \
+  ({   \
+     uintptr_t s_ = (uintptr_t)test_uthread_uctl () - sizeof (uintptr_t);   \
+     *(void **)s_;   \
+   })
+
+#define test_uthread_err(a1, a2)   \
+  do   \
+    {   \
+      _Auto uctl_ = test_uthread_uctl ();   \
+      uctl_->failure = 1;   \
+      uctl_->line = __LINE__;   \
+      uctl_->arg1 = (uintptr_t)(a1);   \
+      uctl_->arg2 = (uintptr_t)(a2);   \
+      SYSCALL_UENTER (SYS_thread_exit, 0);   \
+      __builtin_unreachable ();   \
+    }   \
+  while (0)
+
+#define TEST_UTHREAD_DECL_FNSIZE(name)   \
+  extern unsigned int name##_fnsize;   \
+  asm (#name "_fnsize: .long . - " #name "\n\t")
+
+#define TEST_UTHREAD_FNSIZE(name)   name##_fnsize
+
+struct test_utask
+{
+  struct task *ktask;
+  struct vm_page *data;
+  char *data_cur;
+  char *data_end;
+  unsigned int num_thr;
+};
+
+struct test_uthread_attr
+{
+  unsigned int fnsize;
+  struct test_utask *task;
+};
+
+struct test_uthread
+{
+  struct thread *kthr;
+  struct test_utask *utask;
+  struct vm_page *stack;
+  struct vm_page *exec;
+};
+
 struct thread;
 
 int test_util_create_thr (struct thread **out, void (*fn) (void *),
                           void *arg, const char *name);
+
+// Create a userspace task.
+int test_util_create_utask (struct test_utask *out, const char *name);
+
+// Reserve room in the userspace VM map.
+void* test_util_utask_reserve (struct test_utask *utask, size_t size);
+
+// Create a userspace thread.
+int test_util_create_uthr (struct test_uthread *out,
+                           const struct test_uthread_attr *attr,
+                           uintptr_t entry, void *arg);
+
+// Join a userspace thread.
+void test_util_uthr_join (struct test_uthread *uthr);
 
 void test_thread_wait_state (struct thread *thr, uint32_t state);
 

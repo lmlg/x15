@@ -56,12 +56,14 @@ uthread_free (struct uthread *uthread)
 void
 uthread_exit (struct uthread *uthread)
 {
-  struct unw_fixup fixup;
-  if (uthread->tid && user_check_range (uthread->tid, sizeof (int)) &&
-      unw_fixup_save (&fixup) == 0)
+  if (uthread->tid && user_check_range (uthread->tid, sizeof (int)))
     {
-      atomic_store_rel (uthread->tid, 0);
-      futex_wake (uthread->tid, FUTEX_BROADCAST, 0);
+      struct unw_fixup fixup;
+      if (unw_fixup_save (&fixup) == 0)
+        {
+          atomic_store_rel (uthread->tid, 0);
+          futex_wake (uthread->tid, FUTEX_FLG_BROADCAST, 0);
+        }
     }
 
   futex_td_exit (&uthread->futex_td);

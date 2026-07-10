@@ -427,8 +427,7 @@ cpu_get_eflags (void)
   cpu_flags_t eflags;
   asm volatile ("pushf\n"
                 "pop %0\n"
-                : "=r" (eflags)
-                : : "memory");
+                : "=r" (eflags) : : "memory");
 
   return (eflags);
 }
@@ -516,22 +515,14 @@ CPU_DECL_GETSET_CR (cr2)
 CPU_DECL_GETSET_CR (cr3)
 CPU_DECL_GETSET_CR (cr4)
 
-/*
- * Enable local interrupts.
- *
- * Implies a compiler barrier.
- */
+// Enable local interrupts (Implies a compiler barrier).
 static __always_inline void
 cpu_intr_enable (void)
 {
   asm volatile ("sti" : : : "memory");
 }
 
-/*
- * Disable local interrupts.
- *
- * Implies a compiler barrier.
- */
+// Disable local interrupts (Implies a compiler barrier).
 static __always_inline void
 cpu_intr_disable (void)
 {
@@ -554,9 +545,7 @@ cpu_intr_restore (cpu_flags_t flags)
 
 /*
  * Disable local interrupts, returning the previous content of the EFLAGS
- * register.
- *
- * Implies a compiler barrier.
+ * register (Implies a compiler barrier).
  */
 static __always_inline void
 cpu_intr_save (cpu_flags_t *flags)
@@ -571,11 +560,7 @@ cpu_flags_intr_enabled (cpu_flags_t flags)
   return ((flags & CPU_EFL_IF) != 0);
 }
 
-/*
- * Return true if interrupts are enabled.
- *
- * Implies a compiler barrier.
- */
+// Return true if interrupts are enabled (Implies a compiler barrier).
 static __always_inline bool
 cpu_intr_enabled (void)
 {
@@ -688,6 +673,24 @@ cpu_from_id (uint32_t cpu)
   return (percpu_ptr (cpu_desc, cpu));
 }
 
+/*
+ * Set the kernel stack pointer for the current CPU's TSS.
+ *
+ * This is the stack the CPU switches to when transitioning from user mode
+ * to kernel mode (via syscall or exception). It must be updated on every
+ * context switch so that each thread uses its own kernel stack.
+ */
+static inline void
+cpu_set_kernel_stack (uintptr_t stack_top)
+{
+#ifdef __LP64__
+  cpu_current()->tss.rsp0 = stack_top;
+#else
+  cpu_current()->tss.esp0 = (uint32_t)stack_top;
+  cpu_current()->tss.ss0 = CPU_GDT_SEL_DATA;
+#endif
+}
+
 static inline bool
 cpu_has_feature (const struct cpu *cpu, enum cpu_feature feature)
 {
@@ -726,11 +729,7 @@ cpu_enable_global_pages (void)
   cpu_set_cr4 (cpu_get_cr4 () | CPU_CR4_PGE);
 }
 
-/*
- * CPUID instruction wrapper.
- *
- * The CPUID instruction is a serializing instruction.
- */
+// CPUID instruction wrapper.
 static __always_inline void
 cpu_cpuid (uint32_t *eax, uint32_t *ebx, uint32_t *ecx, uint32_t *edx)
 {
@@ -763,9 +762,7 @@ cpu_set_msr (uint32_t msr, uint32_t high, uint32_t low)
 static inline void
 cpu_set_msr64 (uint32_t msr, uint64_t value)
 {
-  uint32_t low = value & 0xffffffff;
-  uint32_t high = value >> 32;
-  cpu_set_msr (msr, high, low);
+  cpu_set_msr (msr, (uint32_t)(value >> 32), (uint32_t)(value & 0xffffffff));
 }
 
 /*
@@ -843,11 +840,7 @@ cpu_phys_addr_width (const struct cpu *cpu)
 // Get CPU frequency in Hz.
 uint64_t cpu_get_freq (void);
 
-/*
- * Busy-wait for a given amount of time, in microseconds.
- *
- * Implies a compiler barrier.
- */
+// Busy-wait for a number of microseconds (implies a compiler barrier).
 void cpu_delay (size_t usecs);
 
 // Log processor information.

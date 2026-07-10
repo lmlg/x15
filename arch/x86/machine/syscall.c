@@ -89,18 +89,7 @@ syscall_handler (struct cpu_exc_frame *frame)
 noreturn void
 syscall_jump_to_user (uintptr_t pc, uintptr_t sp)
 {
-  struct cpu *cpu = cpu_current ();
-  uintptr_t ksp;
-
-#ifdef __LP64__
-  asm ("mov %%rsp, %0" : "=r" (ksp));
-  cpu->tss.rsp0 = ksp;
-#else
-  asm ("mov %%esp, %0" : "=r" (ksp));
-  cpu->tss.esp0 = (uint32_t)ksp;
-  cpu->tss.ss0 = CPU_GDT_SEL_DATA;
-#endif
-
+  cpu_set_kernel_stack ((uintptr_t)thread_self()->stack + TCB_STACK_SIZE);
   syscall_jump_to_user_asm (pc, sp);
 }
 

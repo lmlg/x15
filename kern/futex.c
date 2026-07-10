@@ -16,6 +16,8 @@
  *
  */
 
+#include <syscall.h>
+
 #include <kern/clock.h>
 #include <kern/sleepq.h>
 #include <kern/turnstile.h>
@@ -25,7 +27,7 @@
 #include <vm/map.h>
 #include <vm/object.h>
 
-#define FUTEX_DATA_SHARED   FUTEX_SHARED
+#define FUTEX_DATA_SHARED   FUTEX_FLG_SHARED
 #define FUTEX_DATA_WAIT     0x02
 #define FUTEX_DATA_WAKE     0x04
 
@@ -79,7 +81,7 @@ static int
 futex_key_init (union sync_key *key, struct vm_map *map,
                 int *addr, uint32_t flags)
 {
-  if (likely (!(flags & FUTEX_SHARED)))
+  if (likely (!(flags & FUTEX_FLG_SHARED)))
     /*
      * For task-local futexes the key is made up of the virtual address
      * itself and the calling thread's VM map.
@@ -163,10 +165,10 @@ futex_sleepq_wait (struct futex_data *data, int value __unused,
                    uint32_t flags, uint64_t ticks)
 {
   uint64_t *timep = NULL;
-  if (flags & FUTEX_TIMED)
+  if (flags & FUTEX_FLG_TIMED)
     {
       timep = &ticks;
-      if (!(flags & FUTEX_ABSTIME))
+      if (!(flags & FUTEX_FLG_ABSTIME))
         ticks += clock_get_time () + 1;
     }
 
@@ -194,11 +196,11 @@ futex_pi_wait (struct futex_data *data, int value,
 
   int error;
   
-  if (!(flags & FUTEX_TIMED))
+  if (!(flags & FUTEX_FLG_TIMED))
     error = turnstile_wait (data->wait_obj, "futex-pi", thr);
   else
     {
-      if (!(flags & FUTEX_ABSTIME))
+      if (!(flags & FUTEX_FLG_ABSTIME))
         ticks += clock_get_time () + 1;
       error = turnstile_timedwait (data->wait_obj, "futex-pi", thr, ticks);
     }
@@ -222,7 +224,7 @@ futex_pi_wait (struct futex_data *data, int value,
 static int
 futex_sleepq_wake (void *sleepq, uint32_t flags)
 {
-  if (flags & FUTEX_BROADCAST)
+  if (flags & FUTEX_FLG_BROADCAST)
     sleepq_broadcast ((struct sleepq *)sleepq);
   else
     sleepq_signal ((struct sleepq *)sleepq);
@@ -238,7 +240,7 @@ futex_pi_wake (void *obj, uint32_t flags)
     return (EPERM);
 
   turnstile_disown (turnstile);
-  if (flags & FUTEX_BROADCAST)
+  if (flags & FUTEX_FLG_BROADCAST)
     turnstile_broadcast (turnstile);
   else
     turnstile_signal (turnstile);
@@ -279,7 +281,7 @@ static const struct futex_ops futex_wake_ops[] =
 static const struct futex_ops*
 futex_select_ops (uint32_t flags, uint32_t mode)
 {
-  uint32_t idx = (flags & FUTEX_PI) / FUTEX_PI;
+  uint32_t idx = (flags & FUTEX_FLG_PI) / FUTEX_FLG_PI;
   assert (idx <= 1);
   return ((mode & FUTEX_DATA_WAIT) ?
           &futex_wait_ops[idx] : &futex_wake_ops[idx]);
@@ -303,7 +305,7 @@ futex_data_init (struct futex_data *data, int *addr,
   if (error)
     return (error);
 
-  data->mode = mode | ((flags & FUTEX_SHARED) ? FUTEX_DATA_SHARED : 0);
+  data->mode = mode | ((flags & FUTEX_FLG_SHARED) ? FUTEX_DATA_SHARED : 0);
   data->ops = futex_select_ops (flags, mode);
   return (0);
 }
@@ -445,7 +447,7 @@ futex_wake (int *addr, uint32_t flags, int value)
 
   data.wait_obj = data.ops->acquire (&data.key);
 
-  if (flags & FUTEX_MUTATE)
+  if (flags & FUTEX_FLG_MUTATE)
     {
       error = futex_map_addr (&data, value, FUTEX_OP_SET);
       if (error)
@@ -461,7 +463,7 @@ futex_wake (int *addr, uint32_t flags, int value)
 int
 futex_requeue (int *dst_addr, int *src_addr, int wake_one, uint32_t flags)
 {
-  if (flags & FUTEX_PI)
+  if (flags & FUTEX_FLG_PI)
     return (EINVAL);
 
   int error = futex_check_addr (dst_addr);
@@ -482,15 +484,15 @@ futex_requeue (int *dst_addr, int *src_addr, int wake_one, uint32_t flags)
   error = futex_key_init (&skey, map, src_addr, flags);
   if (error)
     {
-      if (flags & FUTEX_SHARED)
+      if (flags & FUTEX_FLG_SHARED)
         futex_object_unref (dkey.shared.object);
 
       return (error);
     }
 
-  sleepq_move (&dkey, &skey, wake_one, (flags & FUTEX_BROADCAST));
+  sleepq_move (&dkey, &skey, wake_one, (flags & FUTEX_FLG_BROADCAST));
 
-  if (flags & FUTEX_SHARED)
+  if (flags & FUTEX_FLG_SHARED)
     {
       futex_object_unref (dkey.shared.object);
       futex_object_unref (skey.shared.object);
@@ -514,7 +516,7 @@ futex_robust_list_handle (struct futex_robust_list *list,
   if (error < 0)
     { // There are waiters on this robust futex. Wake them all.
       if (data.wait_obj)
-        data.ops->wake (data.wait_obj, list->flags | FUTEX_BROADCAST);
+        data.ops->wake (data.wait_obj, list->flags | FUTEX_FLG_BROADCAST);
       error = 0;
     }
 
@@ -524,26 +526,51 @@ futex_robust_list_handle (struct futex_robust_list *list,
 void
 futex_td_exit (struct futex_td *td)
 {
+  if (!td)
+    return;
+
   int tid = thread_id (thread_self ());
-  struct futex_td rtd;
 
-  if (!td || user_copy_from (&rtd, td, sizeof (rtd)) != 0)
-    return;
-
-  if (rtd.pending &&
-      (!user_check_range (rtd.pending, sizeof (*rtd.pending)) ||
-       futex_robust_list_handle (rtd.pending, (int *)rtd.pending, tid) != 0))
-    return;
+  if (td->pending &&
+      user_check_range (td->pending, sizeof (*td->pending)))
+    futex_robust_list_handle (td->pending, (int *)td->pending, tid);
 
   uint32_t nmax = 1024;   // Handle this many robust futexes.
-  while (rtd.list)
+  while (td->list)
     {
       struct futex_robust_list tmp;
-      if (user_copy_from (&tmp, rtd.list, sizeof (tmp)) != 0 ||
-          futex_robust_list_handle (&tmp, (int *)rtd.list, tid) != 0 ||
+      if (user_copy_from (&tmp, td->list, sizeof (tmp)) != 0 ||
+          futex_robust_list_handle (&tmp, (int *)td->list, tid) != 0 ||
           --nmax == 0)
         break;
 
-      rtd.list = (void *)(uintptr_t)tmp.next;
+      td->list = (void *)(uintptr_t)tmp.next;
+    }
+}
+
+SYSCALL (futex, void *ptr, uint32_t op, uint32_t val, const void *p2)
+{
+  uint32_t flags = op & ~0xffffu;
+
+  switch (op & 0xffff)
+    {
+      case FUTEX_OP_WAIT:
+        {
+          uint64_t ticks = 0;
+          if ((op & FUTEX_FLG_TIMED) &&
+              user_copy_from (&ticks, p2, sizeof (ticks)) != 0)
+            return (-EFAULT);
+
+          return (-futex_wait (ptr, val, flags, ticks));
+        }
+
+      case FUTEX_OP_WAKE:
+        return (-futex_wake (ptr, flags, val));
+
+      case FUTEX_OP_REQUEUE:
+        return (-futex_requeue (ptr, (int *)p2, val, flags));
+
+      default:
+        return (-ENOSYS);
     }
 }
