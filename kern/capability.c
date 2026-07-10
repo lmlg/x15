@@ -578,6 +578,16 @@ cap_recv_alert (struct cap_flow *flow, void *buf,
   if (entry && cap_alert_type (entry) == CAP_ALERT_USER)
     kmem_cache_free (&cap_misc_cache, entry);
 
+  /*
+   * Unmask the interrupt now that the alert has been delivered to
+   * the receiver. This re-enables the interrupt at the controller
+   * level, allowing the next interrupt to fire. If the device is
+   * still asserting (level-triggered), a new interrupt is delivered
+   * immediately, which will be masked again in cap_handle_intr.
+   */
+  if (type == CAP_ALERT_INTR)
+    intr_enable (tmp_alert.intr.irq);
+
   return (0);
 }
 
@@ -1042,6 +1052,18 @@ cap_handle_intr (void *arg)
   struct list *list = arg;
   assert (list >= &cap_intr_handlers[0] &&
           list <= &cap_intr_handlers[ARRAY_SIZE (cap_intr_handlers) - 1]);
+
+  /*
+   * Mask the interrupt at the controller level to prevent storms
+   * from level-triggered sources. The interrupt is unmasked when
+   * the alert is consumed by the receiver thread in cap_recv_alert.
+   *
+   * This is safe to call here (inside intr_handle, which holds the
+   * entry lock) because intr_disable reads entry->ctl without the
+   * entry lock — that field is immutable after registration.
+   */
+  uint32_t irq = (list - cap_intr_handlers) + CPU_EXC_INTR_FIRST;
+  intr_disable (irq);
 
   RCU_GUARD ();
   list_rcu_for_each (list, tmp)

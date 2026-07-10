@@ -297,7 +297,7 @@ test_futex_robust (void *arg __unused)
   test_assert_ne ((data->l2.futex & FUTEX_OWNER_DIED), 0);
 }
 
-static void
+static void __attribute__ ((aligned (PAGE_SIZE)))
 test_futex_uentry (void)
 {
   struct test_futex_uargs *args = test_uthread_arg ();
@@ -325,8 +325,6 @@ test_futex_uentry (void)
   __builtin_unreachable ();
 }
 
-TEST_UTHREAD_DECL_FNSIZE (test_futex_uentry);
-
 static void
 test_ufutex (void)
 {
@@ -339,7 +337,7 @@ test_ufutex (void)
   test_assert_nonnull (data);
 
   struct test_uthread_attr attr;
-  attr.fnsize = TEST_UTHREAD_FNSIZE (test_futex_uentry);
+  attr.fnsize = PAGE_SIZE;
   attr.task = &utask;
 
   struct test_uthread uthr;

@@ -57,6 +57,10 @@ void intr_register_ctl (const struct intr_ops *ops, void *priv,
 int intr_register (uint32_t intr, intr_handler_fn_t fn, void *arg);
 void intr_unregister (uint32_t intr, intr_handler_fn_t fn);
 
+// Enable/disable an interrupt at the controller level.
+void intr_enable (uint32_t intr);
+void intr_disable (uint32_t intr);
+
 // Handle an interrupt.
 void intr_handle (uint32_t intr);
 

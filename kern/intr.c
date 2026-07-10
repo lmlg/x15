@@ -377,3 +377,27 @@ intr_handle (uint32_t intr)
 
   intr_entry_eoi (entry, intr);
 }
+
+void
+intr_enable (uint32_t intr)
+{
+  _Auto entry = intr_get_entry (intr);
+
+  /*
+   * Read entry->ctl without the entry lock. This is safe because
+   * ctl and cpu are set once during intr_entry_add and never
+   * modified afterwards. The controller's own lock serializes
+   * the actual hardware operation.
+   */
+  if (entry->ctl)
+    intr_ctl_enable (entry->ctl, intr, entry->cpu);
+}
+
+void
+intr_disable (uint32_t intr)
+{
+  _Auto entry = intr_get_entry (intr);
+
+  if (entry->ctl)
+    intr_ctl_disable (entry->ctl, intr);
+}

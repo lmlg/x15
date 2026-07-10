@@ -97,12 +97,6 @@ struct test_uctl
     }   \
   while (0)
 
-#define TEST_UTHREAD_DECL_FNSIZE(name)   \
-  extern unsigned int name##_fnsize;   \
-  asm (#name "_fnsize: .long . - " #name "\n\t")
-
-#define TEST_UTHREAD_FNSIZE(name)   name##_fnsize
-
 struct test_utask
 {
   struct task *ktask;
