@@ -26,6 +26,21 @@
 #include <machine/pmap.h>
 #include <machine/tcb.h>
 
+// Verify that the compile-time offset matches the actual struct layout.
+static_assert (offsetof (struct tcb, fpstate) == TCB_FPSTATE_OFFSET,
+               "TCB_FPSTATE_OFFSET mismatch");
+
+/*
+ * FXSAVE/XSAVE legacy region offsets for the fields we need to initialize
+ * for a clean thread start.
+ */
+#define FXSAVE_FCW_OFFSET     0    // FPU control word (2 bytes)
+#define FXSAVE_MXCSR_OFFSET   24   // SSE control/status (4 bytes)
+#define XSAVE_XSTATE_BV_OFF   512  // XSAVE header: feature bitmap (8 bytes)
+
+#define FXSAVE_DEFAULT_FCW    0x037F  // All exceptions masked, double prec
+#define FXSAVE_DEFAULT_MXCSR  0x1F80  // All exceptions masked, round nearest
+
 noreturn void tcb_context_load (struct tcb *tcb);
 noreturn void tcb_start (void);
 void tcb_context_restore (void);
@@ -79,6 +94,17 @@ tcb_build (struct tcb *tcb, void *stack, void (*fn) (void *), void *arg)
   tcb->bp = 0;
   tcb->sp = (uintptr_t)stack + TCB_STACK_SIZE;
   tcb_stack_forge (tcb, fn, arg);
+
+  /*
+   * Initialize the floating-point state to a clean default so that
+   * the first xrstor for this thread produces a known state (clean
+   * x87 FPU, zeroed SSE registers, all exceptions masked).
+   */
+  memset (tcb->fpstate, 0, TCB_FPSTATE_SIZE);
+  *(uint16_t *)(tcb->fpstate + FXSAVE_FCW_OFFSET) = FXSAVE_DEFAULT_FCW;
+  *(uint32_t *)(tcb->fpstate + FXSAVE_MXCSR_OFFSET) = FXSAVE_DEFAULT_MXCSR;
+  *(uint64_t *)(tcb->fpstate + XSAVE_XSTATE_BV_OFF) = 0x3;   // x87 + SSE.
+
   return (0);
 }
 

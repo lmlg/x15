@@ -129,6 +129,16 @@
 #define CPU_CR4_PSE                             0x00000010
 #define CPU_CR4_PAE                             0x00000020
 #define CPU_CR4_PGE                             0x00000080
+#define CPU_CR4_OSXSAVE                         0x00040000
+
+/*
+ * XSAVE feature mask.
+ *
+ * Currently x87 (bit 0) + SSE (bit 1). AVX (bit 2) and other extended
+ * features can be added here in the future, provided the fpstate buffer
+ * in struct tcb is enlarged accordingly.
+ */
+#define CPU_XSAVE_FEATURES   0x3
 
 // Model specific registers.
 #define CPU_MSR_EFER                            0xc0000080
@@ -266,6 +276,15 @@ enum cpu_feature
   #define CPU_GDT_SEL_USER_DATA   64
   #define CPU_GDT_SIZE            72
 #endif
+
+/*
+ * Floating-point state area in struct tcb.
+ *
+ * These are defined here (rather than in tcb.h) so they are visible
+ * to assembly files that include <machine/cpu.h>.
+ */
+#define TCB_FPSTATE_SIZE     1024
+#define TCB_FPSTATE_OFFSET   64
 
 #ifndef __ASSEMBLER__
 
@@ -415,12 +434,7 @@ cpu_feature_map_test (const struct cpu_feature_map *map,
   return (bitmap_test (map->flags, feature));
 }
 
-/*
- * Return the content of the EFLAGS register.
- *
- * Implies a compiler barrier.
- *
- */
+// Return the content of the EFLAGS register (Implies a compiler barrier).
 static __always_inline cpu_flags_t
 cpu_get_eflags (void)
 {
@@ -515,6 +529,19 @@ CPU_DECL_GETSET_CR (cr2)
 CPU_DECL_GETSET_CR (cr3)
 CPU_DECL_GETSET_CR (cr4)
 
+/*
+ * Write to an extended control register (XCR).
+ *
+ * Requires CR4.OSXSAVE to be set. Used to configure which XSAVE
+ * features are enabled.
+ */
+static inline void
+cpu_xsetbv (uint32_t index, uint64_t value)
+{
+  asm volatile ("xsetbv" : : "c" (index), "a" ((uint32_t)value),
+                "d" ((uint32_t)(value >> 32)) : "memory");
+}
+
 // Enable local interrupts (Implies a compiler barrier).
 static __always_inline void
 cpu_intr_enable (void)
@@ -597,11 +624,7 @@ cpu_idle (void)
   asm volatile ("sti; hlt" : : : "memory");
 }
 
-/*
- * Halt the CPU.
- *
- * Implies a compiler barrier.
- */
+// Halt the CPU (Implies a compiler barrier).
 noreturn static __always_inline void
 cpu_halt (void)
 {

@@ -26,10 +26,10 @@ struct futex_robust_list
 
 // Ensure binary layout is correct.
 
-static_assert (sizeof (struct futex_robust_list) == 16,
-               "invalid size for futex_robust_list");
+_Static_assert (sizeof (struct futex_robust_list) == 16,
+                "invalid size for futex_robust_list");
 
-static_assert (__builtin_offsetof (struct futex_robust_list, next) == 8,
-               "invalid layout for futex_robust_list");
+_Static_assert (__builtin_offsetof (struct futex_robust_list, next) == 8,
+                "invalid layout for futex_robust_list");
 
 #endif

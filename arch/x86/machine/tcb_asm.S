@@ -27,6 +27,12 @@ ASM_ENTRY (tcb_context_load)
 .cfi_startproc
   movq (%rdi), %rbp          // load frame pointer from TCB.
   movq 8(%rdi), %rsp         // load stack pointer from TCB.
+
+  // Restore floating-point state from TCB.
+  movl $CPU_XSAVE_FEATURES, %eax
+  xorl %edx, %edx
+  xrstor TCB_FPSTATE_OFFSET(%rdi)
+
   jmp tcb_context_restore
 .cfi_endproc
 ASM_END (tcb_context_load)
@@ -86,6 +92,20 @@ ASM_ENTRY (tcb_context_switch)
 
   movq %rbp, (%rdi)      // store frame pointer into prev TCB.
   movq %rsp, 8(%rdi)     // store stack pointer into prev TCB.
+
+  // Save floating-point state to prev TCB.
+  // xsaveopt skips the write if the state hasn't been modified since
+  // the last save on this CPU, which is the common case for threads
+  // that did a quick syscall without touching FP.
+  movl $CPU_XSAVE_FEATURES, %eax
+  xorl %edx, %edx
+  xsaveopt TCB_FPSTATE_OFFSET(%rdi)
+
+  // Restore floating-point state from next TCB.
+  movl $CPU_XSAVE_FEATURES, %eax
+  xorl %edx, %edx
+  xrstor TCB_FPSTATE_OFFSET(%rsi)
+
   movq (%rsi), %rbp      // load frame pointer from next TCB.
   movq 8(%rsi), %rsp     // load stack pointer from next TCB.
 

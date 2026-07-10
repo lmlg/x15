@@ -1077,7 +1077,7 @@ cpu_build (struct cpu *cpu)
   // Assume at least an i586 processor.
   cpu_intr_restore (CPU_EFL_ONE);
   cpu_set_cr0 (CPU_CR0_PG | CPU_CR0_AM | CPU_CR0_WP | CPU_CR0_NE | CPU_CR0_ET |
-               CPU_CR0_TS | CPU_CR0_MP | CPU_CR0_PE);
+               CPU_CR0_MP | CPU_CR0_PE);
   cpu_gdt_init (&cpu->gdt, cpu_get_tss (cpu), cpu_get_df_tss (cpu), pcpu_area);
   cpu_gdt_load (&cpu->gdt);
   cpu_load_ldt ();

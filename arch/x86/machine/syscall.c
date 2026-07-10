@@ -101,6 +101,12 @@ syscall_percpu_setup (void)
   uint64_t efer = cpu_get_msr64 (CPU_MSR_EFER);
   cpu_set_msr64 (CPU_MSR_EFER, efer | CPU_EFER_SCE | CPU_EFER_NXE);
 
+  // Enable XSAVE support so xsaveopt/xrstor can be used.
+  cpu_set_cr4 (cpu_get_cr4 () | CPU_CR4_OSXSAVE);
+
+  // Enable x87 + SSE in XCR0.
+  cpu_xsetbv (0, CPU_XSAVE_FEATURES);
+
   /*
    * Configure the STAR MSR:
    *   STAR[47:32] = Kernel base selector (0x08)

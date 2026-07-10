@@ -340,9 +340,6 @@ struct vm_object* cap_channel_get_vmobj (struct cap_channel *ch);
 // Unreference a VM object obtained from a channel.
 void cap_channel_put_vmobj (struct cap_channel *chp);
 
-// Mark a channel as being shared.
-bool cap_channel_mark_shared (struct cap_base *cap);
-
 #define cap_iters_init_impl(it, buf, size, iov_init)   \
   do   \
     {   \

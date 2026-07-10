@@ -20,7 +20,6 @@
 #ifndef KERN_FUTEX_H
 #define KERN_FUTEX_H
 
-#include <assert.h>
 #include <futex.h>
 #include <stdint.h>
 

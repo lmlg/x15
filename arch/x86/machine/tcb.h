@@ -41,6 +41,7 @@ struct tcb
   uintptr_t bp;
   uintptr_t sp;
   struct pmap_update_oplist *oplist;
+  char fpstate[TCB_FPSTATE_SIZE] __attribute__((aligned (CPU_L1_SIZE)));
 };
 
 /*
