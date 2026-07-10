@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2026 Agustina Arzille
+ * Copyright (c) 2026 Agustina Arzille.
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -45,10 +45,7 @@ ASM_ENTRY (syscall_entry)
   pushq $0                                     // error code
   pushq $0                                     // vector number
 
-  /*
-   * Push general purpose registers in the correct order to match cpu_exc_frame:
-   * Order: R15, R14, R13, R12, R11, R10, R9, R8, RDI, RSI, RBP, RDX, RCX, RBX, RAX
-   */
+  // Push GPRs in the correct order to match cpu_exc_frame.
   pushq %r15
   pushq %r14
   pushq %r13

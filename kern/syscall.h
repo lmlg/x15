@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2026
+ * Copyright (c) 2026 Agustina Arzille.
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -52,4 +52,4 @@ void syscall_enter (struct cpu_exc_frame *frame);
 // Generic callback on transition to kernel space via an interrupt or exception.
 void syscall_interrupt_enter (struct cpu_exc_frame *frame);
 
-#endif /* KERN_SYSCALL_H */
+#endif
