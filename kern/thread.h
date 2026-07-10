@@ -225,7 +225,6 @@ struct thread
   struct unw_fixup_t *fixup;      // (-)
   void *cur_lpad;                 // (-)
   struct task *xtask;             // (-)
-  struct futex_td *futex_td;      // (-)
   struct pmap_window *pmap_windows[CPU_NR_PMAP_WINDOWS];   // (-)
   struct uthread *uthread;   // (-)
 };

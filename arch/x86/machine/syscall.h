@@ -33,7 +33,7 @@ noreturn void syscall_jump_to_user (uintptr_t pc, uintptr_t sp);
 
 /*
  * Low-level assembly routine that performs the actual privilege
- * transition. Called by syscall_arch_jump_to_user after TSS setup.
+ * transition. Called by syscall_jump_to_user after TSS setup.
  */
 noreturn void syscall_jump_to_user_asm (uintptr_t pc, uintptr_t sp);
 

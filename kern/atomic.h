@@ -61,7 +61,6 @@
 
 #endif
 
-
 #define atomic_op(place, op, ...)  __atomic_##op (place, ##__VA_ARGS__)
 
 // Needed since we use different names.
