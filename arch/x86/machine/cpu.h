@@ -129,6 +129,7 @@
 #define CPU_CR4_PSE                             0x00000010
 #define CPU_CR4_PAE                             0x00000020
 #define CPU_CR4_PGE                             0x00000080
+#define CPU_CR4_PCIDE                           0x00020000
 #define CPU_CR4_OSXSAVE                         0x00040000
 
 /*
@@ -164,6 +165,10 @@
 #define CPU_CPUID_EXT1_EDX_1GP                  0x04000000
 #define CPU_CPUID_EXT1_EDX_LM                   0x20000000
 
+// CPUID.01H:ECX feature flags.
+#define CPU_CPUID_BASIC1_ECX_PCID               0x00020000
+#define CPU_CPUID_BASIC1_ECX_INVPCID            0x10000000
+
 // Registers used to implement percpu variables.
 #ifdef __LP64__
 #  define CPU_LOCAL_REGISTER   "gs"
@@ -184,6 +189,8 @@ enum cpu_feature
   CPU_FEATURE_PGE,
   CPU_FEATURE_1GP,
   CPU_FEATURE_LM,
+  CPU_FEATURE_PCID,
+  CPU_FEATURE_INVPCID,
   CPU_NR_FEATURES
 };
 
@@ -792,11 +799,19 @@ cpu_set_msr64 (uint32_t msr, uint64_t value)
  * Flush non-global TLB entries.
  *
  * Implies a full memory barrier.
+ *
+ * With PCID enabled, CR3 bit 63 prevents TLB flushing on CR3 writes.
+ * We must clear it to force a flush of all non-global entries across
+ * all PCIDs.
  */
 static __always_inline void
 cpu_tlb_flush (void)
 {
+#ifdef __LP64__
+  cpu_set_cr3 (cpu_get_cr3 () & ~(1ULL << 63));
+#else
   cpu_set_cr3 (cpu_get_cr3 ());
+#endif
 }
 
 /*
@@ -834,6 +849,47 @@ static __always_inline void
 cpu_tlb_flush_va (uintptr_t va)
 {
   asm volatile ("invlpg (%0)" : : "r" (va) : "memory");
+}
+
+/*
+ * Flush TLB entries for a specific PCID.
+ *
+ * Type values:
+ *  0 - Individual address (except global) for the given PCID
+ *  1 - All entries (except global) for the given PCID
+ *  2 - All entries (including global)
+ *  3 - All entries (except global) for all PCIDs
+ *
+ * Only available if CPU_FEATURE_INVPCID is present.
+ */
+#ifdef __LP64__
+
+static __always_inline void
+cpu_invpcid (uint64_t type, uint64_t pcid, uintptr_t va)
+{
+  struct
+  {
+    uint64_t pcid;
+    uint64_t va;
+  } desc = { pcid, va };
+
+  asm volatile ("invpcid %1, %0" : : "r" (type), "m" (desc) : "memory");
+}
+
+#endif
+
+// Check whether the current CPU supports PCID.
+static inline bool
+cpu_has_pcid (void)
+{
+  return (cpu_has_feature (cpu_current (), CPU_FEATURE_PCID));
+}
+
+// Check whether the current CPU supports INVPCID.
+static inline bool
+cpu_has_invpcid (void)
+{
+  return (cpu_has_feature (cpu_current (), CPU_FEATURE_INVPCID));
 }
 
 static inline uint32_t

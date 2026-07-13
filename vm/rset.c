@@ -73,16 +73,15 @@ vm_rset_del (struct vm_page *page, void *pte)
   SPINLOCK_GUARD (&page->rset_lock);
   slist_rcu_for_each_entry (&page->rset, entry, link)
     {
-      if (pte != entry->pte)
+      if (pte == entry->pte)
         {
-          prev = &entry->link;
-          continue;
+          slist_rcu_remove (&page->rset, prev);
+          entry->cpu = ~0u;
+          rcu_defer (&entry->work);
+          return;
         }
 
-      slist_rcu_remove (&page->rset, prev);
-      entry->cpu = ~0u;
-      rcu_defer (&entry->work);
-      return;
+      prev = &entry->link;
     }
 }
 

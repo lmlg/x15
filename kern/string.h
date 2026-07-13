@@ -37,7 +37,7 @@ memcpy (void *restrict dst, const void *restrict src, size_t n)
   while (0)
 
   if (MEMCPY_COMPTIME_TEST (1))
-    *(char *)dst = *(const char *)src;
+    MEMCPY_UNROLL (1);
   else if (MEMCPY_COMPTIME_TEST (2))
     MEMCPY_UNROLL (2);
   else if (MEMCPY_COMPTIME_TEST (4))
@@ -57,7 +57,6 @@ memcpy (void *restrict dst, const void *restrict src, size_t n)
 #undef MEMCPY_UNROLL
 #undef MEMCPY_COMPTIME_TEST
 }
-
 
 static inline void*
 memmove (void *restrict dst, const void *restrict src, size_t n)

@@ -202,15 +202,17 @@ static const struct cpu_vendor cpu_vendors[] =
 
 static const char *cpu_feature_names[] =
 {
-  [CPU_FEATURE_FPU]   = "fpu",
-  [CPU_FEATURE_PSE]   = "pse",
-  [CPU_FEATURE_PAE]   = "pae",
-  [CPU_FEATURE_MSR]   = "msr",
-  [CPU_FEATURE_CX8]   = "cx8",
-  [CPU_FEATURE_APIC]  = "apic",
-  [CPU_FEATURE_PGE]   = "pge",
-  [CPU_FEATURE_1GP]   = "1gp",
-  [CPU_FEATURE_LM]    = "lm",
+  [CPU_FEATURE_FPU]     = "fpu",
+  [CPU_FEATURE_PSE]     = "pse",
+  [CPU_FEATURE_PAE]     = "pae",
+  [CPU_FEATURE_MSR]     = "msr",
+  [CPU_FEATURE_CX8]     = "cx8",
+  [CPU_FEATURE_APIC]    = "apic",
+  [CPU_FEATURE_PGE]     = "pge",
+  [CPU_FEATURE_1GP]     = "1gp",
+  [CPU_FEATURE_LM]      = "lm",
+  [CPU_FEATURE_PCID]    = "pcid",
+  [CPU_FEATURE_INVPCID] = "invpcid",
 };
 
 static void __init
@@ -973,6 +975,14 @@ cpu_feature_map_basic1_edx (struct cpu_feature_map *map, uint32_t edx)
 }
 
 static void __init
+cpu_feature_map_basic1_ecx (struct cpu_feature_map *map, uint32_t ecx)
+{
+  cpu_feature_map_cset (map, ecx, CPU_CPUID_BASIC1_ECX_PCID, CPU_FEATURE_PCID);
+  cpu_feature_map_cset (map, ecx, CPU_CPUID_BASIC1_ECX_INVPCID,
+                        CPU_FEATURE_INVPCID);
+}
+
+static void __init
 cpu_feature_map_ext1_edx (struct cpu_feature_map *map, uint32_t edx)
 {
   cpu_feature_map_cset (map, edx, CPU_CPUID_EXT1_EDX_1GP, CPU_FEATURE_1GP);
@@ -1136,6 +1146,7 @@ cpu_build (struct cpu *cpu)
                          CPU_CPUID_APIC_ID_SHIFT;
   cpu_feature_map_init (&cpu->feature_map);
   cpu_feature_map_basic1_edx (&cpu->feature_map, edx);
+  cpu_feature_map_basic1_ecx (&cpu->feature_map, ecx);
 
   eax = CPU_CPUID_EXT_BIT;
   cpu_cpuid (&eax, &ebx, &ecx, &edx);

@@ -108,6 +108,14 @@ syscall_percpu_setup (void)
   cpu_xsetbv (0, CPU_XSAVE_FEATURES);
 
   /*
+   * Enable PCID support if both PCID and INVPCID are available.
+   * Both are required: PCID for tagging TLB entries, and INVPCID
+   * for targeted flushing of specific PCIDs.
+   */
+  if (cpu_has_pcid () && cpu_has_invpcid ())
+    cpu_set_cr4 (cpu_get_cr4 () | CPU_CR4_PCIDE);
+
+  /*
    * Configure the STAR MSR:
    *   STAR[47:32] = Kernel base selector (0x08)
    *   STAR[63:48] = User base selector (0x23) -> SS=40 (0x28), CS=48 (0x30)
