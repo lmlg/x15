@@ -165,5 +165,6 @@ user_write_struct (void *udst, const void *src, size_t size)
   memcpy ((char *)udst + sizeof (uint32_t),
           (const char *)src + sizeof (uint32_t),
           rsize - sizeof (uint32_t));
+  ((union user_ua *)udst)->u4 = (uint32_t)rsize;
   return (0);
 }

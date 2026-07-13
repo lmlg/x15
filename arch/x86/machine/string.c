@@ -26,61 +26,6 @@
 #include <kern/macros.h>
 #include <machine/string.h>
 
-#ifdef STRING_ARCH_MEMCPY
-
-void*
-memcpy (void *dest, const void *src, size_t n)
-{
-  void *orig_dest = dest;
-  asm volatile ("rep movsb"
-                : "+D" (dest), "+S" (src), "+c" (n)
-                : : "memory");
-  return (orig_dest);
-}
-
-#endif
-
-#ifdef STRING_ARCH_MEMMOVE
-
-void*
-memmove (void *dest, const void *src, size_t n)
-{
-  void *orig_dest = dest;
-
-  if (dest <= src)
-    asm volatile ("rep movsb"
-                  : "+D" (dest), "+S" (src), "+c" (n)
-                  : : "memory");
-  else
-    {
-      dest = (char *)dest + n - 1;
-      src = (const char *)src + n - 1;
-
-      asm volatile ("std; rep movsb; cld"
-                    : "+D" (dest), "+S" (src), "+c" (n)
-                    : : "memory");
-    }
-
-  return (orig_dest);
-}
-
-#endif
-
-#ifdef STRING_ARCH_MEMSET
-
-void*
-memset (void *s, int c, size_t n)
-{
-  void *orig_s = s;
-  asm volatile ("rep stosb"
-                : "+D" (s), "+c" (n)
-                : "a" (c)
-                : "memory");
-  return (orig_s);
-}
-
-#endif
-
 #ifdef STRING_ARCH_MEMCMP
 
 int

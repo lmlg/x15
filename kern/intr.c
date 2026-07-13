@@ -90,12 +90,10 @@ static struct kmem_cache intr_handler_cache;
 static uint32_t
 intr_select_cpu (void)
 {
-  /*
-   * TODO Interrupt routing.
-   * Although the interface supports it, there are currently problems
-   * with the I/O APIC that need to be solved first.
-   */
-  return (0);
+  static uint32_t last_cpu;
+  uint32_t ret = last_cpu;
+  last_cpu = (last_cpu + 1) % cpu_count ();
+  return (ret);
 }
 
 static int

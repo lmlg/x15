@@ -19,9 +19,40 @@
 #define X86_STRING_H
 
 // Provide architecture-specific string functions.
-#define STRING_ARCH_MEMCPY
-#define STRING_ARCH_MEMMOVE
-#define STRING_ARCH_MEMSET
+#define STRING_ARCH_MEMCPY(D, S, N)   \
+  ({   \
+     void *orig_ = (D), *dst_ = orig_;   \
+     asm volatile ("rep movsb" : "+D" (dst_), "+S" (S), "+c" (N)   \
+                   : : "memory");   \
+     orig_;   \
+   })
+
+#define STRING_ARCH_MEMMOVE(D, S, N)   \
+  ({   \
+     void *orig_ = (D), *dst_ = orig_;   \
+     const void *src_ = (S);   \
+     if (dst_ <= src_)   \
+       asm volatile ("rep movsb" : "+D" (dst_), "+S" (src_), "+c" (N)   \
+                     : : "memory");   \
+     else   \
+       {   \
+         size_t n_ = (N);   \
+         dst_ = (char *)dst_ + n_ - 1;   \
+         src_ = (const char *)src_ + n_ - 1;   \
+         asm volatile ("std; rep movsb; cld"   \
+                       : "+D" (dst_), "+S" (src_), "+c" (n_) : : "memory");   \
+       }   \
+     orig_;   \
+   })
+
+#define STRING_ARCH_MEMSET(S, C, N)   \
+  ({   \
+     void *orig_ = (S), *dst_ = orig_;   \
+     asm volatile ("rep stosb"   \
+                   : "+D" (dst_), "+c" (N) : "a" (C) : "memory");   \
+     orig_;   \
+   })
+
 #define STRING_ARCH_MEMCMP
 #define STRING_ARCH_STRLEN
 #define STRING_ARCH_STRCPY

@@ -439,6 +439,8 @@ vm_object_map_dirty (struct vm_object *obj, struct cap_page_info *upg)
   if (!user_check_range (upg, sizeof (*upg)))
     return (-EFAULT);
 
+  rcu_read_enter ();
+
   struct unw_fixup fixup;
   int error = unw_fixup_save (&fixup);
 
@@ -448,7 +450,6 @@ vm_object_map_dirty (struct vm_object *obj, struct cap_page_info *upg)
       return (-error);
     }
 
-  rcu_read_enter ();
   _Auto pg = *upg;
 
   if (!pg.offset_cnt ||

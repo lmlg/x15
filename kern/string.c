@@ -27,54 +27,6 @@
 #include <kern/macros.h>
 #include <machine/string.h>
 
-#ifndef STRING_ARCH_MEMCPY
-
-void*
-memcpy (void *dest, const void *src, size_t n)
-{
-  char *dest_ptr = dest;
-  const char *src_ptr = src;
-
-  for (size_t i = 0; i < n; i++)
-    *dest_ptr++ = *src_ptr++;
-
-  return (dest);
-}
-
-#endif
-
-#ifndef STRING_ARCH_MEMMOVE
-
-void*
-memmove (void *dest, const void *src, size_t n)
-{
-  if (dest <= src)
-    return (memcpy (dest, src, n));
-  
-  char *dest_ptr = dest + n - 1;
-  const char *src_ptr = src + n - 1;
-
-  for (size_t i = 0; i < n; i++)
-    *--dest_ptr = *--src_ptr;
-
-  return (dest);
-}
-
-#endif
-
-#ifndef STRING_ARCH_MEMSET
-
-void*
-memset (void *s, int c, size_t n)
-{
-  for (size_t i = 0; i < n; ++i)
-    ((unsigned char *)s)[i] = c;
-
-  return (s);
-}
-
-#endif
-
 #ifndef STRING_ARCH_MEMCMP
 
 int
