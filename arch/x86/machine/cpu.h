@@ -869,6 +869,19 @@ void cpu_delay (size_t usecs);
 // Log processor information.
 void cpu_log_info (const struct cpu *cpu);
 
+/*
+ * Check whether an exception frame originated from user mode.
+ *
+ * This is used by machine-independent code to determine whether
+ * signal delivery should be attempted when returning from a
+ * syscall or exception.
+ */
+static inline bool
+cpu_exc_frame_is_user (const struct cpu_exc_frame *frame)
+{
+  return ((frame->words[CPU_EXC_FRAME_CS] & CPU_PL_USER) != 0);
+}
+
 // Register a local APIC.
 void cpu_mp_register_lapic (uint32_t apic_id, bool is_bsp);
 

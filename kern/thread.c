@@ -102,6 +102,7 @@
 #include <kern/perfmon.h>
 #include <kern/rcu.h>
 #include <kern/shell.h>
+#include <kern/signal.h>
 #include <kern/sleepq.h>
 #include <kern/spinlock.h>
 #include <kern/syscnt.h>
@@ -2147,7 +2148,6 @@ thread_ap_setup (void)
 int
 thread_create (struct thread **threadp, const struct thread_attr *attr,
                void (*fn) (void *), void *arg)
-
 {
   int error;
   if (attr->cpumap)
@@ -2309,9 +2309,99 @@ thread_wakeup_common (struct thread *thread, int error, bool resume)
 }
 
 int
-thread_wakeup (struct thread *thread)
+(thread_wakeup) (struct thread *thread, int error)
 {
-  return (thread_wakeup_common (thread, 0, false));
+  return (thread_wakeup_common (thread, error, false));
+}
+
+static void
+thread_resume_all (struct task *task)
+{
+  /*
+   * The threads of this task were suspended, but they may not have entered the
+   * suspended state yet. As such, we may need to spin for a bit.
+   */
+
+  struct thread *thread;
+  list_for_each_entry (&task->threads, thread, task_node)
+    {
+      while (1)
+        {
+          uint32_t ts = thread_state (thread);
+          if (ts == THREAD_DEAD)
+            break;
+          else if (ts == THREAD_SUSPENDED)
+            {
+              thread_resume (thread);
+              break;
+            }
+
+          atomic_fence (ATOMIC_SEQ_CST);
+        }
+    }
+}
+
+int
+thread_send_signal (struct thread *thread, int signo)
+{
+  if (!signal_valid (signo))
+    return (EINVAL);
+
+  struct uthread *uthr = thread->uthread;
+  if (!uthr)
+    return (EPERM);
+
+  /*
+   * SIGCONT to a stopped task resumes all threads immediately, regardless of
+   * whether there's a handler. The resume happens before the pending bit is
+   * set so threads are unblocked first, then the signal is delivered
+   * normally on their return path.
+   */
+
+  if (signo == SIGCONT)
+    {
+      _Auto task = thread->task;
+      ADAPTIVE_LOCK_GUARD (&task->lock);
+
+      if (task->suspending)
+        {
+          thread_resume_all (task);
+          task->suspending = 0;
+        }
+
+      // Fall through to set the pending bit.
+    }
+
+  struct thread_runq_guard g = thread_runq_guard_make (thread, false);
+  uthr->sig_pending |= SIG_BIT (signo);
+
+  /*
+   * If the thread is sleeping, wake it up so the signal can be
+   * delivered at the next kernel-to-user transition.
+   */
+  if (thread_state (thread) == THREAD_SLEEPING)
+    thread_wakeup (thread, EINTR);
+
+  return (0);
+}
+
+void
+thread_terminate_all (struct task *task)
+{
+  struct thread *thread;
+  ADAPTIVE_LOCK_GUARD (&task->lock);
+
+  if (unlikely (task->suspending))
+    { // See the comment in 'thread_resume_all' for why we do this.
+      list_for_each_entry (&task->threads, thread, task_node)
+        while (thread_state (thread) != THREAD_SUSPENDED &&
+               thread_state (thread) != THREAD_DEAD)
+          atomic_fence (ATOMIC_SEQ_CST);
+    }
+
+  list_for_each_entry (&task->threads, thread, task_node)
+    // This can both wakeup or resume.
+    thread_wakeup_common (thread, EINTR, true);
 }
 
 struct thread_timeout_waiter
@@ -2345,7 +2435,9 @@ thread_sleep_common (struct spinlock *interlock, const void *wchan_addr,
   cpu_flags_t flags;
   spinlock_lock_intr_save (&runq->lock, &flags);
 
-  if (interlock)
+  if (thread->task->terminate)
+    return (EINTR);
+  else if (interlock)
     {
       thread_preempt_disable ();
       spinlock_unlock (interlock);
@@ -2370,12 +2462,11 @@ thread_sleep_common (struct spinlock *interlock, const void *wchan_addr,
   return (thread->wakeup_error);
 }
 
-void
+int
 thread_sleep (struct spinlock *lock, const void *wchan_addr,
               const char *wchan_desc)
 {
-  int error = thread_sleep_common (lock, wchan_addr, wchan_desc, false, 0);
-  assert (! error);
+  return (thread_sleep_common (lock, wchan_addr, wchan_desc, false, 0));
 }
 
 int
@@ -2502,6 +2593,26 @@ thread_schedule (void)
 {
   if (unlikely (thread_test_flag (thread_self (), THREAD_YIELD)))
     thread_yield ();
+}
+
+void
+thread_schedule_signals (struct cpu_exc_frame *frame)
+{
+  thread_schedule ();
+
+  /*
+   * Only check for pending signals when the frame indicates a
+   * return to user mode. Kernel-mode exceptions and interrupts
+   * must not trigger signal delivery — the signal will be
+   * delivered later, when the thread eventually returns to
+   * user mode via a syscall return or a user-mode exception.
+   */
+  if (!cpu_exc_frame_is_user (frame))
+    return;
+
+  struct thread *self = thread_self ();
+  if (self->uthread)
+    signal_check (frame, self);
 }
 
 void
@@ -2794,7 +2905,7 @@ thread_set_affinity (struct thread *thread, const struct cpumap *cpumap)
 static ssize_t
 thread_name_impl (struct thread *thread, char *name, bool set)
 {
-  SPINLOCK_GUARD (&thread->task->lock);
+  ADAPTIVE_LOCK_GUARD (&thread->task->lock);
   if (set)
     memcpy (thread->name, name, sizeof (thread->name));
   else

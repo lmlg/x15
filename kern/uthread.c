@@ -28,6 +28,10 @@ uthread_ctor (void *tmp)
 {
   _Auto ptr = (struct uthread *)tmp;
   ptr->tid = NULL;
+  ptr->sig_pending = 0;
+  ptr->sig_mask = 0;
+  ptr->sig_saved_mask = 0;
+  ptr->sig_saved_sp = 0;
   futex_td_init (&ptr->futex_td);
 }
 

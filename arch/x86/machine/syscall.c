@@ -49,6 +49,10 @@ syscall_handler (struct cpu_exc_frame *frame)
   syscall_enter (frame);
 
   uintptr_t args[6], nr = frame->words[CPU_EXC_FRAME_RAX];
+
+  if (syscall_handle_special (frame, nr))
+    return;
+
   args[0] = frame->words[CPU_EXC_FRAME_RDI];
   args[1] = frame->words[CPU_EXC_FRAME_RSI];
   args[2] = frame->words[CPU_EXC_FRAME_RDX];
@@ -66,6 +70,10 @@ syscall_handler (struct cpu_exc_frame *frame)
   syscall_enter (frame);
 
   uintptr_t args[6], nr = frame->words[CPU_EXC_FRAME_EAX];
+
+  if (syscall_handle_special (frame, nr))
+    return;
+
   args[0] = frame->words[CPU_EXC_FRAME_EBX];
   args[1] = frame->words[CPU_EXC_FRAME_ECX];
   args[2] = frame->words[CPU_EXC_FRAME_EDX];
@@ -112,7 +120,7 @@ syscall_percpu_setup (void)
    *   STAR[47:32] = Kernel base selector (0x08)
    *   STAR[63:48] = User base selector (0x23) -> SS=40 (0x28), CS=48 (0x30)
    */
-  uint32_t star_high = ((uint32_t)(CPU_GDT_SEL_USER_DATA - 8) | 3 ) << 16 |
+  uint32_t star_high = ((uint32_t)(CPU_GDT_SEL_USER_DATA - 8) | 3) << 16 |
                        (uint32_t)CPU_GDT_SEL_CODE;
   cpu_set_msr (0xc0000081, star_high, 0);
 

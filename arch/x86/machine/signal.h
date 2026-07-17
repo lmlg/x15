@@ -14,35 +14,20 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
- * Definitions for userspace threads.
+ * Definitions for signals on x86.
  */
 
-#ifndef KERN_UTHREAD_H
-#define KERN_UTHREAD_H
+#ifndef X86_SIGNAL_H
+#define X86_SIGNAL_H
 
-#include <stdint.h>
+struct cpu_exc_frame;
+struct uthread;
 
-#include <kern/futex.h>
-#include <kern/init.h>
+// Set the signal trampoline on a CPU frame for a specific user thread.
+int signal_set_trampoline (struct cpu_exc_frame *frame, struct uthread *uthr,
+                           int signo, uintptr_t handler);
 
-#include <signal.h>
-
-struct uthread
-{
-  struct futex_td futex_td;
-  int *tid;
-  sigset_t sig_pending;
-  sigset_t sig_mask;
-  sigset_t sig_saved_mask;
-  uintptr_t sig_saved_sp;
-};
-
-struct uthread* uthread_allocate (void);
-
-void uthread_free (struct uthread *uthread);
-
-void uthread_exit (struct uthread *uthread);
-
-INIT_OP_DECLARE (uthread_setup);
+// Copy the contents of the signal trampoline into a buffer.
+void signal_init_trampoline (void *page);
 
 #endif

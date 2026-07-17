@@ -16,6 +16,7 @@
  */
 
 #include <errno.h>
+#include <signal.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <syscall.h>
@@ -23,9 +24,12 @@
 #include <kern/futex.h>
 #include <kern/init.h>
 #include <kern/macros.h>
+#include <kern/signal.h>
 #include <kern/syscall.h>
 #include <kern/syscall_i.h>
 #include <kern/task.h>
+#include <kern/thread.h>
+#include <kern/user.h>
 
 #include <machine/syscall.h>
 
@@ -51,6 +55,13 @@ SYSCALL_STATIC (thread_exit, void *mem, size_t len)
   __builtin_unreachable ();
 }
 
+SYSCALL_STATIC (gettids, uint64_t *out)
+{
+  _Auto self = thread_self ();
+  uint64_t val = ((uint64_t)task_id (self->task) << 32) | thread_id (self);
+  return (-user_copy_to (out, &val, sizeof (out)));
+}
+
 /*
  * System call table.
  *
@@ -63,9 +74,14 @@ static const syscall_fn_t syscall_table[NR_SYSCALLS] =
   SYSCALL_E (puts),
   SYSCALL_E (thread_exit),
   SYSCALL_E (futex),
+  SYSCALL_E (sigaction),
+  SYSCALL_E (sigprocmask),
+  SYSCALL_E (kill),
+  SYSCALL_E (gettids),
 #undef SYSCALL_E
 };
 
+// SYS_sigreturn is not in the table — it's handled specially below.
 
 ssize_t
 syscall_dispatch (uintptr_t nr, const uintptr_t args[6])
@@ -75,6 +91,16 @@ syscall_dispatch (uintptr_t nr, const uintptr_t args[6])
 
   return (syscall_table[nr] (args[0], args[1], args[2],
                              args[3], args[4], args[5]));
+}
+
+bool
+syscall_handle_special (struct cpu_exc_frame *frame, uintptr_t nr)
+{
+  if (nr != SYS_sigreturn)
+    return (false);
+
+  signal_restore (frame, thread_self ());
+  return (true);
 }
 
 int __init

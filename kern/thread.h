@@ -426,10 +426,10 @@ void thread_join (struct thread *thread);
  *
  * Implies a memory barrier.
  */
-void thread_sleep (struct spinlock *interlock, const void *wchan_addr,
-                   const char *wchan_desc);
+int thread_sleep (struct spinlock *interlock, const void *wchan_addr,
+                  const char *wchan_desc);
 int thread_timedsleep (struct spinlock *interlock, const void *wchan_addr,
-                       const char *wchan_desc, uint64_t ticks);
+                        const char *wchan_desc, uint64_t ticks);
 
 /*
  * Schedule a thread for execution on a processor.
@@ -438,7 +438,15 @@ int thread_timedsleep (struct spinlock *interlock, const void *wchan_addr,
  * running state, or in the suspended state, no action is performed and
  * EINVAL is returned.
  */
-int thread_wakeup (struct thread *thread);
+int thread_wakeup (struct thread *thread, int retval);
+
+#define thread_wakeup(thread, ...)   \
+  ({   \
+     const int args_[] = { 0, ##__VA_ARGS__ };   \
+     _Static_assert (ARRAY_SIZE (args_) <= 2,   \
+                     "too many arguments in call to 'thread_wakeup'");   \
+     (thread_wakeup) ((thread), args_[ARRAY_SIZE (args_) - 1]);   \
+   })
 
 /*
  * Suspend a thread.
@@ -641,6 +649,20 @@ thread_id (const struct thread *thread)
  * Called on return from interrupt or when reenabling preemption.
  */
 void thread_schedule (void);
+
+/*
+ * Schedule and check for pending signals.
+ *
+ * Called from the syscall and exception return paths. This function
+ * calls thread_schedule(), then checks for pending unblocked signals
+ * if the frame indicates a return to user mode. If a signal is
+ * deliverable, the exception frame is modified in-place to invoke
+ * the signal handler.
+ *
+ * The frame argument points to the start of the cpu_exc_frame on
+ * the kernel stack.
+ */
+void thread_schedule_signals (struct cpu_exc_frame *frame);
 
 // Sleep queue lending functions.
 
@@ -947,6 +969,12 @@ int thread_get_affinity (const struct thread *thread, struct cpumap *cpumap);
 
 // Set the CPU affinity mask for the specified thread.
 int thread_set_affinity (struct thread *thread, const struct cpumap *cpumap);
+
+// Send a signal to a thread.
+int thread_send_signal (struct thread *thread, int signo);
+
+// Wake all threads in a task for termination.
+void thread_terminate_all (struct task *task);
 
 // Look up a thread by its KUID.
 static inline struct thread*

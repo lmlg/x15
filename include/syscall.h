@@ -34,6 +34,16 @@ enum
 #define SYS_thread_exit   SYS_thread_exit
   SYS_futex,
 #define SYS_futex         SYS_futex
+  SYS_sigaction,
+#define SYS_sigaction     SYS_sigaction
+  SYS_sigprocmask,
+#define SYS_sigprocmask   SYS_sigprocmask
+  SYS_kill,
+#define SYS_kill          SYS_kill
+  SYS_sigreturn,
+#define SYS_sigreturn     SYS_sigreturn
+  SYS_gettids,
+#define SYS_gettids       SYS_gettids
   SYS_last,
 };
 

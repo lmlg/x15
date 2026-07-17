@@ -203,6 +203,7 @@ struct test_uthread_karg
   uintptr_t uctl;
   void *uarg;
   struct test_uthread *thr;
+  void (*prepare) (uintptr_t, void *);
 };
 
 static void
@@ -227,7 +228,7 @@ test_util_kentry (void *arg)
 
   /*
    * At the top of the stack lies the control block, through which userspace
-   * can communicate failures to the kerenl thread.
+   * can communicate failures to the kernel thread.
    * Right below that is the argument for the userspace thread.
    */
   _Auto sp_end = (char *)vm_page_direct_ptr (stack) + PAGE_SIZE -
@@ -254,6 +255,9 @@ test_util_kentry (void *arg)
   pc += karg->entry - uentry;
   karg->thr->stack = stack;
   karg->thr->exec = exec;
+  if (karg->prepare)
+    karg->prepare (pc, (void *)karg->uarg);
+
   atomic_store_rel (&karg->status, 1);
   syscall_jump_to_user (pc, sp + PAGE_SIZE - sizeof (struct test_uctl) -
                             2 * sizeof (uintptr_t));

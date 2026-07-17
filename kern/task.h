@@ -20,6 +20,7 @@
 
 #include <stdint.h>
 
+#include <kern/adaptive_lock.h>
 #include <kern/atomic.h>
 #include <kern/bulletin.h>
 #include <kern/cspace_types.h>
@@ -32,6 +33,8 @@
 #include <kern/thread.h>
 #include <kern/work.h>
 
+#include <signal.h>
+
 #include <vm/map.h>
 
 // Task name buffer size.
@@ -41,11 +44,14 @@
 struct task
 {
   struct kuid_head kuid;
-  struct spinlock lock;
+  struct adaptive_lock lock;
   struct list node;
   struct list threads;
   struct vm_map *map;
   struct cspace caps;
+  struct sigaction sig_actions[NSIG];
+  int terminate;
+  int suspending;
   union
     {
       struct bulletin dead_subs;

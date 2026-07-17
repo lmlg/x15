@@ -31,6 +31,7 @@ x15_SOURCES-y += \
         kern/rtmutex.c \
         kern/semaphore.c \
         kern/shutdown.c \
+        kern/signal.c \
         kern/sleepq.c \
         kern/spinlock.c \
         kern/sref.c \

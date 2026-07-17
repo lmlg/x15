@@ -46,6 +46,15 @@ int syscall_setup (void);
 // Dispatch a system call given the number and arguments.
 ssize_t syscall_dispatch (uintptr_t nr, const uintptr_t args[6]);
 
+/*
+ * Handle special syscalls that need direct frame access.
+ *
+ * Returns true if the syscall was handled (normal dispatch is skipped).
+ * Currently only used for SYS_sigreturn, which restores the saved
+ * exception frame in-place.
+ */
+bool syscall_handle_special (struct cpu_exc_frame *frame, uintptr_t nr);
+
 // Generic callback on transition to kernel space via a system call.
 void syscall_enter (struct cpu_exc_frame *frame);
 

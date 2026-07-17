@@ -110,6 +110,7 @@ struct test_uthread_attr
 {
   unsigned int fnsize;
   struct test_utask *task;
+  void (*prepare) (uintptr_t, void *);
 };
 
 struct test_uthread

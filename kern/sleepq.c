@@ -448,8 +448,9 @@ sleepq_wait_common (struct sleepq_waiter *waiter, const char *wchan,
     {
       if (! timed)
         {
-          thread_sleep (lock, waiter, wchan);
-          error = 0;
+          error = thread_sleep (lock, waiter, wchan);
+          if (error)
+            break;
         }
       else
         {

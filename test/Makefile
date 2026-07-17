@@ -14,6 +14,7 @@ x15_SOURCES-$(CONFIG_TEST_PMAP_UPDATE)         += test/test_pmap_update_mp.c
 x15_SOURCES-$(CONFIG_TEST_RCU_DEFER)           += test/test_rcu_defer.c
 x15_SOURCES-$(CONFIG_TEST_RDXTREE)             += test/test_rdxtree.c
 x15_SOURCES-$(CONFIG_TEST_SEMAPHORE)           += test/test_semaphore.c
+x15_SOURCES-$(CONFIG_TEST_SIGNAL)              += test/test_signal.c
 x15_SOURCES-$(CONFIG_TEST_SLEEPQ_BROADCAST)    += test/test_sleepq_broadcast.c
 x15_SOURCES-$(CONFIG_TEST_SREF_DIRTY_ZEROES)   += test/test_sref_dirty_zeroes.c
 x15_SOURCES-$(CONFIG_TEST_SREF_NOREF)          += test/test_sref_noref.c

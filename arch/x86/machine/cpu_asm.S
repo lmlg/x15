@@ -161,7 +161,8 @@
 
 .macro cpu_ll_exc_leave
   movq %rbx, %rsp        // restore stack.
-  call thread_schedule   // schedule threads.
+  movq %rsp, %rdi        // pass frame pointer
+  call thread_schedule_signals
   // Check if returning to user mode (need to swap GS back).
   movq (CPU_EXC_FRAME_CS * CPU_WORD_SIZE)(%rsp), %rax
   testb $CPU_PL_USER, %al

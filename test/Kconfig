@@ -80,6 +80,11 @@ config TEST_SEMAPHORE
 	default n
 	select SYMTAB
 
+config TEST_SIGNAL
+	bool "signals"
+	default n
+	select SYMTAB
+
 config TEST_SLEEPQ_BROADCAST
 	bool "sleepq broadcast"
 	default n

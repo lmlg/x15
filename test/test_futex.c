@@ -339,6 +339,7 @@ test_ufutex (void)
   struct test_uthread_attr attr;
   attr.fnsize = PAGE_SIZE;
   attr.task = &utask;
+  attr.prepare = NULL;
 
   struct test_uthread uthr;
   err = test_util_create_uthr (&uthr, &attr,

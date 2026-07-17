@@ -24,11 +24,13 @@
 #include <kern/cspace.h>
 #include <kern/init.h>
 #include <kern/kmem.h>
-#include <kern/list.h>
+#include <kern/kuid.h>
 #include <kern/log.h>
 #include <kern/macros.h>
 #include <kern/shell.h>
+#include <kern/signal.h>
 #include <kern/spinlock.h>
+#include <kern/stream.h>
 #include <kern/task.h>
 #include <kern/thread.h>
 #include <kern/user.h>
@@ -54,11 +56,15 @@ static void
 task_init (struct task *task, const char *name, struct vm_map *map)
 {
   kuid_head_init (&task->kuid);
-  spinlock_init (&task->lock);
+  adaptive_lock_init (&task->lock);
   list_init (&task->threads);
   task->map = map;
   strlcpy (task->name, name, sizeof (task->name));
   bulletin_init (&task->dead_subs);
+  task->terminate = 0;
+  task->suspending = 0;
+  signal_task_init (task);
+  signal_map_trampoline (task);
 }
 
 #ifdef CONFIG_SHELL
@@ -191,7 +197,7 @@ task_lookup (const char *name)
   struct task *task;
   list_for_each_entry (&task_list, task, node)
     {
-      SPINLOCK_GUARD (&task->lock);
+      ADAPTIVE_LOCK_GUARD (&task->lock);
       if (strcmp (task->name, name) == 0)
         {
           task_ref (task);
@@ -205,17 +211,17 @@ task_lookup (const char *name)
 void
 task_add_thread (struct task *task, struct thread *thread)
 {
-  SPINLOCK_GUARD (&task->lock);
+  ADAPTIVE_LOCK_GUARD (&task->lock);
   list_insert_tail (&task->threads, &thread->task_node);
 }
 
 void
 task_remove_thread (struct task *task, struct thread *thread)
 {
-  spinlock_lock (&task->lock);
+  adaptive_lock_acquire (&task->lock);
   list_remove (&thread->task_node);
   bool last = list_empty (&task->threads);
-  spinlock_unlock (&task->lock);
+  adaptive_lock_release (&task->lock);
 
   if (last)
     { // The VM map and cspace must be destroyed early to avoid circularities.
@@ -231,7 +237,7 @@ task_remove_thread (struct task *task, struct thread *thread)
 struct thread*
 task_lookup_thread (struct task *task, const char *name)
 {
-  SPINLOCK_GUARD (&task->lock);
+  ADAPTIVE_LOCK_GUARD (&task->lock);
 
   struct thread *thread;
   list_for_each_entry (&task->threads, thread, task_node)
@@ -256,7 +262,7 @@ task_info (struct task *task, struct stream *stream)
       return;
     }
 
-  SPINLOCK_GUARD (&task->lock);
+  ADAPTIVE_LOCK_GUARD (&task->lock);
   fmt_xprintf (stream, "task: name: %s, threads:\n", task->name);
 
   if (list_empty (&task->threads))
@@ -292,7 +298,7 @@ task_info (struct task *task, struct stream *stream)
 static ssize_t
 task_name_impl (struct task *task, char *name, bool set)
 {
-  SPINLOCK_GUARD (&task->lock);
+  ADAPTIVE_LOCK_GUARD (&task->lock);
   if (set)
     memcpy (task->name, name, sizeof (task->name));
   else

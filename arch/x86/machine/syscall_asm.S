@@ -66,8 +66,9 @@ ASM_ENTRY (syscall_entry)
   movq %rsp, %rdi
   call syscall_handler
 
-  // Check scheduling before returning
-  call thread_schedule
+  // Schedule and check for pending signals.
+  movq %rsp, %rdi
+  call thread_schedule_signals
 
   // Restore registers from the frame
   popq %rax
