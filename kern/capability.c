@@ -1293,7 +1293,7 @@ cap_task_unregister (struct cap_flow *flow, struct task *task)
 }
 
 void
-cap_notify_dead (struct bulletin *bulletin)
+cap_notify_dead (struct bulletin *bulletin, int exit_val)
 {
   struct list dead_subs;
 
@@ -1311,6 +1311,7 @@ cap_notify_dead (struct bulletin *bulletin)
       if (!pqueue_node_unlinked (&ap->base.pnode))
         continue;
 
+      ap->base.k_alert.dead_notif.exit_val = exit_val;
       pqueue_insert (&flow->alerts.pending, &ap->base.pnode);
       cap_recv_wakeup_fast (flow);
     }
@@ -1342,13 +1343,15 @@ cap_request_pages (struct cap_channel *chp, uint64_t off,
 }
 
 ssize_t
-cap_reply_pagereq (const uintptr_t *usrc, uint32_t cnt)
+cap_reply_pagereq (const uintptr_t *usrc, uint32_t cnt, int err)
 {
   _Auto self = thread_self ();
   struct cap_lpad *lpad = self->cur_lpad;
 
   if (!lpad || !(lpad->xflags & CAP_MSG_REQ_PAGES))
     return (-EINVAL);
+  else if (err)
+    cap_lpad_return (lpad, self, err);
 
   uint32_t npg = lpad->cur_out->iov.head.iov_len / sizeof (struct vm_page);
   if (npg < cnt)

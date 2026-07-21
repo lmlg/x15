@@ -382,11 +382,11 @@ futex_map_addr (struct futex_data *data, int value, int op)
 
       cpu_flags_t flags;
       cpu_intr_save (&flags);
-      error = vm_map_fault (data->map, (uintptr_t)data->addr, prot);
+      error = vm_map_fault (data->map, (uintptr_t)data->addr, prot, NULL);
       cpu_intr_restore (flags);
 
       if (error)
-        return (error);
+        return (EFAULT);
 
       data->wait_obj = data->ops->acquire (&data->key);
       error = 0;
@@ -551,26 +551,30 @@ futex_td_exit (struct futex_td *td)
 SYSCALL (futex, void *ptr, uint32_t op, uint32_t val, const void *p2)
 {
   uint32_t flags = op & ~0xffffu;
+  int ret;
 
   switch (op & 0xffff)
     {
       case FUTEX_OP_WAIT:
         {
           uint64_t ticks = 0;
-          if ((op & FUTEX_FLG_TIMED) &&
-              user_copy_from (&ticks, p2, sizeof (ticks)) != 0)
-            return (-EFAULT);
-
-          return (-futex_wait (ptr, val, flags, ticks));
+          ret = ((flags & FUTEX_FLG_TIMED) &&
+                 user_copy_from (&ticks, p2, sizeof (ticks)) != 0) ?
+                 EFAULT : futex_wait (ptr, val, flags, ticks);
+          break;
         }
 
       case FUTEX_OP_WAKE:
-        return (-futex_wake (ptr, flags, val));
+        ret = futex_wake (ptr, flags, val);
+        break;
 
       case FUTEX_OP_REQUEUE:
-        return (-futex_requeue (ptr, (int *)p2, val, flags));
+        ret = futex_requeue (ptr, (int *)p2, val, flags);
+        break;
 
       default:
-        return (-ENOSYS);
+        ret = ENOSYS;
     }
+
+  return (-ret);
 }

@@ -29,6 +29,7 @@
 struct cpu_exc_frame;
 struct task;
 struct thread;
+struct uthread;
 
 // Check whether the given signal number is valid.
 static inline bool
@@ -54,15 +55,18 @@ void signal_task_init (struct task *task);
 /*
  * Check for pending unblocked signals and deliver the first one.
  *
- * Called from the syscall and exception return paths, after
- * thread_schedule, before returning to user mode. If a signal is
- * deliverable, the exception frame is modified in-place to invoke
- * the handler. The original context is saved on the user stack.
+ * If a signal is deliverable, the exception frame is modified in-place
+ * to invoke the handler. The original context is saved on the user stack.
  *
- * The frame argument points to the start of the cpu_exc_frame on
- * the kernel stack (the first saved register, e.g. RAX on x86-64).
  */
 void signal_check (struct cpu_exc_frame *frame, struct thread *self);
+
+// Find the first pending signal that matches a wait set.
+int signal_select (struct uthread *uthr, sigset_t wset);
+
+// Deliver a synchronous signal.
+void signal_sync_deliver (struct cpu_exc_frame *frame, struct thread *self,
+                          siginfo_t *sinfo);
 
 /*
  * Restore the saved context from a previous signal delivery.
@@ -81,10 +85,20 @@ void signal_restore (struct cpu_exc_frame *frame, struct thread *self);
  */
 int signal_map_trampoline (struct task *task);
 
+// Allocate a pending 'siginfo_t'.
+int signal_alloc_siginfo (struct thread *self, siginfo_t *sinfo);
+
+// Pop a queued siginfo_t for the given signal, or NULL if none.
+siginfo_t* signal_pop_siginfo (struct uthread *uthr, int signo);
+
+// Deallocate signal-related objects from a user thread.
+void signal_uthr_dealloc (struct uthread *uthread);
+
 // Syscall entry points for signal management.
 SYSCALL_DECL (sigaction);
 SYSCALL_DECL (sigprocmask);
-SYSCALL_DECL (kill);
+SYSCALL_DECL (tkill);
+SYSCALL_DECL (sigtimedwait);
 
 /*
  * This init operation provides :

@@ -1828,7 +1828,7 @@ thread_destroy (struct thread *thread)
   assert (thread != thread_self ());
   assert (thread->state == THREAD_DEAD);
 
-  cap_notify_dead (&thread->dead_subs);
+  cap_notify_dead (&thread->dead_subs, 0);
   // See task_info().
   task_remove_thread (thread->task, thread);
 
@@ -2436,7 +2436,11 @@ thread_sleep_common (struct spinlock *interlock, const void *wchan_addr,
   spinlock_lock_intr_save (&runq->lock, &flags);
 
   if (thread->task->terminate)
-    return (EINTR);
+    {
+      if (timed)
+        timer_cancel (&waiter.timer);
+      return (EINTR);
+    }
   else if (interlock)
     {
       thread_preempt_disable ();
@@ -2473,7 +2477,97 @@ int
 thread_timedsleep (struct spinlock *lock, const void *wchan_addr,
                    const char *wchan_desc, uint64_t ticks)
 {
-  return (thread_sleep_common (lock, wchan_addr, wchan_desc, true, ticks));
+   return (thread_sleep_common (lock, wchan_addr, wchan_desc, true, ticks));
+}
+
+int
+thread_sigwait (sigset_t wait_set, siginfo_t *info,
+                const uint64_t *ticks, const sigset_t *new_set)
+{
+  _Auto thread = thread_self ();
+  _Auto uthr = thread->uthread;
+
+  if (!uthr)
+    return (EINVAL);
+
+  struct thread_timeout_waiter waiter;
+  bool timed = (ticks != 0);
+
+  if (timed)
+    {
+      waiter.thread = thread;
+      timer_init (&waiter.timer, thread_timeout, TIMER_INTR);
+    }
+
+  while (1)
+    {
+      _Auto runq = thread_runq_local ();
+      cpu_flags_t flags;
+      spinlock_lock_intr_save (&runq->lock, &flags);
+
+      if (thread->task->terminate)
+        {
+          spinlock_unlock_intr_restore (&runq->lock, flags);
+          if (timed)
+            timer_cancel (&waiter.timer);
+          return (EINTR);
+        }
+
+      sigset_t prev = uthr->sig_mask;
+      if (new_set)
+        uthr->sig_mask = *new_set;
+
+      /*
+       * Check for a pending signal while holding the run queue lock.
+       * This is the critical section that eliminates the race:
+       * thread_send_signal also holds this lock when setting the
+       * pending bit and checking the thread state, so the check
+       * and the sleep transition are atomic.
+       */
+      int signo = signal_select (uthr, wait_set);
+      if (signo)
+        {
+          uthr->sig_pending &= ~SIG_BIT (signo);
+          uthr->sig_mask = prev;
+          spinlock_unlock_intr_restore (&runq->lock, flags);
+
+          if (timed)
+            timer_cancel (&waiter.timer);
+
+          if (info)
+            {
+              _Auto si = signal_pop_siginfo (uthr, signo);
+              if (si)
+                {
+                  *info = *si;
+                  kmem_free (si, sizeof (*si));
+                }
+              else
+                { // No queued siginfo - Create a minimal one.
+                  memset (info, 0, sizeof (*info));
+                  info->si_signo = signo;
+                }
+            }
+
+          return (0);
+        }
+
+      // No matching signal - Sleep.
+      if (timed)
+        timer_schedule (&waiter.timer, *ticks);
+
+      thread_set_wchan (thread, uthr, "sigwait");
+      atomic_store_rlx (&thread->state, THREAD_SLEEPING);
+
+      runq = thread_runq_schedule (runq);
+      uthr->sig_mask = prev;
+      spinlock_unlock_intr_restore (&runq->lock, flags);
+
+      if (timed)
+        timer_cancel (&waiter.timer);
+      if (thread->wakeup_error == ETIMEDOUT)
+        return (ETIMEDOUT);
+    }
 }
 
 int

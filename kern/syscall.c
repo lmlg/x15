@@ -76,8 +76,9 @@ static const syscall_fn_t syscall_table[NR_SYSCALLS] =
   SYSCALL_E (futex),
   SYSCALL_E (sigaction),
   SYSCALL_E (sigprocmask),
-  SYSCALL_E (kill),
+  SYSCALL_E (tkill),
   SYSCALL_E (gettids),
+  SYSCALL_E (sigtimedwait),
 #undef SYSCALL_E
 };
 

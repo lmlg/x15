@@ -284,6 +284,7 @@ test_util_create_uthr (struct test_uthread *out,
   karg.entry = entry;
   karg.thr = out;
   karg.uarg = arg;
+  karg.prepare = attr->prepare;
 
   struct thread_attr kattr;
   _Auto task = attr->task;
@@ -310,12 +311,13 @@ test_util_create_uthr (struct test_uthread *out,
   return (0);
 }
 
-void
+int
 test_util_uthr_join (struct test_uthread *uthr)
 {
   char name[THREAD_NAME_SIZE];
   memcpy (name, uthr->kthr->name, sizeof (name));
 
+  _Auto task = uthr->utask->ktask;
   thread_join (uthr->kthr);
   _Auto uctl = (struct test_uctl *)((char *)vm_page_direct_ptr (uthr->stack) +
                                     PAGE_SIZE - sizeof (struct test_uctl));
@@ -326,9 +328,13 @@ test_util_uthr_join (struct test_uthread *uthr)
   vm_page_unref (uthr->stack);
   vm_page_unref (uthr->exec);
 
-  if (!uthr->utask->ktask->map)
+  int ret = 0;
+  if (!task->map)
     { // This was the last thread in the task.
       vm_page_unref (uthr->utask->data);
-      task_unref (uthr->utask->ktask);
+      ret = task->terminate;
+      task_unref (task);
     }
+
+  return (ret);
 }

@@ -302,27 +302,21 @@ test_futex_uentry (void)
 {
   struct test_futex_uargs *args = test_uthread_arg ();
   long error = SYSCALL_UENTER (SYS_futex, &args->futex1, FUTEX_OP_WAIT, 1);
-
-  if (error != -EAGAIN)
-    test_uthread_err (error, -EAGAIN);
+  test_uassert_eq (error, -EAGAIN);
 
   uint64_t ticks = 10;
   error = SYSCALL_UENTER (SYS_futex, &args->futex1,
                           FUTEX_OP_WAIT | FUTEX_FLG_TIMED, 0, &ticks);
-  if (error != -ETIMEDOUT)
-    test_uthread_err (error, -ETIMEDOUT);
+  test_uassert_eq (error, -ETIMEDOUT);
 
   error = SYSCALL_UENTER (SYS_futex, ~0ul & ~(sizeof (int) - 1),
                           FUTEX_OP_WAIT, 0);
-  if (error != -EFAULT)
-    test_uthread_err (error, -EFAULT);
+  test_uassert_eq (error, -EFAULT);
 
   error = SYSCALL_UENTER (SYS_futex, 0, ~0ul, 0);
-  if (error != -ENOSYS)
-    test_uthread_err (error, -ENOSYS);
+  test_uassert_eq (error, -ENOSYS);
 
-  SYSCALL_UENTER (SYS_thread_exit, 0);
-  __builtin_unreachable ();
+  test_uthread_exit ();
 }
 
 static void

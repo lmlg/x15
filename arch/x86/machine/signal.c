@@ -15,11 +15,12 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include <signal.h>
 #include <stdint.h>
+#include <string.h>
 #include <syscall.h>
 
 #include <kern/signal.h>
+#include <kern/unwind.h>
 #include <kern/user.h>
 
 #include <machine/cpu.h>
@@ -27,7 +28,7 @@
 
 int
 signal_set_trampoline (struct cpu_exc_frame *frame, struct uthread *uthr,
-                       int signo, uintptr_t handler)
+                       int signo, siginfo_t *sinfo, uintptr_t handler)
 {
   /*
    * Deliver the signal to the handler.
@@ -36,44 +37,81 @@ signal_set_trampoline (struct cpu_exc_frame *frame, struct uthread *uthr,
    *
    *   [old user RSP]
    *   ... (alignment)
-   *   [saved cpu_exc_frame]    <- uthr->sig_saved_sp
-   *   [trampoline address]     <- new user RSP
+   *   [ucontext_t]             <- ucontext_va (16-byte aligned)
+   *       contains: uc_mcontext.regs[] = saved cpu_exc_frame
+   *                 uc_sigmask = saved signal mask
+   *   [padding if needed]
+   *   [siginfo_t]              <- sinfo_va (16-byte aligned, if present)
+   *   [trampoline address]     <- new user RSP (16k - 8 for ABI)
    *
-   * When the handler returns (via ret), it jumps to the trampoline,
-   * which performs the sigreturn syscall to restore the saved frame.
+   * When the handler returns (via ret), it pops the trampoline address from
+   * RSP and jumps to it, which performs the sigreturn syscall to restore
+   * the saved context from the ucontext_t.
+   *
+   * Stack alignment: ucontext_va and sinfo_va are 16-byte aligned so
+   * that new_rsp = sinfo_va - 8 (or ucontext_va - 8 if no siginfo)
+   * is 16k - 8, satisfying the x86-64 ABI.
    */
+
+  struct unw_fixup fixup;
+  int err = unw_fixup_save (&fixup);
+
+  if (err)
+    return (-1);
+
+  // Align the ucontext start down to 16 bytes.
   uintptr_t old_rsp = frame->words[CPU_EXC_FRAME_RSP];
-  size_t frame_size = sizeof (*frame);
-
-  // Align the saved frame start down to 16 bytes.
-  uintptr_t saved_sp = (old_rsp - frame_size) & ~(uintptr_t)0xf;
-
-  // Save enough for the trampoline return address.
-  uintptr_t new_rsp = saved_sp - sizeof (uintptr_t);
-
-  // Write the saved frame to the user stack.
-  if (user_copy_to ((void *)saved_sp, frame, frame_size) != 0)
+  uintptr_t ucontext_va = (old_rsp - sizeof (ucontext_t)) & ~(uintptr_t)0xf;
+  if (!user_check_range ((const void *)ucontext_va, sizeof (ucontext_t)))
     return (-1);
 
-  // Write the trampoline return address.
-  uintptr_t tramp = SIGNAL_TRAMPOLINE_ADDR;
-  if (user_copy_to ((void *)new_rsp, &tramp, sizeof (tramp)) != 0)
+  { // Write the ucontext_t to the user stack.
+    ucontext_t *uc = (void *)ucontext_va;
+    uc->uc_flags = 0;
+    uc->uc_link = 0;
+    uc->uc_sigmask = uthr->sig_mask;
+    memcpy (uc->uc_mcontext.regs, frame->words, sizeof (uc->uc_mcontext.regs));
+  }
+
+  /*
+   * If siginfo is present, write it below the ucontext.
+   * Align sinfo_va down to 16 bytes.
+   */
+  uintptr_t sinfo_va = 0;
+
+  if (sinfo)
+    {
+      sinfo_va = (ucontext_va - sizeof (*sinfo)) & ~(uintptr_t)0xf;
+      if (!user_check_range ((const void *)sinfo_va, sizeof (*sinfo)))
+        return (-1);
+
+      memcpy ((void *)sinfo_va, sinfo, sizeof (*sinfo));
+    }
+
+  /*
+   * The trampoline return address goes at the bottom of the signal
+   * frame. RSP at handler entry must be 16k - 8.
+   */
+  uintptr_t new_rsp = (sinfo ? sinfo_va : ucontext_va) - sizeof (uintptr_t);
+  if (!user_check_range ((const void *)new_rsp, sizeof (uintptr_t)))
     return (-1);
+
+  *(uintptr_t *)new_rsp = SIGNAL_TRAMPOLINE_ADDR;
 
   // Save the current mask and auto-block the signal during the handler.
   uthr->sig_saved_mask = uthr->sig_mask;
   uthr->sig_mask |= SIG_BIT (signo);
-  uthr->sig_saved_sp = saved_sp;
+  uthr->sig_saved_sp = ucontext_va;
 
-  // Modify the frame to invoke the handler.
+  // Modify the frame to invoke the handler. */
   frame->words[CPU_EXC_FRAME_RSP] = new_rsp;
   frame->words[CPU_EXC_FRAME_RIP] = (uintptr_t)handler;
   frame->words[CPU_EXC_FRAME_RDI] = (uintptr_t)signo;
+  frame->words[CPU_EXC_FRAME_RSI] = sinfo_va;
+  frame->words[CPU_EXC_FRAME_RDX] = ucontext_va;
   frame->words[CPU_EXC_FRAME_RFLAGS] = CPU_EFL_IF | CPU_EFL_ONE;
 
-  // Clear argument registers to avoid leaking kernel data.
-  frame->words[CPU_EXC_FRAME_RSI] = 0;
-  frame->words[CPU_EXC_FRAME_RDX] = 0;
+  // Clear remaining argument registers to avoid leaking kernel data.
   frame->words[CPU_EXC_FRAME_RCX] = 0;
   frame->words[CPU_EXC_FRAME_R8] = 0;
   frame->words[CPU_EXC_FRAME_R9] = 0;

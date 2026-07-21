@@ -16,6 +16,7 @@
  */
 
 #include <assert.h>
+#include <signal.h>
 #include <stdalign.h>
 #include <stdbool.h>
 #include <stddef.h>
@@ -32,6 +33,7 @@
 #include <kern/percpu.h>
 #include <kern/spinlock.h>
 #include <kern/shutdown.h>
+#include <kern/signal.h>
 #include <kern/syscall.h>
 #include <kern/task.h>
 #include <kern/thread.h>
@@ -636,6 +638,7 @@ cpu_exc_page_fault (const struct cpu_exc_frame *frame)
   struct thread *self = thread_self ();
   _Auto map = self->xtask->map;
   int error;
+  siginfo_t sinfo;
 
   if (map == vm_map_get_kernel_map ())
     error = EFAULT;
@@ -645,7 +648,7 @@ cpu_exc_page_fault (const struct cpu_exc_frame *frame)
     {
       int prot = ((code & CPU_PF_WRITE) ? VM_PROT_WRITE : VM_PROT_READ) |
         ((code & CPU_PF_EXEC) ? VM_PROT_EXEC : 0);
-      error = vm_map_fault (map, addr, prot);
+      error = vm_map_fault (map, addr, prot, &sinfo);
     }
 
   if (!error || error == EINTR)
@@ -657,8 +660,12 @@ cpu_exc_page_fault (const struct cpu_exc_frame *frame)
       cpu_clear_intr ();
       unw_fixup_restore (self->fixup, &mctx, error);
     }
+  else if (self->uthread)
+    {
+      signal_sync_deliver ((struct cpu_exc_frame *)frame, self, &sinfo);
+      return;
+    }
 
-  // TODO: Implement segfaults for userspace tasks.
   cpu_halt_broadcast ();
   printf ("trap: page fault error: %d, code %d at %#lx in task %s\n",
           (int)error, code, addr, self->task->name);
@@ -723,6 +730,77 @@ cpu_unw_mctx_set_frame (const uintptr_t *regs, int retval)
   cpu_unw_mctx_jmp (regs, retval);
 }
 
+/*
+ * Generic synchronous signal handler.
+ *
+ * Used for exceptions that should generate POSIX signals when they
+ * originate from user mode. If the exception occurred in kernel mode,
+ * the default handler (panic) is invoked instead.
+ */
+static void
+cpu_exc_sync_signal (const struct cpu_exc_frame *frame,
+                     int signo, int si_code)
+{
+  struct thread *self = thread_self ();
+
+  if (!self->uthread ||
+      (frame->words[CPU_EXC_FRAME_CS] & 3) != CPU_PL_USER)
+    {
+      cpu_exc_default (frame);
+      return;
+    }
+
+  siginfo_t sinfo;
+  memset (&sinfo, 0, sizeof (sinfo));
+  sinfo.si_signo = signo;
+  sinfo.si_code = si_code;
+  sinfo.si_addr = (void *)frame->words[CPU_EXC_FRAME_PC];
+
+  signal_sync_deliver ((struct cpu_exc_frame *)frame, self, &sinfo);
+}
+
+static void
+cpu_exc_de (const struct cpu_exc_frame *frame)
+{
+  cpu_exc_sync_signal (frame, SIGFPE, FPE_INTDIV);
+}
+
+static void
+cpu_exc_of (const struct cpu_exc_frame *frame)
+{
+  cpu_exc_sync_signal (frame, SIGFPE, FPE_INTOVF);
+}
+
+static void
+cpu_exc_ud (const struct cpu_exc_frame *frame)
+{
+  cpu_exc_sync_signal (frame, SIGILL, ILL_ILLOPC);
+}
+
+static void
+cpu_exc_mf (const struct cpu_exc_frame *frame)
+{
+  cpu_exc_sync_signal (frame, SIGFPE, FPE_FLTINV);
+}
+
+static void
+cpu_exc_xm (const struct cpu_exc_frame *frame)
+{
+  cpu_exc_sync_signal (frame, SIGFPE, FPE_FLTSUB);
+}
+
+static void
+cpu_exc_ac (const struct cpu_exc_frame *frame)
+{
+  cpu_exc_sync_signal (frame, SIGBUS, BUS_ADRALN);
+}
+
+static void
+cpu_exc_gp (const struct cpu_exc_frame *frame)
+{
+  cpu_exc_sync_signal (frame, SIGSEGV, SEGV_ACCERR);
+}
+
 static void __init
 cpu_setup_intr (void)
 {
@@ -732,24 +810,24 @@ cpu_setup_intr (void)
     cpu_register_exc (i, cpu_exc_default);
 
   // Architecture defined exceptions.
-  cpu_register_exc (CPU_EXC_DE, cpu_exc_default);
+  cpu_register_exc (CPU_EXC_DE, cpu_exc_de);
   cpu_register_exc (CPU_EXC_DB, cpu_exc_default);
   cpu_register_intr (CPU_EXC_NMI, cpu_intr_default);
   cpu_register_exc (CPU_EXC_BP, cpu_exc_default);
-  cpu_register_exc (CPU_EXC_OF, cpu_exc_default);
+  cpu_register_exc (CPU_EXC_OF, cpu_exc_of);
   cpu_register_exc (CPU_EXC_BR, cpu_exc_default);
-  cpu_register_exc (CPU_EXC_UD, cpu_exc_default);
+  cpu_register_exc (CPU_EXC_UD, cpu_exc_ud);
   cpu_register_exc (CPU_EXC_NM, cpu_exc_default);
   cpu_register_exc (CPU_EXC_DF, cpu_exc_double_fault);
   cpu_register_exc (CPU_EXC_TS, cpu_exc_default);
   cpu_register_exc (CPU_EXC_NP, cpu_exc_default);
   cpu_register_exc (CPU_EXC_SS, cpu_exc_default);
-  cpu_register_exc (CPU_EXC_GP, cpu_exc_default);
+  cpu_register_exc (CPU_EXC_GP, cpu_exc_gp);
   cpu_register_exc (CPU_EXC_PF, cpu_exc_page_fault);
-  cpu_register_exc (CPU_EXC_MF, cpu_exc_default);
-  cpu_register_exc (CPU_EXC_AC, cpu_exc_default);
+  cpu_register_exc (CPU_EXC_MF, cpu_exc_mf);
+  cpu_register_exc (CPU_EXC_AC, cpu_exc_ac);
   cpu_register_intr (CPU_EXC_MC, cpu_intr_default);
-  cpu_register_exc (CPU_EXC_XM, cpu_exc_default);
+  cpu_register_exc (CPU_EXC_XM, cpu_exc_xm);
 
   // System defined exceptions.
   cpu_register_intr (CPU_EXC_XCALL, cpu_xcall_intr);

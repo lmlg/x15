@@ -40,10 +40,14 @@ enum
 #define SYS_sigprocmask   SYS_sigprocmask
   SYS_kill,
 #define SYS_kill          SYS_kill
+  SYS_tkill,
+#define SYS_tkill         SYS_tkill
   SYS_sigreturn,
 #define SYS_sigreturn     SYS_sigreturn
   SYS_gettids,
 #define SYS_gettids       SYS_gettids
+  SYS_sigtimedwait,
+#define SYS_sigtimedwait  SYS_sigtimedwait
   SYS_last,
 };
 

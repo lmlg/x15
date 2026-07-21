@@ -18,6 +18,7 @@
 
 #include <assert.h>
 #include <errno.h>
+#include <signal.h>
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -1146,7 +1147,19 @@ vm_map_fault_free_pages (struct vm_map_fault_pages *p)
 }
 
 static int
-vm_map_fault_impl (struct vm_map *map, uintptr_t addr, int prot)
+vm_map_sigfill (int signo, int code, uintptr_t addr,
+                siginfo_t *sinfo, int retval)
+{
+  memset (sinfo, 0, sizeof (*sinfo));
+  sinfo->si_signo = signo;
+  sinfo->si_code = code;
+  sinfo->si_addr = (void *)addr;
+  return (retval);
+}
+
+static int
+vm_map_fault_impl (struct vm_map *map, uintptr_t addr,
+                   int prot, siginfo_t *sinfo)
 {
   struct vm_map_entry *entry, tmp;
   struct vm_object *final_obj, *object;
@@ -1158,9 +1171,9 @@ retry:
     entry = vm_map_lookup_nearest (map, addr);
 
     if (!entry || addr < entry->start)
-      return (EFAULT);
+      return (vm_map_sigfill (SIGSEGV, SEGV_MAPERR, addr, sinfo, EFAULT));
     else if ((prot & VM_MAP_PROT (entry->flags)) != prot)
-      return (EACCES);
+      return (vm_map_sigfill (SIGSEGV, SEGV_ACCERR, addr, sinfo, EACCES));
 
     prot = VM_MAP_PROT (entry->flags);
     object = entry->object;
@@ -1189,13 +1202,18 @@ retry:
   int n_pages = vm_map_fault_get_data (object, start_off, &frames, prot);
 
   if (n_pages < 0)
-    return (-n_pages);
-  else if (unlikely (start_off + n_pages * PAGE_SIZE < offset))
     /*
-     * We didn't cover the faulting page. This is probably due to a truncated
-     * object. Return an error that maps to SIGBUS.
+     * Failure to allocate pages likely indicates that we were interrupted by
+     * a signal. Return "success" in that case to let the handler run, knowing
+     * that we'll probably end up here eventually. Any other error is
+     * interpreted as the pager not being able to service our request, which is
+     * translated as a SIGBUS.
      */
-    return (EIO);
+    return (n_pages == -ENOMEM ? 0 :
+            vm_map_sigfill (SIGBUS, BUS_OBJERR, addr, sinfo, EIO));
+  else if (unlikely (start_off + n_pages * PAGE_SIZE < offset))
+    // We didn't cover the faulting page, probably due to a truncated object.
+    return (vm_map_sigfill (SIGBUS, BUS_ADRERR, addr, sinfo, EIO));
 
   cpu_intr_disable ();
   SXLOCK_SHGUARD (&map->lock);
@@ -1235,12 +1253,15 @@ retry:
 }
 
 int
-vm_map_fault (struct vm_map *map, uintptr_t addr, int prot)
+vm_map_fault (struct vm_map *map, uintptr_t addr, int prot, siginfo_t *sinfo)
 {
   assert (map != vm_map_get_kernel_map ());
   assert (!cpu_intr_enabled ());
 
-  int ret = vm_map_fault_impl (map, vm_page_trunc (addr), prot);
+  if (! sinfo)
+    sinfo = alloca (sizeof (*sinfo));
+
+  int ret = vm_map_fault_impl (map, vm_page_trunc (addr), prot, sinfo);
   cpu_intr_disable ();
 
   return (ret);

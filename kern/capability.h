@@ -72,8 +72,12 @@ struct cap_kern_alert
           uint32_t count;
         } intr;
 
-      int thread_id;
-      int task_id;
+      struct
+        {
+          int kuid;
+          int exit_val;
+        } dead_notif;
+
       int any_id;
       uintptr_t tag;
     };
@@ -83,9 +87,7 @@ static_assert (sizeof (struct cap_kern_alert) <= CAP_ALERT_SIZE,
                "struct cap_kern_alert is too big");
 
 static_assert (OFFSETOF (struct cap_kern_alert, intr.irq) ==
-               OFFSETOF (struct cap_kern_alert, thread_id) &&
-               OFFSETOF (struct cap_kern_alert, thread_id) ==
-               OFFSETOF (struct cap_kern_alert, task_id),
+               OFFSETOF (struct cap_kern_alert, dead_notif.kuid),
                "invalid layout for cap_kern_alert");
 
 struct cap_base
@@ -319,14 +321,14 @@ int cap_thread_unregister (struct cap_flow *flow, struct thread *thread);
 int cap_task_unregister (struct cap_flow *flow, struct task *task);
 
 // Traverse a list of dead notifications.
-void cap_notify_dead (struct bulletin *bulletin);
+void cap_notify_dead (struct bulletin *bulletin, int exit_val);
 
 // Request pages from a channel.
 ssize_t cap_request_pages (struct cap_channel *chp, uint64_t off,
                            uint32_t nr_pages, struct vm_page **pages);
 
-// Reply with pages to a channel.
-ssize_t cap_reply_pagereq (const uintptr_t *src, uint32_t cnt);
+// Reply with pages (or an error) to a channel.
+ssize_t cap_reply_pagereq (const uintptr_t *src, uint32_t cnt, int err);
 
 /*
  * Get the VM object associated to a channel.

@@ -63,6 +63,7 @@ task_init (struct task *task, const char *name, struct vm_map *map)
   bulletin_init (&task->dead_subs);
   task->terminate = 0;
   task->suspending = 0;
+  task->last_sig_thr = NULL;
   signal_task_init (task);
   signal_map_trampoline (task);
 }
@@ -220,6 +221,9 @@ task_remove_thread (struct task *task, struct thread *thread)
 {
   adaptive_lock_acquire (&task->lock);
   list_remove (&thread->task_node);
+  if (task->last_sig_thr == thread)
+    task->last_sig_thr = NULL;
+
   bool last = list_empty (&task->threads);
   adaptive_lock_release (&task->lock);
 
@@ -229,7 +233,7 @@ task_remove_thread (struct task *task, struct thread *thread)
       vm_map_destroy (task->map);
       task->map = NULL;
       // A task is considered dead when no more of its threads are running.
-      cap_notify_dead (&task->dead_subs);
+      cap_notify_dead (&task->dead_subs, task->terminate);
       task_unref (task);
     }
 }

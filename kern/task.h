@@ -52,6 +52,7 @@ struct task
   struct sigaction sig_actions[NSIG];
   int terminate;
   int suspending;
+  struct thread *last_sig_thr;
   union
     {
       struct bulletin dead_subs;

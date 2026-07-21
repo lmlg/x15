@@ -82,7 +82,7 @@ test_vm_map_phys_entry (struct ipc_msg *msg, struct ipc_msg_data *data)
   ssize_t rv = cap_reply_bytes (0, 0, 0);
   test_assert_eq (rv, -EINVAL);
 
-  cap_reply_pagereq (buf, npg);
+  cap_reply_pagereq (buf, npg, 0);
   panic ("shouldn't return");
 }
 

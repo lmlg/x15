@@ -17,7 +17,8 @@
  */
 
 #include <kern/kmem.h>
-#include <kern/unwind.h>
+#include <kern/signal.h>
+#include <kern/slist.h>
 #include <kern/user.h>
 #include <kern/uthread.h>
 
@@ -33,6 +34,8 @@ uthread_ctor (void *tmp)
   ptr->sig_saved_mask = 0;
   ptr->sig_saved_sp = 0;
   futex_td_init (&ptr->futex_td);
+  slist_init (&ptr->alloc_siginfo);
+  mutex_init (&ptr->mutex);
 }
 
 static int __init
@@ -54,6 +57,7 @@ uthread_allocate (void)
 void
 uthread_free (struct uthread *uthread)
 {
+  signal_uthr_dealloc (uthread);
   kmem_cache_free (&uthread_cache, uthread);
 }
 
@@ -61,14 +65,7 @@ void
 uthread_exit (struct uthread *uthread)
 {
   if (uthread->tid && user_check_range (uthread->tid, sizeof (int)))
-    {
-      struct unw_fixup fixup;
-      if (unw_fixup_save (&fixup) == 0)
-        {
-          atomic_store_rel (uthread->tid, 0);
-          futex_wake (uthread->tid, FUTEX_FLG_BROADCAST, 0);
-        }
-    }
+    futex_wake (uthread->tid, FUTEX_FLG_MUTATE | FUTEX_FLG_BROADCAST, 0);
 
   futex_td_exit (&uthread->futex_td);
 }

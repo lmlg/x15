@@ -137,8 +137,11 @@ int test_util_create_uthr (struct test_uthread *out,
                            const struct test_uthread_attr *attr,
                            uintptr_t entry, void *arg);
 
-// Join a userspace thread.
-void test_util_uthr_join (struct test_uthread *uthr);
+/*
+ * Join a userspace thread. If this is the last thread, return the exit
+ * value of the parent task. Otherwise, return zero.
+ */
+int test_util_uthr_join (struct test_uthread *uthr);
 
 void test_thread_wait_state (struct thread *thr, uint32_t state);
 
@@ -212,5 +215,31 @@ void test_thread_wait_state (struct thread *thr, uint32_t state);
      if (!works_)   \
        panic ("assertion failed at %s:%d", __FILE__, __LINE__);   \
    })
+
+// Assertions for tests in userspace.
+#define test_uassert_op(x, y, op)   \
+  do   \
+    {   \
+      _Auto x_ = (x);   \
+      _Auto y_ = (typeof (x_))(y);   \
+      if (!(x_ op y_))   \
+        test_uthread_err (x_, y_);   \
+    }   \
+  while (0)
+
+#define test_uassert_eq(x, y)   test_uassert_op (x, y, ==)
+#define test_uassert_ne(x, y)   test_uassert_op (x, y, !=)
+#define test_uassert_lt(x, y)   test_uassert_op (x, y, <)
+#define test_uassert_le(x, y)   test_uassert_op (x, y, <=)
+#define test_uassert_gt(x, y)   test_uassert_op (x, y, >)
+#define test_uassert_ge(x, y)   test_uassert_op (x, y, >=)
+
+#define test_uthread_exit()   \
+  do   \
+    {   \
+      SYSCALL_UENTER (SYS_thread_exit, 0);   \
+      __builtin_unreachable ();   \
+    }   \
+  while (0)
 
 #endif

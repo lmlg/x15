@@ -20,12 +20,15 @@
 #ifndef X86_SIGNAL_H
 #define X86_SIGNAL_H
 
+#include <signal.h>
+
 struct cpu_exc_frame;
 struct uthread;
+struct __siginfo;
 
 // Set the signal trampoline on a CPU frame for a specific user thread.
 int signal_set_trampoline (struct cpu_exc_frame *frame, struct uthread *uthr,
-                           int signo, uintptr_t handler);
+                           int signo, siginfo_t *sinfo, uintptr_t handler);
 
 // Copy the contents of the signal trampoline into a buffer.
 void signal_init_trampoline (void *page);

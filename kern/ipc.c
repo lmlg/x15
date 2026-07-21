@@ -152,7 +152,7 @@ ipc_map_addr (struct vm_map *map, const void *addr,
                                   data->prot & VM_PROT_WRITE, pap);
   if (error)
     { // Need to page in the destination address.
-      error = vm_map_fault (map, (uintptr_t)addr, data->prot);
+      error = vm_map_fault (map, (uintptr_t)addr, data->prot, NULL);
       if (error)
         {
           ipc_data_intr_restore (data);

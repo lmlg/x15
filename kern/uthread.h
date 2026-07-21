@@ -20,12 +20,13 @@
 #ifndef KERN_UTHREAD_H
 #define KERN_UTHREAD_H
 
+#include <signal.h>
 #include <stdint.h>
 
 #include <kern/futex.h>
 #include <kern/init.h>
-
-#include <signal.h>
+#include <kern/mutex.h>
+#include <kern/slist_types.h>
 
 struct uthread
 {
@@ -35,6 +36,8 @@ struct uthread
   sigset_t sig_mask;
   sigset_t sig_saved_mask;
   uintptr_t sig_saved_sp;
+  struct slist alloc_siginfo;
+  struct mutex mutex;
 };
 
 struct uthread* uthread_allocate (void);

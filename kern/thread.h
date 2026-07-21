@@ -432,6 +432,27 @@ int thread_timedsleep (struct spinlock *interlock, const void *wchan_addr,
                         const char *wchan_desc, uint64_t ticks);
 
 /*
+ * Wait for a signal in the given set.
+ *
+ * Atomically checks for a pending, unblocked signal in the wait set,
+ * and if none is found, sleeps until one arrives or the timeout expires.
+ *
+ * The check and sleep transition are done atomically with respect to a
+ * call to 'thread_send_signal'.
+ *
+ * If the ticks argument is not a NULL pointer, the wait is bounded.
+ * Otherwise, the thread will sleep indefinitely.
+ *
+ * If the nset argument is not NULL, then the thread's signal mask is
+ * temporarily set to its contents and restored before the call returns.
+ *
+ * Returns 0 on success (signal consumed), ETIMEDOUT on timeout,
+ * EINTR if interrupted by a different signal or termination.
+ */
+int thread_sigwait (sigset_t wait_set, siginfo_t *info,
+                    const uint64_t *ticks, const sigset_t *nset);
+
+/*
  * Schedule a thread for execution on a processor.
  *
  * If the target thread is NULL, the calling thread, or already in the
@@ -964,10 +985,8 @@ uint32_t thread_state (const struct thread *thread);
  */
 bool thread_is_running (const struct thread *thread);
 
-// Get the CPU affinity mask of the specified thread.
+// Get or set the CPU affinity mask of the specified thread.
 int thread_get_affinity (const struct thread *thread, struct cpumap *cpumap);
-
-// Set the CPU affinity mask for the specified thread.
 int thread_set_affinity (struct thread *thread, const struct cpumap *cpumap);
 
 // Send a signal to a thread.
