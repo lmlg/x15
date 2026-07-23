@@ -1266,7 +1266,7 @@ pmap_destroy (struct pmap *pmap)
 
   /*
    * Flush TLB entries for this pmap's PCID on the local CPU.
-   * Only flush if the PCID hasn't been recycled — if the generation
+   * Only flush if the PCID hasn't been recycled - if the generation
    * doesn't match, the PCID was already reclaimed and its TLB entries
    * were flushed during recycling.
    */
@@ -1331,6 +1331,7 @@ pmap_enter_local_impl (struct pmap_cpu_table *cpu_table, uintptr_t va,
       return (error);
     }
 
+  uint32_t flags = (pte_bits & PMAP_PTE_US) ? VM_PAGE_SLEEP : 0;
   for (uint32_t level = PMAP_NR_LEVELS - 1 ; ; )
     {
       const _Auto pt_level = &pmap_pt_levels[level];
@@ -1345,8 +1346,7 @@ pmap_enter_local_impl (struct pmap_cpu_table *cpu_table, uintptr_t va,
         ptp = pmap_pte_next (*pte);
       else
         {
-          _Auto page = pmap_alloc_page ((pte_bits & PMAP_PTE_US) ?
-                                        VM_PAGE_SLEEP : 0);
+          _Auto page = pmap_alloc_page (flags);
           if (! page)
             {
               log_warning ("pmap: page table allocation failure");
