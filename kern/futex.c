@@ -31,11 +31,11 @@
 #define FUTEX_DATA_WAIT     0x02
 #define FUTEX_DATA_WAKE     0x04
 
-// Operations used in 'futex_map_addr' below.
-#define FUTEX_OP_CMP                0
-#define FUTEX_OP_SET                1
-#define FUTEX_OP_ROBUST_CLEAR       2
-#define FUTEX_OP_LOCK_PI            3
+// Internal operations used in 'futex_map_addr' below.
+#define FUTEX_IOP_CMP            0
+#define FUTEX_IOP_SET            1
+#define FUTEX_IOP_ROBUST_CLEAR   2
+#define FUTEX_IOP_LOCK_PI        3
 
 struct futex_data;
 
@@ -214,7 +214,7 @@ futex_pi_wait (struct futex_data *data, int value,
    * need to change the futex word's value after a succesful wait.
    */
 
-  error = futex_map_addr (data, thread_id (thread_self ()), FUTEX_OP_LOCK_PI);
+  error = futex_map_addr (data, thread_id (thread_self ()), FUTEX_IOP_LOCK_PI);
   if (! error)
     turnstile_own (data->wait_obj);
 
@@ -359,7 +359,7 @@ futex_robust_clear (int *addr, int value)
 static int
 futex_map_addr (struct futex_data *data, int value, int op)
 {
-  int prot = op == FUTEX_OP_CMP ? VM_PROT_READ : VM_PROT_RDWR;
+  int prot = op == FUTEX_IOP_CMP ? VM_PROT_READ : VM_PROT_RDWR;
 
   struct unw_fixup fixup;
   int error = unw_fixup_save (&fixup);
@@ -396,11 +396,11 @@ futex_map_addr (struct futex_data *data, int value, int op)
 
   switch (op)
     {
-      case FUTEX_OP_CMP:
+      case FUTEX_IOP_CMP:
         error = value == *data->addr ? 0 : EAGAIN;
         break;
 
-      case FUTEX_OP_SET:
+      case FUTEX_IOP_SET:
         /*
          * This write doesn't synchronize with anything in this module,
          * but userspace is expected to use acquire ordering when using
@@ -409,11 +409,11 @@ futex_map_addr (struct futex_data *data, int value, int op)
         atomic_store_rel (data->addr, value);
         break;
 
-      case FUTEX_OP_ROBUST_CLEAR:
+      case FUTEX_IOP_ROBUST_CLEAR:
         error = futex_robust_clear (data->addr, value);
         break;
 
-      case FUTEX_OP_LOCK_PI:
+      case FUTEX_IOP_LOCK_PI:
         error = atomic_cas_bool_acq (data->addr, 0, value | FUTEX_WAITERS) ?
                 0 : EAGAIN;
         break;
@@ -433,7 +433,7 @@ futex_wait (int *addr, int value, uint32_t flags, uint64_t ticks)
     return (error);
 
   data.wait_obj = data.ops->acquire (&data.key);
-  error = futex_map_addr (&data, value, FUTEX_OP_CMP);
+  error = futex_map_addr (&data, value, FUTEX_IOP_CMP);
 
   if (! error)
     error = data.ops->wait (&data, value, flags, ticks);
@@ -454,7 +454,7 @@ futex_wake (int *addr, uint32_t flags, int value)
 
   if (flags & FUTEX_FLG_MUTATE)
     {
-      error = futex_map_addr (&data, value, FUTEX_OP_SET);
+      error = futex_map_addr (&data, value, FUTEX_IOP_SET);
       if (error)
         return (error);
     }
@@ -517,7 +517,7 @@ futex_robust_list_handle (struct futex_robust_list *list,
     return (error);
 
   data.wait_obj = data.ops->acquire (&data.key);
-  error = futex_map_addr (&data, tid, FUTEX_OP_ROBUST_CLEAR);
+  error = futex_map_addr (&data, tid, FUTEX_IOP_ROBUST_CLEAR);
   if (error < 0)
     { // There are waiters on this robust futex. Wake them all.
       if (data.wait_obj)
