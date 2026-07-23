@@ -119,12 +119,16 @@ vm_object_destroy (struct vm_object *object)
 static inline int
 vm_object_ensure (struct vm_page *page, struct vm_object *object)
 {
-  _Auto prev = atomic_load_rlx (&page->object);
-  if (prev)
-    return (prev == object);
+  while (1)
+    {
+      _Auto prev = atomic_load_rlx (&page->object);
+      if (prev)
+        return (prev == object);
+      else if (atomic_cas_bool_acq (&page->object, prev, object))
+        return (1);
 
-  prev = atomic_cas_acq (&page->object, NULL, object);
-  return (prev == object || !prev);
+      atomic_spin_nop ();
+    }
 }
 
 int

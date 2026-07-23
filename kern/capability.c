@@ -567,7 +567,19 @@ cap_recv_alert (struct cap_flow *flow, void *buf,
       cap_flow_guard_fini (&guard);
       return (EFAULT);
     }
-  else if (mdata)
+
+  /*
+   * Unmask the interrupt now that the alert has been delivered to
+   * the receiver. This re-enables the interrupt at the controller
+   * level, allowing the next interrupt to fire. If the device is
+   * still asserting (level-triggered), a new interrupt is delivered
+   * immediately, which will be masked again in cap_handle_intr.
+   */
+
+  if (type == CAP_ALERT_INTR)
+    intr_enable (tmp_alert.intr.irq);
+
+  if (mdata)
     {
       struct ipc_msg_data tmp;
       cap_ipc_msg_data_init (&tmp, tag);
@@ -586,16 +598,6 @@ cap_recv_alert (struct cap_flow *flow, void *buf,
        (type == CAP_ALERT_TASK_NOTIF &&
         (entry->k_alert.task.flags & CAP_TASK_EXITED))))
     kmem_cache_free (&cap_misc_cache, entry);
-
-  /*
-   * Unmask the interrupt now that the alert has been delivered to
-   * the receiver. This re-enables the interrupt at the controller
-   * level, allowing the next interrupt to fire. If the device is
-   * still asserting (level-triggered), a new interrupt is delivered
-   * immediately, which will be masked again in cap_handle_intr.
-   */
-  if (type == CAP_ALERT_INTR)
-    intr_enable (tmp_alert.intr.irq);
 
   return (0);
 }

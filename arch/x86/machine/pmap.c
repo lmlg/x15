@@ -28,6 +28,7 @@
 #include <string.h>
 
 #include <kern/atomic.h>
+#include <kern/bitmap.h>
 #include <kern/capability.h>
 #include <kern/cpumap.h>
 #include <kern/kmem.h>
@@ -37,6 +38,7 @@
 #include <kern/percpu.h>
 #include <kern/syscnt.h>
 #include <kern/thread.h>
+#include <kern/xcall.h>
 
 #include <machine/biosmem.h>
 #include <machine/boot.h>
@@ -84,6 +86,8 @@ struct pmap_cpu_table
 struct pmap
 {
   struct pmap_cpu_table *cpu_tables;
+  uint32_t pcid_gen;
+  uint16_t pcid;
 };
 
 /*
@@ -92,6 +96,127 @@ struct pmap
  * See pmap_walk_vas().
  */
 typedef void (*pmap_walk_fn_t) (phys_addr_t, uint32_t, uint32_t);
+
+/*
+ * PCID allocator.
+ *
+ * PCID 0 is reserved for the kernel pmap. User pmaps get PCIDs 1..4095.
+ * The bitmap tracks which PCIDs are in use.
+ */
+#define PMAP_NR_PCIDS   4096
+
+static unsigned long pmap_pcid_bitmap[BITMAP_LONGS (PMAP_NR_PCIDS)];
+static struct spinlock pmap_pcid_lock;
+
+/*
+ * PCID generation counter.
+ *
+ * Incremented every time PCIDs are recycled. Each pmap records the
+ * generation at which its PCID was allocated. In pmap_load, if the
+ * pmap's generation doesn't match the global generation, its PCID
+ * was recycled and it must allocate a new one.
+ */
+static uint32_t pmap_pcid_gen;
+static bool pmap_pcid_allocate __read_mostly;
+
+struct pmap_pcid_recycle_arg
+{
+  unsigned long bitmap[BITMAP_LONGS (PMAP_NR_PCIDS)];
+};
+
+/*
+ * Flush all TLB entries on the current CPU and record which PCIDs are
+ * still active (loaded in CR3). This is called via xcall on every CPU
+ * when the PCID space is exhausted, to make stale PCIDs safe for reuse.
+ *
+ * The currently-loaded pmap's PCID is preserved; all others become
+ * eligible for reuse because their TLB entries have been flushed.
+ */
+static void
+pmap_pcid_recycle_xcall (void *arg)
+{
+  struct pmap_pcid_recycle_arg *ra = arg;
+  CPU_INTR_GUARD ();
+
+  /*
+   * Flush all non-global TLB entries on this CPU, including those
+   * tagged with PCIDs that are about to be freed.
+   */
+  cpu_tlb_flush ();
+
+  /*
+   * Preserve only the currently-loaded PCID on this CPU so that
+   * the running thread's TLB entries survive.
+   */
+  struct pmap *pm = pmap_current ();
+  if (pm && pm->pcid != 0)
+    bitmap_set (ra->bitmap, pm->pcid);
+}
+
+static void
+pmap_pcid_alloc (struct pmap *pmap, bool check)
+{
+  SPINLOCK_GUARD (&pmap_pcid_lock);
+  if (check && pmap->pcid_gen == pmap_pcid_gen)
+    return;
+
+  while (1)
+    {
+      unsigned int pcid = bitmap_find_first_zero (pmap_pcid_bitmap,
+                                                  PMAP_NR_PCIDS);
+      if (pcid != PMAP_NR_PCIDS)
+        {
+          bitmap_set (pmap_pcid_bitmap, pcid);
+          pmap->pcid = (uint16_t)pcid;
+          pmap->pcid_gen = pmap_pcid_gen;
+          return;
+        }
+
+      /*
+       * PCID space exhausted. Flush all TLBs on every CPU, then rebuild
+       * the bitmap keeping only the PCIDs that are currently loaded.
+       * This makes stale PCIDs safe for reuse.
+       */
+      log_warning ("pmap: PCID space exhausted, recycling");
+
+      struct pmap_pcid_recycle_arg arg;
+      bitmap_zero (arg.bitmap, PMAP_NR_PCIDS);
+      bitmap_set (arg.bitmap, 0);   // Kernel pmap.
+
+      /*
+       * xcall requires interrupts to be enabled, but we're holding
+       * pmap_pcid_lock (a spinlock). Temporarily enable interrupts
+       * for the cross-call, then re-disable.
+       */
+      cpu_intr_enable ();
+      for (uint32_t i = 0; i < cpu_count (); ++i)
+        if (i != cpu_id ())
+          xcall_call (pmap_pcid_recycle_xcall, &arg, i);
+
+      pmap_pcid_recycle_xcall (&arg);
+      cpu_intr_disable ();
+
+      memcpy (pmap_pcid_bitmap, arg.bitmap, sizeof (pmap_pcid_bitmap));
+      ++pmap_pcid_gen;
+    }
+}
+
+static void
+pmap_pcid_free (struct pmap *pmap)
+{
+  if (pmap->pcid == 0)
+    return;
+
+  SPINLOCK_GUARD (&pmap_pcid_lock);
+
+  /*
+   * Only free the PCID if it hasn't been recycled since allocation.
+   * If the generation doesn't match, the PCID was already reclaimed
+   * by the recycler and may belong to another pmap.
+   */
+  if (pmap->pcid_gen == pmap_pcid_gen)
+    bitmap_clear (pmap_pcid_bitmap, pmap->pcid);
+}
 
 /*
  * The kernel per-CPU page tables are used early enough during bootstrap
@@ -162,7 +287,7 @@ struct pmap_update_protect_args
 
 struct pmap_update_op
 {
-  struct cpumap cpumap;
+  int cpu;   // -1 means all CPUs.
   uint32_t operation;
 
   union
@@ -725,7 +850,10 @@ pmap_update_oplist_finish_op (struct pmap_update_oplist *oplist)
 {
   assert (oplist->nr_ops < ARRAY_SIZE (oplist->ops));
   struct pmap_update_op *op = &oplist->ops[oplist->nr_ops++];
-  cpumap_or (&oplist->cpumap, &op->cpumap);
+  if (op->cpu < 0)
+    cpumap_copy (&oplist->cpumap, cpumap_all ());
+  else
+    cpumap_set (&oplist->cpumap, op->cpu);
 }
 
 static unsigned int
@@ -736,7 +864,7 @@ pmap_update_oplist_count_mappings (const struct pmap_update_oplist *oplist,
   for (uint32_t i = 0; i < oplist->nr_ops; i++)
     {
       const _Auto op = &oplist->ops[i];
-      if (!cpumap_test (&op->cpumap, cpu))
+      if (op->cpu > 0 && op->cpu != (int)cpu)
         continue;
 
       switch (op->operation)
@@ -808,7 +936,12 @@ pmap_bootstrap (void)
     list_init (&pmap_kernel_cpu_tables[i].pages);
 
   pmap_kernel_pmap.cpu_tables = pmap_kernel_cpu_tables;
+  pmap_kernel_pmap.pcid = 0;
+  pmap_kernel_pmap.pcid_gen = 0;
   cpu_local_assign (pmap_current_ptr, pmap_get_kernel_pmap ());
+
+  spinlock_init (&pmap_pcid_lock);
+  bitmap_set (pmap_pcid_bitmap, 0);   // Reserve PCID 0 for kernel.
 
   pmap_prot_table[VM_PROT_NONE] = 0;
   pmap_prot_table[VM_PROT_READ] = 0;
@@ -831,6 +964,7 @@ pmap_bootstrap (void)
   if (cpu_has_global_pages ())
     pmap_setup_global_pages ();
 
+  pmap_pcid_allocate = cpu_has_pcid () && cpu_has_invpcid ();
   return (0);
 }
 
@@ -863,6 +997,9 @@ pmap_setup_fix_ptps (void)
   pmap_walk_vas (PMAP_START_ADDRESS, PMAP_END_KERNEL_ADDRESS,
                  pmap_setup_set_ptp_type);
 }
+
+static bool PMAP_F1 __used;
+static bool PMAP_F2 __used;
 
 static int __init
 pmap_setup (void)
@@ -1129,9 +1266,20 @@ void
 pmap_destroy (struct pmap *pmap)
 {
   assert (pmap != pmap_get_kernel_pmap ());
+
+  /*
+   * Flush TLB entries for this pmap's PCID on the local CPU.
+   * Only flush if the PCID hasn't been recycled — if the generation
+   * doesn't match, the PCID was already reclaimed and its TLB entries
+   * were flushed during recycling.
+   */
+  if (pmap->pcid != 0 && pmap->pcid_gen == pmap_pcid_gen)
+    cpu_invpcid (1, pmap->pcid, 0);
+
   for (uint32_t i = 0; i < cpu_count (); ++i)
     pmap_cpu_table_destroy (&pmap->cpu_tables[i]);
 
+  pmap_pcid_free (pmap);
   kmem_cache_free (&pmap_cache, pmap);
 }
 
@@ -1146,6 +1294,14 @@ pmap_create (struct pmap **pmapp)
   tabp = (void *)(((uintptr_t)tabp + sizeof (struct pmap_cpu_table) - 1) &
                   ~(alignof (struct pmap_cpu_table) - 1));
   pmap->cpu_tables = tabp;
+
+  if (!pmap_pcid_allocate)
+    {
+      pmap->pcid = 0;
+      pmap->pcid_gen = 0;
+    }
+  else
+    pmap_pcid_alloc (pmap, false);
 
   for (size_t i = 0; i < cpu_count (); ++i)
     pmap_cpu_table_init (pmap->cpu_tables + i,
@@ -1294,15 +1450,9 @@ pmap_setup_ipc_ptes (void)
 }
 
 static void
-pmap_cpumap_set (struct cpumap *cpumap, int flg)
+pmap_cpu_set (struct pmap_update_op *op, int flag)
 {
-  if (flg & PMAP_PEF_GLOBAL)
-    cpumap_copy (cpumap, cpumap_all ());
-  else
-    {
-      cpumap_zero (cpumap);
-      cpumap_set (cpumap, cpu_id ());
-    }
+  op->cpu = (flag & PMAP_PEF_GLOBAL) ? -1 : (int)cpu_id ();
 }
 
 int
@@ -1320,7 +1470,7 @@ pmap_enter (struct pmap *pmap, uintptr_t va, phys_addr_t pa,
     return error;
 
   _Auto op = pmap_update_oplist_prepare_op (oplist);
-  pmap_cpumap_set (&op->cpumap, flags);
+  pmap_cpu_set (op, flags);
   op->operation = PMAP_UPDATE_OP_ENTER;
   op->enter_args.va = va;
   op->enter_args.pa = pa;
@@ -1387,12 +1537,9 @@ pmap_remove_local (struct pmap *pmap, uintptr_t start, uintptr_t end, int flg)
 }
 
 static bool
-pmap_cpumap_match (const struct cpumap *cpumap, int flg)
+pmap_cpu_match (const struct pmap_update_op *op, int flag)
 {
-  return ((flg & PMAP_PEF_GLOBAL) ?
-          cpumap_cmp (cpumap, cpumap_all ()) == 0 :
-          (cpumap_count_set (cpumap) == 1 &&
-           cpumap_test (cpumap, cpu_id ())));
+  return ((flag & PMAP_PEF_GLOBAL) ? op->cpu < 0 : op->cpu == (int)cpu_id ());
 }
 
 static int
@@ -1419,7 +1566,7 @@ pmap_remove_range (struct pmap *pmap, uintptr_t start, uintptr_t end, int flg)
       op->operation == PMAP_UPDATE_OP_REMOVE &&
       pmap_range_overlap (start, end, op->remove_args.start,
                           op->remove_args.end) &&
-      pmap_cpumap_match (&op->cpumap, flg))
+      pmap_cpu_match (op, flg))
     {
       op->remove_args.start = MIN (start, op->remove_args.start);
       op->remove_args.end = MAX (end, op->remove_args.end);
@@ -1427,7 +1574,7 @@ pmap_remove_range (struct pmap *pmap, uintptr_t start, uintptr_t end, int flg)
     }
 
   op = pmap_update_oplist_prepare_op (oplist);
-  pmap_cpumap_set (&op->cpumap, flg);
+  pmap_cpu_set (op, flg);
   op->operation = PMAP_UPDATE_OP_REMOVE;
   op->remove_args.start = start;
   op->remove_args.end = end;
@@ -1556,7 +1703,7 @@ pmap_protect_range (struct pmap *pmap, uintptr_t start, uintptr_t end,
       op->protect_args.prot == prot &&
       pmap_range_overlap (start, end, op->protect_args.start,
                           op->protect_args.end) &&
-      pmap_cpumap_match (&op->cpumap, flags))
+      pmap_cpu_match (op, flags))
     {
       op->protect_args.start = MIN (start, op->protect_args.start);
       op->protect_args.end = MAX (end, op->protect_args.end);
@@ -1564,7 +1711,7 @@ pmap_protect_range (struct pmap *pmap, uintptr_t start, uintptr_t end,
     }
 
   op = pmap_update_oplist_prepare_op (oplist);
-  pmap_cpumap_set (&op->cpumap, flags);
+  pmap_cpu_set (op, flags);
   op->operation = PMAP_UPDATE_OP_PROTECT;
   op->protect_args.start = start;
   op->protect_args.end = end;
@@ -1577,11 +1724,28 @@ pmap_protect_range (struct pmap *pmap, uintptr_t start, uintptr_t end,
 static void
 pmap_flush_tlb (struct pmap *pmap, uintptr_t start, uintptr_t end)
 {
+  /*
+   * If the pmap is not currently loaded and is not the kernel pmap,
+   * its TLB entries are tagged with a different PCID and won't be
+   * matched — no flush needed.
+   */
   if (pmap != pmap_current () && pmap != pmap_get_kernel_pmap ())
     return;
 
-  for (; start < end; start += PAGE_SIZE)
-    cpu_tlb_flush_va (start);
+  /*
+   * For user pmaps with a non-zero PCID, use INVPCID type 0 to flush
+   * individual addresses for the current PCID only. This avoids
+   * flushing the same VA for other pmaps.
+   *
+   * For the kernel pmap (PCID 0) or when INVPCID is unavailable,
+   * fall back to invlpg, which flushes the VA across all PCIDs.
+   */
+  if (pmap->pcid != 0)
+    for (; start < end; start += PAGE_SIZE)
+      cpu_invpcid (0, pmap->pcid, start);
+  else
+    for (; start < end; start += PAGE_SIZE)
+      cpu_tlb_flush_va (start);
 }
 
 static void
@@ -1590,7 +1754,16 @@ pmap_flush_tlb_all (struct pmap *pmap)
   if (pmap == pmap_get_kernel_pmap ())
     cpu_tlb_flush_all ();
   else if (pmap == pmap_current ())
-    cpu_tlb_flush ();
+    {
+      /*
+       * Flush only the current pmap's PCID context if INVPCID is
+       * available, otherwise flush all non-global entries.
+       */
+      if (pmap->pcid != 0)
+        cpu_invpcid (1, pmap->pcid, 0);
+      else
+        cpu_tlb_flush ();
+    }
 }
 
 static int
@@ -1639,7 +1812,7 @@ pmap_update_local (const struct pmap_update_oplist *oplist,
   for (uint32_t i = 0; i < oplist->nr_ops; i++)
     {
       const _Auto op = &oplist->ops[i];
-      if (!cpumap_test (&op->cpumap, cpu_id ()))
+      if (op->cpu > 0 && op->cpu != (int)cpu_id ())
         continue;
 
       switch (op->operation)
@@ -1839,9 +2012,30 @@ pmap_load (struct pmap *pmap)
   if (pmap_current () == pmap)
     return;
 
-  // TODO Lazy TLB invalidation.
+  /*
+   * If this pmap's PCID was recycled (generation mismatch), allocate
+   * a fresh PCID before loading. The old PCID may belong to another
+   * pmap now, so we must not use it.
+   */
+  if (pmap->pcid != 0 && pmap->pcid_gen != pmap_pcid_gen)
+    pmap_pcid_alloc (pmap, true);
+
   cpu_local_assign (pmap_current_ptr, pmap);
 
   _Auto cpu_table = &pmap->cpu_tables[cpu_id ()];
-  cpu_set_cr3 (cpu_table->root_ptp_pa);
+  uintptr_t cr3 = cpu_table->root_ptp_pa;
+
+  /*
+   * If PCID is enabled and the pmap has a non-zero PCID, set bit 63
+   * of CR3 to prevent the CPU from flushing the TLB on the CR3 write.
+   * The PCID (bits 63:52) tags new TLB entries so they are only used
+   * when this pmap is active.
+   *
+   * For the kernel pmap (PCID 0), bit 63 has no effect — the CPU
+   * flushes non-global entries as before.
+   */
+  if (pmap->pcid != 0)
+    cr3 |= ((uintptr_t)pmap->pcid << 52) | (1ULL << 63);
+
+  cpu_set_cr3 (cr3);
 }

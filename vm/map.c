@@ -1015,12 +1015,44 @@ vm_map_cleanup_object (void *ptr)
 }
 
 static int
+vm_map_fault_priv_copy (struct vm_map_fault_pages *pages)
+{
+  struct vm_map_fault_pages npages = { .nr_pages = pages->nr_pages };
+  int rv = vm_map_fault_alloc_pages (&npages);
+
+  if (rv != 0)
+    return (rv);
+
+  _Auto src_w = pmap_window_get (0);
+  _Auto dst_w = pmap_window_get (1);
+
+  for (int i = 0; i < npages.nr_pages; ++i)
+    {
+      pmap_window_set (src_w, vm_page_to_pa (pages->store[i]));
+      pmap_window_set (dst_w, vm_page_to_pa (npages.store[i]));
+      memcpy (pmap_window_va (dst_w), pmap_window_va (src_w), PAGE_SIZE);
+      vm_page_unref (pages->store[i]);
+      pages->store[i] = npages.store[i];
+    }
+
+  pmap_window_put (src_w);
+  pmap_window_put (dst_w);
+  return (0);
+}
+
+static int
 vm_map_fault_get_data (struct vm_object *obj, uint64_t off,
-                       struct vm_map_fault_pages *pages, int prot)
+                       struct vm_map_fault_pages *pages, int prot, bool priv)
 {
   if (obj->flags & VM_OBJECT_EXTERNAL)
-    return (cap_request_pages (obj->channel, off, pages->nr_pages,
-                               pages->store));
+    {
+      ssize_t rv = cap_request_pages (obj->channel, off, pages->nr_pages,
+                                      pages->store);
+      if (rv >= 0 && priv)
+        rv = vm_map_fault_priv_copy (pages);
+
+      return ((int)rv);
+    }
 
   // Simple callback-based object.
   int ret = vm_map_fault_alloc_pages (pages);
@@ -1045,39 +1077,37 @@ vm_map_fault_get_data (struct vm_object *obj, uint64_t off,
   return (ret);
 }
 
+static struct vm_page*
+vm_map_fault_copy_one (struct vm_page *src)
+{
+  _Auto p2 = vm_page_alloc (0, VM_PAGE_SEL_HIGHMEM,
+                            VM_PAGE_OBJECT, VM_PAGE_SLEEP);
+  if (! p2)
+    return (p2);
+
+  _Auto dst_w = pmap_window_get (0);
+  _Auto src_w = pmap_window_get (1);
+  pmap_window_set (dst_w, vm_page_to_pa (p2));
+  pmap_window_set (src_w, vm_page_to_pa (src));
+  memcpy (pmap_window_va (dst_w), pmap_window_va (src_w), PAGE_SIZE);
+  pmap_window_put (dst_w);
+  pmap_window_put (src_w);
+
+  vm_page_init_refcount (p2);
+  return (p2);
+}
+
 static int
 vm_map_fault_handle_cow (uintptr_t addr, struct vm_page **pgp,
                          struct vm_map *map)
 {
-  _Auto dst_w = pmap_window_get (0);
   cpu_intr_enable ();
-
-  _Auto p2 = vm_page_alloc (0, VM_PAGE_SEL_HIGHMEM,
-                            VM_PAGE_OBJECT, VM_PAGE_SLEEP);
-  if (! p2)
-    {
-      pmap_window_put (dst_w);
-      return (EINTR);
-    }
-
-  _Auto page = *pgp;
-
-  /*
-   * We need both windows to copy the page's contents because the virtual
-   * address may not be mapped.
-   */
-
-  _Auto src_w = pmap_window_get (1);
-
-  pmap_window_set (dst_w, vm_page_to_pa (p2));
-  pmap_window_set (src_w, vm_page_to_pa (page));
-  memcpy (pmap_window_va (dst_w), pmap_window_va (src_w), PAGE_SIZE);
-
-  pmap_window_put (dst_w);
+  struct vm_page *page = *pgp, *p2 = vm_map_fault_copy_one (page);
   cpu_intr_disable ();
-  pmap_window_put (src_w);
 
-  vm_page_init_refcount (p2);
+  if (! p2)
+    return (EINTR);
+
   int ret = vm_object_swap (map->priv_cache, p2, page->offset, page);
   if (likely (ret == 0))
     {
@@ -1096,7 +1126,7 @@ vm_map_fault_handle_cow (uintptr_t addr, struct vm_page **pgp,
 
 static bool
 vm_map_fault_soft (struct vm_map *map, struct vm_object *obj, uint64_t off,
-                   uintptr_t addr, struct vm_map_entry *entry)
+                   uintptr_t addr, struct vm_map_entry *entry, bool priv)
 {
   int pflags = PMAP_IGNORE_ERRORS;
   struct vm_page *page;
@@ -1113,6 +1143,24 @@ vm_map_fault_soft (struct vm_map *map, struct vm_object *obj, uint64_t off,
         return (false);
       else if (!(obj->flags & VM_OBJECT_FLUSHES))
         pflags |= PMAP_SKIP_RSET;
+
+      if (priv && obj != map->priv_cache)
+        {
+          /*
+           * If this is a private mapping and it stems from an external
+           * object, we must copy into a new page, otherwise we could
+           * observe changes from outside the task.
+           */
+          cpu_intr_enable ();
+          _Auto p2 = vm_map_fault_copy_one (page);
+          cpu_intr_disable ();
+
+          if (! p2)
+            return (false);
+
+          vm_page_unref (page);
+          page = p2;
+        }
     }
 
   int prot = VM_MAP_PROT (entry->flags);
@@ -1164,6 +1212,7 @@ vm_map_fault_impl (struct vm_map *map, uintptr_t addr,
   struct vm_map_entry *entry, tmp;
   struct vm_object *final_obj, *object;
   uint64_t final_off, offset;
+  bool priv;
 
 retry:
   {
@@ -1180,12 +1229,14 @@ retry:
     assert (object || (entry->flags & VM_MAP_PHYS));
 
     offset = entry->offset + addr - entry->start;
+    priv = VM_MAP_INHERIT (entry->flags) == VM_INHERIT_COPY;
+
     if ((entry->flags & (VM_MAP_ANON | VM_MAP_PHYS)) == VM_MAP_ANON)
       final_off = vm_page_anon_offset (addr), final_obj = map->priv_cache;
     else
       final_off = offset, final_obj = object;
 
-    if (vm_map_fault_soft (map, final_obj, final_off, addr, entry))
+    if (vm_map_fault_soft (map, object, offset, addr, entry, priv))
       return (0);
 
     // Prevent the VM object from going away as we drop the lock.
@@ -1199,7 +1250,7 @@ retry:
   uint64_t start_off = offset;
 
   vm_map_fault_get_params (entry, addr, &start_off, &frames.nr_pages);
-  int n_pages = vm_map_fault_get_data (object, start_off, &frames, prot);
+  int n_pages = vm_map_fault_get_data (object, start_off, &frames, prot, priv);
 
   if (n_pages < 0)
     /*
