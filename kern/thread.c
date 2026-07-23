@@ -1828,7 +1828,7 @@ thread_destroy (struct thread *thread)
   assert (thread != thread_self ());
   assert (thread->state == THREAD_DEAD);
 
-  cap_notify_dead (&thread->dead_subs, 0);
+  cap_notify (&thread->dead_subs, 0);
   // See task_info().
   task_remove_thread (thread->task, thread);
 
@@ -2361,13 +2361,17 @@ thread_send_signal (struct thread *thread, int signo)
   if (signo == SIGCONT)
     {
       _Auto task = thread->task;
-      ADAPTIVE_LOCK_GUARD (&task->lock);
+      adaptive_lock_acquire (&task->lock);
 
       if (task->suspending)
         {
           thread_resume_all (task);
           task->suspending = 0;
+          adaptive_lock_release (&task->lock);
+          cap_notify (&task->dead_subs, CAP_TASK_CONTINUED);
         }
+      else
+        adaptive_lock_release (&task->lock);
 
       // Fall through to set the pending bit.
     }
@@ -2534,19 +2538,16 @@ thread_sigwait (sigset_t wait_set, siginfo_t *info,
           if (timed)
             timer_cancel (&waiter.timer);
 
-          if (info)
+          _Auto si = signal_pop_siginfo (uthr, signo);
+          if (likely (si))
             {
-              _Auto si = signal_pop_siginfo (uthr, signo);
-              if (si)
-                {
-                  *info = *si;
-                  kmem_free (si, sizeof (*si));
-                }
-              else
-                { // No queued siginfo - Create a minimal one.
-                  memset (info, 0, sizeof (*info));
-                  info->si_signo = signo;
-                }
+              memcpy (info, si, sizeof (*si));
+              signal_free_siginfo (si);
+            }
+          else
+            { // No queued siginfo - Create a minimal one.
+              memset (info, 0, sizeof (*info));
+              info->si_signo = signo;
             }
 
           return (0);
@@ -2566,7 +2567,10 @@ thread_sigwait (sigset_t wait_set, siginfo_t *info,
       if (timed)
         timer_cancel (&waiter.timer);
       if (thread->wakeup_error == ETIMEDOUT)
-        return (ETIMEDOUT);
+        {
+          uthr->sig_mask = prev;
+          return (ETIMEDOUT);
+        }
     }
 }
 
@@ -2693,20 +2697,15 @@ void
 thread_schedule_signals (struct cpu_exc_frame *frame)
 {
   thread_schedule ();
-
-  /*
-   * Only check for pending signals when the frame indicates a
-   * return to user mode. Kernel-mode exceptions and interrupts
-   * must not trigger signal delivery — the signal will be
-   * delivered later, when the thread eventually returns to
-   * user mode via a syscall return or a user-mode exception.
-   */
-  if (!cpu_exc_frame_is_user (frame))
-    return;
-
-  struct thread *self = thread_self ();
-  if (self->uthread)
-    signal_check (frame, self);
+  if (cpu_exc_frame_is_user (frame))
+    /*
+     * Only check for pending signals when the frame indicates a
+     * return to user mode. Kernel-mode exceptions and interrupts
+     * must not trigger signal delivery — the signal will be
+     * delivered later, when the thread eventually returns to
+     * user mode via a syscall return or a user-mode exception.
+     */
+    signal_check (frame, thread_self ());
 }
 
 void

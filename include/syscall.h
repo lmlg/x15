@@ -48,6 +48,8 @@ enum
 #define SYS_gettids       SYS_gettids
   SYS_sigtimedwait,
 #define SYS_sigtimedwait  SYS_sigtimedwait
+  SYS_sigaltstack,
+#define SYS_sigaltstack   SYS_sigaltstack
   SYS_last,
 };
 

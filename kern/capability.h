@@ -56,7 +56,7 @@ enum
   CAP_ALERT_USER,
   CAP_ALERT_INTR,
   CAP_ALERT_THREAD_DIED,
-  CAP_ALERT_TASK_DIED,
+  CAP_ALERT_TASK_NOTIF,
   CAP_ALERT_CHAN_CLOSED,
 };
 
@@ -74,20 +74,28 @@ struct cap_kern_alert
 
       struct
         {
-          int kuid;
-          int exit_val;
-        } dead_notif;
+          int id;
+          uint32_t flags;
+        } task;
+
+      int thread_id;
 
       int any_id;
       uintptr_t tag;
     };
 };
 
+#define CAP_TASK_STOPPED     (1u << 31)
+#define CAP_TASK_CONTINUED   (1u << 30)
+#define CAP_TASK_EXITED      (1u << 29)
+
 static_assert (sizeof (struct cap_kern_alert) <= CAP_ALERT_SIZE,
                "struct cap_kern_alert is too big");
 
 static_assert (OFFSETOF (struct cap_kern_alert, intr.irq) ==
-               OFFSETOF (struct cap_kern_alert, dead_notif.kuid),
+               OFFSETOF (struct cap_kern_alert, task.id) &&
+               OFFSETOF (struct cap_kern_alert, task.id) ==
+               OFFSETOF (struct cap_kern_alert, thread_id),
                "invalid layout for cap_kern_alert");
 
 struct cap_base
@@ -320,8 +328,8 @@ int cap_thread_unregister (struct cap_flow *flow, struct thread *thread);
 // Unregister a task.
 int cap_task_unregister (struct cap_flow *flow, struct task *task);
 
-// Traverse a list of dead notifications.
-void cap_notify_dead (struct bulletin *bulletin, int exit_val);
+// Notify subscribers of a specific event.
+void cap_notify (struct bulletin *bulletin, uint32_t flags);
 
 // Request pages from a channel.
 ssize_t cap_request_pages (struct cap_channel *chp, uint64_t off,

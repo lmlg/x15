@@ -233,7 +233,7 @@ task_remove_thread (struct task *task, struct thread *thread)
       vm_map_destroy (task->map);
       task->map = NULL;
       // A task is considered dead when no more of its threads are running.
-      cap_notify_dead (&task->dead_subs, task->terminate);
+      cap_notify (&task->dead_subs, task->terminate | CAP_TASK_EXITED);
       task_unref (task);
     }
 }

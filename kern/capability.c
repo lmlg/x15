@@ -201,6 +201,7 @@ cap_flow_guard_make (struct cap_flow *flow)
 static void
 cap_alert_init_nodes (struct cap_alert *alert, uint32_t type, uint32_t prio)
 {
+  memset (alert->payload, 0, sizeof (alert->payload));
   pqueue_node_init (&alert->pnode, prio);
   alert->pnode.extra = type;
   hlist_node_init (&alert->hnode);
@@ -285,7 +286,7 @@ cap_alert_free (struct cap_alert *alert)
 
   if (type == CAP_ALERT_INTR)
     cap_intr_rem (k_alert->intr.irq, &async->xlink);
-  else if (type == CAP_ALERT_THREAD_DIED || type == CAP_ALERT_TASK_DIED)
+  else if (type == CAP_ALERT_THREAD_DIED || type == CAP_ALERT_TASK_NOTIF)
     cap_task_thread_rem (k_alert->any_id, type, &async->xlink);
 
   kmem_cache_free (&cap_misc_cache, alert);
@@ -575,7 +576,15 @@ cap_recv_alert (struct cap_flow *flow, void *buf,
       user_write_struct (mdata, &tmp, sizeof (tmp));
     }
 
-  if (entry && cap_alert_type (entry) == CAP_ALERT_USER)
+  /*
+   * Free the alert if one of the following apply:
+   - It was sent by a user.
+   - It indicates that a either a thread or a task died.
+   */
+  if (entry &&
+      (type == CAP_ALERT_USER || type == CAP_ALERT_THREAD_DIED ||
+       (type == CAP_ALERT_TASK_NOTIF &&
+        (entry->k_alert.task.flags & CAP_TASK_EXITED))))
     kmem_cache_free (&cap_misc_cache, entry);
 
   /*
@@ -639,8 +648,8 @@ int
         if (! alert)
           return (ENOMEM);
 
-        memcpy (alert->payload, abuf, CAP_ALERT_SIZE);
         cap_alert_init_nodes (alert, CAP_ALERT_USER, prio);
+        memcpy (alert->payload, abuf, CAP_ALERT_SIZE);
         pqueue_insert (&flow->alerts.pending, &alert->pnode);
         cap_fill_ids (&alert->thread_id, &alert->task_id, thread_self ());
         alert->tag = tag;
@@ -1229,7 +1238,7 @@ cap_register_task_thread (struct cap_flow *flow, struct kuid_head *kuid,
 
   hlist_insert_head (&flow->alerts.alloc, &ap->base.hnode);
   spinlock_lock (&outp->lock);
-  list_insert_tail (&outp->subs, &ap->xlink);
+  list_rcu_insert_tail (&outp->subs, &ap->xlink);
   spinlock_unlock (&outp->lock);
   cap_flow_guard_fini (&guard);
   return (0);
@@ -1246,8 +1255,10 @@ cap_task_thread_unregister (struct cap_flow *flow, int type,
     return (error);
 
   spinlock_lock (&outp->lock);
-  list_remove (&entry->xlink);
+  list_rcu_remove (&entry->xlink);
   spinlock_unlock (&outp->lock);
+
+  rcu_wait ();
   kmem_cache_free (&cap_misc_cache, entry);
   return (0);
 }
@@ -1269,7 +1280,7 @@ cap_task_register (struct cap_flow *flow, struct task *task)
     return (EINVAL);
 
   return (cap_register_task_thread (flow, &task->kuid, CAP_ALERT_TASK_PRIO,
-                                    CAP_ALERT_TASK_DIED, &task->dead_subs));
+                                    CAP_ALERT_TASK_NOTIF, &task->dead_subs));
 }
 
 int
@@ -1288,30 +1299,24 @@ cap_task_unregister (struct cap_flow *flow, struct task *task)
   if (! task)
     return (EINVAL);
 
-  return (cap_task_thread_unregister (flow, CAP_ALERT_TASK_DIED,
+  return (cap_task_thread_unregister (flow, CAP_ALERT_TASK_NOTIF,
                                       task_id (task), &task->dead_subs));
 }
 
 void
-cap_notify_dead (struct bulletin *bulletin, int exit_val)
+cap_notify (struct bulletin *bulletin, uint32_t flags)
 {
-  struct list dead_subs;
-
-  spinlock_lock (&bulletin->lock);
-  list_set_head (&dead_subs, &bulletin->subs);
-  list_init (&bulletin->subs);
-  spinlock_unlock (&bulletin->lock);
-
   struct cap_alert_async *ap;
-  list_for_each_entry (&dead_subs, ap, xlink)
+  list_rcu_for_each_entry (&bulletin->subs, ap, xlink)
     {
       _Auto flow = ap->flow;
 
       CAP_FLOW_GUARD (flow);
+      ap->base.k_alert.task.flags |= flags;
+
       if (!pqueue_node_unlinked (&ap->base.pnode))
         continue;
 
-      ap->base.k_alert.dead_notif.exit_val = exit_val;
       pqueue_insert (&flow->alerts.pending, &ap->base.pnode);
       cap_recv_wakeup_fast (flow);
     }

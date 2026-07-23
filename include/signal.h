@@ -59,13 +59,17 @@
 #define SIGPWR      30
 #define SIGSYS      31
 
+// Real-time signals range.
+#define SIGRTMIN    32
+#define SIGRTMAX    47
+
 /*
  * Number of supported signals.
  *
- * Classic signals use the range [1, NSIG-1]. Index 0 is unused
- * (reserved as the "no signal" sentinel).
+ * Classic signals use the range [1, 31]. Real-time signals use
+ * [32, 47]. Index 0 is unused (reserved as the "no signal" sentinel).
  */
-#define NSIG   32
+#define NSIG   48
 
 // Signal set type (bitmap).
 typedef uint64_t sigset_t;
@@ -93,6 +97,22 @@ typedef uint64_t sigset_t;
 #define SIG_UNBLOCK   1
 #define SIG_SETMASK   2
 
+// sigaltstack flags.
+#define SS_ONSTACK      1
+#define SS_DISABLE      2
+#define SS_AUTODISARM   4
+
+// Minimum alternate stack size.
+#define MINSIGSTKSZ   4096
+
+// Alternate signal stack descriptor.
+typedef struct
+{
+  void *ss_sp;
+  size_t ss_size;
+  int ss_flags;
+} stack_t;
+
 // tkill "how" values.
 #define SIG_SEND_SELF     0
 #define SIG_SEND_TASK     1
@@ -115,11 +135,7 @@ typedef struct __siginfo
     {
       void *si_addr;
       union sigval si_value;
-      struct
-        {
-          char __si_buf[40 - sizeof (long long)];
-          long long __si_link __attribute__ ((aligned (8)));
-        };
+      char __si_buf[40] __attribute__ ((aligned (8)));
     };
 } siginfo_t;
 
@@ -138,7 +154,7 @@ typedef struct __siginfo
   #define MCONTEXT_NR_REGS   18
 #endif
 
-typedef struct __mcontext
+typedef struct
 {
   uintptr_t regs[MCONTEXT_NR_REGS];
 } mcontext_t;
@@ -169,6 +185,7 @@ struct sigaction
 {
   uint32_t sa_size;
   uint32_t sa_flags;
+  sigset_t sa_mask;
   union
     {
       void (*sa_handler) (int);

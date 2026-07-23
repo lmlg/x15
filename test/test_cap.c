@@ -454,10 +454,11 @@ test_cap_dead_notif (void *arg __unused)
   test_assert_zero (buf->mdata.task_id);
 
   if (buf->alert.type == CAP_ALERT_THREAD_DIED &&
-      buf->alert.dead_notif.kuid == thr_id)
+      buf->alert.thread_id == thr_id)
     got_thr = 1;
-  else if (buf->alert.type == CAP_ALERT_TASK_DIED &&
-           buf->alert.dead_notif.kuid == tsk_id)
+  else if (buf->alert.type == CAP_ALERT_TASK_NOTIF &&
+           (buf->alert.task.flags & CAP_TASK_EXITED) &&
+           buf->alert.task.id == tsk_id)
     got_task = 1;
   else
     panic ("got unexpected alert");
@@ -468,10 +469,11 @@ test_cap_dead_notif (void *arg __unused)
   test_assert_zero (buf->mdata.task_id);
 
   if (buf->alert.type == CAP_ALERT_THREAD_DIED &&
-      buf->alert.dead_notif.kuid == thr_id)
+      buf->alert.thread_id == thr_id)
     ++got_thr;
-  else if (buf->alert.type == CAP_ALERT_TASK_DIED &&
-           buf->alert.dead_notif.kuid == tsk_id)
+  else if (buf->alert.type == CAP_ALERT_TASK_NOTIF &&
+           (buf->alert.task.flags & CAP_TASK_EXITED) &&
+           buf->alert.task.id == tsk_id)
     ++got_task;
   else
     panic ("got unexpected alert");

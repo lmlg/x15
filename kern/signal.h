@@ -91,6 +91,9 @@ int signal_alloc_siginfo (struct thread *self, siginfo_t *sinfo);
 // Pop a queued siginfo_t for the given signal, or NULL if none.
 siginfo_t* signal_pop_siginfo (struct uthread *uthr, int signo);
 
+// Free a previously allocated 'siginfo_t'.
+void signal_free_siginfo (siginfo_t *sinfo);
+
 // Deallocate signal-related objects from a user thread.
 void signal_uthr_dealloc (struct uthread *uthread);
 
@@ -99,6 +102,7 @@ SYSCALL_DECL (sigaction);
 SYSCALL_DECL (sigprocmask);
 SYSCALL_DECL (tkill);
 SYSCALL_DECL (sigtimedwait);
+SYSCALL_DECL (sigaltstack);
 
 /*
  * This init operation provides :

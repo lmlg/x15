@@ -79,6 +79,7 @@ static const syscall_fn_t syscall_table[NR_SYSCALLS] =
   SYSCALL_E (tkill),
   SYSCALL_E (gettids),
   SYSCALL_E (sigtimedwait),
+  SYSCALL_E (sigaltstack),
 #undef SYSCALL_E
 };
 

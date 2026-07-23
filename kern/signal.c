@@ -87,18 +87,28 @@ static const uint8_t signal_default_actions[NSIG] =
   [SIGIO]      = SIGNAL_DEFAULT_TERM,
   [SIGPWR]     = SIGNAL_DEFAULT_IGN,
   [SIGSYS]     = SIGNAL_DEFAULT_TERM,
+  // Real-time signals: default action is termination.
+  [SIGRTMIN ... SIGRTMAX] = SIGNAL_DEFAULT_TERM,
 };
 
 static struct vm_page *signal_trampoline_page;
+
+struct signal_alsinfo
+{
+  struct slist_node snode;
+  siginfo_t sinfo;
+};
 
 void
 signal_task_init (struct task *task)
 {
   for (int i = 0; i < NSIG; i++)
     {
-      task->sig_actions[i].sa_size = sizeof (task->sig_actions[i]);
-      task->sig_actions[i].sa_flags = 0;
-      task->sig_actions[i].sa_handler = SIG_DFL;
+      _Auto act = &task->sig_actions[i];
+      act->sa_size = sizeof (*act);
+      act->sa_flags = 0;
+      act->sa_handler = SIG_DFL;
+      act->sa_mask = SIG_BIT (i + 1);
     }
 }
 
@@ -134,6 +144,7 @@ signal_suspend_all (struct task *task, struct thread *self)
 
   // Drop the lock before suspending ourselves.
   adaptive_lock_release (&task->lock);
+  cap_notify (&task->dead_subs, CAP_TASK_STOPPED);
   thread_suspend (self);
 }
 
@@ -149,7 +160,8 @@ signal_terminate_all (struct task *task, int signo)
 static siginfo_t*
 signal_si_from_node (struct slist_node *node)
 {
-  return ((siginfo_t *)((char *)node - offsetof (siginfo_t, __si_link)));
+  _Auto al = structof (node, struct signal_alsinfo, snode);
+  return (&al->sinfo);
 }
 
 siginfo_t*
@@ -165,7 +177,10 @@ signal_pop_siginfo (struct uthread *uthr, int signo)
       if (entry->si_signo == signo)
         {
           slist_remove (slist, prev);
-          entry->__si_link = 0;   // Don't leak the kernel pointer.
+          if (signo >= SIGRTMIN &&
+              --uthr->rtsig_count[signo - SIGRTMIN] == 0)
+            uthr->sig_pending &= ~SIG_BIT (signo);
+
           return (entry);
         }
 
@@ -176,11 +191,18 @@ signal_pop_siginfo (struct uthread *uthr, int signo)
 }
 
 void
+signal_free_siginfo (siginfo_t *sinfo)
+{
+  _Auto ptr = structof (sinfo, struct signal_alsinfo, sinfo);
+  kmem_free (ptr, sizeof (*ptr));
+}
+
+void
 signal_uthr_dealloc (struct uthread *uthr)
 {
   struct slist_node *snode, *ts;
   slist_for_each_safe (&uthr->alloc_siginfo, snode, ts)
-    kmem_free (signal_si_from_node (snode), sizeof (siginfo_t));
+    signal_free_siginfo (signal_si_from_node (snode));
 }
 
 void
@@ -208,17 +230,22 @@ signal_sync_deliver (struct cpu_exc_frame *frame, struct thread *self,
    */
 
   if (handler == SIG_IGN || handler == SIG_DFL ||
-      signal_set_trampoline (frame, uthr, signo,
+      signal_set_trampoline (frame, uthr, signo, act,
                              sinfo, (uintptr_t)handler) < 0)
     signal_terminate_all (task, signo);
+
+  if (act->sa_flags & SA_RESETHAND)
+    { // Reset disposition after delivery.
+      act->sa_handler = SIG_DFL;
+      act->sa_flags = 0;
+    }
 }
 
 void
 signal_check (struct cpu_exc_frame *frame, struct thread *self)
 {
-  struct uthread *uthr = self->uthread;
-  if (!uthr)
-    return;
+  _Auto uthr = self->uthread;
+  assert (uthr);
 
   /*
    * If the task has been marked for termination (another thread
@@ -232,54 +259,57 @@ signal_check (struct cpu_exc_frame *frame, struct thread *self)
   if (!signo)
     return;
 
-  // Clear the pending bit — the signal is being delivered.
-  uthr->sig_pending &= ~SIG_BIT (signo);
+  /*
+   * For classic signals, there's no queueing, so the signal is always removed
+   * from the pending set. For real-time signals, this check is done when the
+   * siginfo is removed from the allocated set down below.
+   */
+  if (signo < SIGRTMIN)
+    uthr->sig_pending &= ~SIG_BIT (signo);
 
   _Auto act = &task->sig_actions[signo];
-  void (*handler) (int) = act->sa_handler;
+  _Auto handler = act->sa_handler;
 
-  if (handler == SIG_IGN)
-    return;
-  else if (handler == SIG_DFL)
+  siginfo_t *sinfo = signal_pop_siginfo (uthr, signo);
+  bool dealloc = true;
+
+  if (!sinfo && (act->sa_flags & SA_SIGINFO))
     {
-      int action = signal_default_actions[signo];
-
-      if (action == SIGNAL_DEFAULT_IGN)
-        return;
-      else if (action == SIGNAL_DEFAULT_STOP)
-        signal_suspend_all (task, self);
-      else
-        signal_terminate_all (task, signo);
+      sinfo = alloca (sizeof (*sinfo));
+      memset (sinfo, 0, sizeof (*sinfo));
+      sinfo->si_signo = signo;
+      dealloc = false;
     }
-  else
+
+  if (handler == SIG_IGN || handler == SIG_DFL)
     {
-      siginfo_t *sinfo = NULL;
-      bool dealloc = true;
-
-      if (act->sa_flags & SA_SIGINFO)
-        {
-          sinfo = signal_pop_siginfo (uthr, signo);
-          if (! sinfo)
-            {
-              sinfo = alloca (sizeof (*sinfo));
-              memset (sinfo, 0, sizeof (*sinfo));
-              sinfo->si_signo = signo;
-              dealloc = false;
-            }
-        }
-
-      int err = signal_set_trampoline (frame, uthr, signo,
-                                       sinfo, (uintptr_t)handler);
       if (sinfo && dealloc)
-        kmem_free (sinfo, sizeof (*sinfo));
+        signal_free_siginfo (sinfo);
 
-      if (err)
-        /*
-         * Failed to save the signal trampoline on the user stack.
-         * The stack is unusable - terminate the task immediately
-         * rather than letting the thread continue with a broken state.
-         */
-        signal_terminate_all (task, SIGSEGV);
+      if (handler != SIG_IGN)
+        {
+          int action = signal_default_actions[signo];
+          if (action == SIGNAL_DEFAULT_STOP)
+            signal_suspend_all (task, self);
+          else if (action == SIGNAL_DEFAULT_TERM)
+            signal_terminate_all (task, signo);
+        }
+    }
+  else if (signal_set_trampoline (frame, uthr, signo, act,
+                                  sinfo, (uintptr_t)handler) != 0)
+     /*
+      * Failed to save the signal trampoline on the user stack.
+      * The stack is unusable - terminate the task immediately
+      * rather than letting the thread continue with a broken state.
+      */
+    signal_terminate_all (task, SIGSEGV);
+  else if (sinfo && dealloc)
+    signal_free_siginfo (sinfo);
+
+  if (act->sa_flags & SA_RESETHAND)
+    {
+      act->sa_handler = SIG_DFL;
+      act->sa_flags = 0;
     }
 }
 
@@ -314,6 +344,17 @@ signal_restore (struct cpu_exc_frame *frame, struct thread *self)
   memcpy (frame->words, uc->uc_mcontext.regs, sizeof (uc->uc_mcontext.regs));
   uthr->sig_mask = uc->uc_sigmask;
   uthr->sig_saved_sp = 0;
+
+  // Restore the alternate stack state.
+  if (uthr->sigaltstack.ss_flags & SS_ONSTACK)
+    {
+      if (uthr->sigaltstack.ss_flags & SS_AUTODISARM)
+        uthr->sigaltstack.ss_flags = SS_DISABLE;
+      else
+        uthr->sigaltstack.ss_flags &= ~SS_ONSTACK;
+
+      frame->words[CPU_EXC_FRAME_RSP] = uthr->sig_saved_altstack_sp;
+    }
 }
 
 /*
@@ -337,10 +378,15 @@ signal_map_trampoline (struct task *task)
                         vm_page_to_pa (signal_trampoline_page)));
 }
 
+// Maximum number of queued siginfo entries per real-time signal.
+#define SIGNAL_MAX_SIGINFO   32
+
 int
 signal_alloc_siginfo (struct thread *thread, siginfo_t *sinfo)
 {
-  siginfo_t *new;
+  assert (signal_valid (sinfo->si_signo));
+  struct signal_alsinfo *new;
+
   while (1)
     {
       new = kmem_alloc2 (sizeof (*new), KMEM_ALLOC_SLEEP);
@@ -351,11 +397,23 @@ signal_alloc_siginfo (struct thread *thread, siginfo_t *sinfo)
       thread_yield ();
     }
 
-  memcpy (new, sinfo, sizeof (*new));
-  sinfo->__si_link = 0;
-  MUTEX_GUARD (&thread->uthread->mutex);
-  slist_insert_tail (&thread->uthread->alloc_siginfo,
-                     (struct slist_node *)&new->__si_link);
+  int signo = sinfo->si_signo;
+  memcpy (&new->sinfo, sinfo, sizeof (*sinfo));
+
+  _Auto uthr = thread->uthread;
+  MUTEX_GUARD (&uthr->mutex);
+
+  if (signo < SIGRTMIN)
+    ;
+  else if (uthr->rtsig_count[signo - SIGRTMIN] >= SIGNAL_MAX_SIGINFO)
+    {
+      signal_free_siginfo (&new->sinfo);
+      return (EAGAIN);
+    }
+  else
+    ++uthr->rtsig_count[signo - SIGRTMIN];
+
+  slist_insert_tail (&uthr->alloc_siginfo, &new->snode);
   return (0);
 }
 
@@ -369,7 +427,6 @@ signal_setup (void)
     panic ("signal: unable to allocate trampoline page");
 
   vm_page_init_refcount (signal_trampoline_page);
-
   signal_init_trampoline (vm_page_direct_ptr (signal_trampoline_page));
   return (0);
 }
@@ -445,11 +502,20 @@ SYSCALL (sigprocmask, int how, const sigset_t *new, sigset_t *old)
 static int
 signal_send_impl (struct thread *thread, siginfo_t *sinfo)
 {
+  int signo = sinfo->si_signo;
+
+  /*
+   * For classic (i.e: non real-time) signals, don't queue a new siginfo if
+   * the signal is already pending.
+   */
+  if (signo < SIGRTMIN && (thread->uthread->sig_pending & SIG_BIT (signo)))
+    return (-thread_send_signal (thread, signo));
+
   int ret = signal_alloc_siginfo (thread, sinfo);
   if (ret == 0)
-    ret = thread_send_signal (thread, sinfo->si_signo);
+    ret = thread_send_signal (thread, signo);
 
-  return (ret);
+  return (-ret);
 }
 
 static bool
@@ -462,11 +528,14 @@ static int
 signal_send_in_task (struct thread *thread, siginfo_t *sinfo, bool unlock)
 {
   thread_ref (thread);
+
   if (unlock)
-    adaptive_lock_release (&thread->task->lock);
+    { // Only set the last signal recipient if we hold the lock.
+      thread->task->last_sig_thr = thread;
+      adaptive_lock_release (&thread->task->lock);
+    }
 
   int ret = signal_send_impl (thread, sinfo);
-  thread->task->last_sig_thr = thread;
   thread_unref (thread);
   return (ret);
 }
@@ -521,8 +590,7 @@ SYSCALL (tkill, int how, int arg1, int arg2, siginfo_t *sinfo)
   if (user_copy_from (&tmp, sinfo, sizeof (tmp)) != 0)
     return (-EFAULT);
   else if (tmp.si_code >= 0)
-    // Codes >= 0 are reserved for the kernel.
-    return (-EPERM);
+    return (-EPERM);   // Codes >= are reserved for the kernel.
   else if (!signal_valid (tmp.si_signo))
     return (-EINVAL);
 
@@ -543,7 +611,10 @@ SYSCALL (tkill, int how, int arg1, int arg2, siginfo_t *sinfo)
               if (! tx)
                 return (-ESRCH);
               else if (thread->task != tx->task)
-                return (-EPERM);
+                {
+                  thread_unref (tx);
+                  return (-EPERM);
+                }
 
               unref = true;
               thread = tx;
@@ -631,11 +702,45 @@ SYSCALL (sigtimedwait, const sigset_t *set, siginfo_t *info,
   if (!wait_set)
     return (-EINVAL);
 
-  siginfo_t si;
-  int error = thread_sigwait (wait_set, &si, timeout, nsetp);
-  if (error)
-    return (-error);
+  int error = thread_sigwait (wait_set, info, timeout, nsetp);
+  return (error ? -error : info->si_signo);
+}
 
-  *info = si;
-  return (si.si_signo);
+SYSCALL (sigaltstack, const stack_t *new, stack_t *old)
+{
+  _Auto uthr = thread_self()->uthread;
+  if (!uthr)
+    return (-EINVAL);
+  else if (old && user_copy_to (old, &uthr->sigaltstack, sizeof (*old)) != 0)
+    return (-EFAULT);
+
+  if (new)
+    {
+      stack_t ss;
+
+      if (user_copy_from (&ss, new, sizeof (ss)) != 0)
+        return (-EFAULT);
+      else if (ss.ss_flags & ~(SS_DISABLE | SS_AUTODISARM))
+        return (-EINVAL);
+      else if (uthr->sigaltstack.ss_flags & SS_ONSTACK)
+        return (-EPERM);
+
+      if (ss.ss_flags & SS_DISABLE)
+        {
+          uthr->sigaltstack.ss_flags = SS_DISABLE;
+          uthr->sigaltstack.ss_sp = NULL;
+          uthr->sigaltstack.ss_size = 0;
+        }
+      else
+        {
+          if (ss.ss_size < MINSIGSTKSZ)
+            return (-ENOMEM);
+
+          // Preserve SS_AUTODISARM, clear all other flags.
+          ss.ss_flags &= SS_AUTODISARM;
+          uthr->sigaltstack = ss;
+        }
+    }
+
+  return (0);
 }

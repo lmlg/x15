@@ -28,14 +28,15 @@
 
 int
 signal_set_trampoline (struct cpu_exc_frame *frame, struct uthread *uthr,
-                       int signo, siginfo_t *sinfo, uintptr_t handler)
+                       int signo, const struct sigaction *act,
+                       siginfo_t *sinfo, uintptr_t handler)
 {
   /*
    * Deliver the signal to the handler.
    *
    * The user stack is arranged as follows (high to low):
    *
-   *   [old user RSP]
+   *   [old user RSP or altstack top]
    *   ... (alignment)
    *   [ucontext_t]             <- ucontext_va (16-byte aligned)
    *       contains: uc_mcontext.regs[] = saved cpu_exc_frame
@@ -45,8 +46,12 @@ signal_set_trampoline (struct cpu_exc_frame *frame, struct uthread *uthr,
    *   [trampoline address]     <- new user RSP (16k - 8 for ABI)
    *
    * When the handler returns (via ret), it pops the trampoline address from
-   * RSP and jumps to it, which performs the sigreturn syscall to restore
-   * the saved context from the ucontext_t.
+   * RSP and jumps to it, which performs the sigreturn syscall to restore the
+   * saved context from the ucontext_t.
+   *
+   * If SA_ONSTACK is set and an alternate signal stack is installed,
+   * the handler runs on the alternate stack instead of the user's
+   * current stack.
    *
    * Stack alignment: ucontext_va and sinfo_va are 16-byte aligned so
    * that new_rsp = sinfo_va - 8 (or ucontext_va - 8 if no siginfo)
@@ -59,8 +64,22 @@ signal_set_trampoline (struct cpu_exc_frame *frame, struct uthread *uthr,
   if (err)
     return (-1);
 
-  // Align the ucontext start down to 16 bytes.
+  /*
+   * Determine which stack to use. If SA_ONSTACK is set and an
+   * alternate stack is enabled and not already in use, switch to it.
+   */
   uintptr_t old_rsp = frame->words[CPU_EXC_FRAME_RSP];
+  bool set_sa = false;
+
+  if ((act->sa_flags & SA_ONSTACK) &&
+      !(uthr->sigaltstack.ss_flags & SS_DISABLE) &&
+      !(uthr->sigaltstack.ss_flags & SS_ONSTACK))
+    { // Use the top of the alternate stack.
+      old_rsp = (uintptr_t)uthr->sigaltstack.ss_sp + uthr->sigaltstack.ss_size;
+      set_sa = true;
+    }
+
+  // Align the ucontext start down to 16 bytes.
   uintptr_t ucontext_va = (old_rsp - sizeof (ucontext_t)) & ~(uintptr_t)0xf;
   if (!user_check_range ((const void *)ucontext_va, sizeof (ucontext_t)))
     return (-1);
@@ -98,12 +117,26 @@ signal_set_trampoline (struct cpu_exc_frame *frame, struct uthread *uthr,
 
   *(uintptr_t *)new_rsp = SIGNAL_TRAMPOLINE_ADDR;
 
-  // Save the current mask and auto-block the signal during the handler.
-  uthr->sig_saved_mask = uthr->sig_mask;
-  uthr->sig_mask |= SIG_BIT (signo);
+  /*
+   * Only now, after setting up the user stack are we allowed to modify
+   * the uthread's members safely.
+   */
+
+  uthr->sig_mask = act->sa_mask;
+
+  // Auto-block the signal during the handler, unless SA_NODEFER.
+  if (!(act->sa_flags & SA_NODEFER))
+    uthr->sig_mask |= SIG_BIT (signo);
+
+  if (set_sa)
+    {
+      uthr->sigaltstack.ss_flags |= SS_ONSTACK;
+      uthr->sig_saved_altstack_sp = frame->words[CPU_EXC_FRAME_RSP];
+    }
+
   uthr->sig_saved_sp = ucontext_va;
 
-  // Modify the frame to invoke the handler. */
+  // Modify the frame to invoke the handler.
   frame->words[CPU_EXC_FRAME_RSP] = new_rsp;
   frame->words[CPU_EXC_FRAME_RIP] = (uintptr_t)handler;
   frame->words[CPU_EXC_FRAME_RDI] = (uintptr_t)signo;

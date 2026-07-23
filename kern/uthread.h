@@ -34,10 +34,12 @@ struct uthread
   int *tid;
   sigset_t sig_pending;
   sigset_t sig_mask;
-  sigset_t sig_saved_mask;
   uintptr_t sig_saved_sp;
+  uintptr_t sig_saved_altstack_sp;
   struct slist alloc_siginfo;
   struct mutex mutex;
+  stack_t sigaltstack;
+  uint8_t rtsig_count[SIGRTMAX - SIGRTMIN + 1];
 };
 
 struct uthread* uthread_allocate (void);

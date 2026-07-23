@@ -401,7 +401,12 @@ futex_map_addr (struct futex_data *data, int value, int op)
         break;
 
       case FUTEX_OP_SET:
-        *data->addr = value;
+        /*
+         * This write doesn't synchronize with anything in this module,
+         * but userspace is expected to use acquire ordering when using
+         * futexes, so we need release ordering here.
+         */
+        atomic_store_rel (data->addr, value);
         break;
 
       case FUTEX_OP_ROBUST_CLEAR:

@@ -27,12 +27,10 @@ static struct kmem_cache uthread_cache;
 static void
 uthread_ctor (void *tmp)
 {
-  _Auto ptr = (struct uthread *)tmp;
-  ptr->tid = NULL;
-  ptr->sig_pending = 0;
-  ptr->sig_mask = 0;
-  ptr->sig_saved_mask = 0;
-  ptr->sig_saved_sp = 0;
+  struct uthread *ptr = tmp;
+  memset (ptr, 0, sizeof (*ptr));
+
+  ptr->sigaltstack.ss_flags = SS_DISABLE;
   futex_td_init (&ptr->futex_td);
   slist_init (&ptr->alloc_siginfo);
   mutex_init (&ptr->mutex);

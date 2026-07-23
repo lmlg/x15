@@ -66,6 +66,10 @@ test_signal_prepare (uintptr_t pc, void *arg)
   ptr->addr = (void *)(pc + 800 * PAGE_SIZE);
 }
 
+#if defined (__LP64__) && defined (__x86_64__)
+#  define CTX_PC(ctx)   (((ucontext_t *)ctx)->uc_mcontext.regs[17])
+#endif
+
 static void __attribute__ ((aligned (PAGE_SIZE)))
 test_signal_uentry (int sig, siginfo_t *sinfo, void *ctx __unused)
 {
@@ -85,6 +89,7 @@ test_signal_uentry (int sig, siginfo_t *sinfo, void *ctx __unused)
         struct sigaction old, new;
         new.sa_size = sizeof (new);
         new.sa_flags = SA_SIGINFO;
+        new.sa_mask = 0;
         new.sa_sigaction = (typeof (new.sa_sigaction))args->pc;
         old.sa_size = sizeof (old);
 
@@ -131,6 +136,10 @@ test_signal_uentry (int sig, siginfo_t *sinfo, void *ctx __unused)
           test_uassert_eq (sinfo->si_addr, args->addr);
           test_uassert_eq (sinfo->si_code, SEGV_MAPERR);
           test_uassert_eq (sinfo->si_pid, 0);
+#ifdef CTX_PC
+          test_uassert_ge (CTX_PC (ctx), args->pc);
+          test_uassert_le (CTX_PC (ctx), args->pc + PAGE_SIZE);
+#endif
           test_uthread_exit ();
         }
 
@@ -140,6 +149,8 @@ test_signal_uentry (int sig, siginfo_t *sinfo, void *ctx __unused)
       args->flag = 0;
     }
 }
+
+#undef CTX_PC
 
 TEST_DEFERRED (signal)
 {
