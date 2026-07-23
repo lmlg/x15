@@ -117,7 +117,7 @@ static struct spinlock pmap_pcid_lock;
  * was recycled and it must allocate a new one.
  */
 static uint32_t pmap_pcid_gen;
-static bool pmap_pcid_allocate __read_mostly;
+static bool pmap_use_pcid __read_mostly;
 
 struct pmap_pcid_recycle_arg
 {
@@ -964,7 +964,7 @@ pmap_bootstrap (void)
   if (cpu_has_global_pages ())
     pmap_setup_global_pages ();
 
-  pmap_pcid_allocate = cpu_has_pcid () && cpu_has_invpcid ();
+  pmap_use_pcid = cpu_has_pcid () && cpu_has_invpcid ();
   return (0);
 }
 
@@ -997,9 +997,6 @@ pmap_setup_fix_ptps (void)
   pmap_walk_vas (PMAP_START_ADDRESS, PMAP_END_KERNEL_ADDRESS,
                  pmap_setup_set_ptp_type);
 }
-
-static bool PMAP_F1 __used;
-static bool PMAP_F2 __used;
 
 static int __init
 pmap_setup (void)
@@ -1295,7 +1292,7 @@ pmap_create (struct pmap **pmapp)
                   ~(alignof (struct pmap_cpu_table) - 1));
   pmap->cpu_tables = tabp;
 
-  if (!pmap_pcid_allocate)
+  if (!pmap_use_pcid)
     {
       pmap->pcid = 0;
       pmap->pcid_gen = 0;
