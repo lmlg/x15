@@ -353,7 +353,14 @@ vm_map_remove_cached (struct vm_map *map, struct vm_map_entry *entry,
 {
   sxlock_exlock (&map->lock);
   vm_map_unlink (map, entry);
+  sxlock_share (&map->lock);
+  vm_map_entry_unmap (map, entry);
+  pmap_update (map->pmap);
   sxlock_unlock (&map->lock);
+
+  if (!(entry->flags & VM_MAP_PHYS))
+    vm_object_unref (entry->object);
+
   list_insert_tail (out, &entry->list_node);
 }
 
@@ -567,6 +574,7 @@ vm_map_enter_cached (struct vm_map *map, uintptr_t *vap,
   int flags = VM_MAP_FLAGS (VM_PROT_RDWR, VM_PROT_RDWR,
                             VM_INHERIT_SHARE, VM_ADV_DEFAULT,
                             VM_MAP_NOMERGE);
+  flags |= (entry->flags & VM_MAP_ENTRY_MASK) & ~VM_MAP_ANON;
 
   SXLOCK_EXGUARD (&map->lock);
   int error = vm_map_prepare (map, *vap, entry->end - entry->start,
