@@ -144,7 +144,7 @@ signal_suspend_all (struct task *task, struct thread *self)
 
   // Drop the lock before suspending ourselves.
   adaptive_lock_release (&task->lock);
-  cap_notify (&task->dead_subs, CAP_TASK_STOPPED);
+  cap_notify (&task->subs, CAP_TASK_STOPPED);
   thread_suspend (self);
 }
 
@@ -397,21 +397,17 @@ signal_alloc_siginfo (struct thread *thread, siginfo_t *sinfo)
       thread_yield ();
     }
 
-  int signo = sinfo->si_signo;
+  int rt_signo = sinfo->si_signo - SIGRTMIN;
   memcpy (&new->sinfo, sinfo, sizeof (*sinfo));
 
   _Auto uthr = thread->uthread;
   MUTEX_GUARD (&uthr->mutex);
 
-  if (signo < SIGRTMIN)
-    ;
-  else if (uthr->rtsig_count[signo - SIGRTMIN] >= SIGNAL_MAX_SIGINFO)
+  if (rt_signo >= 0 && ++uthr->rtsig_count[rt_signo] > SIGNAL_MAX_SIGINFO)
     {
-      signal_free_siginfo (&new->sinfo);
+      --uthr->rtsig_count[rt_signo];
       return (EAGAIN);
     }
-  else
-    ++uthr->rtsig_count[signo - SIGRTMIN];
 
   slist_insert_tail (&uthr->alloc_siginfo, &new->snode);
   return (0);
@@ -595,8 +591,10 @@ SYSCALL (tkill, int how, int arg1, int arg2, siginfo_t *sinfo)
     return (-EINVAL);
 
   _Auto self = thread_self ();
-  _Auto caps = &self->task->caps;
-  tmp.si_pid = task_id (self->task);
+  // Use the executing task for this.
+  _Auto caps = &self->xtask->caps;
+  tmp.si_pid = task_id (self->xtask);
+  int rv;
 
   switch (how)
     {
@@ -610,7 +608,7 @@ SYSCALL (tkill, int how, int arg1, int arg2, siginfo_t *sinfo)
               _Auto tx = thread_by_kuid (arg1);
               if (! tx)
                 return (-ESRCH);
-              else if (thread->task != tx->task)
+              else if (thread->xtask != tx->xtask)
                 {
                   thread_unref (tx);
                   return (-EPERM);
@@ -620,7 +618,7 @@ SYSCALL (tkill, int how, int arg1, int arg2, siginfo_t *sinfo)
               thread = tx;
             }
 
-          int rv = signal_send_impl (thread, &tmp);
+          rv = signal_send_impl (thread, &tmp);
           if (unref)
             thread_unref (thread);
 
@@ -628,17 +626,15 @@ SYSCALL (tkill, int how, int arg1, int arg2, siginfo_t *sinfo)
         }
 
       case SIG_SEND_THREAD:
-        { // arg1 is the capability. arg2 is ignored.
+        { // arg1 is the capability.
           _Auto cap = cspace_get (caps, arg1);
           if (! cap)
             return (-EINVAL);
           else if (cap_type (cap) != CAP_TYPE_THREAD)
-            {
-              cap_base_rel (cap);
-              return (-EINVAL);
-            }
+            rv = -EINVAL;
+          else
+            rv = signal_send_impl (((struct cap_thread *)cap)->thread, &tmp);
 
-          int rv = signal_send_impl (((struct cap_thread *)cap)->thread, &tmp);
           cap_base_rel (cap);
           return (rv);
         }
@@ -649,13 +645,11 @@ SYSCALL (tkill, int how, int arg1, int arg2, siginfo_t *sinfo)
           if (! cap)
             return (-EINVAL);
           else if (cap_type (cap) != CAP_TYPE_TASK)
-            {
-              cap_base_rel (cap);
-              return (-EINVAL);
-            }
+            rv = -EINVAL;
+          else
+            rv = signal_send_task (((struct cap_task *)cap)->task,
+                                   arg2, &tmp);
 
-          int rv = signal_send_task (((struct cap_task *)cap)->task,
-                                     arg2, &tmp);
           cap_base_rel (cap);
           return (rv);
         }

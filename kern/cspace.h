@@ -26,11 +26,16 @@
 #include <kern/cspace_types.h>
 #include <kern/rcu.h>
 
+static_assert (ARRAY_SIZE (((struct cspace *)0)->kcount) >= CAP_KERNEL_MAX,
+               "not enough room in cspace::kcount");
+
 static inline void
 cspace_init (struct cspace *sp)
 {
   rdxtree_init (&sp->tree, RDXTREE_KEY_ALLOC);
   adaptive_lock_init (&sp->lock);
+  for (size_t i = 0; i < ARRAY_SIZE (sp->kcount); ++i)
+    sp->kcount[i] = 0;
 }
 
 static inline void
@@ -78,6 +83,8 @@ cspace_add_free_locked (struct cspace *sp, struct cap_base *cap,
   cap_base_acq (cap);
   if (mark)
     atomic_add_rlx (&((struct cap_channel *)cap)->open_count, 1);
+  else if (cap_type (cap) == CAP_TYPE_KERNEL)
+    ++sp->kcount[((struct cap_kernel *)cap)->kind];
 
   return ((int)cap_idx);
 }
@@ -101,6 +108,8 @@ cspace_rem_locked (struct cspace *sp, int cap_idx)
 
   if (mark)
     cap_channel_close ((struct cap_channel *)ptr);
+  else if (unlikely (cap_type (ptr) == CAP_TYPE_KERNEL))
+    --sp->kcount[((struct cap_kernel *)ptr)->kind];
 
   cap_base_rel (ptr);
   return (0);
@@ -147,8 +156,15 @@ cspace_dup3 (struct cspace *sp, int cap_idx, int new_idx,
   else if (rv)
     return (ENOMEM);
 
-  cap_base_acq (cap);
+  cap_base_acq ((void *)((uintptr_t)cap & ~RDXTREE_XBIT));
   return (0);
+}
+
+static inline bool
+cspace_has_kcap (const struct cspace *sp, uint32_t kind)
+{
+  assert (kind < CAP_KERNEL_MAX);
+  return (sp->kcount[kind] > 0);
 }
 
 static inline void

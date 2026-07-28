@@ -190,6 +190,19 @@ int vm_map_protect (struct vm_map *map, uintptr_t start,
 int vm_map_iter_copy (struct vm_map *r_map, struct ipc_vme_iter *r_it,
                       struct ipc_vme_iter *l_it, uint32_t flags);
 
+// Allocate or free entries in a VM cache.
+int vm_map_cache_alloc (struct list *out, uint32_t count);
+void vm_map_cache_free (struct list *list);
+
+// Create a virtual mapping using the thread-local cache.
+int vm_map_enter_cached (struct vm_map *map, uintptr_t *vap,
+                         const struct vm_map_entry *entry,
+                         struct vm_map_entry *cache);
+
+// Remove a previously mapped cached entry.
+void vm_map_remove_cached (struct vm_map *map, struct vm_map_entry *entry,
+                           struct list *out);
+
 // Reply to a page request message.
 int vm_map_reply_pagereq (const uintptr_t *src, uint32_t cnt,
                           struct vm_page **pages);

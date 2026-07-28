@@ -1713,7 +1713,7 @@ thread_init (struct thread *thread, void *stack,
   thread->fixup = NULL;
   thread->cur_lpad = NULL;
   thread->uthread = NULL;
-  bulletin_init (&thread->dead_subs);
+  bulletin_init (&thread->subs);
   for (int i = 0; i < (int)ARRAY_SIZE (thread->pmap_windows); ++i)
     thread->pmap_windows[i] = NULL;
 
@@ -1828,7 +1828,7 @@ thread_destroy (struct thread *thread)
   assert (thread != thread_self ());
   assert (thread->state == THREAD_DEAD);
 
-  cap_notify (&thread->dead_subs, 0);
+  cap_notify (&thread->subs, 0);
   // See task_info().
   task_remove_thread (thread->task, thread);
 
@@ -2201,6 +2201,8 @@ thread_reap (struct work *work)
   thread_join_common (zombie->thread);
 }
 
+#include <stdio.h>
+
 void
 thread_exit (void)
 {
@@ -2368,7 +2370,7 @@ thread_send_signal (struct thread *thread, int signo)
           thread_resume_all (task);
           task->suspending = 0;
           adaptive_lock_release (&task->lock);
-          cap_notify (&task->dead_subs, CAP_TASK_CONTINUED);
+          cap_notify (&task->subs, CAP_TASK_CONTINUED);
         }
       else
         adaptive_lock_release (&task->lock);

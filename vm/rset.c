@@ -90,6 +90,8 @@ vm_rset_mark_ro (struct vm_page *page)
 {
   struct pmap_clean_data cdata = { .pa = vm_page_to_pa (page) };
   struct vm_rset_entry *entry;
+
+  RCU_GUARD ();
   slist_rcu_for_each_entry (&page->rset, entry, link)
     {
       cdata.va = entry->va;

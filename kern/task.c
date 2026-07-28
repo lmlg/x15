@@ -60,7 +60,7 @@ task_init (struct task *task, const char *name, struct vm_map *map)
   list_init (&task->threads);
   task->map = map;
   strlcpy (task->name, name, sizeof (task->name));
-  bulletin_init (&task->dead_subs);
+  bulletin_init (&task->subs);
   task->terminate = 0;
   task->suspending = 0;
   task->last_sig_thr = NULL;
@@ -183,9 +183,8 @@ task_destroy (struct task *task)
   spinlock_unlock (&task_list_lock);
   cspace_destroy (&task->caps);
   kuid_remove (&task->kuid, KUID_TASK);
-  if (task->map)
-    vm_map_destroy (task->map);
-
+  vm_map_destroy (task->map);
+  cap_notify (&task->subs, task->terminate | CAP_TASK_EXITED);
   work_init (&task->work, task_deferred_free);
   rcu_defer (&task->work);
 }
@@ -228,12 +227,8 @@ task_remove_thread (struct task *task, struct thread *thread)
   adaptive_lock_release (&task->lock);
 
   if (last)
-    { // The VM map and cspace must be destroyed early to avoid circularities.
+    { // The cspace must be destroyed early to avoid circularities.
       cspace_destroy (&task->caps);
-      vm_map_destroy (task->map);
-      task->map = NULL;
-      // A task is considered dead when no more of its threads are running.
-      cap_notify (&task->dead_subs, task->terminate | CAP_TASK_EXITED);
       task_unref (task);
     }
 }

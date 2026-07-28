@@ -24,6 +24,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+#include <kern/macros.h>
 #include <kern/types.h>
 
 struct ipc_msg_vme
@@ -87,6 +88,7 @@ struct ipc_msg
 #define IPC_MSG_TRUNC    0x01   // Reply was truncated.
 #define IPC_MSG_ERROR    0x02   // There was an error during IPC.
 #define IPC_MSG_KERNEL   0x04   // Message was sent on behalf of the kernel.
+#define IPC_MSG_RT       0x08
 
 struct ipc_msg_data
 {
@@ -94,19 +96,11 @@ struct ipc_msg_data
   int task_id;
   int thread_id;
   uint32_t flags;
-  uintptr_t tag;
-  union
-    {
-      size_t bytes_sent;
-      uint64_t qbs;
-    };
+  I64_MEMBER (uintptr_t, tag);
+  I64_MEMBER (size_t, bytes_sent);
+  I64_MEMBER (size_t, bytes_recv);
   uint32_t vmes_sent;
   uint32_t caps_sent;
-  union
-    {
-      size_t bytes_recv;
-      uint64_t qbr;
-    };
   uint32_t vmes_recv;
   uint32_t caps_recv;
 };
@@ -128,11 +122,42 @@ struct task;
  */
 
 static inline void
+ipc_iov_iter_init (struct ipc_iov_iter *it, struct iovec *vecs, uint32_t cnt)
+{
+  it->head.iov_len = 0;
+  it->begin = vecs;
+  it->cur = 0, it->end = cnt;
+  it->cache_idx = IPC_IOV_ITER_CACHE_SIZE;
+}
+
+static inline void
+ipc_iov_iter_init_buf (struct ipc_iov_iter *it, void *buf, size_t size)
+{
+  it->head = IOVEC (buf, size);
+  it->cache_idx = IPC_IOV_ITER_CACHE_SIZE;
+  it->begin = &it->head;
+  it->cur = it->end = 1;
+}
+
+static inline void
+ipc_iov_iter_init_cpy (struct ipc_iov_iter *it, const struct ipc_iov_iter *src)
+{
+  ipc_iov_iter_init (it, src->begin + src->cur, src->end - src->cur);
+  it->head = src->head;
+}
+
+static inline void
 ipc_cap_iter_init (struct ipc_cap_iter *it,
                    struct ipc_msg_cap *msg, uint32_t nr_msgs)
 {
   it->begin = msg;
   it->cur = 0, it->end = nr_msgs;
+}
+
+static inline void
+ipc_cap_iter_init_cpy (struct ipc_cap_iter *it, const struct ipc_cap_iter *src)
+{
+  ipc_cap_iter_init (it, src->begin + src->cur, src->end - src->cur);
 }
 
 static inline int
@@ -149,19 +174,16 @@ ipc_vme_iter_init (struct ipc_vme_iter *it,
   it->cur = 0, it->end = nr_msgs;
 }
 
+static inline void
+ipc_vme_iter_init_cpy (struct ipc_vme_iter *it, const struct ipc_vme_iter *src)
+{
+  ipc_vme_iter_init (it, src->begin + src->cur, src->end - src->cur);
+}
+
 static inline int
 ipc_vme_iter_size (const struct ipc_vme_iter *it)
 {
   return ((int)(it->end - it->cur));
-}
-
-static inline void
-ipc_iov_iter_init_buf (struct ipc_iov_iter *it, void *buf, size_t size)
-{
-  it->head = IOVEC (buf, size);
-  it->cache_idx = IPC_IOV_ITER_CACHE_SIZE;
-  it->begin = &it->head;
-  it->cur = it->end = 1;
 }
 
 static inline bool
@@ -169,15 +191,6 @@ ipc_iov_iter_empty (const struct ipc_iov_iter *it)
 {
   return (it->cur >= it->end && !it->head.iov_len &&
           it->cache_idx >= IPC_IOV_ITER_CACHE_SIZE);
-}
-
-static inline void
-ipc_iov_iter_init (struct ipc_iov_iter *it, struct iovec *vecs, uint32_t cnt)
-{
-  it->head.iov_len = 0;
-  it->begin = vecs;
-  it->cur = 0, it->end = cnt;
-  it->cache_idx = IPC_IOV_ITER_CACHE_SIZE;
 }
 
 // Advance an iovec iterator with pointers from userspace.

@@ -55,7 +55,7 @@ struct task
   struct thread *last_sig_thr;
   union
     {
-      struct bulletin dead_subs;
+      struct bulletin subs;
       struct work work;   // For deferred deallocation.
     };
   char name[TASK_NAME_SIZE];

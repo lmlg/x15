@@ -69,7 +69,7 @@ struct cap_kern_alert
       struct
         {
           uint32_t irq;
-          uint32_t count;
+          uint32_t flags;
         } intr;
 
       struct
@@ -85,6 +85,9 @@ struct cap_kern_alert
     };
 };
 
+#define CAP_INTR_RAISED      0x01
+
+// Flags for 'cap_kern_alert::task::flags'.
 #define CAP_TASK_STOPPED     (1u << 31)
 #define CAP_TASK_CONTINUED   (1u << 30)
 #define CAP_TASK_EXITED      (1u << 29)
@@ -136,6 +139,7 @@ struct cap_flow
   CAPABILITY;
   uintptr_t tag;
   uintptr_t entry;
+  struct task *rt_task;
   struct
     {
       struct spinlock lock;
@@ -310,6 +314,9 @@ int cap_flow_add_lpad (struct cap_flow *flow, void *stack, size_t size,
 
 int cap_flow_rem_lpad (struct cap_flow *flow, uintptr_t stack, bool unmap);
 
+// Set the real-time task handler for a flow.
+int cap_flow_set_rt (struct cap_flow *flow, struct task *task);
+
 // Register a flow for interrupt handling.
 int cap_intr_register (struct cap_flow *flow, uint32_t irq);
 
@@ -319,7 +326,7 @@ int cap_intr_unregister (struct cap_flow *flow, uint32_t irq);
 // Register a thread on a flow to notify on its death.
 int cap_thread_register (struct cap_flow *flow, struct thread *thread);
 
-// Register a task on a flow to notify on its death.
+// Register a task on a flow to notify on state changes.
 int cap_task_register (struct cap_flow *flow, struct task *task);
 
 // Unregister a thread.
@@ -350,6 +357,13 @@ struct vm_object* cap_channel_get_vmobj (struct cap_channel *ch);
 // Unreference a VM object obtained from a channel.
 void cap_channel_put_vmobj (struct cap_channel *chp);
 
+// Get one of the basic kernel capabilities.
+struct cap_kernel* cap_get_kcap (uint32_t kind);
+
+// Allocate or free a landing-pad cache.
+int cap_lpad_cache_alloc (struct list *out, uint32_t count);
+void cap_lpad_cache_free (struct list *list);
+
 #define cap_iters_init_impl(it, buf, size, iov_init)   \
   do   \
     {   \
@@ -368,16 +382,20 @@ void cap_channel_put_vmobj (struct cap_channel *chp);
   cap_iters_init_impl (it, iovs, nr_iovs, ipc_iov_iter_init)
 
 // Initialize a capability's iterators with a message structure.
+static inline void
+cap_iters_from_msg (struct cap_iters *it, const struct ipc_msg *msg)
+{
+  ipc_iov_iter_init (&it->iov, msg->iovs, msg->iov_cnt);
+  ipc_cap_iter_init (&it->cap, msg->caps, msg->cap_cnt);
+  ipc_vme_iter_init (&it->vme, msg->vmes, msg->vme_cnt);
+}
+
 #define cap_iters_init_msg(it, msg)   \
   ({   \
      struct ipc_msg lmsg_ = { .iovs = 0, .caps = 0, .vmes = 0 };   \
      int rv_ = user_read_struct (&lmsg_, (msg), sizeof (lmsg_));   \
      if (rv_ == 0)   \
-       {   \
-         ipc_iov_iter_init (&(it)->iov, lmsg_.iovs, lmsg_.iov_cnt);   \
-         ipc_cap_iter_init (&(it)->cap, lmsg_.caps, lmsg_.cap_cnt);   \
-         ipc_vme_iter_init (&(it)->vme, lmsg_.vmes, lmsg_.vme_cnt);   \
-       }   \
+       cap_iters_from_msg (it, &lmsg_);   \
      rv_;   \
    })
 

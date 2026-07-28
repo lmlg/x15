@@ -127,7 +127,7 @@ test_util_create_thr (struct thread **out, void (*fn) (void *),
   if (error)
     return (error);
 
-  char tname[TASK_NAME_SIZE];
+  char tname[THREAD_NAME_SIZE];
   sprintf (tname, "%s/0", name);
 
   struct thread_attr attr;
@@ -137,6 +137,11 @@ test_util_create_thr (struct thread **out, void (*fn) (void *),
   error = thread_create (out, &attr, fn, arg);
   if (error)
     task_destroy (task);
+  else
+    { // This effectively creates a root-like task.
+      for (size_t i = 0; i < ARRAY_SIZE (task->caps.kcount); ++i)
+        task->caps.kcount[i] = 1;
+    }
 
   return (error);
 }
@@ -329,7 +334,7 @@ test_util_uthr_join (struct test_uthread *uthr)
   vm_page_unref (uthr->exec);
 
   int ret = 0;
-  if (!task->map)
+  if (list_empty (&task->threads))
     { // This was the last thread in the task.
       vm_page_unref (uthr->utask->data);
       ret = task->terminate;

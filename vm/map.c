@@ -98,8 +98,16 @@ vm_map_entry_create (void)
   return (kmem_cache_alloc (&vm_map_entry_cache));
 }
 
+void
+vm_map_cache_free (struct list *list)
+{
+  list_for_each_safe (list, nd, tmp)
+    kmem_cache_free (&vm_map_entry_cache,
+                     structof (nd, struct vm_map_entry, list_node));
+}
+
 static int
-vm_map_entry_alloc (struct list *list, uint32_t n)
+vm_map_entry_alloc (struct list *list, uint32_t n, bool rollback)
 {
   list_init (list);
   for (uint32_t i = 0; i < n; ++i)
@@ -107,10 +115,8 @@ vm_map_entry_alloc (struct list *list, uint32_t n)
       _Auto entry = vm_map_entry_create ();
       if (! entry)
         {
-          list_for_each_safe (list, nd, tmp)
-            kmem_cache_free (&vm_map_entry_cache,
-                             structof (nd, struct vm_map_entry, list_node));
-
+          if (rollback)
+            vm_map_cache_free (list);
           return (ENOMEM);
         }
 
@@ -118,6 +124,12 @@ vm_map_entry_alloc (struct list *list, uint32_t n)
     }
 
   return (0);
+}
+
+int
+vm_map_cache_alloc (struct list *out, uint32_t count)
+{
+  return (vm_map_entry_alloc (out, count, false));
 }
 
 static struct vm_map_entry*
@@ -335,6 +347,16 @@ vm_map_unlink (struct vm_map *map, struct vm_map_entry *entry)
   --map->nr_entries;
 }
 
+void
+vm_map_remove_cached (struct vm_map *map, struct vm_map_entry *entry,
+                      struct list *out)
+{
+  sxlock_exlock (&map->lock);
+  vm_map_unlink (map, entry);
+  sxlock_unlock (&map->lock);
+  list_insert_tail (out, &entry->list_node);
+}
+
 /*
  * Check mapping parameters, find a suitable area of virtual memory, and
  * prepare the mapping request for that region.
@@ -536,6 +558,26 @@ vm_map_enter_locked (struct vm_map *map, uintptr_t *startp, size_t size,
   return (0);
 }
 
+int
+vm_map_enter_cached (struct vm_map *map, uintptr_t *vap,
+                     const struct vm_map_entry *entry,
+                     struct vm_map_entry *cache)
+{
+  struct vm_map_request req;
+  int flags = VM_MAP_FLAGS (VM_PROT_RDWR, VM_PROT_RDWR,
+                            VM_INHERIT_SHARE, VM_ADV_DEFAULT,
+                            VM_MAP_NOMERGE);
+
+  SXLOCK_EXGUARD (&map->lock);
+  int error = vm_map_prepare (map, *vap, entry->end - entry->start,
+                              flags, entry->object, entry->offset, &req);
+  if (error == 0)
+    error = vm_map_insert (map, cache, &req);
+
+  *vap = req.start;
+  return (error);
+}
+
 static int
 vm_map_umap_req (struct vm_object *obj, uint64_t offset, int flags)
 {
@@ -698,6 +740,8 @@ vm_map_remove_impl (struct vm_map *map, uintptr_t start,
   _Auto entry = vm_map_lookup_nearest (map, start);
   if (! entry)
     return (0);
+  else if (entry->flags & VM_MAP_NOMERGE)
+    return (EAGAIN);
 
   _Auto last = vm_map_lookup_nearest (map, end) ?: entry;
   struct list alloc_entries;
@@ -705,7 +749,7 @@ vm_map_remove_impl (struct vm_map *map, uintptr_t start,
                                   (start > entry->start &&
                                    start < entry->end) ||
                                   (end > last->start &&
-                                   end < last->end));
+                                   end < last->end), true);
   if (error)
     return (error);
 
@@ -783,7 +827,7 @@ vm_map_protect_entry (struct vm_map *map, struct vm_map_entry *entry,
   if (nr_entries != 0)
     {
       struct list entries;
-      int error = vm_map_entry_alloc (&entries, nr_entries);
+      int error = vm_map_entry_alloc (&entries, nr_entries, true);
       if (error)
         return (error);
 
@@ -1389,7 +1433,7 @@ vm_map_destroy (struct vm_map *map)
 static int
 vm_map_fork_copy_entries (struct vm_map *dst, struct vm_map *src)
 {
-  if (vm_map_entry_alloc (&dst->entry_list, src->nr_entries) != 0)
+  if (vm_map_entry_alloc (&dst->entry_list, src->nr_entries, true) != 0)
     return (ENOMEM);
 
   struct vm_map_entry *entry, *out;

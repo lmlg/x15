@@ -131,8 +131,8 @@ struct thread
 {
   __cacheline_aligned struct tcb tcb;   // (r)
 
+  uint32_t flags;          // (a)
   struct kuid_head kuid;   // (a)
-  unsigned long flags;     // (a)
 
   // Sleep/wake-up synchronization members.
   struct thread_runq *runq;   // (r,*)
@@ -218,7 +218,7 @@ struct thread
 
   union
     {
-      struct bulletin dead_subs;   // (-)
+      struct bulletin subs;       // (-)
       struct work work;
     };
 
@@ -226,7 +226,7 @@ struct thread
   void *cur_lpad;                 // (-)
   struct task *xtask;             // (-)
   struct pmap_window *pmap_windows[CPU_NR_PMAP_WINDOWS];   // (-)
-  struct uthread *uthread;   // (-)
+  struct uthread *uthread;        // (-)
 };
 
 // Thread IPC message (TODO: Move to a specific header).

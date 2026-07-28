@@ -116,13 +116,15 @@ INIT_OP_DEFINE (syscall_setup,
                 INIT_OP_DEP (cpu_setup, true));
 
 void
-syscall_enter (struct cpu_exc_frame *frame __unused)
+syscall_enter (struct cpu_exc_frame *frame)
 {
   // Capture/log transition to kernel space via system call.
+  uthread_self()->cpu_frame = frame;
 }
 
 void
 syscall_interrupt_enter (struct cpu_exc_frame *frame __unused)
 {
   // Capture/log transition to kernel space via interrupt or exception.
+  uthread_self()->cpu_frame = frame;
 }

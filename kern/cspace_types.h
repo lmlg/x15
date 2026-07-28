@@ -27,6 +27,7 @@ struct cspace
 {
   struct rdxtree tree;
   struct adaptive_lock lock;
+  uint32_t kcount[3];
 };
 
 #endif

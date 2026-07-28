@@ -106,7 +106,7 @@ typedef void (*pmap_walk_fn_t) (phys_addr_t, uint32_t, uint32_t);
 #define PMAP_NR_PCIDS   4096
 
 static unsigned long pmap_pcid_bitmap[BITMAP_LONGS (PMAP_NR_PCIDS)];
-static struct spinlock pmap_pcid_lock;
+__cacheline_aligned static struct spinlock pmap_pcid_lock;
 
 /*
  * PCID generation counter.
@@ -160,10 +160,12 @@ pmap_pcid_alloc (struct pmap *pmap, bool check)
   if (check && pmap->pcid_gen == pmap_pcid_gen)
     return;
 
+  cpu_flags_t flags = cpu_get_eflags ();
+  bool reset_intr = !(cpu_flags_intr_enabled (flags));
+
   while (1)
     {
-      unsigned int pcid = bitmap_find_first_zero (pmap_pcid_bitmap,
-                                                  PMAP_NR_PCIDS);
+      uint32_t pcid = bitmap_find_first_zero (pmap_pcid_bitmap, PMAP_NR_PCIDS);
       if (pcid != PMAP_NR_PCIDS)
         {
           bitmap_set (pmap_pcid_bitmap, pcid);
@@ -177,24 +179,28 @@ pmap_pcid_alloc (struct pmap *pmap, bool check)
        * the bitmap keeping only the PCIDs that are currently loaded.
        * This makes stale PCIDs safe for reuse.
        */
-      log_warning ("pmap: PCID space exhausted, recycling");
-
       struct pmap_pcid_recycle_arg arg;
       bitmap_zero (arg.bitmap, PMAP_NR_PCIDS);
       bitmap_set (arg.bitmap, 0);   // Kernel pmap.
 
       /*
-       * xcall requires interrupts to be enabled, but we're holding
-       * pmap_pcid_lock (a spinlock). Temporarily enable interrupts
-       * for the cross-call, then re-disable.
+       * xcall requires interrupts to be enabled, but it's possible that
+       * this call comes from 'pmap_load', which has interrupts disabled.
        */
-      cpu_intr_enable ();
+
+      if (reset_intr)
+        cpu_intr_enable ();
+
+      uint32_t this_cpu = cpu_id ();
+
       for (uint32_t i = 0; i < cpu_count (); ++i)
-        if (i != cpu_id ())
+        if (i != this_cpu)
           xcall_call (pmap_pcid_recycle_xcall, &arg, i);
 
       pmap_pcid_recycle_xcall (&arg);
-      cpu_intr_disable ();
+
+      if (reset_intr)
+        cpu_intr_disable ();
 
       memcpy (pmap_pcid_bitmap, arg.bitmap, sizeof (pmap_pcid_bitmap));
       ++pmap_pcid_gen;

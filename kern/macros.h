@@ -140,4 +140,13 @@
 // Cleanup functions.
 #define CLEANUP(fct)   __attribute__ ((cleanup (fct)))
 
+#define I64_MEMBER(type, name)   \
+  union   \
+    {   \
+      type name;   \
+      uint64_t name##_q;   \
+    }
+
+#define I64_ACCESS(expr)   CONCAT (expr, _q)
+
 #endif

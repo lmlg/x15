@@ -745,8 +745,7 @@ cpu_exc_sync_signal (const struct cpu_exc_frame *frame,
 {
   struct thread *self = thread_self ();
 
-  if (!self->uthread ||
-      (frame->words[CPU_EXC_FRAME_CS] & 3) != CPU_PL_USER)
+  if (!self->uthread || !cpu_exc_frame_is_user (frame))
     {
       cpu_exc_default (frame);
       return;

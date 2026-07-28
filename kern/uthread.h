@@ -25,8 +25,19 @@
 
 #include <kern/futex.h>
 #include <kern/init.h>
+#include <kern/list_types.h>
 #include <kern/mutex.h>
 #include <kern/slist_types.h>
+
+struct cpu_exc_frame;
+
+enum
+{
+  UTHR_CACHE_ALL = -1,
+  UTHR_CACHE_VME,
+  UTHR_CACHE_LPAD,
+  UTHR_CACHE_NMAX,
+};
 
 struct uthread
 {
@@ -40,13 +51,38 @@ struct uthread
   struct mutex mutex;
   stack_t sigaltstack;
   uint8_t rtsig_count[SIGRTMAX - SIGRTMIN + 1];
+  struct cpu_exc_frame *cpu_frame;
+  struct
+    {
+      struct list links[UTHR_CACHE_NMAX];
+    } cache;
 };
 
+static inline struct list*
+uthread_get_cache_list (struct uthread *uthread, int which)
+{
+  return (&uthread->cache.links[which]);
+}
+
+// Allocate a new userspace thread structure.
 struct uthread* uthread_allocate (void);
 
+// Release the resources allocated for a userspace thread.
 void uthread_free (struct uthread *uthread);
 
+// De-initialize a userspace thread.
 void uthread_exit (struct uthread *uthread);
+
+// Manipulate a userspace object cache.
+void uthread_cache_fill (struct uthread *uthread, int which);
+struct list* uthread_cache_pop (struct uthread *uthread, int which);
+void uthread_cache_push (struct uthread *uthread, int which, struct list *obj);
+
+// Get or set the stack pointer of a user thread before the syscall/interrupt.
+uintptr_t uthread_get_sp (const struct uthread *uthread);
+void uthread_set_sp (struct uthread *uthread, uintptr_t sp);
+
+#define uthread_self()   ((struct uthread *)thread_self()->uthread)
 
 INIT_OP_DECLARE (uthread_setup);
 

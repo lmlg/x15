@@ -26,6 +26,8 @@
 #include <kern/task.h>
 #include <kern/thread.h>
 
+#include <machine/cpu.h>
+
 #include <test/test.h>
 
 #include <vm/map.h>
@@ -54,6 +56,13 @@ struct test_cap_vars
   struct ipc_msg_cap mcap[2];
   struct cap_thread_info info;
   struct cap_kern_alert alert;
+};
+
+struct cap_test_rt_data
+{
+  struct cap_flow *flow;
+  struct semaphore sem_1;
+  struct semaphore sem_2;
 };
 
 static struct test_cap_data test_cap_data;
@@ -87,6 +96,7 @@ test_cap_entry (struct ipc_msg *msg, struct ipc_msg_data *mdata)
 
   _Auto vars = structof (msg, struct test_cap_vars, msg);
   test_assert_ne (vars->bufsize, 0);
+  CPU_INTR_GUARD ();
   ssize_t nb = cap_pull_bytes (vars->buf, vars->bufsize, mdata);
 
   test_assert_gt (nb, 0);
@@ -482,8 +492,94 @@ test_cap_dead_notif (void *arg __unused)
   test_assert_eq (got_task, 1);
 }
 
+#define TEST_CAP_RT_SEND_STR   "abcdef123"
+#define TEST_CAP_RT_RECV_STR   "321fedcba"
+
+#if !defined (__LP64__) && defined (__i386__)
+__attribute__ ((regparm (2)))
+#endif
+static void
+test_cap_rt_handler (struct ipc_msg *msg, struct ipc_msg_data *mdata)
+{
+  test_assert_ne (mdata->flags & IPC_MSG_RT, 0);
+  test_assert_zero (memcmp (msg->iovs->iov_base, TEST_CAP_RT_SEND_STR,
+                            sizeof (TEST_CAP_RT_SEND_STR)));
+  char reply[] = TEST_CAP_RT_RECV_STR;
+  CPU_INTR_GUARD ();
+  cap_reply_bytes (reply, sizeof (reply), (int)sizeof (reply));
+  panic ("cap_reply_bytes returned!");
+}
+
+static void
+test_cap_rt_recv (void *arg)
+{
+  struct cap_test_rt_data *data = arg;
+  int rv = cap_flow_create (&data->flow, 0, 1, (uintptr_t)test_cap_rt_handler);
+  test_assert_zero (rv);
+
+  rv = cap_flow_set_rt (data->flow, task_self ());
+  test_assert_zero (rv);
+
+  semaphore_post (&data->sem_1);
+  semaphore_wait (&data->sem_2);
+}
+
+static void
+test_cap_rt_send (void *arg)
+{
+  struct
+    {
+      struct cap_iters src;
+      struct cap_iters dst;
+      struct ipc_msg_data mdata;
+      char buf[sizeof (TEST_CAP_RT_SEND_STR)];
+      struct cpu_exc_frame frame;
+    } *local;
+
+  struct cap_test_rt_data *data = arg;
+  int error = vm_map_anon_alloc ((void **)&local, vm_map_self (),
+                                 PAGE_SIZE * 10);
+  test_assert_zero (error);
+
+  _Auto self = thread_self ();
+  self->uthread = uthread_allocate ();
+  test_assert_nonnull (self->uthread);
+  self->uthread->cpu_frame = &local->frame;
+
+  { // Fill the user thread cache and make sure there are entries.
+    uthread_cache_fill (self->uthread, UTHR_CACHE_ALL);
+    _Auto node = uthread_cache_pop (self->uthread, UTHR_CACHE_VME);
+    test_assert_nonnull (node);
+    uthread_cache_push (self->uthread, UTHR_CACHE_VME, node);
+    node = uthread_cache_pop (self->uthread, UTHR_CACHE_LPAD);
+    test_assert_nonnull (node);
+    uthread_cache_push (self->uthread, UTHR_CACHE_LPAD, node);
+  }
+
+  uthread_set_sp (self->uthread, (uintptr_t)local + PAGE_SIZE * 10 - 16);
+  semaphore_wait (&data->sem_1);
+  test_assert_nonnull (data->flow);
+  test_assert_nonnull (data->flow->rt_task);
+
+  memcpy (local->buf, TEST_CAP_RT_SEND_STR, sizeof (local->buf));
+  ipc_iov_iter_init_buf (&local->src.iov, local->buf, sizeof (local->buf));
+  ipc_cap_iter_init (&local->src.cap, 0, 0);
+  ipc_vme_iter_init (&local->src.vme, 0, 0);
+
+  ipc_iov_iter_init_buf (&local->dst.iov, local->buf, sizeof (local->buf));
+  local->mdata.size = sizeof (local->mdata);
+  ssize_t rv = cap_send_iters (CAP (data->flow), &local->src,
+                               &local->dst, &local->mdata, IPC_MSG_RT);
+
+  test_assert_gt (rv, 0);
+  test_assert_zero (memcmp (local->buf, TEST_CAP_RT_RECV_STR,
+                            sizeof (local->buf)));
+  semaphore_post (&data->sem_2);
+}
+
 TEST_DEFERRED (cap)
 {
+  int error;
   _Auto data = &test_cap_data;
 
   semaphore_init (&data->send_sem, 0, 0xff);
@@ -491,8 +587,8 @@ TEST_DEFERRED (cap)
   semaphore_init (&data->dead_sem, 0, 0xff);
 
   struct thread *sender, *receiver, *misc, *dead_notif;
-  int error = test_util_create_thr (&sender, test_cap_sender,
-                                    data, "cap_sender");
+  error = test_util_create_thr (&sender, test_cap_sender,
+                                data, "cap_sender");
   test_assert_zero (error);
 
   error = test_util_create_thr (&receiver, test_cap_receiver,
@@ -509,6 +605,25 @@ TEST_DEFERRED (cap)
   thread_join (receiver);
   thread_join (misc);
   thread_join (dead_notif);
+
+  {
+    struct cap_test_rt_data rtd;
+    semaphore_init (&rtd.sem_1, 0, 0xff);
+    semaphore_init (&rtd.sem_2, 0, 0xff);
+
+    struct thread *rt_send, *rt_recv;
+    error = test_util_create_thr (&rt_recv, test_cap_rt_recv,
+                                  &rtd, "cap_rt_receiver");
+    test_assert_zero (error);
+
+    error = test_util_create_thr (&rt_send, test_cap_rt_send,
+                                  &rtd, "cap_rt_sender");
+    test_assert_zero (error);
+
+    thread_join (rt_send);
+    thread_join (rt_recv);
+    cap_base_rel (rtd.flow);
+  }
 
   return (TEST_OK);
 }

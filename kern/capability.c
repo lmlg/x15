@@ -79,20 +79,36 @@ struct cap_alert_async
  * When a thread initiates message passing, a landing pad is added to
  * an internal list. Messaging operations update the iterators and
  * metadata that is contained within the "current" landing pad.
+ *
+ * Members marked with an '*' are usable only for real-time threads and
+ * when using its internal caches.
  */
 struct cap_lpad
 {
-  struct cap_base *src;
-  struct cap_lpad *next;
+  union
+    {
+      struct
+        {
+          struct cap_base *src;
+          struct cap_lpad *next;
+        };
+
+      struct list cache_link;   // (*)
+    };
+
   struct task *task;
-  size_t size;
+  union
+    {
+      size_t size;
+      struct vm_map_entry *vm_entry;   // (*)
+    };
+
   uintptr_t ctx[3];   // SP and function arguments.
   struct ipc_msg_data mdata;
-  uint16_t nr_cached_iovs;
-  uint16_t xflags;
-  struct cap_iters in_it;
-  struct cap_iters *cur_in;
-  struct cap_iters *cur_out;
+  uint32_t xflags;
+  struct cap_iters cur_in;
+  struct cap_iters cur_out;
+  struct ipc_msg saved;
 };
 
 // A thread waiting on 'cap_recv_alert'.
@@ -110,6 +126,17 @@ struct cap_sender
 {
   struct list lnode;
   struct thread *thread;
+};
+
+struct cap_rt_data
+{
+  char buf[128];
+  struct iovec iov;
+  struct ipc_msg_cap cap;
+  struct ipc_msg_vme vme;
+  struct ipc_msg msg;
+  struct ipc_msg_data mdata;
+  struct cap_thread_info thr_info;
 };
 
 static struct kmem_cache cap_flow_cache;
@@ -260,9 +287,9 @@ cap_task_thread_rem (int id, int type, struct list *link)
   do   \
     {   \
       _Auto ptr = structof (obj, type, kuid);   \
-      spinlock_lock (&ptr->dead_subs.lock);   \
+      spinlock_lock (&ptr->subs.lock);   \
       list_remove (link);   \
-      spinlock_unlock (&ptr->dead_subs.lock);   \
+      spinlock_unlock (&ptr->subs.lock);   \
       unref (ptr);   \
     }   \
   while (0)
@@ -313,6 +340,9 @@ cap_flow_fini (struct sref_counter *sref)
       lpad = next;
     }
 
+  if (flow->rt_task)
+    task_unref (flow->rt_task);
+
   kmem_cache_free (&cap_flow_cache, flow);
 }
 
@@ -334,6 +364,7 @@ cap_flow_create (struct cap_flow **outp, uint32_t flags,
   ret->base.tflags |= flags;
   ret->tag = tag;
   ret->entry = entry;
+  ret->rt_task = NULL;
 
   spinlock_init (&ret->alerts.lock);
   list_init (&ret->alerts.receivers);
@@ -384,15 +415,23 @@ cap_flow_hook (struct cap_channel **outp, struct task *task, int capx)
   return (ret);
 }
 
+int
+cap_flow_set_rt (struct cap_flow *flow, struct task *task)
+{
+  CAP_FLOW_GUARD (flow);
+  if (flow->rt_task)
+    return (EAGAIN);
+
+  task_ref (flow->rt_task = task);
+  return (0);
+}
+
 static void
 cap_ipc_msg_data_init (struct ipc_msg_data *data, uintptr_t tag)
 {
+  memset (data, 0, sizeof (*data));
   data->size = sizeof (*data);
   data->tag = tag;
-  data->qbr = data->qbs = 0;
-  data->flags = 0;
-  data->vmes_sent = data->caps_sent = 0;
-  data->vmes_recv = data->caps_recv = 0;
 }
 
 /*
@@ -410,7 +449,7 @@ cap_transfer_iters (struct task *task, struct cap_iters *r_it,
     return (ret);
   else if (((ssize_t)(*bytesp += ret)) < 0)
     {
-      *bytesp = SIZE_MAX / 2;
+      *bytesp -= ret;
       return (-EOVERFLOW);
     }
 
@@ -483,9 +522,18 @@ cap_recv_pop_alert (struct cap_flow *flow, void *buf, uint32_t flags,
   struct cap_receiver recv;
   cap_receiver_add (flow, &recv, buf);
 
-  do
-    thread_sleep (&flow->alerts.lock, flow, "flow-alert");
-  while (pqueue_empty (&flow->alerts.pending));
+  while (1)
+    {
+      int rv = thread_sleep (&flow->alerts.lock, flow, "flow-alert");
+      if (!pqueue_empty (&flow->alerts.pending))
+        break;
+      else if (rv == EINTR)
+        {
+          list_remove (&recv.lnode);
+          *outp = EINTR;
+          return (NULL);
+        }
+    }
 
   if (recv.woken)
     return (pqueue_pop (&flow->alerts.pending));
@@ -502,6 +550,19 @@ cap_recv_pop_alert (struct cap_flow *flow, void *buf, uint32_t flags,
   return (NULL);
 }
 
+static int
+cap_recv_alert_rollback (struct cap_flow *flow, struct pqueue_node *pnode,
+                         struct spinlock_guard *guard, struct hlist_node *hnp)
+{
+  cap_flow_guard_lock (guard);
+  pqueue_insert (&flow->alerts.pending, pnode);
+  if (hnp)
+    hlist_insert_head (&flow->alerts.alloc, hnp);
+  cap_recv_wakeup_fast (flow);
+  cap_flow_guard_fini (guard);
+  return (EFAULT);
+}
+
 int
 cap_recv_alert (struct cap_flow *flow, void *buf,
                 uint32_t flags, struct ipc_msg_data *mdata)
@@ -509,7 +570,6 @@ cap_recv_alert (struct cap_flow *flow, void *buf,
   uint32_t ids[2] = { 0, 0 };
   uintptr_t tag = 0;
   _Auto guard = cap_flow_guard_make (flow);
-
   int error = 0;
   _Auto pnode = cap_recv_pop_alert (flow, buf, flags, mdata, &error, &guard);
 
@@ -520,6 +580,7 @@ cap_recv_alert (struct cap_flow *flow, void *buf,
   void *payload;
   struct cap_kern_alert tmp_alert;
   int type = cap_alert_type (pnode);
+  bool detach = false;
 
   if (type == CAP_ALERT_CHAN_CLOSED)
     {
@@ -534,15 +595,14 @@ cap_recv_alert (struct cap_flow *flow, void *buf,
       entry = pqueue_entry (pnode, struct cap_alert, pnode);
       payload = entry->payload;
 
-      if (type == CAP_ALERT_INTR)
-        { // Copy into a temp buffer so we may reset the counter.
-          tmp_alert = entry->k_alert;
-          entry->k_alert.intr.count = 0;
-          payload = &tmp_alert;
+      if (type == CAP_ALERT_THREAD_DIED ||
+          (type == CAP_ALERT_TASK_NOTIF &&
+           (entry->k_alert.task.flags & CAP_TASK_EXITED)))
+        {
+          detach = true;
+          hlist_remove (&entry->hnode);
         }
-      else if (type != CAP_ALERT_USER)
-        hlist_remove (&entry->hnode);
-      else
+      else if (type == CAP_ALERT_USER)
         {
           ids[0] = entry->task_id;
           ids[1] = entry->thread_id;
@@ -554,30 +614,26 @@ cap_recv_alert (struct cap_flow *flow, void *buf,
   cap_flow_guard_fini (&guard);
 
   if (unlikely (user_copy_to (buf, payload, CAP_ALERT_SIZE) != 0))
+    return (cap_recv_alert_rollback (flow, pnode, &guard,
+                                     detach ? &entry->hnode : NULL));
+  else if (type == CAP_ALERT_INTR)
     {
-      cap_flow_guard_lock (&guard);
-      pqueue_insert (&flow->alerts.pending, pnode);
-
-      if (type == CAP_ALERT_INTR)
-        entry->k_alert.intr.count += tmp_alert.intr.count;
-      else if (type != CAP_ALERT_USER && entry)
-        hlist_insert_head (&flow->alerts.alloc, &entry->hnode);
-
-      cap_recv_wakeup_fast (flow);
-      cap_flow_guard_fini (&guard);
-      return (EFAULT);
+      /*
+       * Unmask the interrupt now that the alert has been delivered to
+       * the receiver. This re-enables the interrupt at the controller
+       * level, allowing the next interrupt to fire. If the device is
+       * still asserting (level-triggered), a new interrupt is delivered
+       * immediately, which will be masked again in cap_handle_intr.
+       */
+      entry->k_alert.intr.flags &= ~CAP_INTR_RAISED;
+      intr_enable (entry->k_alert.intr.irq);
     }
-
-  /*
-   * Unmask the interrupt now that the alert has been delivered to
-   * the receiver. This re-enables the interrupt at the controller
-   * level, allowing the next interrupt to fire. If the device is
-   * still asserting (level-triggered), a new interrupt is delivered
-   * immediately, which will be masked again in cap_handle_intr.
-   */
-
-  if (type == CAP_ALERT_INTR)
-    intr_enable (tmp_alert.intr.irq);
+  else if (type == CAP_ALERT_USER || detach)
+    /*
+     * Free the alert if it was sent by a user, or it indicates that either
+     * a thread or a task died.
+     */
+    kmem_cache_free (&cap_misc_cache, entry);
 
   if (mdata)
     {
@@ -587,17 +643,6 @@ cap_recv_alert (struct cap_flow *flow, void *buf,
       tmp.task_id = ids[0], tmp.thread_id = ids[1];
       user_write_struct (mdata, &tmp, sizeof (tmp));
     }
-
-  /*
-   * Free the alert if one of the following apply:
-   - It was sent by a user.
-   - It indicates that a either a thread or a task died.
-   */
-  if (entry &&
-      (type == CAP_ALERT_USER || type == CAP_ALERT_THREAD_DIED ||
-       (type == CAP_ALERT_TASK_NOTIF &&
-        (entry->k_alert.task.flags & CAP_TASK_EXITED))))
-    kmem_cache_free (&cap_misc_cache, entry);
 
   return (0);
 }
@@ -678,6 +723,102 @@ int
   return (rv < 0 ? (int)-rv : 0);
 }
 
+static struct cap_lpad*
+cap_rt_lpad_build (struct thread *thr, struct task *r_task)
+{
+  struct list *vme = NULL, *lpe = NULL;
+  struct vm_map_entry *entry = NULL;
+  struct uthread *uthread = thr->uthread;
+  uintptr_t va = 0;
+
+  if (! r_task)
+    return (NULL);
+
+  vme = uthread_cache_pop (uthread, UTHR_CACHE_VME);
+  if (! vme)
+    goto novme_err;
+
+  lpe = uthread_cache_pop (uthread, UTHR_CACHE_LPAD);
+  if (! lpe)
+    goto nolpe_err;
+
+  // Use the page below the current stack pointer.
+  uintptr_t sp = uthread_get_sp (thr->uthread);
+  sp = (sp - PAGE_SIZE) & ~(PAGE_SIZE - 1);
+
+  entry = vm_map_find (thr->xtask->map, sp);
+  if (! entry)
+    goto noentry_err;
+
+  _Auto vm_cache = list_entry (vme, struct vm_map_entry, list_node);
+  int rv = vm_map_enter_cached (r_task->map, &va, entry, vm_cache);
+  if (rv != 0)
+    goto vmadd_err;
+
+  struct unw_fixup fixup;
+  int err = unw_fixup_save (&fixup);
+
+  if (err)
+    goto stkwrite_err;
+
+  /*
+   * We'll build the landing pad directly on our stack instead of going
+   * through VM operations for 2 reasons:
+   * - Since this is aimed to real-time threads, it's expected that the
+   *   stack is pre-faulted.
+   * - By using unwind fixups, we can avoid the complexity of setting up
+   *   window mappings and bookeeping VM pages.
+   */
+
+  struct cap_rt_data *rtp = (void *)(sp - sizeof (*rtp));
+  uintptr_t base = va + (sp - entry->start) - sizeof (*rtp);
+  _Auto lpad = list_entry (lpe, struct cap_lpad, cache_link);
+
+  /*
+   * When using addresses, we need to make them relative to where they are
+   * going to be mapped in the remote task, not the local one.
+   */
+
+#define CAP_RT_ADDR(nm)   ((void *)(base + OFFSETOF (struct cap_rt_data, nm)))
+  rtp->iov.iov_base = CAP_RT_ADDR (buf[0]);
+  rtp->iov.iov_len = sizeof (rtp->buf);
+  memset (&rtp->thr_info, 0, sizeof (rtp->thr_info));
+  rtp->msg.iovs = CAP_RT_ADDR (iov);
+  rtp->msg.caps = CAP_RT_ADDR (cap);
+  rtp->msg.vmes = CAP_RT_ADDR (vme);
+  rtp->msg.iov_cnt = rtp->msg.cap_cnt = rtp->msg.vme_cnt = 1;
+  rtp->mdata.size = sizeof (rtp->mdata);
+
+  ipc_iov_iter_init_buf (&lpad->cur_in.iov, CAP_RT_ADDR (buf[0]),
+                         sizeof (rtp->buf));
+  ipc_cap_iter_init (&lpad->cur_in.cap, CAP_RT_ADDR (cap), 1);
+  ipc_vme_iter_init (&lpad->cur_in.vme, CAP_RT_ADDR (vme), 1);
+
+  lpad->task = r_task;
+  lpad->vm_entry = vm_cache;
+  lpad->mdata.flags = lpad->xflags = IPC_MSG_RT;
+
+  lpad->ctx[0] = (base - 16) & ~0xf;
+  lpad->ctx[1] = (uintptr_t)CAP_RT_ADDR (msg);
+  lpad->ctx[2] = (uintptr_t)CAP_RT_ADDR (mdata);
+#undef CAP_RT_ADDR
+#undef ERR
+
+  vm_map_entry_put (entry);
+  return (lpad);
+
+stkwrite_err:
+  vm_map_remove (r_task->map, va, va + (entry->end - entry->start));
+vmadd_err:
+  vm_map_entry_put (entry);
+noentry_err:
+  uthread_cache_push (uthread, UTHR_CACHE_LPAD, lpe);
+nolpe_err:
+  uthread_cache_push (uthread, UTHR_CACHE_VME, vme);
+novme_err:
+  return (NULL);
+}
+
 static void
 cap_task_swap (struct task **taskp, struct thread *self)
 {
@@ -726,43 +867,61 @@ cap_lpad_pop_free (struct cap_lpad **ptr)
   RCU_GUARD ();
   while (1)
     {
-      _Auto tmp = atomic_load_rlx (ptr);
+      _Auto tmp = rcu_load (ptr);
       if (! tmp)
         return (tmp);
       else if (atomic_cas_bool_acq (ptr, tmp, tmp->next))
-        {
-          tmp->next = NULL;
-          return (tmp);
-        }
+        return (tmp);
 
       atomic_spin_nop ();
     }
 }
 
 static struct cap_lpad*
-cap_flow_pop_lpad (struct cap_flow *flow, struct thread *self)
+cap_flow_pop_lpad (struct cap_flow *flow, struct thread *self, uint32_t xflags)
 {
   _Auto ret = cap_lpad_pop_free (&flow->lpads.free_list);
+  if (!ret && (xflags & IPC_MSG_RT))
+    ret = cap_rt_lpad_build (self, flow->rt_task);
+
   if (ret)
     return (ret);
 
   struct cap_sender sender = { .thread = self };
   SPINLOCK_GUARD (&flow->lpads.lock);
   list_insert_tail (&flow->lpads.waiters, &sender.lnode);
+
   atomic_fence_rel ();
-
-  while ((ret = cap_lpad_pop_free (&flow->lpads.free_list)) == NULL)
-    thread_sleep (&flow->lpads.lock, flow, "flow-send");
-
-  list_remove (&sender.lnode);
-  return (ret);
+  while (1)
+    {
+      ret = cap_lpad_pop_free (&flow->lpads.free_list);
+      if (ret || thread_sleep (&flow->lpads.lock, flow, "flow-send") == EINTR)
+        {
+          list_remove (&sender.lnode);
+          return (ret);
+        }
+    }
 }
 
-#define CAP_MSG_MASK        (IPC_MSG_TRUNC | IPC_MSG_ERROR | IPC_MSG_KERNEL)
+#define CAP_MSG_MASK        (IPC_MSG_TRUNC | IPC_MSG_ERROR |   \
+                             IPC_MSG_KERNEL | IPC_MSG_RT)
 #define CAP_MSG_REQ_PAGES   0x1000
 
 static_assert ((CAP_MSG_REQ_PAGES & CAP_MSG_MASK) == 0,
                "CAP_MSG_REQ_PAGES must not intersect message mask");
+
+static void
+cap_lpad_prepare (struct cap_lpad *lpad, struct cap_iters *in,
+                  struct cap_iters *out)
+{
+  ipc_iov_iter_init_cpy (&lpad->cur_in.iov, &in->iov);
+  ipc_cap_iter_init_cpy (&lpad->cur_in.cap, &in->cap);
+  ipc_vme_iter_init_cpy (&lpad->cur_in.vme, &in->vme);
+
+  ipc_iov_iter_init_cpy (&lpad->cur_out.iov, &out->iov);
+  ipc_cap_iter_init_cpy (&lpad->cur_out.cap, &out->cap);
+  ipc_vme_iter_init_cpy (&lpad->cur_out.vme, &out->vme);
+}
 
 static ssize_t
 cap_sender_impl (struct cap_flow *flow, uintptr_t tag, struct cap_iters *in,
@@ -770,17 +929,19 @@ cap_sender_impl (struct cap_flow *flow, uintptr_t tag, struct cap_iters *in,
                  uint32_t xflags, struct cap_base *src)
 {
   struct thread *self = thread_self ();
-  _Auto lpad = cap_flow_pop_lpad (flow, self);
+  _Auto lpad = cap_flow_pop_lpad (flow, self, xflags);
+  if (! lpad)
+    return (-EINTR);
+
   uint32_t dirf = IPC_COPY_TO | IPC_CHECK_REMOTE |
                   ((xflags & IPC_MSG_KERNEL) ? 0 : IPC_CHECK_LOCAL);
 
   cap_ipc_msg_data_init (&lpad->mdata, tag);
-  ssize_t nb = cap_transfer_iters (lpad->task, &lpad->in_it, in,
+  ssize_t nb = cap_transfer_iters (lpad->task, &lpad->cur_in, in,
                                    dirf, &lpad->mdata.bytes_recv);
 
   lpad->mdata.flags |= (xflags & CAP_MSG_MASK) | (nb < 0 ? IPC_MSG_ERROR : 0);
-  lpad->cur_in = in;
-  lpad->cur_out = out;
+  cap_lpad_prepare (lpad, in, out);
   lpad->xflags = xflags & ~CAP_MSG_MASK;
 
   struct cap_lpad *cur_lpad = self->cur_lpad;
@@ -788,7 +949,7 @@ cap_sender_impl (struct cap_flow *flow, uintptr_t tag, struct cap_iters *in,
   cap_fill_ids (&lpad->mdata.thread_id, &lpad->mdata.task_id, self);
   lpad->src = src;
 
-  // Switch task (also sets the pmap).
+  // Switch task and pmap.
   cap_task_swap (&lpad->task, self);
   user_write_struct ((void *)lpad->ctx[2], &lpad->mdata, sizeof (lpad->mdata));
 
@@ -801,7 +962,16 @@ cap_sender_impl (struct cap_flow *flow, uintptr_t tag, struct cap_iters *in,
   if (data && user_write_struct (data, &lpad->mdata, sizeof (*data)) != 0)
     ret = -EFAULT;
 
-  cap_flow_push_lpad (flow, lpad);
+  if (likely ((lpad->mdata.flags & IPC_MSG_RT) == 0))
+    cap_flow_push_lpad (flow, lpad);
+  else
+    { // Put back the VME and landing pad cache entries.
+      vm_map_remove_cached (lpad->task->map, lpad->vm_entry,
+                            uthread_get_cache_list (self->uthread,
+                                                    UTHR_CACHE_VME));
+      uthread_cache_push (self->uthread, UTHR_CACHE_LPAD, &lpad->cache_link);
+    }
+
   self->cur_lpad = cur_lpad;
   return (ret);
 }
@@ -868,7 +1038,7 @@ cap_pull_iters (struct cap_iters *it, struct ipc_msg_data *mdata)
   cap_ipc_msg_data_init (&tmp, lpad->mdata.tag);
 
   ssize_t prev = tmp.bytes_recv = lpad->mdata.bytes_recv,
-          ret = cap_transfer_iters (lpad->task, lpad->cur_in, it,
+          ret = cap_transfer_iters (lpad->task, &lpad->cur_in, it,
                                     IPC_COPY_FROM | IPC_CHECK_BOTH,
                                     &tmp.bytes_recv);
 
@@ -897,7 +1067,7 @@ cap_push_iters (struct cap_iters *it, struct ipc_msg_data *mdata)
   cap_ipc_msg_data_init (&tmp, lpad->mdata.tag);
 
   ssize_t prev = (tmp.bytes_sent = lpad->mdata.bytes_sent),
-          ret = cap_transfer_iters (lpad->task, lpad->cur_out, it,
+          ret = cap_transfer_iters (lpad->task, &lpad->cur_out, it,
                                     IPC_COPY_TO | IPC_CHECK_BOTH,
                                     &tmp.bytes_sent);
 
@@ -922,25 +1092,26 @@ cap_mdata_swap (struct ipc_msg_data *mdata)
 }
 
 static void
-cap_lpad_iters_reset (struct cap_lpad *lpad)
+cap_lpad_fill_cache (struct cap_lpad *lpad)
 {
-#define cap_reset_iter(name)   \
-  ipc_##name##_iter_init (&lpad->in_it.name, lpad->in_it.name.begin,   \
-                          lpad->in_it.name.end)
-  cap_reset_iter (iov);
-  cap_reset_iter (cap);
-  cap_reset_iter (vme);
+  uint32_t nmax = MIN (lpad->saved.iov_cnt, IPC_IOV_ITER_CACHE_SIZE);
+  _Auto outv = lpad->cur_in.iov.cache + IPC_IOV_ITER_CACHE_SIZE;
+  lpad->cur_in.iov.cache_idx = IPC_IOV_ITER_CACHE_SIZE;
 
-#undef cap_reset_iter
-
-  lpad->in_it.iov.cur = lpad->nr_cached_iovs;
-  lpad->in_it.iov.cache_idx = IPC_IOV_ITER_CACHE_SIZE - lpad->nr_cached_iovs;
+  if (nmax && user_copy_from (outv - nmax, lpad->saved.iovs,
+                              nmax * sizeof (*outv)) == 0)
+    {
+      lpad->cur_in.iov.head.iov_len = 0;
+      lpad->cur_in.iov.cur += nmax;
+      lpad->cur_in.iov.cache_idx -= nmax;
+    }
 }
 
 noreturn static void
 cap_lpad_return (struct cap_lpad *lpad, struct thread *self, ssize_t rv)
 {
-  cap_lpad_iters_reset (lpad);
+  cap_iters_from_msg (&lpad->cur_in, &lpad->saved);
+  cap_lpad_fill_cache (lpad);
   cap_task_swap (&lpad->task, self);
   cpu_lpad_return (lpad->ctx[0], rv);
 }
@@ -952,14 +1123,14 @@ cap_reply_iters (struct cap_iters *it, int rv)
   struct cap_lpad *lpad = self->cur_lpad;
   ssize_t ret;
 
-  if (!lpad || lpad->xflags)
+  if (!lpad || (lpad->xflags & IPC_MSG_KERNEL))
     return (-EINVAL);
   else if (rv >= 0)
     {
       if (cap_test_overflow (&lpad->mdata.bytes_sent, it))
         return (-EOVERFLOW);
 
-      ret = cap_transfer_iters (lpad->task, lpad->cur_out, it,
+      ret = cap_transfer_iters (lpad->task, &lpad->cur_out, it,
                                 IPC_COPY_TO | IPC_CHECK_BOTH,
                                 &lpad->mdata.bytes_sent);
       if (ret > 0)
@@ -975,21 +1146,6 @@ cap_reply_iters (struct cap_iters *it, int rv)
     ret = rv;
 
   cap_lpad_return (lpad, self, ret);
-}
-
-static void
-cap_lpad_fill_cache (struct cap_lpad *lpad, struct ipc_msg *msg)
-{
-  uint32_t nmax = MIN (msg->iov_cnt, IPC_IOV_ITER_CACHE_SIZE);
-  _Auto outv = lpad->in_it.iov.cache + IPC_IOV_ITER_CACHE_SIZE;
-
-  if (likely (user_copy_from (outv - nmax, msg->iovs,
-                              nmax * sizeof (*outv)) == 0))
-    {
-      lpad->in_it.iov.cur += nmax;
-      lpad->in_it.iov.cache_idx = IPC_IOV_ITER_CACHE_SIZE - nmax;
-      lpad->nr_cached_iovs = nmax;
-    }
 }
 
 int
@@ -1010,8 +1166,24 @@ cap_flow_add_lpad (struct cap_flow *flow, void *stack, size_t size,
   entry->ctx[1] = (uintptr_t)msg;
   entry->ctx[2] = (uintptr_t)mdata;
   memset (&entry->mdata, 0, sizeof (entry->mdata));
-  cap_iters_init_msg (&entry->in_it, msg);
-  cap_lpad_fill_cache (entry, msg);
+
+  if (cap_iters_init_msg (&entry->cur_in, msg) != 0)
+    {
+      kmem_cache_free (&cap_lpad_cache, entry);
+      return (-EFAULT);
+    }
+
+#define CAP_SAVE(mem)   \
+  entry->saved.mem##s = entry->cur_in.mem.begin;   \
+  entry->saved.mem##_cnt = entry->cur_in.mem.end
+
+  CAP_SAVE (iov);
+  CAP_SAVE (cap);
+  CAP_SAVE (vme);
+
+#undef CAP_SAVE
+
+  cap_lpad_fill_cache (entry);
   task_ref (entry->task = task_self ());
 
   cap_flow_push_lpad (flow, entry);
@@ -1028,7 +1200,7 @@ cap_flow_rem_lpad (struct cap_flow *flow, uintptr_t stack, bool unmap)
     RCU_GUARD ();
     for (_Auto pptr = &flow->lpads.free_list ; ; pptr = &entry->next)
       {
-        entry = atomic_load_rlx (pptr);
+        entry = rcu_load (pptr);
         if (! entry)
           return (ESRCH);
         else if (entry->task == self &&
@@ -1081,8 +1253,10 @@ cap_handle_intr (void *arg)
     {
       _Auto alert = list_entry (tmp, struct cap_alert_async, xlink);
       SPINLOCK_GUARD (&alert->flow->alerts.lock);
-      if (++alert->base.k_alert.intr.count == 1)
+
+      if (!(alert->base.k_alert.intr.flags & CAP_INTR_RAISED))
         {
+          alert->base.k_alert.intr.flags |= CAP_INTR_RAISED;
           pqueue_insert (&alert->flow->alerts.pending, &alert->base.pnode);
           cap_recv_wakeup_fast (alert->flow);
         }
@@ -1152,7 +1326,7 @@ cap_intr_register (struct cap_flow *flow, uint32_t irq)
   ap->flow = flow;
   ap->base.k_alert.type = CAP_ALERT_INTR;
   ap->base.k_alert.intr.irq = irq;
-  ap->base.k_alert.intr.count = 0;
+  ap->base.k_alert.intr.flags = 0;
 
   int error = cap_intr_add (irq, &ap->xlink);
   if (error)
@@ -1272,7 +1446,7 @@ cap_thread_register (struct cap_flow *flow, struct thread *thr)
     return (EINVAL);
 
   return (cap_register_task_thread (flow, &thr->kuid, CAP_ALERT_THREAD_PRIO,
-                                    CAP_ALERT_THREAD_DIED, &thr->dead_subs));
+                                    CAP_ALERT_THREAD_DIED, &thr->subs));
 }
 
 int
@@ -1282,7 +1456,7 @@ cap_task_register (struct cap_flow *flow, struct task *task)
     return (EINVAL);
 
   return (cap_register_task_thread (flow, &task->kuid, CAP_ALERT_TASK_PRIO,
-                                    CAP_ALERT_TASK_NOTIF, &task->dead_subs));
+                                    CAP_ALERT_TASK_NOTIF, &task->subs));
 }
 
 int
@@ -1292,7 +1466,7 @@ cap_thread_unregister (struct cap_flow *flow, struct thread *thr)
     return (EINVAL);
 
   return (cap_task_thread_unregister (flow, CAP_ALERT_THREAD_DIED,
-                                      thread_id (thr), &thr->dead_subs));
+                                      thread_id (thr), &thr->subs));
 }
 
 int
@@ -1302,7 +1476,7 @@ cap_task_unregister (struct cap_flow *flow, struct task *task)
     return (EINVAL);
 
   return (cap_task_thread_unregister (flow, CAP_ALERT_TASK_NOTIF,
-                                      task_id (task), &task->dead_subs));
+                                      task_id (task), &task->subs));
 }
 
 void
@@ -1360,7 +1534,7 @@ cap_reply_pagereq (const uintptr_t *usrc, uint32_t cnt, int err)
   else if (err)
     cap_lpad_return (lpad, self, err);
 
-  uint32_t npg = lpad->cur_out->iov.head.iov_len / sizeof (struct vm_page);
+  uint32_t npg = lpad->cur_out.iov.head.iov_len / sizeof (struct vm_page);
   if (npg < cnt)
     cnt = npg;
 
@@ -1369,7 +1543,7 @@ cap_reply_pagereq (const uintptr_t *usrc, uint32_t cnt, int err)
   if (user_copy_from (src, usrc, cnt * sizeof (*usrc)) != 0)
     return (-EFAULT);
 
-  struct vm_page **pages = lpad->cur_out->iov.head.iov_base;
+  struct vm_page **pages = lpad->cur_out.iov.head.iov_base;
   int rv = vm_map_reply_pagereq (src, cnt, pages);
 
   if (rv < 0)
@@ -1458,6 +1632,45 @@ cap_get_max (const size_t *args, size_t n)
      cap_get_max (args_, ARRAY_SIZE (args_));   \
    })
 
+static struct cap_kernel cap_kernel_caps[CAP_KERNEL_MAX];
+
+static void
+cap_kcap_noref (struct sref_counter *c __unused)
+{
+  panic ("kernel capability cannot be freed");
+}
+
+struct cap_kernel*
+cap_get_kcap (uint32_t kind)
+{
+  return (kind > CAP_KERNEL_MAX ? NULL : &cap_kernel_caps[kind]);
+}
+
+int
+cap_lpad_cache_alloc (struct list *out, uint32_t count)
+{
+  for (uint32_t i = 0; i < count; ++i)
+    {
+      struct cap_lpad *lpad = kmem_cache_alloc (&cap_lpad_cache);
+      if (! lpad)
+        return (ENOMEM);
+
+      list_insert_tail (out, &lpad->cache_link);
+    }
+
+  return (0);
+}
+
+void
+cap_lpad_cache_free (struct list *list)
+{
+  list_for_each_safe (list, node, tmp)
+    {
+      _Auto lpad = list_entry (node, struct cap_lpad, cache_link);
+      kmem_cache_free (&cap_lpad_cache, lpad);
+    }
+}
+
 static int __init
 cap_setup (void)
 {
@@ -1479,6 +1692,13 @@ cap_setup (void)
   adaptive_lock_init (&cap_intr_lock);
   for (size_t i = 0; i < ARRAY_SIZE (cap_intr_handlers); ++i)
     list_init (&cap_intr_handlers[i]);
+
+  for (size_t i = 0; i < ARRAY_SIZE (cap_kernel_caps); ++i)
+    {
+      cap_base_init (CAP (&cap_kernel_caps[i]), CAP_TYPE_KERNEL,
+                     cap_kcap_noref);
+      cap_kernel_caps[i].kind = i;
+    }
 
   return (0);
 }

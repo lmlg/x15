@@ -840,11 +840,7 @@ cpu_tlb_flush_all (void)
     }
 }
 
-/*
- * Flush a single page table entry in the TLB.
- *
- * Implies a full memory barrier.
- */
+// Flush a single page table entry in the TLB (Implies a memory barrier).
 static __always_inline void
 cpu_tlb_flush_va (uintptr_t va)
 {
@@ -936,6 +932,18 @@ static inline bool
 cpu_exc_frame_is_user (const struct cpu_exc_frame *frame)
 {
   return ((frame->words[CPU_EXC_FRAME_CS] & CPU_PL_USER) != 0);
+}
+
+static inline uintptr_t
+cpu_exc_frame_sp (const struct cpu_exc_frame *frame)
+{
+  return (frame->words[CPU_EXC_FRAME_SP]);
+}
+
+static inline void
+cpu_exc_frame_set_sp (struct cpu_exc_frame *frame, uintptr_t sp)
+{
+  frame->words[CPU_EXC_FRAME_SP] = sp;
 }
 
 // Register a local APIC.
