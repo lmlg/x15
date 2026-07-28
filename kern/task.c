@@ -183,7 +183,8 @@ task_destroy (struct task *task)
   spinlock_unlock (&task_list_lock);
   cspace_destroy (&task->caps);
   kuid_remove (&task->kuid, KUID_TASK);
-  vm_map_destroy (task->map);
+  if (task->map)
+    vm_map_destroy (task->map);
   cap_notify (&task->subs, task->terminate | CAP_TASK_EXITED);
   work_init (&task->work, task_deferred_free);
   rcu_defer (&task->work);
@@ -227,8 +228,10 @@ task_remove_thread (struct task *task, struct thread *thread)
   adaptive_lock_release (&task->lock);
 
   if (last)
-    { // The cspace must be destroyed early to avoid circularities.
+    { // The cspace and VM map must be destroyed early to avoid circularities.
       cspace_destroy (&task->caps);
+      vm_map_destroy (task->map);
+      task->map = NULL;
       task_unref (task);
     }
 }

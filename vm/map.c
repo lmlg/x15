@@ -155,7 +155,7 @@ vm_map_entry_free_pages (struct vm_map_entry *entry)
       (VM_MAP_PHYS | VM_MAP_ANON))
     return;
 
-  size_t nr_pages = (entry->end - entry->start) / PAGE_SIZE;
+  size_t nr_pages = vm_page_order (entry->end - entry->start);
   for (size_t i = 0; i < nr_pages; ++i)
     vm_page_unref (entry->pages + i);
 }

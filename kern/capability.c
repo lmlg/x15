@@ -1123,7 +1123,7 @@ cap_reply_iters (struct cap_iters *it, int rv)
   struct cap_lpad *lpad = self->cur_lpad;
   ssize_t ret;
 
-  if (!lpad || (lpad->xflags & IPC_MSG_KERNEL))
+  if (!lpad || (lpad->xflags & CAP_MSG_REQ_PAGES))
     return (-EINVAL);
   else if (rv >= 0)
     {
@@ -1556,7 +1556,7 @@ static struct vm_object*
 cap_channel_load_vmobj (struct cap_channel *chp)
 {
   RCU_GUARD ();
-  _Auto prev = atomic_load_rlx (&chp->vmobj);
+  _Auto prev = rcu_load (&chp->vmobj);
   return (!prev || vm_object_tryref (prev) ? prev : NULL);
 }
 

@@ -53,7 +53,7 @@ test_vm_map_phys_entry (struct ipc_msg *msg, struct ipc_msg_data *data)
       test_assert_ne (kmsg->mmap_req.prot & VM_PROT_READ, 0);
       test_assert_eq (kmsg->mmap_req.offset, TEST_VM_MAP_PHYS_OFFSET);
 
-      ssize_t rv = cap_reply_pagereq (0, 0);
+      ssize_t rv = cap_reply_pagereq (0, 0, 0);
       test_assert_eq (rv, -EINVAL);
 
       cap_reply_bytes (0, 0, 0);
@@ -208,8 +208,9 @@ test_vm_map_phys_cap (void *arg __unused)
 
   for (int i = 0; i < 3; ++i)
     {
-      test_assert_eq (*(unsigned char *)(va + PAGE_SIZE * i), 60 - (20 * i));
-      *(unsigned char *)(va + PAGE_SIZE * i) = 0xff;
+      unsigned char *p = (unsigned char *)(va + PAGE_SIZE * i);
+      test_assert_eq (*p, 60 - 20 * i);
+      *p = 0xff;
     }
 
   test_vm_map_phys_handle_dirty (obj, va);
