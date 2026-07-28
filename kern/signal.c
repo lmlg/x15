@@ -629,7 +629,7 @@ SYSCALL (tkill, int how, int arg1, int arg2, siginfo_t *sinfo)
         { // arg1 is the capability.
           _Auto cap = cspace_get (caps, arg1);
           if (! cap)
-            return (-EINVAL);
+            return (-EBADF);
           else if (cap_type (cap) != CAP_TYPE_THREAD)
             rv = -EINVAL;
           else
@@ -643,7 +643,7 @@ SYSCALL (tkill, int how, int arg1, int arg2, siginfo_t *sinfo)
         { // arg1 is the capability; arg2 is thread id (or -1 for any thread).
           _Auto cap = cspace_get (caps, arg1);
           if (! cap)
-            return (-EINVAL);
+            return (-EBADF);
           else if (cap_type (cap) != CAP_TYPE_TASK)
             rv = -EINVAL;
           else

@@ -2540,11 +2540,17 @@ thread_sigwait (sigset_t wait_set, siginfo_t *info,
           if (timed)
             timer_cancel (&waiter.timer);
 
-          _Auto si = signal_pop_siginfo (uthr, signo);
+          siginfo_t tmp, *si = signal_pop_siginfo (uthr, signo);
           if (likely (si))
             {
-              memcpy (info, si, sizeof (*si));
+              /*
+               * Use a temporary in case we're copying to userspace. Otherwise,
+               * the copy below may fail and the memory for the siginfo will
+               * leak since we'll go straight to the unwinder.
+               */
+              memcpy (&tmp, si, sizeof (*si));
               signal_free_siginfo (si);
+              memcpy (info, &tmp, sizeof (*si));
             }
           else
             { // No queued siginfo - Create a minimal one.
@@ -2563,7 +2569,6 @@ thread_sigwait (sigset_t wait_set, siginfo_t *info,
       atomic_store_rlx (&thread->state, THREAD_SLEEPING);
 
       runq = thread_runq_schedule (runq);
-      uthr->sig_mask = prev;
       spinlock_unlock_intr_restore (&runq->lock, flags);
 
       if (timed)
